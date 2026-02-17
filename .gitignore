@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+.venv/
+venv/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Node.js
+node_modules/
+*.tsbuildinfo
+
+# Vite
+frontend/dist/
+
+# Playwright
+test-results/
+playwright-report/
+e2e-screenshots/
+blob-report/
+.playwright-mcp/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend - Database (contains API keys)
+backend/engram.db
+backend/engram.db-shm
+backend/engram.db-wal
+backend/engram.db.bak
+
+# Backend - Secrets
+backend/.env
+
+# Backend - Runtime data
+backend/staging/
+backend/library/
+backend/subtitles_cache/
+backend/data/cache/
+backend/temp/
+backend/temp_test/
+backend/investigation_output/
+backend/notebooks/
+backend/prototypes/
+backend/~/
+
+# Logs
+*.log
+
+# Claude Code (local settings only)
+.claude/settings.local.json

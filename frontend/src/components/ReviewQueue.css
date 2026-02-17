@@ -1,0 +1,415 @@
+.review-queue {
+    animation: slideIn 0.3s ease-out;
+}
+
+.review-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.review-title h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.review-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.review-notice {
+    padding: 1rem;
+    background: rgba(210, 153, 34, 0.1);
+    border: 1px solid var(--accent-warning);
+    border-radius: var(--border-radius-sm);
+    color: var(--accent-warning);
+    margin-bottom: 1.5rem;
+}
+
+/* Titles List */
+.titles-list {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+}
+
+.titles-header {
+    display: grid;
+    grid-template-columns: 2fr 0.8fr 0.8fr 0.6fr 1.2fr 1.2fr 1.5fr;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+
+.title-row-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.title-grid-row {
+    display: grid;
+    grid-template-columns: 2fr 0.8fr 0.8fr 0.6fr 1.2fr 1.2fr 1.5fr;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    align-items: center;
+    transition: background 0.2s ease;
+}
+
+/* Legacy support */
+.title-row {
+    display: grid;
+    grid-template-columns: 2fr 0.8fr 0.8fr 0.6fr 1.2fr 1.2fr 1.5fr;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    align-items: center;
+    transition: background 0.2s ease;
+}
+
+.title-row:last-child {
+    border-bottom: none;
+}
+
+.title-row:hover {
+    background: var(--bg-tertiary);
+}
+
+.col-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.title-index {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius-sm);
+}
+
+.title-name {
+    font-weight: 500;
+}
+
+.col-duration,
+.col-size {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.col-confidence {
+    display: flex;
+    align-items: center;
+}
+
+.confidence-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius-sm);
+}
+
+.confidence-badge.high {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.confidence-badge.medium {
+    background: rgba(234, 179, 8, 0.15);
+    color: #eab308;
+}
+
+.confidence-badge.low {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.confidence-badge.none {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+
+.title-row.has-match {
+    background: rgba(34, 197, 94, 0.03);
+}
+
+.col-episode select {
+    width: 100%;
+}
+
+.col-stats {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.match-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.title-info-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.title-error {
+    font-size: 0.75rem;
+    color: var(--accent-warning);
+    margin-top: 0.25rem;
+}
+
+.conflict-row {
+    background: rgba(210, 153, 34, 0.05);
+    border-left: 3px solid var(--accent-warning);
+}
+
+/* Actions */
+.review-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Loading/Error States */
+.review-loading,
+.review-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 4rem;
+    text-align: center;
+}
+
+.review-loading .disc-spinner {
+    font-size: 3rem;
+    animation: spin 2s linear infinite;
+}
+
+/* Movie Review Specifics */
+.movie-review .titles-list .titles-header,
+.movie-review .titles-list .title-row {
+    grid-template-columns: 2.5fr 0.8fr 0.8fr 0.8fr 1.5fr 1.5fr;
+}
+
+.col-res {
+    display: flex;
+    align-items: center;
+}
+
+.res-badge {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.col-edition {
+    display: flex;
+    align-items: center;
+}
+
+.edition-input {
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.edition-input:focus {
+    border-color: var(--text-primary);
+    outline: none;
+}
+
+.col-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    height: auto;
+}
+
+.title-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.title-segments {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Enhanced Match Statistics */
+.match-stats-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.75rem;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.stat-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.stat-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.stat-empty {
+    color: var(--text-muted);
+}
+
+/* Review Reasons */
+.col-review-reason {
+    display: flex;
+    align-items: center;
+}
+
+.review-reasons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.reason-tag {
+    background: rgba(251, 146, 60, 0.15);
+    color: #fb923c;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-align: center;
+    border: 1px solid rgba(251, 146, 60, 0.3);
+}
+
+.reason-tag.neutral {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+/* Expand Button */
+.expand-matches-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    margin-right: 0.5rem;
+    font-size: 0.7rem;
+}
+
+.expand-matches-btn:hover {
+    color: var(--text-primary);
+}
+
+/* Competing Matches Section */
+.competing-matches-section {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 1rem;
+    margin: 0.5rem 0;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent-info);
+}
+
+.competing-matches-section h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.matches-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.matches-table th {
+    text-align: left;
+    padding: 0.5rem;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.matches-table td {
+    padding: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.match-row.best-match {
+    background: rgba(74, 222, 128, 0.1);
+}
+
+.match-row.runner-up {
+    background: rgba(148, 163, 184, 0.05);
+}
+
+.assessment-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.assessment-badge.primary {
+    background: rgba(74, 222, 128, 0.2);
+    color: #4ade80;
+}
+
+.assessment-badge:not(.primary) {
+    background: rgba(148, 163, 184, 0.2);
+    color: #94a3b8;
+}
+
+.title-grid-row:hover {
+    background: var(--bg-tertiary);
+}
+
+.title-row-wrapper:last-child .title-grid-row {
+    border-bottom: none;
+}
+
+.title-grid-row.has-match {
+    background: rgba(34, 197, 94, 0.03);
+}
+
+.title-grid-row.conflict-row {
+    background: rgba(210, 153, 34, 0.05);
+    border-left: 3px solid var(--accent-warning);
+}

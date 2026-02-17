@@ -1,0 +1,7 @@
+# Test bench output files
+test_bench_results/
+*.csv
+*.json
+
+# But keep the ground truth template
+!ground_truth.json

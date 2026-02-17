@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build frontend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      # Copy frontend build into backend for bundling
+      - name: Bundle frontend
+        run: |
+          Copy-Item -Recurse frontend/dist backend/app/static
+        shell: pwsh
+
+      # Build backend executable
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --no-install-project
+          uv pip install pyinstaller
+      - name: Build executable
+        working-directory: backend
+        run: |
+          uv run pyinstaller --onedir --name engram `
+            --add-data "app/static;app/static" `
+            --hidden-import app.api `
+            --hidden-import app.core `
+            --hidden-import app.models `
+            --hidden-import app.services `
+            --hidden-import app.matcher `
+            --collect-data faster_whisper `
+            --collect-data ctranslate2 `
+            app/main.py
+        shell: pwsh
+      - name: Package
+        run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-windows-x64.zip
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engram-windows-x64
+          path: engram-windows-x64.zip
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: engram-windows-x64
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: engram-windows-x64.zip

@@ -1,0 +1,47 @@
+{
+  "Arrested Development": {
+    "Season 1": {
+      "season": 1,
+      "episodes": {
+        "Arrested Development - S01E01.mkv": "S01E01",
+        "Arrested Development - S01E02.mkv": "S01E02",
+        "Arrested Development - S01E03.mkv": "S01E03",
+        "Arrested Development - S01E04.mkv": "S01E04",
+        "Arrested Development - S01E05.mkv": "S01E05",
+        "Arrested Development - S01E06.mkv": "S01E06",
+        "Arrested Development - S01E07.mkv": "S01E07",
+        "Arrested Development - S01E08.mkv": "S01E08",
+        "Arrested Development - S01E09.mkv": "S01E09",
+        "Arrested Development - S01E10.mkv": "S01E10",
+        "Arrested Development - S01E11.mkv": "S01E11",
+        "Arrested Development - S01E12.mkv": "S01E12",
+        "Arrested Development - S01E13.mkv": "S01E13",
+        "Arrested Development - S01E14.mkv": "S01E14",
+        "Arrested Development - S01E15.mkv": "S01E15",
+        "Arrested Development - S01E16.mkv": "S01E16",
+        "Arrested Development - S01E17.mkv": "S01E17",
+        "Arrested Development - S01E18.mkv": "S01E18",
+        "Arrested Development - S01E19.mkv": "S01E19",
+        "Arrested Development - S01E20.mkv": "S01E20",
+        "Arrested Development - S01E21.mkv": "S01E21",
+        "Arrested Development - S01E22.mkv": "S01E22"
+      }
+    }
+  },
+  "The Expanse": {
+    "Season 1": {
+      "season": 1,
+      "episodes": {
+        "The Expanse - S01E01.mkv": "S01E01",
+        "The Expanse - S01E02.mkv": "S01E02",
+        "The Expanse - S01E03.mkv": "S01E03",
+        "The Expanse - S01E04.mkv": "S01E04",
+        "The Expanse - S01E05.mkv": "S01E05",
+        "The Expanse - S01E06.mkv": "S01E06",
+        "The Expanse - S01E07.mkv": "S01E07",
+        "The Expanse - S01E08.mkv": "S01E08",
+        "The Expanse - S01E09.mkv": "S01E09"
+      }
+    }
+  }
+}

@@ -1,0 +1,426 @@
+# utils.py
+import os
+import re
+from pathlib import Path
+
+import ctranslate2
+from loguru import logger
+from rich.console import Console
+from rich.panel import Panel
+
+from app.matcher.core.config_manager import get_config_manager
+from app.matcher.subtitle_utils import sanitize_filename
+
+console = Console()
+
+
+def normalize_path(path_str):
+    """
+    Normalize a path string to handle cross-platform path issues.
+    Properly handles trailing slashes and backslashes in both Windows and Unix paths.
+    Also strips surrounding quotes that might be present in command line arguments.
+
+    Args:
+        path_str (str): The path string to normalize
+
+    Returns:
+        pathlib.Path: A normalized Path object
+    """
+    # Convert to string if it's a Path object
+    if isinstance(path_str, Path):
+        path_str = str(path_str)
+
+    # Strip surrounding quotes (both single and double)
+    path_str = path_str.strip().strip('"').strip("'")
+
+    # Remove trailing slashes or backslashes
+    path_str = path_str.rstrip("/").rstrip("\\")
+
+    # Handle Windows paths on non-Windows platforms
+    if os.name != "nt" and "\\" in path_str and ":" in path_str[:2]:
+        # This looks like a Windows path on a non-Windows system
+        # Extract the last component which should be the directory/file name
+        components = path_str.split("\\")
+        return Path(components[-1])
+
+    return Path(path_str)
+
+
+def get_valid_seasons(show_dir):
+    """
+    Get all season directories that contain MKV files.
+
+    Args:
+        show_dir (str): Base directory for the TV show
+
+    Returns:
+        list: List of paths to valid season directories
+    """
+    # Get all season directories
+    show_path = normalize_path(show_dir)
+    season_paths = [str(show_path / d.name) for d in show_path.iterdir() if d.is_dir()]
+
+    # Filter seasons to only include those with .mkv files
+    valid_season_paths = []
+    for season_path in season_paths:
+        season_path_obj = Path(season_path)
+        mkv_files = [f for f in season_path_obj.iterdir() if f.name.endswith(".mkv")]
+        if mkv_files:
+            valid_season_paths.append(season_path)
+
+    if not valid_season_paths:
+        logger.warning(
+            f"No seasons with .mkv files found in show '{normalize_path(show_dir).name}'"
+        )
+    else:
+        logger.info(
+            f"Found {len(valid_season_paths)} seasons with .mkv files in '{normalize_path(show_dir).name}'"
+        )
+
+    return valid_season_paths
+
+
+def check_filename(filename):
+    """
+    Check if the filename is in the correct format (S01E02).
+
+    Args:
+        filename (str or Path): The filename to check.
+
+    Returns:
+        bool: True if the filename matches the expected pattern.
+    """
+    # Convert Path object to string if needed
+    if isinstance(filename, Path):
+        filename = str(filename)
+    # Check if the filename matches the expected format
+    match = re.search(r".*S\d+E\d+", filename)
+    return bool(match)
+
+
+def scramble_filename(original_file_path, file_number):
+    """
+    Scrambles the filename of the given file path by adding the series title and file number.
+
+    Args:
+        original_file_path (str): The original file path.
+        file_number (int): The file number to be added to the filename.
+
+    Returns:
+        None
+    """
+    logger.info(f"Scrambling {original_file_path}")
+    series_title = normalize_path(original_file_path).parent.parent.name
+    original_file_name = Path(original_file_path).name
+    extension = Path(original_file_path).suffix
+    new_file_name = f"{series_title} - {file_number:03d}{extension}"
+    new_file_path = Path(original_file_path).parent / new_file_name
+    if not new_file_path.exists():
+        logger.info(f"Renaming {original_file_name} -> {new_file_name}")
+        Path(original_file_path).rename(new_file_path)
+
+
+def rename_episode_file(original_file_path, new_filename):
+    """
+    Rename an episode file with a standardized naming convention.
+
+    Args:
+        original_file_path (str or Path): The original file path of the episode.
+        new_filename (str or Path): The new filename including season/episode info.
+
+    Returns:
+        Path: Path to the renamed file, or None if rename failed.
+    """
+    original_dir = Path(original_file_path).parent
+    new_file_path = original_dir / new_filename
+
+    # Check if new filepath already exists
+    if new_file_path.exists():
+        logger.warning(f"File already exists: {new_filename}")
+
+        # Add numeric suffix if file exists
+        base, ext = Path(new_filename).stem, Path(new_filename).suffix
+        suffix = 2
+        while True:
+            new_filename = f"{base}_{suffix}{ext}"
+            new_file_path = original_dir / new_filename
+            if not new_file_path.exists():
+                break
+            suffix += 1
+
+    try:
+        Path(original_file_path).rename(new_file_path)
+        logger.info(f"Renamed {Path(original_file_path).name} -> {new_filename}")
+        return new_file_path
+    except OSError as e:
+        logger.error(f"Failed to rename file: {e}")
+        return None
+    except FileExistsError as e:
+        logger.error(f"Failed to rename file: {e}")
+        return None
+
+
+def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
+    """
+    Retrieves and saves subtitles for a given TV show and seasons.
+    
+    Uses Addic7ed as primary source with OpenSubtitles as fallback.
+
+    Args:
+        show_id (int): The TMDB ID of the TV show.
+        seasons (Set[int]): A set of season numbers for which subtitles should be retrieved.
+        config (Config object, optional): Preloaded configuration.
+        max_retries (int, optional): Number of times to retry on failures. Defaults to 3.
+    
+    Returns:
+        dict: Mapping of episode codes to downloaded subtitle file paths.
+    """
+    from app.matcher.addic7ed_client import get_subtitles_addic7ed
+    from app.matcher.opensubtitles_scraper import get_subtitles_opensubtitles
+    from app.matcher.tmdb_client import fetch_show_details
+    
+    if config is None:
+        config = get_config_manager().load()
+    
+    show_dir = config.show_dir
+    if not show_dir:
+        logger.error("Show directory not configured")
+        return {}
+    
+    # Get show name from TMDB
+    show_details = fetch_show_details(show_id)
+    if show_details:
+        series_name = show_details.get("name", normalize_path(show_dir).name)
+    else:
+        series_name = normalize_path(show_dir).name
+    
+    series_name = sanitize_filename(series_name)
+    cache_dir = config.cache_dir
+    
+    # Try Addic7ed first
+    logger.info(f"Downloading subtitles for '{series_name}' from Addic7ed")
+    downloaded = get_subtitles_addic7ed(
+        show_name=series_name,
+        seasons=seasons,
+        cache_dir=cache_dir,
+        max_retries=max_retries
+    )
+    
+    if downloaded:
+        logger.info(f"Downloaded {len(downloaded)} subtitles from Addic7ed for {series_name}")
+        return downloaded
+    
+    # Fallback to OpenSubtitles if Addic7ed returns nothing
+    logger.info(f"Addic7ed returned no subtitles, trying OpenSubtitles for '{series_name}'")
+    downloaded = get_subtitles_opensubtitles(
+        show_name=series_name,
+        seasons=seasons,
+        cache_dir=cache_dir,
+        max_retries=max_retries
+    )
+    
+    logger.info(f"Downloaded {len(downloaded)} subtitles from OpenSubtitles for {series_name}")
+    return downloaded
+
+
+def clean_text(text):
+    # Remove brackets and curly braces with their content
+    cleaned_text = re.sub(r"\[.*?\]|\{.*?\}", "", text)
+    # Remove parentheses content EXCEPT for those containing exactly 4 digits (years)
+    # First, temporarily replace year patterns with a placeholder
+    year_pattern = r"\((\d{4})\)"
+    years = re.findall(year_pattern, cleaned_text)
+    cleaned_text = re.sub(year_pattern, "YEAR_PLACEHOLDER", cleaned_text)
+    # Remove all remaining parentheses content
+    cleaned_text = re.sub(r"\([^)]*\)", "", cleaned_text)
+    # Restore the years
+    for year in years:
+        cleaned_text = cleaned_text.replace("YEAR_PLACEHOLDER", f"({year})", 1)
+    # Normalize multiple spaces to single spaces
+    cleaned_text = re.sub(r"\s+", " ", cleaned_text)
+    # Strip leading/trailing whitespace
+    return cleaned_text.strip()
+
+
+@logger.catch
+def process_reference_srt_files(series_name):
+    """
+    Process reference SRT files for a given series.
+
+    Args:
+        series_name (str): The name of the series.
+
+    Returns:
+        dict: A dictionary containing the reference files where the keys are the MKV filenames
+              and the values are the corresponding SRT texts.
+    """
+    config = get_config_manager().load()
+
+    reference_files = {}
+    reference_dir = config.cache_dir / "data" / series_name
+
+    for dirpath, _, filenames in os.walk(reference_dir):
+        for filename in filenames:
+            if filename.lower().endswith(".srt"):
+                srt_file = Path(dirpath) / filename
+                logger.info(f"Processing {srt_file}")
+                srt_text = extract_srt_text(srt_file)
+                season, episode = extract_season_episode(filename)
+                mkv_filename = f"{series_name} - S{season:02}E{episode:02}.mkv"
+                reference_files[mkv_filename] = srt_text
+
+    return reference_files
+
+
+def extract_srt_text(filepath):
+    """
+    Extracts text content from an SRT file.
+
+    Args:
+        filepath (str): Path to the SRT file.
+
+    Returns:
+        list: List of text lines from the SRT file.
+    """
+    # Read the file content
+    with open(filepath) as f:
+        content = f.read()
+
+    # Split into subtitle blocks
+    blocks = content.strip().split("\n\n")
+
+    text_lines = []
+    for block in blocks:
+        lines = block.split("\n")
+        if len(lines) < 3:
+            continue
+
+        # Skip index and timestamp, get all remaining lines as text
+        text = " ".join(lines[2:])
+        # Remove stage directions and tags
+        text = re.sub(r"\[.*?\]|\<.*?\>", "", text)
+        if text:
+            text_lines.append(text)
+
+    return text_lines
+
+
+def extract_season_episode(filename):
+    """
+    Extract season and episode numbers from filename with support for multiple formats.
+
+    Args:
+        filename (str): Filename to parse
+
+    Returns:
+        tuple: (season_number, episode_number)
+    """
+    # List of patterns to try
+    patterns = [
+        r"S(\d+)E(\d+)",  # S01E01
+        r"(\d+)x(\d+)",  # 1x01 or 01x01
+        r"Season\s*(\d+).*?(\d+)",  # Season 1 - 01
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, filename, re.IGNORECASE)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+
+    return None, None
+
+
+def process_srt_files(show_dir):
+    """
+    Process all SRT files in the given directory and its subdirectories.
+
+    Args:
+        show_dir (str): The directory path where the SRT files are located.
+
+    Returns:
+        dict: A dictionary containing the SRT file paths as keys and their corresponding text content as values.
+    """
+    srt_files = {}
+    for dirpath, _, filenames in os.walk(show_dir):
+        for filename in filenames:
+            if filename.lower().endswith(".srt"):
+                srt_file = Path(dirpath) / filename
+                logger.info(f"Processing {srt_file}")
+                srt_text = extract_srt_text(srt_file)
+                srt_files[srt_file] = srt_text
+    return srt_files
+
+
+def compare_and_rename_files(srt_files, reference_files, dry_run=False):
+    """
+    Compare the srt files with the reference files and rename the matching mkv files.
+
+    Args:
+        srt_files (dict): A dictionary containing the srt files as keys and their contents as values.
+        reference_files (dict): A dictionary containing the reference files as keys and their contents as values.
+        dry_run (bool, optional): If True, the function will only log the renaming actions without actually renaming the files. Defaults to False.
+    """
+    logger.info(
+        f"Comparing {len(srt_files)} srt files with {len(reference_files)} reference files"
+    )
+    for srt_text in srt_files.keys():
+        parent_dir = Path(srt_text).parent.parent
+        for reference in reference_files.keys():
+            _season, _episode = extract_season_episode(reference)
+            mkv_file = str(parent_dir / Path(srt_text).name.replace(".srt", ".mkv"))
+            matching_lines = compare_text(
+                reference_files[reference], srt_files[srt_text]
+            )
+            if matching_lines >= int(len(reference_files[reference]) * 0.1):
+                logger.info(f"Matching lines: {matching_lines}")
+                logger.info(f"Found matching file: {mkv_file} ->{reference}")
+                new_filename = parent_dir / reference
+                if not dry_run:
+                    logger.info(f"Renaming {mkv_file} to {str(new_filename)}")
+                    rename_episode_file(mkv_file, reference)
+
+
+def compare_text(text1, text2):
+    """
+    Compare two lists of text lines and return the number of matching lines.
+
+    Args:
+        text1 (list): List of text lines from the first source.
+        text2 (list): List of text lines from the second source.
+
+    Returns:
+        int: Number of matching lines between the two sources.
+    """
+    # Flatten the list of text lines
+    flat_text1 = [line for lines in text1 for line in lines]
+    flat_text2 = [line for lines in text2 for line in lines]
+
+    # Compare the two lists of text lines
+    matching_lines = set(flat_text1).intersection(flat_text2)
+    return len(matching_lines)
+
+
+def check_gpu_support():
+    logger.info("Checking GPU support...")
+    console.print("[bold]Checking GPU support...[/bold]")
+    if ctranslate2.get_cuda_device_count() > 0:
+        logger.info("CUDA is available.")
+        console.print(
+            Panel.fit(
+                "CUDA is available.",
+                title="GPU Support",
+                border_style="magenta",
+            )
+        )
+    else:
+        logger.warning(
+            "CUDA not available. Using CPU. Refer to https://pytorch.org/get-started/locally/ for GPU support."
+        )
+        console.print(
+            Panel.fit(
+                "CUDA not available. Using CPU. Refer to https://pytorch.org/get-started/locally/ for GPU support.",
+                title="GPU Support",
+                border_style="red",
+            )
+        )
+

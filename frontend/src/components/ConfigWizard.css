@@ -1,0 +1,628 @@
+/* Cyberpunk ConfigWizard Styling */
+.wizard-modal {
+    max-width: 800px;
+    background: #000000;
+    border: 2px solid rgba(6, 182, 212, 0.5);
+    box-shadow: 0 0 30px rgba(6, 182, 212, 0.4), inset 0 0 30px rgba(6, 182, 212, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Modal Header */
+.modal-header {
+    padding: 1.5rem 2rem;
+    background: rgba(6, 182, 212, 0.05);
+    border-bottom: 2px solid rgba(6, 182, 212, 0.3);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+}
+
+.modal-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #06b6d4;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 15px rgba(6, 182, 212, 0.6);
+    margin: 0;
+}
+
+.modal-close {
+    background: none;
+    border: 2px solid rgba(236, 72, 153, 0.5);
+    color: #ec4899;
+    font-size: 2rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: Arial, sans-serif;
+    line-height: 1;
+    padding: 0;
+}
+
+.modal-close:hover {
+    background: rgba(236, 72, 153, 0.2);
+    border-color: #ec4899;
+    box-shadow: 0 0 15px rgba(236, 72, 153, 0.5);
+    transform: rotate(90deg);
+}
+
+/* Scanline effect */
+.wizard-modal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(6, 182, 212, 0.03) 2px,
+        rgba(6, 182, 212, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Animated corners */
+.wizard-modal::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg, #06b6d4 2px, transparent 2px) 0 0,
+        linear-gradient(90deg, #06b6d4 2px, transparent 2px) 0 100%,
+        linear-gradient(0deg, #06b6d4 2px, transparent 2px) 0 0,
+        linear-gradient(0deg, #06b6d4 2px, transparent 2px) 100% 0;
+    background-size: 20px 2px, 20px 2px, 2px 20px, 2px 20px;
+    background-repeat: no-repeat;
+    z-index: 1;
+}
+
+/* Progress Steps */
+.wizard-progress {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    padding: 1.5rem;
+    background: rgba(6, 182, 212, 0.05);
+    border-bottom: 2px solid rgba(6, 182, 212, 0.3);
+    position: relative;
+    z-index: 2;
+}
+
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    opacity: 0.4;
+    transition: all 0.3s ease;
+}
+
+.progress-step.active,
+.progress-step.completed {
+    opacity: 1;
+}
+
+.step-number {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #000000;
+    border: 2px solid rgba(100, 116, 139, 0.5);
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #64748b;
+    font-family: 'Courier New', monospace;
+    transition: all 0.3s ease;
+}
+
+.progress-step.active .step-number {
+    background: rgba(6, 182, 212, 0.2);
+    border-color: #06b6d4;
+    color: #06b6d4;
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
+    text-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+}
+
+.progress-step.completed .step-number {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+}
+
+.step-label {
+    font-size: 0.7rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+}
+
+.progress-step.active .step-label {
+    color: #06b6d4;
+    text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+}
+
+.progress-step.completed .step-label {
+    color: #10b981;
+}
+
+/* Wizard Step Content */
+.wizard-step {
+    padding: 2rem;
+    position: relative;
+    z-index: 2;
+    min-height: 400px;
+}
+
+.step-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: #06b6d4;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 15px rgba(6, 182, 212, 0.6);
+}
+
+.step-description {
+    color: #94a3b8;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+
+/* Form Groups */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #ec4899;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: 'Courier New', monospace;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"],
+.form-group input[type="number"],
+.form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    background: rgba(6, 182, 212, 0.05);
+    border: 2px solid rgba(6, 182, 212, 0.3);
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-family: 'Courier New', monospace;
+    transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #06b6d4;
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+    background: rgba(6, 182, 212, 0.1);
+}
+
+.form-group input::placeholder {
+    color: #475569;
+}
+
+.form-group select option {
+    background: #000000;
+    color: #ffffff;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    font-family: 'Courier New', monospace;
+}
+
+/* Checkbox */
+.checkbox-group {
+    margin-top: 1rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    cursor: pointer;
+    padding: 0.75rem;
+    background: rgba(236, 72, 153, 0.05);
+    border: 1px solid rgba(236, 72, 153, 0.2);
+    transition: all 0.3s ease;
+}
+
+.checkbox-label:hover {
+    background: rgba(236, 72, 153, 0.1);
+    border-color: rgba(236, 72, 153, 0.4);
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 0.25rem;
+    cursor: pointer;
+    accent-color: #ec4899;
+}
+
+.checkbox-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+}
+
+.checkbox-hint {
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+/* Config Summary */
+.config-summary {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: rgba(6, 182, 212, 0.05);
+    border: 2px solid rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+}
+
+.config-summary h4 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: #ec4899;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-family: 'Courier New', monospace;
+}
+
+.config-summary dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem 1.5rem;
+    font-size: 0.85rem;
+    font-family: 'Courier New', monospace;
+}
+
+.config-summary dt {
+    color: #64748b;
+    font-weight: 600;
+}
+
+.config-summary dd {
+    color: #06b6d4;
+    font-weight: 500;
+    word-break: break-all;
+}
+
+/* Wizard Loading */
+.wizard-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    gap: 1rem;
+    color: #06b6d4;
+    font-family: 'Courier New', monospace;
+}
+
+.wizard-loading .spinner-mini {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(6, 182, 212, 0.2);
+    border-top-color: #06b6d4;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Validation Status */
+.validation-success {
+    color: #10b981;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+.validation-success::before {
+    content: '✓';
+    color: #10b981;
+}
+
+.validation-error {
+    color: #ef4444;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+.validation-error::before {
+    content: '✗';
+    color: #ef4444;
+}
+
+/* Tool Detection Status Cards */
+.tool-detection-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.tool-status-card {
+    padding: 1rem 1.25rem;
+    border: 2px solid;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tool-status-card.tool-detecting {
+    border-color: rgba(6, 182, 212, 0.3);
+    background: rgba(6, 182, 212, 0.03);
+}
+
+.tool-status-card.tool-found {
+    border-color: rgba(16, 185, 129, 0.5);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.tool-status-card.tool-not-found {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.tool-status-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.tool-status-header .spinner-mini {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(6, 182, 212, 0.2);
+    border-top-color: #06b6d4;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    flex-shrink: 0;
+}
+
+.tool-status-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    flex-shrink: 0;
+}
+
+.tool-status-icon.found {
+    color: #10b981;
+    border: 2px solid #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.tool-status-icon.not-found {
+    color: #f59e0b;
+    border: 2px solid #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+.tool-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #ffffff;
+}
+
+.tool-version {
+    font-size: 0.8rem;
+    color: #10b981;
+    margin-left: auto;
+}
+
+.tool-path {
+    font-size: 0.75rem;
+    color: #64748b;
+    padding-left: 2.75rem;
+    word-break: break-all;
+}
+
+.tool-status-text {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    padding-left: 2.75rem;
+    line-height: 1.5;
+}
+
+.tool-status-text a {
+    color: #06b6d4;
+    text-decoration: none;
+}
+
+.tool-status-text a:hover {
+    text-decoration: underline;
+}
+
+.tool-install-hint {
+    font-size: 0.75rem;
+    color: #64748b;
+    padding-left: 2.75rem;
+}
+
+.tool-install-hint code {
+    color: #ec4899;
+    background: rgba(236, 72, 153, 0.1);
+    padding: 0.15rem 0.4rem;
+}
+
+.tool-override-toggle {
+    align-self: flex-start;
+    margin-left: 2.75rem;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.7rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    background: none;
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tool-override-toggle:hover {
+    color: #06b6d4;
+    border-color: rgba(6, 182, 212, 0.5);
+}
+
+.tool-override-input {
+    padding-left: 2.75rem;
+}
+
+.tool-override-input input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: rgba(6, 182, 212, 0.05);
+    border: 2px solid rgba(6, 182, 212, 0.3);
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-family: 'Courier New', monospace;
+    transition: all 0.3s ease;
+}
+
+.tool-override-input input:focus {
+    outline: none;
+    border-color: #06b6d4;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+}
+
+.tool-override-input input::placeholder {
+    color: #475569;
+}
+
+.tool-rescan-btn {
+    align-self: flex-start;
+    padding: 0.35rem 1rem;
+    font-size: 0.75rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #06b6d4;
+    background: none;
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tool-rescan-btn:not(:disabled):hover {
+    background: rgba(6, 182, 212, 0.1);
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+}
+
+.tool-rescan-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Wizard Actions */
+.wizard-actions {
+    padding: 1.5rem 2rem;
+    background: rgba(236, 72, 153, 0.05);
+    border-top: 2px solid rgba(236, 72, 153, 0.3);
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+    z-index: 2;
+}
+
+.wizard-actions button {
+    padding: 0.75rem 2rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    border: 2px solid;
+    background: #000000;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wizard-actions button:not(:disabled):hover {
+    box-shadow: 0 0 20px currentColor;
+}
+
+.wizard-actions button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.wizard-actions .btn-secondary {
+    color: #64748b;
+    border-color: #475569;
+}
+
+.wizard-actions .btn-secondary:not(:disabled):hover {
+    color: #06b6d4;
+    border-color: #06b6d4;
+}
+
+.wizard-actions .btn-primary {
+    color: #ec4899;
+    border-color: #ec4899;
+}
+
+.wizard-actions .btn-primary:not(:disabled):hover {
+    background: rgba(236, 72, 153, 0.1);
+    border-color: #ec4899;
+}
