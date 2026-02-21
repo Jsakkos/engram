@@ -5,12 +5,14 @@ This is a more reliable approach than WM_DEVICECHANGE for cross-platform compati
 """
 
 import asyncio
-import ctypes
 import logging
-import string
 import sys
 from collections.abc import Callable
 from typing import Any
+
+if sys.platform == "win32":
+    import ctypes
+    import string
 
 logger = logging.getLogger(__name__)
 

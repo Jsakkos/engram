@@ -4,13 +4,6 @@ from typing import Any
 
 from loguru import logger
 
-from app.matcher.asr_models import (
-    ASRModel as _NativeASRModel,
-)
-from app.matcher.asr_models import (
-    create_asr_model as _create_native_model,
-)
-
 
 class ASRProvider(abc.ABC):
     """Abstract base class for ASR providers."""
@@ -35,7 +28,9 @@ class NativeASRProvider(ASRProvider):
     """Wrapper around the existing native ASR models (Whisper, Parakeet)."""
 
     def __init__(self, model_config: dict[str, Any]):
-        self._model: _NativeASRModel = _create_native_model(model_config)
+        from app.matcher.asr_models import create_asr_model as _create_native_model
+
+        self._model = _create_native_model(model_config)
         self._loaded = False
 
     def _ensure_loaded(self):
