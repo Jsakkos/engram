@@ -165,9 +165,17 @@ if os.path.isdir(_static_dir):
 
 
 if __name__ == "__main__":
+    import threading
+    import webbrowser
+
     import uvicorn
 
     is_frozen = getattr(sys, "frozen", False)
+
+    if is_frozen:
+        # Open browser after a short delay to let the server bind the port
+        url = f"http://{settings.host}:{settings.port}"
+        threading.Timer(1.5, webbrowser.open, args=[url]).start()
 
     try:
         uvicorn.run(
