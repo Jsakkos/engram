@@ -39,7 +39,6 @@ class TitleState(str, Enum):
     FAILED = "failed"
 
 
-
 class DiscJob(SQLModel, table=True):
     """Represents a disc ripping job with full state tracking."""
 
@@ -69,6 +68,9 @@ class DiscJob(SQLModel, table=True):
 
     # Subtitle tracking
     subtitle_status: str | None = None  # "downloading", "completed", "partial", "failed", None
+    subtitles_downloaded: int = 0
+    subtitles_total: int = 0
+    subtitles_failed: int = 0
 
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -97,7 +99,7 @@ class DiscTitle(SQLModel, table=True):
     # Selection
     is_selected: bool = True
     output_filename: str | None = None
-    
+
     # Version/Quality info
     video_resolution: str | None = None  # e.g., "4K", "1080p", "480p"
     edition: str | None = None  # e.g., "Extended", "Director's Cut", "Theatrical"
@@ -112,9 +114,9 @@ class DiscTitle(SQLModel, table=True):
 
     # Conflict resolution for organization
     conflict_resolution: str | None = None  # User's choice for specific conflict
-    existing_file_path: str | None = None   # Path to existing file causing conflict
+    existing_file_path: str | None = None  # Path to existing file causing conflict
 
     # Organization tracking
     organized_from: str | None = None  # Source filename
-    organized_to: str | None = None    # Destination path
-    is_extra: bool = False              # True if organized as extra content
+    organized_to: str | None = None  # Destination path
+    is_extra: bool = False  # True if organized as extra content

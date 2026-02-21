@@ -59,10 +59,7 @@ class CacheManager:
         elif isinstance(value, (str, bytes)):
             return len(value) * (4 if isinstance(value, str) else 1)
         elif isinstance(value, dict):
-            return sum(
-                self._estimate_size(k) + self._estimate_size(v)
-                for k, v in value.items()
-            )
+            return sum(self._estimate_size(k) + self._estimate_size(v) for k, v in value.items())
         elif isinstance(value, (list, tuple)):
             return sum(self._estimate_size(item) for item in value)
         else:
@@ -78,8 +75,7 @@ class CacheManager:
         sorted_items = sorted(self.access_order.items(), key=lambda x: x[1])
 
         while (
-            len(self.memory_cache) > self.max_items
-            or self.current_memory > self.max_memory_bytes
+            len(self.memory_cache) > self.max_items or self.current_memory > self.max_memory_bytes
         ) and sorted_items:
             key_to_remove = sorted_items.pop(0)[0]
             if key_to_remove in self.memory_cache:
@@ -138,9 +134,7 @@ class CacheManager:
     def get_file_hash(self, file_path: Path) -> str:
         """Generate hash for file caching."""
         stat = file_path.stat()
-        return hashlib.md5(
-            f"{file_path}_{stat.st_mtime}_{stat.st_size}".encode()
-        ).hexdigest()
+        return hashlib.md5(f"{file_path}_{stat.st_mtime}_{stat.st_size}".encode()).hexdigest()
 
 
 class MatchEngineV2:
@@ -151,7 +145,9 @@ class MatchEngineV2:
         self.console = Console()
 
         # Initialize ASR provider (singleton pattern for Parakeet optimization)
-        logger.info(f"Initializing ASR provider: {config.asr_provider} with model: {config.asr_model_name}")
+        logger.info(
+            f"Initializing ASR provider: {config.asr_provider} with model: {config.asr_model_name}"
+        )
         self.asr = get_asr_provider(
             model_type=config.asr_provider,
             model_name=config.asr_model_name,
@@ -171,14 +167,14 @@ class MatchEngineV2:
 
     def _init_subtitle_providers(self):
         """Initialize subtitle providers with fallback chain.
-        
+
         Order: Local cache -> Addic7ed (web scraper) -> OpenSubtitles API
         """
         providers = []
 
         # Always include local provider first (cached subtitles)
         providers.append(LocalSubtitleProvider(self.config.cache_dir))
-        
+
         # Add Addic7ed web scraper (free, no API key needed)
         providers.append(Addic7edProvider())
         logger.info("Addic7ed provider enabled")
@@ -194,9 +190,7 @@ class MatchEngineV2:
 
         self.subtitle_provider = CompositeSubtitleProvider(providers)
 
-    def scan_for_mkv(
-        self, path: Path, recursive: bool = True
-    ) -> Generator[Path, None, None]:
+    def scan_for_mkv(self, path: Path, recursive: bool = True) -> Generator[Path, None, None]:
         """Scan for MKV files with optional recursive search."""
         if path.is_file() and path.suffix.lower() == ".mkv":
             yield path
@@ -319,7 +313,11 @@ class MatchEngineV2:
         return groups
 
     def _get_subtitles_with_fallback(
-        self, show_name: str, season: int, video_files: list[Path] = None, tmdb_id: int | None = None
+        self,
+        show_name: str,
+        season: int,
+        video_files: list[Path] = None,
+        tmdb_id: int | None = None,
     ):
         """Get subtitles with fallback chain (local -> subliminal)."""
         # Try to get from cache first
@@ -336,24 +334,18 @@ class MatchEngineV2:
         # Cache results
         if subs:
             self.cache.set(cache_key, subs)
-            logger.success(
-                f"Found {len(subs)} subtitle files for {show_name} S{season:02d}"
-            )
+            logger.success(f"Found {len(subs)} subtitle files for {show_name} S{season:02d}")
         else:
             logger.warning(f"No subtitles found for {show_name} S{season:02d}")
 
         return subs
 
-    def _perform_rename(
-        self, match: MatchResult, output_dir: Path | None = None
-    ) -> Path | None:
+    def _perform_rename(self, match: MatchResult, output_dir: Path | None = None) -> Path | None:
         """Perform file rename with enhanced logic and output directory support."""
         original_path = match.matched_file
 
         # Generate new filename
-        title_part = (
-            f" - {match.episode_info.title}" if match.episode_info.title else ""
-        )
+        title_part = f" - {match.episode_info.title}" if match.episode_info.title else ""
         new_filename = f"{match.episode_info.series_name} - {match.episode_info.s_e_format}{title_part}{original_path.suffix}"
 
         # Clean filename
@@ -384,9 +376,7 @@ class MatchEngineV2:
                 # Rename in place
                 original_path.rename(new_path)
 
-            logger.success(
-                f"{'Copied' if output_dir else 'Renamed'} to: {new_filename}"
-            )
+            logger.success(f"{'Copied' if output_dir else 'Renamed'} to: {new_filename}")
             match.matched_file = new_path
             return new_path
 
@@ -434,7 +424,7 @@ class MatchEngineV2:
 
         results = []
         failures = []
-        
+
         if files_override:
             files = files_override
         else:
@@ -455,7 +445,9 @@ class MatchEngineV2:
 
         # Emit phase update for grouping complete
         if phase_callback:
-            phase_callback("grouped", f"Grouped {len(files)} files into {len(file_groups)} series/seasons")
+            phase_callback(
+                "grouped", f"Grouped {len(files)} files into {len(file_groups)} series/seasons"
+            )
 
         # Track total files for progress callback
         total_files = len(files)
@@ -474,13 +466,14 @@ class MatchEngineV2:
             for group_info, group_files in file_groups.items():
                 show_name, season = group_info
 
-                progress.update(
-                    main_task, description=f"Processing {show_name} S{season:02d}"
-                )
+                progress.update(main_task, description=f"Processing {show_name} S{season:02d}")
 
                 # Emit phase update for subtitle download
                 if phase_callback:
-                    phase_callback("downloading_subtitles", f"Downloading subtitles for {show_name} Season {season}")
+                    phase_callback(
+                        "downloading_subtitles",
+                        f"Downloading subtitles for {show_name} Season {season}",
+                    )
 
                 # Get subtitles for this series/season (pass video files for Subliminal)
                 subs = self._get_subtitles_with_fallback(show_name, season, group_files, tmdb_id)
@@ -511,7 +504,10 @@ class MatchEngineV2:
 
                 # Emit phase update for matching
                 if phase_callback:
-                    phase_callback("matching", f"Matching {len(group_files)} files for {show_name} S{season:02d}")
+                    phase_callback(
+                        "matching",
+                        f"Matching {len(group_files)} files for {show_name} S{season:02d}",
+                    )
 
                 # Process files in this group
                 for video_file in group_files:
@@ -519,7 +515,7 @@ class MatchEngineV2:
                         # Emit per-file status
                         if phase_callback:
                             phase_callback("processing_file", f"🎬 Processing: {video_file.name}")
-                        
+
                         match = self.matcher.match(video_file, subs, phase_callback=phase_callback)
                         if match and match.confidence >= confidence_threshold:
                             match.episode_info.series_name = show_name
@@ -527,7 +523,10 @@ class MatchEngineV2:
 
                             # Emit match success
                             if phase_callback:
-                                phase_callback("file_matched", f"✅ {video_file.name} → {match.episode_info.s_e_format} ({match.confidence:.0%})")
+                                phase_callback(
+                                    "file_matched",
+                                    f"✅ {video_file.name} → {match.episode_info.s_e_format} ({match.confidence:.0%})",
+                                )
 
                             if not json_output:
                                 self.console.print(
@@ -546,9 +545,7 @@ class MatchEngineV2:
                                         f"File successfully renamed: {video_file.name} -> {renamed_path.name}"
                                     )
                                 else:
-                                    logger.warning(
-                                        f"Failed to rename {video_file.name}"
-                                    )
+                                    logger.warning(f"Failed to rename {video_file.name}")
                             else:
                                 logger.debug(
                                     f"Dry run mode - skipping rename for {video_file.name}"
@@ -558,12 +555,12 @@ class MatchEngineV2:
                             # Emit match failure
                             if phase_callback:
                                 conf_str = f" ({match.confidence:.0%})" if match else ""
-                                phase_callback("file_failed", f"❌ {video_file.name} - No match{conf_str}")
+                                phase_callback(
+                                    "file_failed", f"❌ {video_file.name} - No match{conf_str}"
+                                )
 
                             if not json_output:
-                                conf_str = (
-                                    f" (conf: {match.confidence:.2f})" if match else ""
-                                )
+                                conf_str = f" (conf: {match.confidence:.2f})" if match else ""
                                 self.console.print(
                                     f"[red]FAILED[/red] {video_file.name} - No match{conf_str}"
                                 )
@@ -583,11 +580,11 @@ class MatchEngineV2:
                     except Exception as e:
                         logger.error(f"Error processing {video_file}: {e}")
                         if phase_callback:
-                            phase_callback("file_error", f"⚠️ {video_file.name} - Error: {str(e)[:50]}")
-                        if not json_output:
-                            self.console.print(
-                                f"[red]ERROR[/red] {video_file.name} - Error: {e}"
+                            phase_callback(
+                                "file_error", f"⚠️ {video_file.name} - Error: {str(e)[:50]}"
                             )
+                        if not json_output:
+                            self.console.print(f"[red]ERROR[/red] {video_file.name} - Error: {e}")
 
                     # Update progress after each file
                     files_processed += 1
@@ -603,16 +600,18 @@ class MatchEngineV2:
         if format == "json":
             export_data = []
             for result in results:
-                export_data.append({
-                    "original_file": str(result.matched_file),
-                    "series_name": result.episode_info.series_name,
-                    "season": result.episode_info.season,
-                    "episode": result.episode_info.episode,
-                    "episode_format": result.episode_info.s_e_format,
-                    "title": result.episode_info.title,
-                    "confidence": result.confidence,
-                    "model_name": result.model_name,
-                })
+                export_data.append(
+                    {
+                        "original_file": str(result.matched_file),
+                        "series_name": result.episode_info.series_name,
+                        "season": result.episode_info.season,
+                        "episode": result.episode_info.episode,
+                        "episode_format": result.episode_info.s_e_format,
+                        "title": result.episode_info.title,
+                        "confidence": result.confidence,
+                        "model_name": result.model_name,
+                    }
+                )
             return json.dumps(export_data, indent=2)
         else:
             raise ValueError(f"Unsupported export format: {format}")
@@ -630,4 +629,3 @@ class MatchEngineV2:
 
 # Alias for backward compatibility
 MatchEngine = MatchEngineV2
-

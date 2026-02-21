@@ -1,6 +1,5 @@
 """Unit tests for LocalSubtitleProvider."""
 
-
 import pytest
 
 from app.matcher.core.providers.subtitles import (
@@ -53,9 +52,7 @@ class TestParseSeasonEpisode:
 
     def test_parse_extracts_from_complex_filename(self):
         """Test parsing from complex filename with extra metadata."""
-        result = parse_season_episode(
-            "Breaking.Bad.S05E16.Felina.1080p.WEB-DL.DD5.1.H.264-BS.srt"
-        )
+        result = parse_season_episode("Breaking.Bad.S05E16.Felina.1080p.WEB-DL.DD5.1.H.264-BS.srt")
 
         assert result is not None
         assert result.season == 5

@@ -71,6 +71,9 @@ export interface DiscData {
   currentSpeed?: string;
   etaSeconds?: number;
 
+  // Subtitle status for warning display
+  subtitleStatus?: string;
+
   // Review flag
   needsReview?: boolean;
 }
@@ -237,6 +240,11 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   discLabel={disc.discLabel}
                 />
                 <div className="flex items-center gap-2">
+                  {disc.subtitleStatus === 'failed' && (
+                    <div className="text-yellow-500 text-lg" title="Subtitle download failed">
+                      ⚠️
+                    </div>
+                  )}
                   <StateIndicator state={disc.state} />
                   <ActionButtons
                     state={disc.state}

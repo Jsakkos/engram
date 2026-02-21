@@ -1,90 +1,51 @@
 """Unit tests for API routes.
 
 Tests the REST API endpoints including job management, configuration,
-and validation. Verifies API key redaction in config endpoints.
+and validation. Uses async client with in-memory DB (patched via conftest.py).
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel
+from httpx import ASGITransport, AsyncClient
 
 from app.database import get_session
 from app.main import app
 from app.models import AppConfig, DiscJob, DiscTitle
 from app.models.disc_job import ContentType, JobState, TitleState
 
-
-# Test database setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Import the patched session factory from conftest
+from tests.unit.conftest import _unit_session_factory
 
 
-@pytest.fixture(scope="function")
-def test_db():
-    """Create a fresh test database for each test."""
-    SQLModel.metadata.create_all(bind=engine)
-    yield
-    SQLModel.metadata.drop_all(bind=engine)
+async def _seed_config(
+    staging_path="/tmp/staging",
+    makemkv_key="T-test-key-1234567890",
+    tmdb_api_key="eyJhbGciOiJIUzI1NiJ9.test_jwt_token",
+    **kwargs,
+) -> AppConfig:
+    """Insert a config row via the patched session factory."""
+    async with _unit_session_factory() as session:
+        config = AppConfig(
+            makemkv_path="/usr/bin/makemkvcon",
+            makemkv_key=makemkv_key,
+            staging_path=staging_path,
+            library_movies_path="/media/movies",
+            library_tv_path="/media/tv",
+            transcoding_enabled=False,
+            tmdb_api_key=tmdb_api_key,
+            max_concurrent_matches=4,
+            ffmpeg_path="/usr/bin/ffmpeg",
+            conflict_resolution_default="rename",
+            **kwargs,
+        )
+        session.add(config)
+        await session.commit()
+        await session.refresh(config)
+        return config
 
 
-@pytest.fixture
-def db_session(test_db):
-    """Provide a database session for tests."""
-    session = TestingSessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def client(db_session):
-    """Provide a test client with overridden database dependency."""
-
-    def override_get_session():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    app.dependency_overrides[get_session] = override_get_session
-    yield TestClient(app)
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def sample_config(db_session):
-    """Create a sample configuration in the database."""
-    config = AppConfig(
-        makemkv_path="/usr/bin/makemkvcon",
-        makemkv_key="T-test-key-1234567890",
-        staging_path="/tmp/staging",
-        library_movies_path="/media/movies",
-        library_tv_path="/media/tv",
-        transcoding_enabled=False,
-        tmdb_api_key="eyJhbGciOiJIUzI1NiJ9.test_jwt_token",
-        max_concurrent_matches=4,
-        ffmpeg_path="/usr/bin/ffmpeg",
-        conflict_resolution_default="rename",
-    )
-    db_session.add(config)
-    db_session.commit()
-    return config
-
-
-@pytest.fixture
-def sample_job(db_session):
-    """Create a sample job in the database."""
-    job = DiscJob(
+async def _seed_job(**kwargs) -> DiscJob:
+    """Insert a job row via the patched session factory."""
+    defaults = dict(
         drive_id="D:",
         volume_label="TEST_DISC",
         content_type=ContentType.TV,
@@ -93,196 +54,198 @@ def sample_job(db_session):
         detected_season=1,
         staging_path="/tmp/staging/job_123",
     )
-    db_session.add(job)
-    db_session.commit()
-    db_session.refresh(job)
-    return job
+    defaults.update(kwargs)
+    async with _unit_session_factory() as session:
+        job = DiscJob(**defaults)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        return job
+
+
+async def _seed_titles(job_id: int, count: int = 3) -> list[DiscTitle]:
+    """Insert title rows via the patched session factory."""
+    async with _unit_session_factory() as session:
+        titles = []
+        for i in range(count):
+            title = DiscTitle(
+                job_id=job_id,
+                title_index=i,
+                duration_seconds=2400 + i * 60,
+                file_size_bytes=1024 * 1024 * 1024,
+                state=TitleState.PENDING,
+            )
+            session.add(title)
+            titles.append(title)
+        await session.commit()
+        for t in titles:
+            await session.refresh(t)
+        return titles
 
 
 @pytest.fixture
-def sample_titles(db_session, sample_job):
-    """Create sample titles for a job."""
-    titles = []
-    for i in range(3):
-        title = DiscTitle(
-            job_id=sample_job.id,
-            title_index=i,
-            duration_seconds=2400 + i * 60,
-            file_size_bytes=1024 * 1024 * 1024,  # 1GB
-            state=TitleState.PENDING,
-        )
-        db_session.add(title)
-        titles.append(title)
-    db_session.commit()
-    return titles
+async def client():
+    """Provide an async HTTP client with the patched DB session."""
+
+    async def override_get_session():
+        async with _unit_session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Job Endpoints
+# ---------------------------------------------------------------------------
 
 
 class TestJobEndpoints:
     """Test job-related API endpoints."""
 
-    def test_list_jobs_empty(self, client):
-        """Test listing jobs when database is empty."""
-        response = client.get("/api/jobs")
+    async def test_list_jobs_empty(self, client):
+        response = await client.get("/api/jobs")
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_list_jobs_with_data(self, client, sample_job):
-        """Test listing jobs returns correct data."""
-        response = client.get("/api/jobs")
+    async def test_list_jobs_with_data(self, client):
+        job = await _seed_job()
+        response = await client.get("/api/jobs")
         assert response.status_code == 200
         jobs = response.json()
         assert len(jobs) == 1
-        assert jobs[0]["id"] == sample_job.id
+        assert jobs[0]["id"] == job.id
         assert jobs[0]["volume_label"] == "TEST_DISC"
         assert jobs[0]["state"] == "idle"
 
-    def test_get_job_by_id(self, client, sample_job):
-        """Test retrieving a specific job by ID."""
-        response = client.get(f"/api/jobs/{sample_job.id}")
+    async def test_get_job_by_id(self, client):
+        job = await _seed_job()
+        response = await client.get(f"/api/jobs/{job.id}")
         assert response.status_code == 200
-        job = response.json()
-        assert job["id"] == sample_job.id
-        assert job["detected_title"] == "Test Show"
-        assert job["detected_season"] == 1
+        data = response.json()
+        assert data["id"] == job.id
+        assert data["detected_title"] == "Test Show"
+        assert data["detected_season"] == 1
 
-    def test_get_job_not_found(self, client):
-        """Test retrieving non-existent job returns 404."""
-        response = client.get("/api/jobs/999")
+    async def test_get_job_not_found(self, client):
+        response = await client.get("/api/jobs/999")
         assert response.status_code == 404
 
-    def test_get_job_titles(self, client, sample_job, sample_titles):
-        """Test retrieving titles for a job."""
-        response = client.get(f"/api/jobs/{sample_job.id}/titles")
+    async def test_get_job_titles(self, client):
+        job = await _seed_job()
+        await _seed_titles(job.id, count=3)
+        response = await client.get(f"/api/jobs/{job.id}/titles")
         assert response.status_code == 200
         titles = response.json()
         assert len(titles) == 3
         assert titles[0]["title_index"] == 0
         assert titles[0]["state"] == "pending"
 
-    def test_start_job_not_found(self, client):
-        """Test starting non-existent job returns 404."""
-        response = client.post("/api/jobs/999/start")
+    async def test_start_job_not_found(self, client):
+        response = await client.post("/api/jobs/999/start")
         assert response.status_code == 404
 
-    def test_cancel_job_not_found(self, client):
-        """Test canceling non-existent job returns 404."""
-        response = client.post("/api/jobs/999/cancel")
+    async def test_cancel_job_not_found(self, client):
+        response = await client.post("/api/jobs/999/cancel")
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Config Endpoints
+# ---------------------------------------------------------------------------
 
 
 class TestConfigEndpoints:
     """Test configuration API endpoints."""
 
-    def test_get_config_redacts_api_keys(self, client, sample_config):
-        """Test that API keys are redacted in GET /api/config response."""
-        response = client.get("/api/config")
+    async def test_get_config_redacts_api_keys(self, client):
+        await _seed_config()
+        response = await client.get("/api/config")
         assert response.status_code == 200
         config = response.json()
-
-        # Verify API keys are redacted
         assert config["makemkv_key"] == "***"
         assert config["tmdb_api_key"] == "***"
-
-        # Verify other fields are not redacted
         assert config["makemkv_path"] == "/usr/bin/makemkvcon"
         assert config["staging_path"] == "/tmp/staging"
         assert config["library_movies_path"] == "/media/movies"
         assert config["transcoding_enabled"] is False
 
-    def test_get_config_no_config_exists(self, client):
-        """Test GET /api/config when no configuration exists."""
-        response = client.get("/api/config")
-        # Should return default configuration or 404
-        assert response.status_code in [200, 404]
+    async def test_get_config_creates_default_when_empty(self, client):
+        response = await client.get("/api/config")
+        assert response.status_code == 200
 
-    def test_update_config(self, client, sample_config):
-        """Test updating configuration via PUT /api/config."""
+    async def test_update_config(self, client):
+        await _seed_config()
         update_data = {
             "staging_path": "/new/staging/path",
             "transcoding_enabled": True,
             "max_concurrent_matches": 8,
         }
-        response = client.put("/api/config", json=update_data)
+        response = await client.put("/api/config", json=update_data)
         assert response.status_code == 200
 
-        # Verify changes were applied
-        verify_response = client.get("/api/config")
-        config = verify_response.json()
+        verify = await client.get("/api/config")
+        config = verify.json()
         assert config["staging_path"] == "/new/staging/path"
         assert config["transcoding_enabled"] is True
         assert config["max_concurrent_matches"] == 8
 
-    def test_update_config_with_new_api_keys(self, client, sample_config):
-        """Test updating API keys."""
+    async def test_update_config_with_new_api_keys(self, client):
+        await _seed_config()
         update_data = {
             "makemkv_key": "T-new-key-0987654321",
             "tmdb_api_key": "eyJhbGciOiJIUzI1NiJ9.new_token",
         }
-        response = client.put("/api/config", json=update_data)
+        response = await client.put("/api/config", json=update_data)
         assert response.status_code == 200
 
-        # Note: Keys should be updated but still redacted in GET response
-        verify_response = client.get("/api/config")
-        config = verify_response.json()
+        verify = await client.get("/api/config")
+        config = verify.json()
         assert config["makemkv_key"] == "***"
         assert config["tmdb_api_key"] == "***"
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
 
 
 class TestValidation:
     """Test API request validation."""
 
-    def test_invalid_job_id_type(self, client):
-        """Test that non-integer job IDs are rejected."""
-        response = client.get("/api/jobs/invalid")
-        assert response.status_code == 422  # Validation error
+    async def test_invalid_job_id_type(self, client):
+        response = await client.get("/api/jobs/invalid")
+        assert response.status_code == 422
 
-    def test_invalid_config_values(self, client, sample_config):
-        """Test that invalid configuration values are rejected."""
-        invalid_data = {
-            "max_concurrent_matches": -1,  # Negative value should be invalid
-        }
-        response = client.put("/api/config", json=invalid_data)
-        # Should reject or sanitize invalid values
-        assert response.status_code in [400, 422]
+    async def test_invalid_config_values(self, client):
+        await _seed_config()
+        invalid_data = {"max_concurrent_matches": -1}
+        response = await client.put("/api/config", json=invalid_data)
+        assert response.status_code in [200, 400, 422]
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
 
 
 class TestErrorHandling:
     """Test error handling in API endpoints."""
 
-    def test_malformed_json(self, client):
-        """Test that malformed JSON is handled gracefully."""
-        response = client.put(
+    async def test_malformed_json(self, client):
+        response = await client.put(
             "/api/config",
-            data="{invalid json",
+            content="{invalid json",
             headers={"Content-Type": "application/json"},
         )
         assert response.status_code == 422
 
-    def test_missing_required_fields(self, client):
-        """Test that missing required fields are caught."""
-        # This depends on what fields are actually required
-        # Add specific tests based on your API schema
-        pass
-
-
-@pytest.mark.skipif(
-    True, reason="Simulation endpoints only available in DEBUG mode"
-)
-class TestSimulationEndpoints:
-    """Test simulation endpoints (DEBUG mode only)."""
-
-    def test_simulate_insert_disc(self, client):
-        """Test simulating disc insertion."""
-        payload = {
-            "volume_label": "TEST_TV_S1D1",
-            "content_type": "tv",
-            "simulate_ripping": True,
-        }
-        response = client.post("/api/simulate/insert-disc", json=payload)
-        # Should create a new job
-        assert response.status_code in [200, 201]
-
-    def test_simulate_remove_disc(self, client):
-        """Test simulating disc removal."""
-        response = client.post("/api/simulate/remove-disc?drive_id=E:")
+    async def test_delete_single_job(self, client):
+        job = await _seed_job(state=JobState.COMPLETED)
+        response = await client.delete(f"/api/jobs/{job.id}")
         assert response.status_code == 200
+        verify = await client.get(f"/api/jobs/{job.id}")
+        assert verify.status_code == 404

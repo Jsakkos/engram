@@ -26,7 +26,7 @@ test.describe('Review Flow - Engram UI', () => {
 
     test('disc card appears and displays basic info', async ({ page }) => {
         // Use ambiguous disc for testing
-        const { job_id } = await simulateInsertDisc({
+        await simulateInsertDisc({
             ...AMBIGUOUS_DISC,
             simulate_ripping: false,
         });
@@ -59,5 +59,58 @@ test.describe('Review Flow - Engram UI', () => {
 
         // Should load review page (even if no matches yet)
         await expect(page.locator('h1, h2')).toContainText(/review/i, { timeout: 5000 });
+    });
+
+    test('review page shows candidates when disc needs review', async ({ page }) => {
+        // Switch to ALL filter so completed/failed jobs remain visible
+        await page.locator(SELECTORS.filterAll).click();
+
+        // Insert a disc that may trigger review_needed
+        await simulateInsertDisc({
+            ...AMBIGUOUS_DISC,
+            simulate_ripping: true,
+        });
+
+        // Wait for the job to progress
+        await page.waitForTimeout(5000);
+
+        // Check if review UI elements appear for ambiguous content
+        const card = page.locator(SELECTORS.discCard).first();
+        await expect(card).toBeVisible({ timeout: 10000 });
+
+        // The card should show some state indicator
+        const stateText = await card.textContent();
+        expect(stateText).toBeTruthy();
+    });
+
+    test('submit review resumes job processing', async ({ page }) => {
+        // Insert ambiguous disc
+        const { job_id } = await simulateInsertDisc({
+            ...AMBIGUOUS_DISC,
+            simulate_ripping: true,
+        });
+
+        // Wait for processing
+        await page.waitForTimeout(5000);
+
+        // If the job reached review_needed, try submitting via API
+        const jobRes = await page.request.get(`http://localhost:8000/api/jobs/${job_id}`);
+        const job = await jobRes.json();
+
+        if (job.state === 'review_needed') {
+            // Submit review via API
+            const reviewRes = await page.request.post(`http://localhost:8000/api/jobs/${job_id}/review`, {
+                data: { matches: {} },
+            });
+            expect(reviewRes.ok()).toBeTruthy();
+
+            // Wait for state to change
+            await page.waitForTimeout(3000);
+
+            // Job should have progressed beyond review_needed
+            const updatedRes = await page.request.get(`http://localhost:8000/api/jobs/${job_id}`);
+            const updated = await updatedRes.json();
+            expect(updated.state).not.toBe('review_needed');
+        }
     });
 });

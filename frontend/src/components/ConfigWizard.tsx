@@ -93,6 +93,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         if (step === 2 && !toolDetection) {
             detectTools();
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [step]);
 
     const detectTools = async () => {

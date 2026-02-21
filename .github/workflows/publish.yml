@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   publish:
+    if: false  # Disabled for initial release — enable when PyPI publishing is ready
     name: Publish Package
     runs-on: ubuntu-latest
     environment: pypi

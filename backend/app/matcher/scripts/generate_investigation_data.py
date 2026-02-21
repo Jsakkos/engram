@@ -31,7 +31,7 @@ from tqdm import tqdm
 
 from app.matcher.asr_models import get_cached_model
 from app.matcher.core.utils import clean_text, extract_audio_chunk, get_video_duration
-from app.matcher.episode_identification import SubtitleCache, SubtitleReader
+from app.matcher.episode_identification import SubtitleReader
 
 
 @dataclass
@@ -94,7 +94,7 @@ class TranscriptionCache:
     def _load_index(self) -> dict[str, dict]:
         """Load the transcription index."""
         if self.index_file.exists():
-            with open(self.index_file, "r", encoding="utf-8") as f:
+            with open(self.index_file, encoding="utf-8") as f:
                 return json.load(f)
         return {}
 
@@ -151,7 +151,7 @@ class TranscriptionCache:
         if not cache_path.exists():
             return None
 
-        with open(cache_path, "r", encoding="utf-8") as f:
+        with open(cache_path, encoding="utf-8") as f:
             data = json.load(f)
 
         return FileData(
@@ -227,7 +227,12 @@ def discover_test_files(
 
 
 def transcribe_chunk(
-    model, audio_path: Path, chunk_index: int, start_time: float, duration: float, video_duration: float
+    model,
+    audio_path: Path,
+    chunk_index: int,
+    start_time: float,
+    duration: float,
+    video_duration: float,
 ) -> ChunkData:
     """Transcribe a single audio chunk."""
     end_time = start_time + duration
@@ -265,7 +270,9 @@ def transcribe_chunk(
     )
 
 
-async def process_file(file_path: Path, cache: TranscriptionCache, force: bool = False) -> FileData | None:
+async def process_file(
+    file_path: Path, cache: TranscriptionCache, force: bool = False
+) -> FileData | None:
     """Process a single video file with complete chunk coverage."""
     # Check cache first
     if not force and cache.is_cached(str(file_path)):
@@ -549,8 +556,8 @@ async def main():
             print(f"  ✓ Saved references to: {ref_file}")
 
     print("\n=== Data Generation Complete ===")
-    print(f"Next step: Run matching evaluation with cached transcriptions")
-    print(f"  uv run python -m app.matcher.scripts.evaluate_matching_methods")
+    print("Next step: Run matching evaluation with cached transcriptions")
+    print("  uv run python -m app.matcher.scripts.evaluate_matching_methods")
 
 
 if __name__ == "__main__":

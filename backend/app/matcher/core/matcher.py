@@ -23,22 +23,30 @@ class MultiSegmentMatcher:
         self.min_confidence = 0.6
 
     def _process_chunk(
-        self, video_path: Path, start_time: float, reference_subs: list[SubtitleFile],
-        chunk_index: int = 0, total_chunks: int = 1, phase_callback=None
+        self,
+        video_path: Path,
+        start_time: float,
+        reference_subs: list[SubtitleFile],
+        chunk_index: int = 0,
+        total_chunks: int = 1,
+        phase_callback=None,
     ) -> list[MatchCandidate]:
         """Process a single chunk: Extract -> Transcribe -> Match against all subs."""
         chunk_path = self.temp_dir / f"{video_path.stem}_{start_time}.wav"
         try:
             # Emit extraction phase
             if phase_callback:
-                phase_callback("extracting_audio", f"🎤 Extracting audio segment {chunk_index + 1}/{total_chunks}...")
-            
+                phase_callback(
+                    "extracting_audio",
+                    f"🎤 Extracting audio segment {chunk_index + 1}/{total_chunks}...",
+                )
+
             extract_audio_chunk(video_path, start_time, self.chunk_duration, chunk_path)
-            
+
             # Emit transcription phase
             if phase_callback:
                 phase_callback("transcribing", f"🔊 Transcribing {self.chunk_duration}s segment...")
-            
+
             transcription = self.asr.transcribe(chunk_path)
 
             # Clean transcription
@@ -49,7 +57,10 @@ class MultiSegmentMatcher:
 
             # Emit matching phase
             if phase_callback:
-                phase_callback("comparing", f"🔍 Comparing against {len(reference_subs)} reference subtitles...")
+                phase_callback(
+                    "comparing",
+                    f"🔍 Comparing against {len(reference_subs)} reference subtitles...",
+                )
 
             candidates = []
             for sub in reference_subs:
@@ -132,8 +143,12 @@ class MultiSegmentMatcher:
             logger.info(f"Checking segment {i + 1}/{total_checkpoints} at {t:.1f}s")
 
             candidates = self._process_chunk(
-                video_path, t, reference_subs, 
-                chunk_index=i, total_chunks=total_checkpoints, phase_callback=phase_callback
+                video_path,
+                t,
+                reference_subs,
+                chunk_index=i,
+                total_chunks=total_checkpoints,
+                phase_callback=phase_callback,
             )
 
             if not candidates:
@@ -158,9 +173,7 @@ class MultiSegmentMatcher:
 
             # FAIL FAST: If we have an Extremely High confidence Unique match
             # and it's not from the very first segment (which might be intro)
-            if (
-                i > 0 and top_match.confidence > 0.92
-            ):  # Not first segment, very high score
+            if i > 0 and top_match.confidence > 0.92:  # Not first segment, very high score
                 # Check for ambiguity
                 if len(candidates) > 1 and candidates[1].confidence > 0.8:
                     logger.debug("Ambiguous high score, continuing...")
@@ -214,9 +227,7 @@ class MultiSegmentMatcher:
             # Reconstruct result based on the episode key
             # Find a candidate that matches this key to get details
             # Ideally return the one with highest confidence
-            winning_candidates = [
-                c for c in all_candidates if c.episode_info.s_e_format == best_ep
-            ]
+            winning_candidates = [c for c in all_candidates if c.episode_info.s_e_format == best_ep]
             best_candidate = max(winning_candidates, key=lambda c: c.confidence)
 
             return MatchResult(
@@ -230,4 +241,3 @@ class MultiSegmentMatcher:
             )
 
         return None
-

@@ -5,13 +5,13 @@ from functools import lru_cache
 from pathlib import Path
 
 import chardet
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 import ctranslate2
 import numpy as np
 from loguru import logger
 from rich import print
 from rich.console import Console
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from app.matcher.asr_models import get_cached_model
 from app.matcher.utils import extract_season_episode
@@ -87,9 +87,9 @@ class SubtitleCache:
 def _clean_subtitle_text(text: str) -> str:
     """Clean subtitle text: lowercase, strip tags/special chars, collapse stutters, normalize whitespace."""
     text = text.lower().strip()
-    text = re.sub(r"\[.*?\]|<.*?>", "", text)          # remove [tags] and <tags>
-    text = re.sub(r"([A-Za-z])-\1+", r"\1", text)      # collapse stutters
-    text = re.sub(r"[^\w\s']", " ", text)               # remove special chars except apostrophes
+    text = re.sub(r"\[.*?\]|<.*?>", "", text)  # remove [tags] and <tags>
+    text = re.sub(r"([A-Za-z])-\1+", r"\1", text)  # collapse stutters
+    text = re.sub(r"[^\w\s']", " ", text)  # remove special chars except apostrophes
     return " ".join(text.split())
 
 
@@ -104,18 +104,25 @@ def _is_watermark_block(block_text: str, block_lines: list[str], subtitle_start:
     text_lower = block_text.lower().strip()
 
     # Check for URLs or domain patterns
-    if re.search(r'(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))', text_lower):
+    if re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", text_lower):
         return True
 
     # Check for blocks that are only font/styling tags wrapping a URL or brand name
-    stripped = re.sub(r'<[^>]+>', '', text_lower).strip()
-    if stripped and re.search(r'(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))', stripped):
+    stripped = re.sub(r"<[^>]+>", "", text_lower).strip()
+    if stripped and re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", stripped):
         return True
 
     # Very short non-dialogue at start (e.g., "sync by", "subtitles by", "corrected by")
     if subtitle_start < 5.0 and len(stripped.split()) <= 8:
-        credit_patterns = ['sync', 'subtitles by', 'corrected by', 'ripped by',
-                          'encoded by', 'transcript by', 'timing by']
+        credit_patterns = [
+            "sync",
+            "subtitles by",
+            "corrected by",
+            "ripped by",
+            "encoded by",
+            "transcript by",
+            "timing by",
+        ]
         if any(p in stripped for p in credit_patterns):
             return True
 
@@ -181,7 +188,7 @@ class TfidfMatcher:
         q_vec = self.vectorizer.transform([query_text])
         sims = sklearn_cosine_similarity(q_vec, self.ref_matrix)[0]
 
-        results = list(zip(self.ref_file_order, sims.tolist()))
+        results = list(zip(self.ref_file_order, sims.tolist(), strict=False))
         results.sort(key=lambda x: x[1], reverse=True)
         return results
 
@@ -208,9 +215,7 @@ class MatchCoverage:
     def avg_confidence(self) -> float:
         if not self.matched_chunks:
             return 0.0
-        return sum(c["confidence"] for c in self.matched_chunks) / len(
-            self.matched_chunks
-        )
+        return sum(c["confidence"] for c in self.matched_chunks) / len(self.matched_chunks)
 
     @property
     def file_coverage(self) -> float:
@@ -219,7 +224,7 @@ class MatchCoverage:
         # Assume non-overlapping chunks for simplicity
         matched_duration = sum(c["duration"] for c in self.matched_chunks)
         return min(1.0, matched_duration / self.video_duration)
-    
+
     @property
     def episode_coverage(self) -> float:
         """Percentage of the episode referenced that was found."""
@@ -256,8 +261,7 @@ class MatchCoverage:
             return 0.0
 
         weighted_sum = sum(
-            c["confidence"] * (c["duration"] / self.video_duration)
-            for c in self.matched_chunks
+            c["confidence"] * (c["duration"] / self.video_duration) for c in self.matched_chunks
         )
         total_weight = self.total_vote_weight
 
@@ -285,12 +289,24 @@ class EpisodeMatcher:
     weighted confidence consensus across all matched chunks.
     """
 
-    def __init__(self, cache_dir, show_name, min_confidence=0.6, device=None, use_ranked_voting=True, min_vote_count=2, match_threshold=0.10, model_name="small"):
+    def __init__(
+        self,
+        cache_dir,
+        show_name,
+        min_confidence=0.6,
+        device=None,
+        use_ranked_voting=True,
+        min_vote_count=2,
+        match_threshold=0.10,
+        model_name="small",
+    ):
         self.cache_dir = Path(cache_dir)
         self.min_confidence = min_confidence
         self.show_name = show_name
         self.chunk_duration = 30
-        self.skip_initial_duration = 90  # Minimal skip for title cards; ranked voting handles intro noise
+        self.skip_initial_duration = (
+            90  # Minimal skip for title cards; ranked voting handles intro noise
+        )
         self.model_name = model_name
         self.device = device or ("cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu")
         self.temp_dir = Path(tempfile.gettempdir()) / "whisper_chunks"
@@ -370,9 +386,7 @@ class EpisodeMatcher:
                     logger.warning(error_msg)
                     # Don't raise an error for small files, but log the warning
 
-                logger.debug(
-                    f"Successfully extracted {chunk_path.stat().st_size} byte audio file"
-                )
+                logger.debug(f"Successfully extracted {chunk_path.stat().st_size} byte audio file")
 
             except subprocess.TimeoutExpired as e:
                 error_msg = f"FFmpeg timed out while extracting audio from {mkv_file}"
@@ -412,9 +426,7 @@ class EpisodeMatcher:
             chunk_start = self.skip_initial_duration + (chunk_idx * self.chunk_duration)
             chunk_end = chunk_start + self.chunk_duration
 
-            return self.subtitle_cache.get_chunk(
-                srt_file, chunk_idx, chunk_start, chunk_end
-            )
+            return self.subtitle_cache.get_chunk(srt_file, chunk_idx, chunk_start, chunk_end)
 
         except Exception as e:
             logger.error(f"Error loading reference chunk from {srt_file}: {e}")
@@ -440,27 +452,17 @@ class EpisodeMatcher:
         reference_files = []
         for pattern in patterns:
             # Use case-insensitive file extension matching by checking both .srt and .SRT
-            srt_files = list(reference_dir.glob("*.srt")) + list(
-                reference_dir.glob("*.SRT")
-            )
-            files = [
-                f
-                for f in srt_files
-                if re.search(f"{pattern}\\d+", f.name, re.IGNORECASE)
-            ]
+            srt_files = list(reference_dir.glob("*.srt")) + list(reference_dir.glob("*.SRT"))
+            files = [f for f in srt_files if re.search(f"{pattern}\\d+", f.name, re.IGNORECASE)]
             reference_files.extend(files)
 
         # Remove duplicates while preserving order
         reference_files = list(dict.fromkeys(reference_files))
-        logger.debug(
-            f"Found {len(reference_files)} reference files for season {season_number}"
-        )
+        logger.debug(f"Found {len(reference_files)} reference files for season {season_number}")
         self.reference_files_cache[cache_key] = reference_files
         return reference_files
 
-    def _try_match_with_model(
-        self, video_file, model_config, max_duration, reference_files
-    ):
+    def _try_match_with_model(self, video_file, model_config, max_duration, reference_files):
         """
         Attempt to match using specified model, checking multiple chunks starting from skip_initial_duration
         and continuing up to max_duration.
@@ -515,25 +517,21 @@ class EpisodeMatcher:
                 logger.warning(f"Failed to extract audio chunk at {start_time}s: {e}")
                 continue  # Skip this chunk and try the next one
             except Exception as e:
-                logger.error(
-                    f"Unexpected error extracting audio chunk at {start_time}s: {e}"
-                )
+                logger.error(f"Unexpected error extracting audio chunk at {start_time}s: {e}")
                 continue  # Skip this chunk and try the next one
 
             try:
-                logger.debug(f"[Matcher] Transcribing audio chunk at {start_time}s with model {model_name}")
+                logger.debug(
+                    f"[Matcher] Transcribing audio chunk at {start_time}s with model {model_name}"
+                )
                 result = model.transcribe(audio_path)
                 logger.debug(f"[Matcher] Transcription complete at {start_time}s")
             except Exception as e:
-                logger.error(
-                    f"ASR transcription failed for chunk at {start_time}s: {e}"
-                )
+                logger.error(f"ASR transcription failed for chunk at {start_time}s: {e}")
                 continue  # Skip this chunk and try the next one
 
             chunk_text = result["text"]
-            logger.debug(
-                f"Transcription result: {chunk_text} ({len(chunk_text)} characters)"
-            )
+            logger.debug(f"Transcription result: {chunk_text} ({len(chunk_text)} characters)")
             if len(chunk_text) < 10:
                 logger.debug(
                     f"Transcription result too short: {chunk_text} ({len(chunk_text)} characters)"
@@ -556,9 +554,7 @@ class EpisodeMatcher:
                     best_match = Path(ref_file)
 
                 if confidence > self.min_confidence:
-                    print(
-                        f"Matched with {best_match} (confidence: {best_confidence:.2f})"
-                    )
+                    print(f"Matched with {best_match} (confidence: {best_confidence:.2f})")
                     try:
                         season, episode = extract_season_episode(best_match.stem)
                     except Exception as e:
@@ -587,7 +583,7 @@ class EpisodeMatcher:
         This is resource intensive but necessary if chunk matching fails.
         """
         logger.warning(f"Starting FULL FILE transcription fallback for {video_file}...")
-        
+
         # Handle backward compatibility for string model names
         if isinstance(model_config, str):
             model_config = {
@@ -602,22 +598,24 @@ class EpisodeMatcher:
 
         # Use cached model
         model = get_cached_model(model_config)
-        
+
         try:
             # Extract the FULL audio
             # We use a slightly different path logic handled by extract_audio_chunk with duration
             audio_path = self.extract_audio_chunk(video_file, start_time=0, duration=duration)
-            
+
             logger.info(f"Transcribing full audio ({duration}s)...")
             result = model.transcribe(audio_path)
             full_transcription = result["text"]
-            
+
             if not full_transcription or len(full_transcription) < 50:
-                 logger.warning("Full file transcription yielded too little text.")
-                 return None
-                 
-            logger.info(f"Full transcription complete ({len(full_transcription)} chars). Comparing...")
-            
+                logger.warning("Full file transcription yielded too little text.")
+                return None
+
+            logger.info(
+                f"Full transcription complete ({len(full_transcription)} chars). Comparing..."
+            )
+
             best_confidence = 0
             best_match = None
 
@@ -634,9 +632,9 @@ class EpisodeMatcher:
                 best_match = Path(best_rf)
 
             logger.info(f"Fallback classification complete. Best confidence: {best_confidence:.2f}")
-            
+
             if best_confidence > self.min_confidence:
-                 try:
+                try:
                     season, episode = extract_season_episode(best_match.stem)
                     return {
                         "season": season,
@@ -644,11 +642,11 @@ class EpisodeMatcher:
                         "confidence": best_confidence,
                         "reference_file": str(best_match),
                         "matched_at": 0,
-                        "method": "full_transcription"
+                        "method": "full_transcription",
                     }
-                 except Exception as e:
-                     logger.error(f"Error extracting s/e from matched file {best_match}: {e}")
-            
+                except Exception as e:
+                    logger.error(f"Error extracting s/e from matched file {best_match}: {e}")
+
             return None
 
         except Exception as e:
@@ -680,15 +678,17 @@ class EpisodeMatcher:
         Returns:
             Dict with season, episode, confidence, score, match_details
             None if no match found
-            
+
             match_details includes:
             - matches_found: int
             - matches_rejected: int
             - total_chunks: int
             - candidate_scores: dict {episode: score}
         """
-        logger.info(f"[Matcher] identify_episode starting for {video_file} (Season {season_number})")
-        
+        logger.info(
+            f"[Matcher] identify_episode starting for {video_file} (Season {season_number})"
+        )
+
         # Cleanup temp files when done
         temp_files_to_remove = []
 
@@ -733,8 +733,9 @@ class EpisodeMatcher:
             for rf in reference_files:
                 ref_dur = ref_durations.get(str(rf), video_duration)
                 # If ref duration is missing, assume same as video for penalty-free matching (fallback)
-                if ref_dur == 0: ref_dur = video_duration
-                
+                if ref_dur == 0:
+                    ref_dur = video_duration
+
                 ep_name = Path(rf).stem
                 coverages[str(rf)] = MatchCoverage(ep_name, ref_dur, video_duration)
 
@@ -782,34 +783,42 @@ class EpisodeMatcher:
 
             logger.info(
                 f"Scanning {len(scan_points)} chunks using {model_config['name']} + TF-IDF matching "
-                f"(~{interval:.0f}s intervals from {skip_initial}s to {video_duration-skip_final}s)"
+                f"(~{interval:.0f}s intervals from {skip_initial}s to {video_duration - skip_final}s)"
             )
-            logger.debug(f"Scan points: {scan_points[:5]}... {scan_points[-3:]} (showing first 5 and last 3)")
+            logger.debug(
+                f"Scan points: {scan_points[:5]}... {scan_points[-3:]} (showing first 5 and last 3)"
+            )
 
             matches_found_count = 0  # Total matched chunks
             matches_found = 0
             matches_rejected_count = 0  # Total rejected chunks
-            
+
             for i, start_time in enumerate(scan_points, 1):
                 # Calculate progress: 10% to 90% allocated for scanning
                 scan_percent = 10.0 + (i / len(scan_points)) * 80.0
 
                 try:
-                    audio_path = self.extract_audio_chunk(video_file, start_time, duration=chunk_len)
-                    temp_files_to_remove.append(audio_path) # Track for cleanup
+                    audio_path = self.extract_audio_chunk(
+                        video_file, start_time, duration=chunk_len
+                    )
+                    temp_files_to_remove.append(audio_path)  # Track for cleanup
 
                     # Transcribe
                     result = model.transcribe(audio_path)
                     text = result["text"]
 
                     if len(text) < 10:
-                        logger.debug(f"Chunk {i}/{len(scan_points)} @ {start_time}s: transcription too short ({len(text)} chars), skipping")
+                        logger.debug(
+                            f"Chunk {i}/{len(scan_points)} @ {start_time}s: transcription too short ({len(text)} chars), skipping"
+                        )
                         matches_rejected_count += 1
                         if progress_callback:
                             progress_callback("transcribing", scan_percent)
                         continue
 
-                    logger.debug(f"Chunk {i}/{len(scan_points)} @ {start_time}s: transcribed {len(text)} chars, matching via TF-IDF...")
+                    logger.debug(
+                        f"Chunk {i}/{len(scan_points)} @ {start_time}s: transcribed {len(text)} chars, matching via TF-IDF..."
+                    )
 
                     # TF-IDF cosine similarity against full episode texts
                     tfidf_results = self.tfidf_matcher.match(text)
@@ -832,11 +841,15 @@ class EpisodeMatcher:
                         matches_found += chunk_matches
                         matches_found_count += 1
                     else:
-                        logger.debug(f"Chunk {i}/{len(scan_points)} @ {start_time}s: no matches found (best cosine < 0.15)")
+                        logger.debug(
+                            f"Chunk {i}/{len(scan_points)} @ {start_time}s: no matches found (best cosine < 0.15)"
+                        )
                         matches_rejected_count += 1
 
                 except Exception as e:
-                    logger.warning(f"Error processing chunk {i}/{len(scan_points)} at {start_time}s: {e}")
+                    logger.warning(
+                        f"Error processing chunk {i}/{len(scan_points)} at {start_time}s: {e}"
+                    )
                     matches_rejected_count += 1
                     if progress_callback:
                         progress_callback("transcribing", scan_percent)
@@ -845,23 +858,23 @@ class EpisodeMatcher:
                 # Build interim vote standings after each chunk
                 if progress_callback:
                     interim_standings = []
-                    for rf_str_cov, cov in coverages.items():
+                    for _rf_str_cov, cov in coverages.items():
                         if cov.matched_chunks:
-                            ep_season, ep_episode = extract_season_episode(
-                                cov.episode_name
+                            ep_season, ep_episode = extract_season_episode(cov.episode_name)
+                            interim_standings.append(
+                                {
+                                    "episode": f"S{ep_season:02d}E{ep_episode:02d}",
+                                    "score": cov.ranked_voting_score,
+                                    "vote_count": len(cov.matched_chunks),
+                                    "target_votes": len(scan_points),
+                                }
                             )
-                            interim_standings.append({
-                                "episode": f"S{ep_season:02d}E{ep_episode:02d}",
-                                "score": cov.ranked_voting_score,
-                                "vote_count": len(cov.matched_chunks),
-                                "target_votes": len(scan_points),
-                            })
                     interim_standings.sort(key=lambda x: x["score"], reverse=True)
-                    progress_callback(
-                        "matching", scan_percent, interim_standings[:5]
-                    )
+                    progress_callback("matching", scan_percent, interim_standings[:5])
 
-            logger.info(f"Sparse sampling complete: {matches_found_count} matched / {matches_rejected_count} rejected chunks")
+            logger.info(
+                f"Sparse sampling complete: {matches_found_count} matched / {matches_rejected_count} rejected chunks"
+            )
 
             # 6. Evaluate Results using Ranked Voting
             # Each reference episode accumulates weighted votes from matched chunks.
@@ -881,13 +894,14 @@ class EpisodeMatcher:
                 season, episode = extract_season_episode(cov.episode_name)
 
                 match_info = {
-                     "episode": f"S{season}E{episode}",
-                     "score": score,
-                     "ranked_score": cov.ranked_voting_score,
-                     "avg_conf": cov.avg_confidence,
-                     "file_cov": cov.file_coverage,
-                     "vote_count": len(cov.matched_chunks),
-                     "total_weight": cov.total_vote_weight,
+                    "episode": f"S{season}E{episode}",
+                    "score": score,
+                    "ranked_score": cov.ranked_voting_score,
+                    "avg_conf": cov.avg_confidence,
+                    "file_cov": cov.file_coverage,
+                    "vote_count": len(cov.matched_chunks),
+                    "target_votes": len(scan_points),
+                    "total_weight": cov.total_vote_weight,
                 }
                 results_summary.append(match_info)
 
@@ -899,7 +913,7 @@ class EpisodeMatcher:
                         "confidence": score,  # Use ranked voting score as confidence
                         "score": score,
                         "reference_file": rf_str,
-                        "matched_at": cov.matched_chunks[0]['start'] if cov.matched_chunks else 0,
+                        "matched_at": cov.matched_chunks[0]["start"] if cov.matched_chunks else 0,
                         "match_details": match_info,
                         "voting_details": cov.get_voting_details(),
                     }
@@ -908,7 +922,7 @@ class EpisodeMatcher:
             match_stats = {
                 "matches_found": matches_found_count,
                 "matches_rejected": matches_rejected_count,
-                "total_chunks": len(scan_points)
+                "total_chunks": len(scan_points),
             }
 
             if not best_match:
@@ -919,14 +933,15 @@ class EpisodeMatcher:
                     "confidence": 0.0,
                     "score": 0.0,
                     "match_details": match_stats,
-                    "runner_ups": []
+                    "runner_ups": [],
                 }
-            
-            # Add runner-up matches to best_match for cascading conflict resolution
+
+            # Add ALL candidates (including the best match) so the UI can display
+            # the full voting leaderboard. Previously excluded the best match, but
+            # for decisive matches with a single candidate this left runner_ups empty.
             runner_ups = []
             if results_summary:
-                results_summary.sort(key=lambda x: x['score'], reverse=True)
-                best_ep = best_match["match_details"]["episode"]
+                results_summary.sort(key=lambda x: x["score"], reverse=True)
                 runner_ups = [
                     {
                         "episode": r["episode"],
@@ -935,7 +950,7 @@ class EpisodeMatcher:
                         "target_votes": len(scan_points),
                     }
                     for r in results_summary
-                    if r["episode"] != best_ep and r["score"] > 0
+                    if r["score"] > 0
                 ][:5]
                 best_match["runner_ups"] = runner_ups
 
@@ -944,18 +959,20 @@ class EpisodeMatcher:
             best_match["match_details"]["runner_ups"] = runner_ups
 
             # Log top candidates with voting details and score gap analysis
-            results_summary.sort(key=lambda x: x['score'], reverse=True)
+            results_summary.sort(key=lambda x: x["score"], reverse=True)
             voting_method = "ranked voting" if self.use_ranked_voting else "weighted score"
             logger.info(f"{voting_method.capitalize()} results for {video_file.name}:")
 
             # Compute score gap between top-1 and top-2 (strong correctness signal)
             score_gap = 0.0
             if len(results_summary) >= 2:
-                score_gap = results_summary[0]['score'] - results_summary[1]['score']
-                logger.info(f"  Score gap (top1-top2): {score_gap:.4f} {'(decisive)' if score_gap > 0.01 else '(LOW - uncertain match)'}")
+                score_gap = results_summary[0]["score"] - results_summary[1]["score"]
+                logger.info(
+                    f"  Score gap (top1-top2): {score_gap:.4f} {'(decisive)' if score_gap > 0.01 else '(LOW - uncertain match)'}"
+                )
             elif len(results_summary) == 1:
                 # Only one candidate, gap equals its score
-                score_gap = results_summary[0]['score']
+                score_gap = results_summary[0]["score"]
 
             # Add score_gap to match_details for UI transparency
             if best_match and best_match.get("match_details"):
@@ -971,8 +988,8 @@ class EpisodeMatcher:
                     f"total_weight={result['total_weight']:.4f}"
                 )
 
-            if best_match and best_match['score'] > self.match_threshold:
-                vote_count = best_match['match_details']['vote_count']
+            if best_match and best_match["score"] > self.match_threshold:
+                vote_count = best_match["match_details"]["vote_count"]
 
                 logger.info(
                     f"Best match evaluation: "
@@ -1005,23 +1022,24 @@ class EpisodeMatcher:
                 f"or insufficient votes). "
                 f"Attempting FULL FILE fallback..."
             )
-            match = self._match_full_file(
-                video_file,
-                model_config,
-                reference_files,
-                video_duration
-            )
-             
+            match = self._match_full_file(video_file, model_config, reference_files, video_duration)
+
             if match:
-                 match['score'] = match['confidence'] # Full file score is just confidence (coverage=1.0)
-                 match['match_details'] = {"method": "full_transcription", "score": match['confidence']}
-                 return match
+                match["score"] = match[
+                    "confidence"
+                ]  # Full file score is just confidence (coverage=1.0)
+                match["match_details"] = {
+                    "method": "full_transcription",
+                    "score": match["confidence"],
+                }
+                return match
 
             return None
 
         except Exception as e:
             logger.error(
-                f"Unexpected error during episode identification for {video_file}: {e}", exc_info=True
+                f"Unexpected error during episode identification for {video_file}: {e}",
+                exc_info=True,
             )
             return None
 
@@ -1036,60 +1054,84 @@ class EpisodeMatcher:
             self.audio_chunks.clear()
 
 
-@lru_cache(maxsize=100)
-def get_video_duration(video_file):
-    """Get video duration with caching and error handling."""
-    try:
-        logger.debug(f"Getting duration for video file: {video_file}")
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                str(video_file),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+def get_video_duration(video_file, _retries: int = 6, _retry_delay: float = 5.0):
+    """Get video duration using ffprobe, with retry on Windows file-lock errors.
 
-        if result.returncode != 0:
-            error_msg = f"ffprobe failed with return code {result.returncode}"
-            if result.stderr:
-                error_msg += f". Error: {result.stderr.strip()}"
+    Retries up to `_retries` times with `_retry_delay` seconds between attempts,
+    to handle the window where MakeMKV has finished writing but still holds the
+    file handle open (causing PermissionError / EACCES in ffprobe on Windows).
+    """
+    last_error = None
+    for attempt in range(1, _retries + 1):
+        try:
+            logger.debug(
+                f"Getting duration for video file: {video_file} (attempt {attempt}/{_retries})"
+            )
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(video_file),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode != 0:
+                error_msg = f"ffprobe failed with return code {result.returncode}"
+                if result.stderr:
+                    error_msg += f". Error: {result.stderr.strip()}"
+                # Retry on permission-related errors (Windows file lock)
+                if "Permission denied" in (result.stderr or "") and attempt < _retries:
+                    logger.warning(
+                        f"[MATCH] ffprobe permission denied for {video_file}, "
+                        f"retrying in {_retry_delay}s (attempt {attempt}/{_retries})..."
+                    )
+                    import time as _time
+
+                    _time.sleep(_retry_delay)
+                    last_error = RuntimeError(error_msg)
+                    continue
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            duration_str = result.stdout.strip()
+            if not duration_str:
+                raise RuntimeError("ffprobe returned empty duration")
+
+            duration = float(duration_str)
+            if duration <= 0:
+                raise RuntimeError(f"Invalid duration: {duration}")
+
+            result_duration = int(np.ceil(duration))
+            logger.debug(f"Video duration: {result_duration} seconds")
+            return result_duration
+
+        except subprocess.TimeoutExpired as e:
+            error_msg = f"ffprobe timed out while getting duration for {video_file}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
+        except ValueError as e:
+            error_msg = f"Failed to parse duration from ffprobe output for {video_file}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+        except RuntimeError:
+            raise
+        except Exception as e:
+            error_msg = f"Unexpected error getting video duration for {video_file}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
-        duration_str = result.stdout.strip()
-        if not duration_str:
-            raise RuntimeError("ffprobe returned empty duration")
-
-        duration = float(duration_str)
-        if duration <= 0:
-            raise RuntimeError(f"Invalid duration: {duration}")
-
-        result_duration = int(np.ceil(duration))
-        logger.debug(f"Video duration: {result_duration} seconds")
-        return result_duration
-
-    except subprocess.TimeoutExpired as e:
-        error_msg = f"ffprobe timed out while getting duration for {video_file}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg) from e
-    except ValueError as e:
-        error_msg = (
-            f"Failed to parse duration from ffprobe output for {video_file}: {e}"
-        )
-        logger.error(error_msg)
-        raise RuntimeError(error_msg) from e
-    except Exception as e:
-        error_msg = f"Unexpected error getting video duration for {video_file}: {e}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg) from e
+    # All retries exhausted
+    raise last_error or RuntimeError(
+        f"Failed to get duration for {video_file} after {_retries} attempts"
+    )
 
 
 def detect_file_encoding(file_path):
@@ -1104,9 +1146,7 @@ def detect_file_encoding(file_path):
     """
     try:
         with open(file_path, "rb") as f:
-            raw_data = f.read(
-                min(1024 * 1024, Path(file_path).stat().st_size)
-            )  # Read up to 1MB
+            raw_data = f.read(min(1024 * 1024, Path(file_path).stat().st_size))  # Read up to 1MB
         result = chardet.detect(raw_data)
         encoding = result["encoding"]
         confidence = result["confidence"]
@@ -1153,9 +1193,7 @@ def read_file_with_fallback(file_path, encodings=None):
             errors.append(f"{encoding}: {str(e)}")
             continue
 
-    error_msg = f"Failed to read {file_path} with any encoding. Errors:\n" + "\n".join(
-        errors
-    )
+    error_msg = f"Failed to read {file_path} with any encoding. Errors:\n" + "\n".join(errors)
     logger.error(error_msg)
     raise ValueError(error_msg)
 
@@ -1217,7 +1255,9 @@ class SubtitleReader:
 
                     # Skip watermark/ad blocks (URLs, credit lines, etc.)
                     if _is_watermark_block(text, lines, subtitle_start):
-                        logger.debug(f"Filtered watermark/ad block at {subtitle_start:.1f}s: {text[:80]}")
+                        logger.debug(
+                            f"Filtered watermark/ad block at {subtitle_start:.1f}s: {text[:80]}"
+                        )
                         continue
 
                     text_lines.append(text)
@@ -1268,4 +1308,3 @@ class SubtitleReader:
 
 
 # Note: Model caching is now handled by the ASR abstraction layer in asr_models.py
-

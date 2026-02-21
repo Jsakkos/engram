@@ -113,8 +113,7 @@ TMDB_SEASON_DETAILS_BREAKING_BAD_S01 = {
     "id": 3577,
     "air_date": "2008-01-20",
     "episodes": [
-        {"episode_number": i, "name": f"Episode {i}", "season_number": 1}
-        for i in range(1, 8)
+        {"episode_number": i, "name": f"Episode {i}", "season_number": 1} for i in range(1, 8)
     ],
     "name": "Season 1",
     "season_number": 1,

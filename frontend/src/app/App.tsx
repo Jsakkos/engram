@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Disc3, Zap, ZapOff, Settings, Trash2 } from "lucide-react";
-import { DiscCard } from "./components/DiscCard";
+import { DiscCard, type DiscData } from "./components/DiscCard";
 import { useJobManagement } from "./hooks/useJobManagement";
 import { useKanbanColumns } from "./hooks/useKanbanColumns";
 import ReviewQueue from "../components/ReviewQueue";
@@ -165,7 +165,7 @@ function MainDashboard() {
         ) : (
           <div className="space-y-6">
             <AnimatePresence mode="popLayout">
-              {filteredDiscs.map((disc: any) => (
+              {filteredDiscs.map((disc: DiscData) => (
                 <DiscCard
                   key={disc.id}
                   disc={disc}

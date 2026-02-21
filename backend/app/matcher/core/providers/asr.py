@@ -85,4 +85,3 @@ def get_asr_provider(
     provider = NativeASRProvider(config)
     factory_memo[key] = provider
     return provider
-

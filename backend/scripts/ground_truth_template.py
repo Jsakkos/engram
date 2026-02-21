@@ -50,7 +50,7 @@ def generate_ground_truth_template(test_data_dir: Path, output_file: Path):
             if episodes:
                 ground_truth[show_name][f"Season {season_num}"] = {
                     "season": season_num,
-                    "episodes": episodes
+                    "episodes": episodes,
                 }
 
     # Write template
@@ -58,7 +58,9 @@ def generate_ground_truth_template(test_data_dir: Path, output_file: Path):
         json.dump(ground_truth, f, indent=2, ensure_ascii=False)
 
     print(f"[OK] Ground truth template generated: {output_file}")
-    print(f"     Found {sum(len(seasons) for show in ground_truth.values() for seasons in show.values() if isinstance(seasons, dict))} shows/seasons")
+    print(
+        f"     Found {sum(len(seasons) for show in ground_truth.values() for seasons in show.values() if isinstance(seasons, dict))} shows/seasons"
+    )
 
     # Count total files
     total_files = 0
@@ -73,7 +75,9 @@ def generate_ground_truth_template(test_data_dir: Path, output_file: Path):
     print(f"     Found {total_files} MKV files")
     print(f"     Pre-filled {extracted_count} episode codes from filenames")
     print()
-    print("[!] Please edit this file and replace any remaining 'UNKNOWN' values with correct episode codes.")
+    print(
+        "[!] Please edit this file and replace any remaining 'UNKNOWN' values with correct episode codes."
+    )
     print("    Or leave as-is to run performance-only tests without accuracy metrics.")
 
 

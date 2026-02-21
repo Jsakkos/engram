@@ -13,6 +13,7 @@ class TestDownloadSubtitles:
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
@@ -21,6 +22,7 @@ class TestDownloadSubtitles:
         mock_config_sync,
         mock_show_id,
         mock_season,
+        mock_show_details,
         mock_addic7ed,
         mock_opensubtitles,
         tmp_path,
@@ -33,6 +35,7 @@ class TestDownloadSubtitles:
 
         # Mock TMDB
         mock_show_id.return_value = "4589"
+        mock_show_details.return_value = {"name": "Arrested Development"}
         mock_season.return_value = 3  # 3 episodes
 
         # Mock Addic7ed client (primary scraper)
@@ -46,7 +49,9 @@ class TestDownloadSubtitles:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text("Subtitle content")
+            save_path.write_text(
+                f"1\n00:00:00,000 --> 00:00:02,000\nSubtitle for {save_path.name}\n"
+            )
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
@@ -93,6 +98,7 @@ class TestDownloadSubtitles:
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
@@ -101,22 +107,28 @@ class TestDownloadSubtitles:
         mock_config_sync,
         mock_show_id,
         mock_season,
+        mock_show_details,
         mock_addic7ed,
         mock_opensubtitles,
         tmp_path,
     ):
         """Test that cached files aren't re-downloaded."""
-        # Setup cache with existing files
+        # Setup cache with existing files (valid SRT content with --> markers)
         cache_dir = tmp_path / "data" / "Test Show"
         cache_dir.mkdir(parents=True)
-        (cache_dir / "Test Show - S01E01.srt").write_text("Cached subtitle 1")
-        (cache_dir / "Test Show - S01E02.srt").write_text("Cached subtitle 2")
+        (cache_dir / "Test Show - S01E01.srt").write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\nCached subtitle 1\n"
+        )
+        (cache_dir / "Test Show - S01E02.srt").write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\nCached subtitle 2\n"
+        )
 
         mock_config = Mock()
         mock_config.subtitles_cache_path = str(tmp_path)
         mock_config_sync.return_value = mock_config
 
         mock_show_id.return_value = "123"
+        mock_show_details.return_value = {"name": "Test Show"}
         mock_season.return_value = 2  # 2 episodes
 
         addic7ed_client = Mock()
@@ -136,6 +148,7 @@ class TestDownloadSubtitles:
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
@@ -144,21 +157,25 @@ class TestDownloadSubtitles:
         mock_config_sync,
         mock_show_id,
         mock_season,
+        mock_show_details,
         mock_addic7ed,
         mock_opensubtitles,
         tmp_path,
     ):
         """Test that only missing episodes are downloaded."""
-        # Setup cache with partial files
+        # Setup cache with partial files (valid SRT content with --> markers)
         cache_dir = tmp_path / "data" / "Test Show"
         cache_dir.mkdir(parents=True)
-        (cache_dir / "Test Show - S01E01.srt").write_text("Cached subtitle 1")
+        (cache_dir / "Test Show - S01E01.srt").write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\nCached subtitle 1\n"
+        )
 
         mock_config = Mock()
         mock_config.subtitles_cache_path = str(tmp_path)
         mock_config_sync.return_value = mock_config
 
         mock_show_id.return_value = "123"
+        mock_show_details.return_value = {"name": "Test Show"}
         mock_season.return_value = 3  # 3 episodes total
 
         addic7ed_client = Mock()
@@ -169,7 +186,7 @@ class TestDownloadSubtitles:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text("Downloaded subtitle")
+            save_path.write_text("1\n00:00:00,000 --> 00:00:02,000\nDownloaded subtitle\n")
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
@@ -188,6 +205,7 @@ class TestDownloadSubtitles:
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
@@ -196,6 +214,7 @@ class TestDownloadSubtitles:
         mock_config_sync,
         mock_show_id,
         mock_season,
+        mock_show_details,
         mock_addic7ed,
         mock_opensubtitles,
         tmp_path,
@@ -206,6 +225,7 @@ class TestDownloadSubtitles:
         mock_config_sync.return_value = mock_config
 
         mock_show_id.return_value = "123"
+        mock_show_details.return_value = {"name": "Test Show"}
         mock_season.return_value = 2  # 2 episodes
 
         addic7ed_client = Mock()
@@ -226,6 +246,7 @@ class TestDownloadSubtitles:
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
@@ -234,6 +255,7 @@ class TestDownloadSubtitles:
         mock_config_sync,
         mock_show_id,
         mock_season,
+        mock_show_details,
         mock_addic7ed,
         mock_opensubtitles,
         tmp_path,
@@ -244,6 +266,7 @@ class TestDownloadSubtitles:
         mock_config_sync.return_value = mock_config
 
         mock_show_id.return_value = "123"
+        mock_show_details.return_value = {"name": "Test Show"}
         mock_season.return_value = 1  # 1 episode
 
         addic7ed_client = Mock()
@@ -266,6 +289,7 @@ class TestDownloadSubtitles:
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
@@ -274,6 +298,7 @@ class TestDownloadSubtitles:
         mock_config_sync,
         mock_show_id,
         mock_season,
+        mock_show_details,
         mock_addic7ed,
         mock_opensubtitles,
         tmp_path,
@@ -284,6 +309,7 @@ class TestDownloadSubtitles:
         mock_config_sync.return_value = mock_config
 
         mock_show_id.return_value = "123"
+        mock_show_details.return_value = {"name": "Test Show"}
         mock_season.return_value = 1
 
         addic7ed_client = Mock()
@@ -307,6 +333,7 @@ class TestSubtitleFilenameFormat:
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
@@ -315,6 +342,7 @@ class TestSubtitleFilenameFormat:
         mock_config_sync,
         mock_show_id,
         mock_season,
+        mock_show_details,
         mock_addic7ed,
         mock_opensubtitles,
         tmp_path,
@@ -325,6 +353,7 @@ class TestSubtitleFilenameFormat:
         mock_config_sync.return_value = mock_config
 
         mock_show_id.return_value = "123"
+        mock_show_details.return_value = {"name": "The Office"}
         mock_season.return_value = 2
 
         addic7ed_client = Mock()
@@ -335,7 +364,9 @@ class TestSubtitleFilenameFormat:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text("Subtitle")
+            save_path.write_text(
+                f"1\n00:00:00,000 --> 00:00:02,000\nSubtitle for {save_path.name}\n"
+            )
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
@@ -344,7 +375,7 @@ class TestSubtitleFilenameFormat:
         mock_opensubtitles.return_value = os_client
 
         # Execute
-        result = download_subtitles("The Office", 1)
+        download_subtitles("The Office", 1)
 
         # Verify filename format: Show_Name - S##E##.srt
         cache_path = tmp_path / "data" / "The Office"

@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.analyst import TitleInfo
-from app.core.errors import MakeMKVError
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +37,6 @@ class RipResult:
     success: bool
     output_files: list[Path]
     error_message: str | None = None
-
-
-
 
 
 class MakeMKVExtractor:
@@ -97,13 +93,15 @@ class MakeMKVExtractor:
         try:
             # Run in thread to avoid blocking event loop
             result = await asyncio.to_thread(run_makemkv)
-            
+
             logger.debug(f"MakeMKV stdout: {result.stdout[:500] if result.stdout else 'empty'}")
             if result.stderr:
                 logger.debug(f"MakeMKV stderr: {result.stderr[:500]}")
 
             if result.returncode != 0:
-                logger.error(f"MakeMKV scan failed (exit code {result.returncode}): {result.stderr}")
+                logger.error(
+                    f"MakeMKV scan failed (exit code {result.returncode}): {result.stderr}"
+                )
                 return []
 
             titles = self._parse_disc_info(result.stdout or "")
@@ -151,40 +149,28 @@ class MakeMKVExtractor:
 
         # Prepare commands to run
         commands = []
-        
+
         if not title_indices:
             # Rip ALL titles (single command, most efficient)
             logger.info("Ripping ALL titles")
-            commands.append([
-                str(self.makemkv_path),
-                "-r",
-                "--progress=-same",
-                "mkv",
-                drive_spec,
-                "all",
-                str(output_dir),
-            ])
+            commands.append(
+                [
+                    str(self.makemkv_path),
+                    "-r",
+                    "--progress=-same",
+                    "mkv",
+                    drive_spec,
+                    "all",
+                    str(output_dir),
+                ]
+            )
             total_titles_count = 0  # Will be updated from PRGC
         elif len(title_indices) == 1:
             # Rip single specific title
             idx = title_indices[0]
             logger.info(f"Ripping single title {idx}")
-            commands.append([
-                str(self.makemkv_path),
-                "-r",
-                "--progress=-same",
-                "mkv",
-                drive_spec,
-                str(idx),
-                str(output_dir),
-            ])
-            total_titles_count = 1
-        else:
-            # Rip multiple specific titles (must loop commands)
-            logger.info(f"Ripping {len(title_indices)} specific titles: {title_indices}")
-            total_titles_count = len(title_indices)
-            for idx in title_indices:
-                commands.append([
+            commands.append(
+                [
                     str(self.makemkv_path),
                     "-r",
                     "--progress=-same",
@@ -192,13 +178,32 @@ class MakeMKVExtractor:
                     drive_spec,
                     str(idx),
                     str(output_dir),
-                ])
+                ]
+            )
+            total_titles_count = 1
+        else:
+            # Rip multiple specific titles (must loop commands)
+            logger.info(f"Ripping {len(title_indices)} specific titles: {title_indices}")
+            total_titles_count = len(title_indices)
+            for idx in title_indices:
+                commands.append(
+                    [
+                        str(self.makemkv_path),
+                        "-r",
+                        "--progress=-same",
+                        "mkv",
+                        drive_spec,
+                        str(idx),
+                        str(output_dir),
+                    ]
+                )
 
         # State tracking for progress
-        current_title_idx = 0 # 0-based absolute index for progress reporting
-        
+        current_title_idx = 0  # 0-based absolute index for progress reporting
+
         # Queue for progress updates from thread to async context
         import queue
+
         progress_queue: queue.Queue[RipProgress] = queue.Queue()
         output_lines: list[str] = []
         output_files: list[Path] = []
@@ -231,13 +236,9 @@ class MakeMKVExtractor:
                                 )
                                 if title_complete_callback:
                                     try:
-                                        title_complete_callback(
-                                            len(completed_files), filepath
-                                        )
+                                        title_complete_callback(len(completed_files), filepath)
                                     except Exception as e:
-                                        logger.exception(
-                                            f"Error in title complete callback: {e}"
-                                        )
+                                        logger.exception(f"Error in title complete callback: {e}")
                         known_files[fname] = current_size
                 except (OSError, PermissionError) as e:
                     logger.exception(f"Error checking for completed files: {e}")
@@ -247,21 +248,23 @@ class MakeMKVExtractor:
             nonlocal current_title_idx, total_titles_count
 
             import time as _time
-            
+
             last_fs_check = _time.monotonic()
             combined_stderr = ""
             final_returncode = 0
 
             try:
                 self._cancelled = False
-                
+
                 for cmd in commands:
                     if self._cancelled:
                         break
-                        
+
                     current_title_idx += 1
-                    logger.info(f"Executing rip command {current_title_idx}/{len(commands)}: {' '.join(cmd)}")
-                    
+                    logger.info(
+                        f"Executing rip command {current_title_idx}/{len(commands)}: {' '.join(cmd)}"
+                    )
+
                     process = subprocess.Popen(
                         cmd,
                         stdout=subprocess.PIPE,
@@ -297,7 +300,7 @@ class MakeMKVExtractor:
                             match = re.match(r"PRGV:\s*(\d+),\s*(\d+),\s*(\d+)", line)
                             if match:
                                 current = int(match.group(1))
-                                total = int(match.group(2)) # Sub-task total
+                                total = int(match.group(2))  # Sub-task total
                                 max_val = int(match.group(3))
 
                                 if max_val > 0:
@@ -305,9 +308,9 @@ class MakeMKVExtractor:
 
                                     report_title_idx = current_title_idx
                                     if len(commands) == 1 and not title_indices:
-                                         # "All" mode: use dynamic file count as proxy for title index
-                                         report_title_idx = len(completed_files) + 1
-                                    
+                                        # "All" mode: use dynamic file count as proxy for title index
+                                        report_title_idx = len(completed_files) + 1
+
                                     progress = RipProgress(
                                         percent=percent,
                                         current_title=report_title_idx,
@@ -325,13 +328,9 @@ class MakeMKVExtractor:
                                     output_files.append(filepath)
                                     if title_complete_callback:
                                         try:
-                                            title_complete_callback(
-                                                len(completed_files), filepath
-                                            )
+                                            title_complete_callback(len(completed_files), filepath)
                                         except Exception:
-                                            logger.exception(
-                                                "Error in title complete callback"
-                                            )
+                                            logger.exception("Error in title complete callback")
 
                         # Also check filesystem periodically from the thread
                         now = _time.monotonic()
@@ -342,13 +341,13 @@ class MakeMKVExtractor:
                     # End of process loop
                     process.wait()
                     if process.returncode != 0:
-                         stderr = process.stderr.read() if process.stderr else ""
-                         combined_stderr += f"\nCommand failed ({cmd}): {stderr}"
-                         final_returncode = process.returncode
-                         # If one fails in a loop, should we stop? Yes, probably.
-                         if len(commands) > 1:
-                              break
-                    
+                        stderr = process.stderr.read() if process.stderr else ""
+                        combined_stderr += f"\nCommand failed ({cmd}): {stderr}"
+                        final_returncode = process.returncode
+                        # If one fails in a loop, should we stop? Yes, probably.
+                        if len(commands) > 1:
+                            break
+
                     # Final fs check for this command
                     _check_for_completed_files()
 
@@ -514,13 +513,13 @@ class MakeMKVExtractor:
         """Parse resolution string to standard label."""
         if not res_str:
             return ""
-        
+
         # MakeMKV often returns "1920x1080 (16:9)" or just "1920x1080"
         match = re.search(r"(\d+)x(\d+)", res_str)
         if match:
             width = int(match.group(1))
             height = int(match.group(2))
-            
+
             if width >= 3800 or height >= 2100:
                 return "4K"
             if width >= 1900 or height >= 1000:
@@ -528,10 +527,10 @@ class MakeMKVExtractor:
             if width >= 1200 or height >= 700:
                 return "720p"
             if height >= 570 or height == 480:
-                return "480p" # DVD
+                return "480p"  # DVD
             if height == 576:
-                return "576p" # PAL DVD
-                
+                return "576p"  # PAL DVD
+
         return "Unknown"
 
     def _parse_duration(self, duration_str: str) -> int:
@@ -555,5 +554,6 @@ class MakeMKVExtractor:
         value = float(match.group(1))
         unit = match.group(2).upper()
 
-        multipliers = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3}
+        # MakeMKV reports sizes in decimal SI units (1 GB = 10^9 bytes, not 2^30)
+        multipliers = {"B": 1, "KB": 1000, "MB": 1000**2, "GB": 1000**3}
         return int(value * multipliers.get(unit, 1))

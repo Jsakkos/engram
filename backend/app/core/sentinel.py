@@ -200,6 +200,7 @@ class DriveMonitor:
         if self._poll_interval is None:
             if self._config is None:
                 from app.services.config_service import get_config_sync
+
                 self._config = get_config_sync()
             self._poll_interval = self._config.sentinel_poll_interval
 

@@ -31,6 +31,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.close()
 
+
 # Async session factory
 async_session = sessionmaker(
     engine,

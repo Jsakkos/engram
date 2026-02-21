@@ -11,7 +11,6 @@ from app.database import get_session
 from app.main import app
 from app.models import AppConfig
 
-
 # Test database URL for integration tests
 INTEGRATION_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -33,9 +32,7 @@ async def async_session_maker(async_engine):
     async with async_engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    AsyncSessionLocal = sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    AsyncSessionLocal = sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
     yield AsyncSessionLocal
 

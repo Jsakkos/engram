@@ -100,15 +100,15 @@ test.describe('Progress Display - Engram UI', () => {
         ).toBeVisible({ timeout: 10000 });
     });
 
-    test('LISTENING state appears during transcribing', async ({ page }) => {
+    test('MATCHING state appears during episode matching', async ({ page }) => {
         await simulateInsertDisc({
             ...TV_DISC_ARRESTED_DEVELOPMENT,
             rip_speed_multiplier: 5,
         });
 
-        // Wait for matching phase (LISTENING appears during transcribing)
+        // Wait for matching phase
         await expect(
-            page.getByText(/LISTENING/i).first()
+            page.locator(SELECTORS.trackStateMatching).first()
         ).toBeVisible({ timeout: 30000 });
     });
 

@@ -19,7 +19,7 @@ from app.matcher.core.providers.subtitles import LocalSubtitleProvider
 from app.matcher.core.utils import extract_audio_chunk, get_video_duration
 from app.matcher.opensubtitles_scraper import OpenSubtitlesClient
 from app.matcher.subtitle_utils import sanitize_filename
-from app.matcher.tmdb_client import fetch_season_details, fetch_show_id
+from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
 
 
 def is_valid_srt_file(file_path: Path) -> bool:
@@ -39,16 +39,16 @@ def is_valid_srt_file(file_path: Path) -> bool:
             return False
 
         # Read first 500 bytes to check format
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(file_path, encoding="utf-8", errors="ignore") as f:
             header = f.read(500).lower()
 
         # Check for HTML markers
-        if any(marker in header for marker in ['<!doctype', '<html', '<head', '<body', '<div']):
+        if any(marker in header for marker in ["<!doctype", "<html", "<head", "<body", "<div"]):
             logger.warning(f"Rejecting {file_path.name}: appears to be HTML, not SRT")
             return False
 
         # Check for SRT timestamp format
-        if '-->' not in header:
+        if "-->" not in header:
             logger.warning(f"Rejecting {file_path.name}: no SRT timestamp markers found")
             return False
 
@@ -80,24 +80,33 @@ def download_subtitles(show_name: str, season: int) -> dict:
     if not show_id:
         raise ValueError(f"Could not find show '{show_name}' on TMDB")
 
+    # Fetch canonical details to get the correct show name (e.g., "Southpark6" -> "South Park")
+    show_details = fetch_show_details(show_id)
+    canonical_show_name = show_details.get("name") if show_details else show_name
+
+    if canonical_show_name != show_name:
+        logger.info(f"Using canonical show name '{canonical_show_name}' instead of '{show_name}'")
+
     episode_count = fetch_season_details(show_id, season)
     if episode_count == 0:
-        raise ValueError(f"No episodes found for {show_name} Season {season} on TMDB")
+        raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on TMDB")
 
     # Set up cache directory
     from app.services.config_service import get_config_sync
+
     config = get_config_sync()
-    
+
     # Use config.subtitles_cache_path from DB
     cache_path = Path(config.subtitles_cache_path).expanduser()
     if not cache_path.is_absolute():
         cache_path = Path(__file__).parent.parent.parent / config.subtitles_cache_path
 
-    safe_show_name = sanitize_filename(show_name)
+    # Use canonical name for cache directory
+    safe_show_name = sanitize_filename(canonical_show_name)
     series_cache_dir = cache_path / "data" / safe_show_name
     series_cache_dir.mkdir(parents=True, exist_ok=True)
-    
-    logger.info(f"Downloading subtitles to: {series_cache_dir}")
+
+    logger.info(f"Downloading subtitles for '{canonical_show_name}' to: {series_cache_dir}")
 
     # Initialize both scrapers
     addic7ed_client = Addic7edClient()
@@ -110,11 +119,9 @@ def download_subtitles(show_name: str, season: int) -> dict:
 
         # Check cache first - look for ANY naming variant
         from app.matcher.subtitle_utils import find_existing_subtitle
+
         existing_subtitle = find_existing_subtitle(
-            str(series_cache_dir),
-            safe_show_name,
-            season,
-            episode
+            str(series_cache_dir), safe_show_name, season, episode
         )
 
         if existing_subtitle:
@@ -128,16 +135,20 @@ def download_subtitles(show_name: str, season: int) -> dict:
                         "source": "cache",
                     }
                 )
-                logger.debug(f"Found cached subtitle for {episode_code}: {Path(existing_subtitle).name}")
+                logger.debug(
+                    f"Found cached subtitle for {episode_code}: {Path(existing_subtitle).name}"
+                )
                 continue
             else:
                 # Delete invalid cached file and re-download
-                logger.warning(f"Cached file {existing_subtitle.name} is invalid (HTML?), deleting and re-downloading")
+                logger.warning(
+                    f"Cached file {existing_subtitle.name} is invalid (HTML?), deleting and re-downloading"
+                )
                 existing_subtitle.unlink(missing_ok=True)
 
         # Try Addic7ed first (faster, direct .srt downloads)
         try:
-            best_sub = addic7ed_client.get_best_subtitle(show_name, season, episode)
+            best_sub = addic7ed_client.get_best_subtitle(canonical_show_name, season, episode)
             if best_sub:
                 result = addic7ed_client.download_subtitle(best_sub, srt_path)
                 if result:
@@ -154,14 +165,16 @@ def download_subtitles(show_name: str, season: int) -> dict:
                         continue
                     else:
                         # Delete invalid file
-                        logger.warning(f"Downloaded invalid file for {episode_code} from Addic7ed, deleting")
+                        logger.warning(
+                            f"Downloaded invalid file for {episode_code} from Addic7ed, deleting"
+                        )
                         Path(result).unlink(missing_ok=True)
         except Exception as e:
             logger.warning(f"Addic7ed failed for {episode_code}: {e}")
 
         # Fallback to OpenSubtitles if Addic7ed didn't work
         try:
-            best_sub = opensubtitles_client.get_best_subtitle(show_name, season, episode)
+            best_sub = opensubtitles_client.get_best_subtitle(canonical_show_name, season, episode)
             if best_sub:
                 result = opensubtitles_client.download_subtitle(best_sub, srt_path)
                 if result:
@@ -178,7 +191,9 @@ def download_subtitles(show_name: str, season: int) -> dict:
                         continue
                     else:
                         # Delete invalid file
-                        logger.warning(f"Downloaded invalid file for {episode_code} from OpenSubtitles, deleting")
+                        logger.warning(
+                            f"Downloaded invalid file for {episode_code} from OpenSubtitles, deleting"
+                        )
                         Path(result).unlink(missing_ok=True)
         except Exception as e:
             logger.warning(f"OpenSubtitles failed for {episode_code}: {e}")
@@ -194,7 +209,7 @@ def download_subtitles(show_name: str, season: int) -> dict:
         )
 
     return {
-        "show_name": show_name,
+        "show_name": canonical_show_name,
         "season": season,
         "total_episodes": episode_count,
         "episodes": episodes,
@@ -282,14 +297,33 @@ def match_episodes(
     """
     from app.matcher.core.matcher import MultiSegmentMatcher
     from app.services.config_service import get_config_sync
+
     config = get_config_sync()
-    
+
     # Use config.subtitles_cache_path from DB
     cache_path = Path(config.subtitles_cache_path).expanduser()
     if not cache_path.is_absolute():
         cache_path = Path(__file__).parent.parent.parent / config.subtitles_cache_path
 
-    safe_show_name = sanitize_filename(show_name)
+    # RESOLVE CANONICAL NAME:
+    # "Southpark6" subtitles are saved under "South Park".
+    # We must resolve the name to find them.
+    from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
+
+    canonical_show_name = show_name
+    try:
+        show_id = fetch_show_id(show_name)
+        if show_id:
+            details = fetch_show_details(show_id)
+            if details:
+                canonical_show_name = details.get("name", show_name)
+                logger.info(
+                    f"Resolved '{show_name}' to canonical '{canonical_show_name}' for matching"
+                )
+    except Exception as e:
+        logger.warning(f"Failed to resolve canonical name for '{show_name}': {e}")
+
+    safe_show_name = sanitize_filename(canonical_show_name)
 
     # Load cached subtitles via LocalSubtitleProvider
     provider = LocalSubtitleProvider(cache_dir=cache_path)

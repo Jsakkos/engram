@@ -46,29 +46,29 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
 
         // 05: Per-track RIPPING state on individual tracks
         const hasTrackRipping = await card.getByText('RIPPING').first()
-            .isVisible({ timeout: 15000 }).catch(() => false);
+            .waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
         if (hasTrackRipping) {
             await page.screenshot({ path: `${SCREENSHOT_DIR}/05-per-track-ripping.png`, fullPage: true });
         }
 
         // 06: Per-track byte progress (e.g., "245 MB / 1.0 GB")
         const hasByteProgress = await card.locator(SELECTORS.trackByteProgress).first()
-            .isVisible({ timeout: 15000 }).catch(() => false);
+            .waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
         if (hasByteProgress) {
             await page.screenshot({ path: `${SCREENSHOT_DIR}/06-byte-progress.png`, fullPage: true });
         }
 
-        // 07: LISTENING state (transcribing phase)
-        const hasListening = await card.getByText('LISTENING').first()
-            .isVisible({ timeout: 60000 }).catch(() => false);
-        if (hasListening) {
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/07-listening-state.png`, fullPage: true });
-        }
-
-        // 08: Episode match candidates appear (S01E01 etc.)
-        const hasMatchCandidate = await card.locator('text=/S\\d{2}E\\d{2}/i').first()
-            .isVisible({ timeout: 30000 }).catch(() => false);
+        // 07: MATCHING state (episode matching phase) — wait for candidate rows
+        // Note: titles enter MATCHING state during ripping completion, but candidate
+        // vote data only arrives once _simulate_matching runs. Wait for the yellow
+        // candidate text (text-yellow-300) which only renders when matchCandidates exist.
+        const hasMatchCandidate = await card.locator('.text-yellow-300').first()
+            .waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
         if (hasMatchCandidate) {
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/07-matching-state.png`, fullPage: true });
+
+            // 08: Closer look — wait a moment for more votes to accumulate
+            await page.waitForTimeout(2000);
             await page.screenshot({ path: `${SCREENSHOT_DIR}/08-match-candidates.png`, fullPage: true });
         }
 

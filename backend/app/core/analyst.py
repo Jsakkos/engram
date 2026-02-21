@@ -52,6 +52,7 @@ class DiscAnalyst:
         """Get config, loading from database if not provided."""
         if self._config is None:
             from app.services.config_service import get_config_sync
+
             self._config = get_config_sync()
         return self._config
 
@@ -76,11 +77,10 @@ class DiscAnalyst:
             )
 
         # Log title durations for debugging
-        durations_str = ", ".join([f"{t.duration_seconds//60}min" for t in titles[:10]])
+        durations_str = ", ".join([f"{t.duration_seconds // 60}min" for t in titles[:10]])
         if len(titles) > 10:
-            durations_str += f", ... ({len(titles)-10} more)"
+            durations_str += f", ... ({len(titles) - 10} more)"
         logger.info(f"Title durations: {durations_str}")
-
 
         # Try to extract show name, season, and disc from volume label
         detected_name, detected_season, detected_disc = self._parse_volume_label(volume_label)
@@ -93,23 +93,6 @@ class DiscAnalyst:
         # ALWAYS check for movie first (content overrides label)
         movie_result = self._detect_movie(titles)
         logger.info(f"Movie detection result: {movie_result}")
-        
-        if movie_result:
-            # If we found a high confidence movie, return it immediately
-            # This handles cases where label might be misleading (e.g. "TROPIC_THUNDER_S1")
-            # but content is clearly a movie.
-            if not movie_result.get("ambiguous"):
-                logger.info(f"Movie detected with {movie_result['confidence']:.1%} confidence")
-                return DiscAnalysisResult(
-                    content_type=ContentType.MOVIE,
-                    titles=titles,
-                    detected_name=detected_name,
-                    confidence=movie_result["confidence"],
-                )
-            
-            # If ambiguous movie (e.g. multiple long titles), we'll hold onto it
-            # and see if TV detection makes more sense (e.g. Sherlock episodes).
-            logger.info(f"Ambiguous movie detected: {movie_result.get('reason')}")
 
         # Check for TV show (cluster of similar-duration titles)
         tv_result = self._detect_tv_show(titles)
@@ -118,6 +101,39 @@ class DiscAnalyst:
                 f"TV show detected with {tv_result['confidence']:.1%} confidence "
                 f"({tv_result['episode_count']} episodes)"
             )
+
+        # CONFLICT RESOLUTION: If both are detected, decided which one to trust.
+        if movie_result and not movie_result.get("ambiguous") and tv_result:
+            # We have a valid movie AND a valid TV show.
+            # This is almost always a TV disc with a "Play All" feature (the "Movie").
+            logger.info(
+                "Conflict: Movie & TV detected. Preferring TV (assuming 'Play All' feature)."
+            )
+            return DiscAnalysisResult(
+                content_type=ContentType.TV,
+                titles=titles,
+                detected_name=detected_name,
+                detected_season=detected_season,
+                confidence=tv_result["confidence"],
+            )
+
+        # No conflict: Clear Movie
+        if movie_result:
+            if not movie_result.get("ambiguous"):
+                logger.info(f"Movie detected with {movie_result['confidence']:.1%} confidence")
+                return DiscAnalysisResult(
+                    content_type=ContentType.MOVIE,
+                    titles=titles,
+                    detected_name=detected_name,
+                    confidence=movie_result["confidence"],
+                )
+
+            # If ambiguous movie (e.g. multiple long titles), we'll hold onto it
+            # and see if TV detection makes more sense.
+            logger.info(f"Ambiguous movie detected: {movie_result.get('reason')}")
+
+        # No conflict: Clear TV
+        if tv_result:
             return DiscAnalysisResult(
                 content_type=ContentType.TV,
                 titles=titles,
@@ -134,13 +150,15 @@ class DiscAnalyst:
                 detected_name=detected_name,
                 confidence=0.0,
                 needs_review=True,
-                review_reason=movie_result["reason"]
+                review_reason=movie_result["reason"],
             )
-        
+
         # If volume label indicates TV (has season pattern) but heuristics didn't detect it,
         # trust the volume label with moderate confidence
         if is_likely_tv:
-            logger.info(f"Volume label indicates TV show (season {detected_season}), trusting label")
+            logger.info(
+                f"Volume label indicates TV show (season {detected_season}), trusting label"
+            )
             return DiscAnalysisResult(
                 content_type=ContentType.TV,
                 titles=titles,
@@ -162,11 +180,13 @@ class DiscAnalyst:
         )
 
     def _detect_movie(self, titles: list[TitleInfo]) -> dict | None:
-        """Detect if the disc contains a movie.
-
-        """
-        long_titles = [t for t in titles if t.duration_seconds >= self._get_config().analyst_movie_min_duration]
-        logger.info(f"Found {len(long_titles)} movie-length titles (> {self._get_config().analyst_movie_min_duration}s)")
+        """Detect if the disc contains a movie."""
+        long_titles = [
+            t for t in titles if t.duration_seconds >= self._get_config().analyst_movie_min_duration
+        ]
+        logger.info(
+            f"Found {len(long_titles)} movie-length titles (> {self._get_config().analyst_movie_min_duration}s)"
+        )
 
         if len(long_titles) == 1:
             # Single long title - high confidence movie
@@ -176,7 +196,9 @@ class DiscAnalyst:
 
             # If there's only one movie-length title, classify as movie
             # even with low dominance (lots of bonus features)
-            confidence = 0.9 if dominance >= self._get_config().analyst_movie_dominance_threshold else 0.75
+            confidence = (
+                0.9 if dominance >= self._get_config().analyst_movie_dominance_threshold else 0.75
+            )
             return {"confidence": confidence, "main_title": main_title}
 
         if len(long_titles) > 3:
@@ -185,7 +207,7 @@ class DiscAnalyst:
             return {
                 "confidence": 0.0,
                 "ambiguous": True,
-                "reason": f"Found {len(long_titles)} feature-length titles. This may be a multi-movie disc or compilation. Please review and select which title(s) to rip."
+                "reason": f"Found {len(long_titles)} feature-length titles. This may be a multi-movie disc or compilation. Please review and select which title(s) to rip.",
             }
 
         if len(long_titles) >= 2:
@@ -194,9 +216,9 @@ class DiscAnalyst:
             return {
                 "confidence": 0.0,
                 "ambiguous": True,
-                "reason": "Multiple feature-length titles found. Please select correct version (theatrical, extended, etc.)."
+                "reason": "Multiple feature-length titles found. Please select correct version (theatrical, extended, etc.).",
             }
-        
+
         # Fallback for 2 titles logic (removed simple logic in favor of ambiguity check)
         # if len(long_titles) == 2: ... (replaced by above)
 
@@ -213,18 +235,18 @@ class DiscAnalyst:
 
         # Don't classify as TV if there's a clear movie-length title
         # (even if movie detection failed due to low dominance)
-        movie_length_titles = [t for t in titles if t.duration_seconds >= self._get_config().analyst_movie_min_duration]
-        if movie_length_titles:
-            logger.debug(
-                f"Found {len(movie_length_titles)} movie-length title(s), "
-                "skipping TV detection"
-            )
-            return None
+        # Don't skip TV detection just because there's a movie-length title.
+        # It could be a "Play All" title on a TV disc.
+        # movie_length_titles = [t for t in titles if t.duration_seconds >= self._get_config().analyst_movie_min_duration]
+        # if movie_length_titles: ... (removed to support Play All)
 
         # Filter to only TV-length titles
         tv_length_titles = [
-            t for t in titles
-            if self._get_config().analyst_tv_min_duration <= t.duration_seconds <= self._get_config().analyst_tv_max_duration
+            t
+            for t in titles
+            if self._get_config().analyst_tv_min_duration
+            <= t.duration_seconds
+            <= self._get_config().analyst_tv_max_duration
         ]
 
         if len(tv_length_titles) < self._get_config().analyst_tv_min_cluster_size:
@@ -238,7 +260,10 @@ class DiscAnalyst:
             for cluster in clusters:
                 # Check if this title fits in the cluster
                 cluster_avg = sum(t.duration_seconds for t in cluster) / len(cluster)
-                if abs(title.duration_seconds - cluster_avg) <= self._get_config().analyst_tv_duration_variance:
+                if (
+                    abs(title.duration_seconds - cluster_avg)
+                    <= self._get_config().analyst_tv_duration_variance
+                ):
                     cluster.append(title)
                     placed = True
                     break
@@ -282,7 +307,7 @@ class DiscAnalyst:
             # Try to extract season number alone
             season = None
             disc = None
-            
+
             season_patterns = [
                 r"S(\d+)",
                 r"SEASON\s*(\d+)",
@@ -310,6 +335,21 @@ class DiscAnalyst:
                     label = re.sub(pattern, "", label)
                     break
 
+        # Check for "NameNumber" pattern (e.g. SOUTHPARK6 -> Season 6)
+        # Only if we haven't found a season yet
+        if season is None:
+            # Look for number at the end of the string
+            name_num_match = re.search(r"^([a-zA-Z\s]+)(\d+)$", label.strip())
+            if name_num_match:
+                # It's ambiguous (could be IronMan2), but often it's Season X for TV.
+                # verification comes from duration analysis later.
+                possible_season = int(name_num_match.group(2))
+                # Heuristic: Seasons are usually 1-30. If it's 2000+, it's a year.
+                if 0 < possible_season < 100:
+                    season = possible_season
+                    label = name_num_match.group(1)  # Remove the number from name
+                    logger.info(f"Parsed implicit season from label '{original}': season={season}")
+
         # Remove common disc indicators that aren't disc numbers
         label = re.sub(r"\b(DVD|BLURAY|BD)\s*\d*\b", "", label)
         label = label.strip()
@@ -321,7 +361,9 @@ class DiscAnalyst:
 
     def _get_ambiguity_reason(self, titles: list[TitleInfo]) -> str:
         """Generate a human-readable reason for ambiguity."""
-        long_titles = [t for t in titles if t.duration_seconds >= self._get_config().analyst_movie_min_duration]
+        long_titles = [
+            t for t in titles if t.duration_seconds >= self._get_config().analyst_movie_min_duration
+        ]
 
         if len(long_titles) >= 2:
             return f"Multiple long titles found ({len(long_titles)} titles > 80 min). Could be multi-movie disc or special features."

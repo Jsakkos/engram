@@ -5,7 +5,7 @@ Tests WebSocket lifecycle, message broadcasting, and error handling.
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import WebSocket
@@ -227,8 +227,7 @@ class TestConcurrency:
 
         # Send multiple broadcasts concurrently
         broadcasts = [
-            connection_manager.broadcast_job_update(job_id=i, state="ripping")
-            for i in range(10)
+            connection_manager.broadcast_job_update(job_id=i, state="ripping") for i in range(10)
         ]
 
         await asyncio.gather(*broadcasts)

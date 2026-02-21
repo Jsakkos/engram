@@ -5,6 +5,7 @@ and organization using simulation endpoints.
 """
 
 import asyncio
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -12,7 +13,6 @@ from sqlalchemy import text
 from app.database import async_session, init_db
 from app.main import app
 from app.models import AppConfig
-from app.models.disc_job import ContentType, JobState, TitleState
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +118,13 @@ class TestTVDiscWorkflow:
 
         # TV disc should either complete, need review, or fail (if subtitles unavailable)
         # Note: 'failed' is expected when subtitle cache doesn't have the show data
-        assert final_job["state"] in ("completed", "review_needed", "matching", "organizing", "failed")
+        assert final_job["state"] in (
+            "completed",
+            "review_needed",
+            "matching",
+            "organizing",
+            "failed",
+        )
         assert final_job["content_type"] == "tv"
         assert final_job["detected_title"] is not None
 
@@ -190,7 +196,16 @@ class TestTVDiscWorkflow:
         assert response.status_code == 200
         job_state = response.json()["state"]
         # Note: Simulation may auto-start, so accept any valid state
-        assert job_state in ("idle", "identifying", "review_needed", "ripping", "matching", "organizing", "completed", "failed")
+        assert job_state in (
+            "idle",
+            "identifying",
+            "review_needed",
+            "ripping",
+            "matching",
+            "organizing",
+            "completed",
+            "failed",
+        )
 
 
 @pytest.mark.asyncio
@@ -288,7 +303,7 @@ class TestStateAdvancement:
         # 2. Get initial state (may have auto-advanced in simulation)
         response = await client.get(f"/api/jobs/{job_id}")
         assert response.status_code == 200
-        initial_state = response.json()["state"]
+        response.json()["state"]
 
         # Advance to next state
         response = await client.post(f"/api/simulate/advance-job/{job_id}")
@@ -299,7 +314,16 @@ class TestStateAdvancement:
         assert response.status_code == 200
         new_state = response.json()["state"]
         # State should be valid (may be same if already at terminal state)
-        assert new_state in ("idle", "identifying", "review_needed", "ripping", "matching", "organizing", "completed", "failed")
+        assert new_state in (
+            "idle",
+            "identifying",
+            "review_needed",
+            "ripping",
+            "matching",
+            "organizing",
+            "completed",
+            "failed",
+        )
 
 
 @pytest.mark.asyncio
@@ -371,9 +395,7 @@ class TestConcurrency:
                 "content_type": "tv",
                 "simulate_ripping": False,
             }
-            response = await client.post(
-                "/api/simulate/insert-disc", json=insert_payload
-            )
+            response = await client.post("/api/simulate/insert-disc", json=insert_payload)
             assert response.status_code == 200
             job_ids.append(response.json()["job_id"])
 
@@ -390,3 +412,79 @@ class TestConcurrency:
         assert response.status_code == 200
         jobs = response.json()
         assert len(jobs) >= 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestJobCompletionFromMatching:
+    """Test that jobs properly complete after matching phase."""
+
+    async def test_job_completion_from_matching(self, client, test_config):
+        """All titles match → job should eventually reach COMPLETED.
+
+        This is the core scenario where the job-stuck-in-PROCESSING bug manifests.
+        """
+        response = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "COMPLETION_TEST_S1D1",
+                "content_type": "tv",
+                "simulate_ripping": True,
+            },
+        )
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        # Wait for job to reach a terminal state
+        max_wait = 30
+        start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start < max_wait:
+            response = await client.get(f"/api/jobs/{job_id}")
+            assert response.status_code == 200
+            state = response.json()["state"]
+            if state in ("completed", "failed", "review_needed"):
+                break
+            await asyncio.sleep(1)
+
+        # Verify job reached a terminal state (not stuck in matching/organizing)
+        response = await client.get(f"/api/jobs/{job_id}")
+        final = response.json()
+        assert final["state"] in ("completed", "failed", "review_needed"), (
+            f"Job stuck in non-terminal state: {final['state']}"
+        )
+
+    async def test_review_submit_resumes_workflow(self, client, test_config):
+        """After submitting a review, the job should resume processing."""
+        # Create a job (may need review due to subtitle matching)
+        response = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "REVIEW_RESUME_S1D1",
+                "content_type": "tv",
+                "simulate_ripping": True,
+            },
+        )
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        # Wait for job to reach any terminal or review state
+        max_wait = 30
+        start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start < max_wait:
+            response = await client.get(f"/api/jobs/{job_id}")
+            state = response.json()["state"]
+            if state in ("completed", "failed", "review_needed"):
+                break
+            await asyncio.sleep(1)
+
+        # If it reached review_needed, verify the review endpoint works
+        response = await client.get(f"/api/jobs/{job_id}")
+        job = response.json()
+        if job["state"] == "review_needed":
+            # Submit a review (this verifies the endpoint at minimum)
+            review_response = await client.post(
+                f"/api/jobs/{job_id}/review",
+                json={"matches": {}},
+            )
+            # Should accept the review
+            assert review_response.status_code in (200, 400)

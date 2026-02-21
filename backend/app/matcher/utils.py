@@ -163,7 +163,7 @@ def rename_episode_file(original_file_path, new_filename):
 def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
     """
     Retrieves and saves subtitles for a given TV show and seasons.
-    
+
     Uses Addic7ed as primary source with OpenSubtitles as fallback.
 
     Args:
@@ -171,54 +171,48 @@ def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
         seasons (Set[int]): A set of season numbers for which subtitles should be retrieved.
         config (Config object, optional): Preloaded configuration.
         max_retries (int, optional): Number of times to retry on failures. Defaults to 3.
-    
+
     Returns:
         dict: Mapping of episode codes to downloaded subtitle file paths.
     """
     from app.matcher.addic7ed_client import get_subtitles_addic7ed
     from app.matcher.opensubtitles_scraper import get_subtitles_opensubtitles
     from app.matcher.tmdb_client import fetch_show_details
-    
+
     if config is None:
         config = get_config_manager().load()
-    
+
     show_dir = config.show_dir
     if not show_dir:
         logger.error("Show directory not configured")
         return {}
-    
+
     # Get show name from TMDB
     show_details = fetch_show_details(show_id)
     if show_details:
         series_name = show_details.get("name", normalize_path(show_dir).name)
     else:
         series_name = normalize_path(show_dir).name
-    
+
     series_name = sanitize_filename(series_name)
     cache_dir = config.cache_dir
-    
+
     # Try Addic7ed first
     logger.info(f"Downloading subtitles for '{series_name}' from Addic7ed")
     downloaded = get_subtitles_addic7ed(
-        show_name=series_name,
-        seasons=seasons,
-        cache_dir=cache_dir,
-        max_retries=max_retries
+        show_name=series_name, seasons=seasons, cache_dir=cache_dir, max_retries=max_retries
     )
-    
+
     if downloaded:
         logger.info(f"Downloaded {len(downloaded)} subtitles from Addic7ed for {series_name}")
         return downloaded
-    
+
     # Fallback to OpenSubtitles if Addic7ed returns nothing
     logger.info(f"Addic7ed returned no subtitles, trying OpenSubtitles for '{series_name}'")
     downloaded = get_subtitles_opensubtitles(
-        show_name=series_name,
-        seasons=seasons,
-        cache_dir=cache_dir,
-        max_retries=max_retries
+        show_name=series_name, seasons=seasons, cache_dir=cache_dir, max_retries=max_retries
     )
-    
+
     logger.info(f"Downloaded {len(downloaded)} subtitles from OpenSubtitles for {series_name}")
     return downloaded
 
@@ -360,17 +354,13 @@ def compare_and_rename_files(srt_files, reference_files, dry_run=False):
         reference_files (dict): A dictionary containing the reference files as keys and their contents as values.
         dry_run (bool, optional): If True, the function will only log the renaming actions without actually renaming the files. Defaults to False.
     """
-    logger.info(
-        f"Comparing {len(srt_files)} srt files with {len(reference_files)} reference files"
-    )
+    logger.info(f"Comparing {len(srt_files)} srt files with {len(reference_files)} reference files")
     for srt_text in srt_files.keys():
         parent_dir = Path(srt_text).parent.parent
         for reference in reference_files.keys():
             _season, _episode = extract_season_episode(reference)
             mkv_file = str(parent_dir / Path(srt_text).name.replace(".srt", ".mkv"))
-            matching_lines = compare_text(
-                reference_files[reference], srt_files[srt_text]
-            )
+            matching_lines = compare_text(reference_files[reference], srt_files[srt_text])
             if matching_lines >= int(len(reference_files[reference]) * 0.1):
                 logger.info(f"Matching lines: {matching_lines}")
                 logger.info(f"Found matching file: {mkv_file} ->{reference}")
@@ -423,4 +413,3 @@ def check_gpu_support():
                 border_style="red",
             )
         )
-

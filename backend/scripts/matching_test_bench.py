@@ -18,7 +18,6 @@ Usage:
 
 import argparse
 import json
-import shutil
 import sys
 import tempfile
 import threading
@@ -41,7 +40,6 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 from rich.table import Table
-import psutil
 
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -327,7 +325,7 @@ class TestBench:
 
         # Load ground truth if available
         if ground_truth_file and ground_truth_file.exists():
-            with open(ground_truth_file, "r", encoding="utf-8") as f:
+            with open(ground_truth_file, encoding="utf-8") as f:
                 self.ground_truth = json.load(f)
                 console.print(f"[green]Loaded ground truth from {ground_truth_file}")
         else:
@@ -388,7 +386,11 @@ class TestBench:
                 console.print(f"[green]Cache is warm: {cache_data_dir}")
 
     def run_single_test(
-        self, file_info: dict[str, Any], config: TestConfiguration, progress: Progress, task_id: TaskID
+        self,
+        file_info: dict[str, Any],
+        config: TestConfiguration,
+        progress: Progress,
+        task_id: TaskID,
     ) -> MatchingMetrics:
         """Run a single test: one file with one configuration."""
 
@@ -437,10 +439,14 @@ class TestBench:
                 )
 
                 # Instrument model loading time (first call only)
-                model_config = {"type": "whisper", "name": config.model_name, "device": config.device}
+                model_config = {
+                    "type": "whisper",
+                    "name": config.model_name,
+                    "device": config.device,
+                }
 
                 model_load_start = time.perf_counter()
-                model = get_cached_model(model_config)
+                get_cached_model(model_config)
                 model_load_duration = (time.perf_counter() - model_load_start) * 1000
                 metrics.model_load_ms = model_load_duration
 
@@ -460,7 +466,9 @@ class TestBench:
                 if result:
                     season = result.get("season")
                     episode = result.get("episode")
-                    metrics.predicted_episode = f"S{season:02d}E{episode:02d}" if season and episode else None
+                    metrics.predicted_episode = (
+                        f"S{season:02d}E{episode:02d}" if season and episode else None
+                    )
                     metrics.confidence = result.get("confidence")
                     metrics.match_score = result.get("score")
                     metrics.success = True
@@ -502,7 +510,9 @@ class TestBench:
         """Run all test combinations."""
 
         total_tests = len(files) * len(configurations)
-        console.print(f"\n[bold]Running {total_tests} tests[/] ({len(files)} files × {len(configurations)} configs)\n")
+        console.print(
+            f"\n[bold]Running {total_tests} tests[/] ({len(files)} files × {len(configurations)} configs)\n"
+        )
 
         with Progress(
             SpinnerColumn(),
@@ -697,7 +707,9 @@ class TestBench:
             by_config[m.config_id].append(m)
 
         # Create summary table
-        table = Table(title="Test Bench Results Summary", show_header=True, header_style="bold magenta")
+        table = Table(
+            title="Test Bench Results Summary", show_header=True, header_style="bold magenta"
+        )
         table.add_column("Configuration", style="cyan")
         table.add_column("Tests", justify="right")
         table.add_column("Avg Time (s)", justify="right")
@@ -710,14 +722,20 @@ class TestBench:
             errors = sum(1 for m in metrics_list if not m.success)
 
             # Calculate accuracy if available
-            with_gt = [m for m in metrics_list if m.ground_truth_episode and m.ground_truth_episode != "UNKNOWN"]
+            with_gt = [
+                m
+                for m in metrics_list
+                if m.ground_truth_episode and m.ground_truth_episode != "UNKNOWN"
+            ]
             if with_gt:
                 correct = sum(1 for m in with_gt if m.correct)
-                accuracy_str = f"{correct}/{len(with_gt)} ({correct/len(with_gt)*100:.1f}%)"
+                accuracy_str = f"{correct}/{len(with_gt)} ({correct / len(with_gt) * 100:.1f}%)"
             else:
                 accuracy_str = "N/A"
 
-            table.add_row(config_id, str(len(metrics_list)), f"{avg_time_s:.2f}", str(errors), accuracy_str)
+            table.add_row(
+                config_id, str(len(metrics_list)), f"{avg_time_s:.2f}", str(errors), accuracy_str
+            )
 
         console.print("\n")
         console.print(table)
@@ -878,7 +896,9 @@ def main():
     # Dry run mode
     if args.dry_run:
         console.print("\n[yellow]DRY RUN - No tests will be executed")
-        console.print(f"\nWould test {len(files)} files × {len(configurations)} configs = {len(files) * len(configurations)} total tests")
+        console.print(
+            f"\nWould test {len(files)} files × {len(configurations)} configs = {len(files) * len(configurations)} total tests"
+        )
         return
 
     # Run tests
@@ -888,7 +908,7 @@ def main():
     bench.run_all_tests(files, configurations)
     elapsed = time.time() - start_time
 
-    console.print(f"\n[bold green]Tests completed in {elapsed/60:.1f} minutes[/]\n")
+    console.print(f"\n[bold green]Tests completed in {elapsed / 60:.1f} minutes[/]\n")
 
     # Generate reports
     args.output_dir.mkdir(parents=True, exist_ok=True)

@@ -6,9 +6,9 @@ supporting OpenAI Whisper models via faster-whisper for efficient inference.
 """
 
 import abc
+import os
 import re
 import tempfile
-import os
 from pathlib import Path
 
 import ctranslate2
@@ -118,9 +118,7 @@ class FasterWhisperModel(ASRModel):
         "large-v3": {"params": "1550M", "vram": "~10GB", "speed": "slowest"},
     }
 
-    def __init__(
-        self, model_name: str = "small", device: str | None = None
-    ):
+    def __init__(self, model_name: str = "small", device: str | None = None):
         """
         Initialize Faster Whisper model.
 
@@ -130,7 +128,7 @@ class FasterWhisperModel(ASRModel):
         """
         if model_name.startswith("openai/whisper-"):
             model_name = model_name.replace("openai/whisper-", "")
-        
+
         # Ensure NVIDIA libraries are in PATH for Windows CUDA support
         if device == "cuda" or (device is None and ctranslate2.get_cuda_device_count() > 0):
             _ensure_nvidia_libraries()
@@ -155,16 +153,14 @@ class FasterWhisperModel(ASRModel):
 
         if cache_key in _model_cache:
             self._model = _model_cache[cache_key]
-            logger.debug(
-                f"Using cached Faster Whisper model: {self.model_name} on {self.device}"
-            )
+            logger.debug(f"Using cached Faster Whisper model: {self.model_name} on {self.device}")
             return
 
         try:
             from faster_whisper import WhisperModel
 
             compute_type = self._get_compute_type()
-            
+
             logger.info(
                 f"Loading Faster Whisper model: {self.model_name} on {self.device} "
                 f"(compute_type={compute_type})"
@@ -177,7 +173,7 @@ class FasterWhisperModel(ASRModel):
                     compute_type=compute_type,
                     download_root=None,  # Use default cache location
                 )
-                
+
                 # Eagerly verify CUDA execution to trigger potential DLL errors immediately
                 if self.device == "cuda":
                     try:
@@ -187,10 +183,11 @@ class FasterWhisperModel(ASRModel):
                         logger.debug("Verifying CUDA availability by running dummy encoding...")
                         # Simply accessing the model properties or running a tiny transcribe might be safer
                         # Let's try to transcribe a 1-second silence if possible, or just rely on ctranslate2 check
-                        # Actually, just checking if we can encode a dummy tensor is best, but easier is 
+                        # Actually, just checking if we can encode a dummy tensor is best, but easier is
                         # to let the first transcribe fail? No better to catch it here.
                         # Using a minimal transcribe on a dummy array
                         import numpy as np
+
                         dummy_audio = np.zeros(16000, dtype=np.float32)
                         next(self._model.transcribe(dummy_audio, language="en")[0], None)
                     except Exception as e:
@@ -200,7 +197,9 @@ class FasterWhisperModel(ASRModel):
 
             except RuntimeError as e:
                 # Fallback to CPU if CUDA libraries are missing
-                if self.device == "cuda" and ("Library" in str(e) or "verification failed" in str(e)):
+                if self.device == "cuda" and (
+                    "Library" in str(e) or "verification failed" in str(e)
+                ):
                     logger.warning(
                         f"Failed to load/run on CUDA due to missing libraries: {e}. "
                         "Falling back to CPU."
@@ -217,9 +216,7 @@ class FasterWhisperModel(ASRModel):
                     raise
 
             _model_cache[cache_key] = self._model
-            logger.info(
-                f"Loaded Faster Whisper model: {self.model_name} on {self.device}"
-            )
+            logger.info(f"Loaded Faster Whisper model: {self.model_name} on {self.device}")
 
         except ImportError as e:
             raise ImportError(
@@ -248,9 +245,7 @@ class FasterWhisperModel(ASRModel):
 
             # Resample if necessary
             if original_sr != target_sr:
-                audio = librosa.resample(
-                    audio, orig_sr=original_sr, target_sr=target_sr
-                )
+                audio = librosa.resample(audio, orig_sr=original_sr, target_sr=target_sr)
                 logger.debug(f"Resampled audio from {original_sr}Hz to {target_sr}Hz")
 
             # Normalize audio to [-1, 1] range
@@ -326,13 +321,15 @@ class FasterWhisperModel(ASRModel):
             # Collect all segment texts
             segment_list = []
             full_text_parts = []
-            
+
             for segment in segments:
-                segment_list.append({
-                    "start": segment.start,
-                    "end": segment.end,
-                    "text": segment.text,
-                })
+                segment_list.append(
+                    {
+                        "start": segment.start,
+                        "end": segment.end,
+                        "text": segment.text,
+                    }
+                )
                 full_text_parts.append(segment.text)
 
             raw_text = " ".join(full_text_parts).strip()
@@ -345,7 +342,7 @@ class FasterWhisperModel(ASRModel):
                 "text": cleaned_text,
                 "raw_text": raw_text,
                 "segments": segment_list,
-                "language": info.language if hasattr(info, 'language') else "en",
+                "language": info.language if hasattr(info, "language") else "en",
             }
 
         except Exception as e:
@@ -353,6 +350,7 @@ class FasterWhisperModel(ASRModel):
                 f"Faster Whisper transcription failed for {audio_path}: {type(e).__name__}: {e}"
             )
             import traceback
+
             traceback.print_exc()
             # Return empty result instead of raising to allow fallback
             return {"text": "", "raw_text": "", "segments": [], "language": "en"}
@@ -387,17 +385,17 @@ def create_asr_model(model_config: dict) -> ASRModel:
     if model_type in ("whisper", "faster-whisper", "openai-whisper"):
         if not model_name:
             model_name = "small"
-        
+
         logger.info(f"Creating Faster Whisper model: {model_name}")
         return FasterWhisperModel(model_name, device)
-    
+
     # Legacy parakeet support - redirect to whisper
     elif model_type == "parakeet":
         logger.warning(
             "Parakeet models are no longer supported. Using Whisper 'small' model instead."
         )
         return FasterWhisperModel("small", device)
-    
+
     else:
         raise ValueError(
             f"Unsupported model type: {model_type}. Supported types: 'whisper', 'faster-whisper'"
@@ -473,26 +471,25 @@ def _ensure_nvidia_libraries():
     try:
         import nvidia.cublas
         import nvidia.cudnn
-        
+
         nvidia_modules = [nvidia.cublas, nvidia.cudnn]
-        
+
         for module in nvidia_modules:
             # Check if the module has a valid __file__ attribute that is not None
             if hasattr(module, "__file__") and module.__file__:
                 # The DLLs are typically in the 'bin' directory relative to the module file
                 bin_dir = Path(module.__file__).parent / "bin"
-                
+
                 # Ensure existing PATH is not None, though unlikely on Windows
                 existing_path = os.environ.get("PATH", "")
-                
+
                 if bin_dir.exists() and str(bin_dir) not in existing_path:
                     # Add to the BEGINNING of PATH to ensure these versions are found first
                     os.environ["PATH"] = str(bin_dir) + os.pathsep + existing_path
                     logger.debug(f"Added NVIDIA library path to environment: {bin_dir}")
-                    
+
     except ImportError:
         # Packages might not be installed, which is fine if not using CUDA
         pass
     except Exception as e:
         logger.warning(f"Failed to add NVIDIA library paths: {e}")
-

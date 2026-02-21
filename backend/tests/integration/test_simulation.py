@@ -1,6 +1,5 @@
 """Integration tests for simulation endpoints."""
 
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -164,10 +163,10 @@ async def test_on_title_ripped_transitions_to_ripping(client):
     extractor callback → _on_title_ripped → DB update + WebSocket broadcast.
     """
     from pathlib import Path
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from app.database import async_session as db_session
-    from app.models.disc_job import ContentType, DiscTitle, TitleState
+    from app.models.disc_job import DiscTitle, TitleState
     from app.services.job_manager import job_manager
 
     # 1. Create a job with titles via simulation (no ripping)
@@ -194,18 +193,19 @@ async def test_on_title_ripped_transitions_to_ripping(client):
     from sqlmodel import select
 
     async with db_session() as session:
-        result = await session.execute(
-            select(DiscTitle).where(DiscTitle.job_id == job_id)
-        )
+        result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
         disc_titles = result.scalars().all()
         sorted_titles = sorted(disc_titles, key=lambda t: t.title_index)
 
     assert len(sorted_titles) == 3
 
     # 3. Mock WebSocket broadcast and episode matching
-    with patch("app.api.websocket.manager.broadcast_title_update", new_callable=AsyncMock) as mock_broadcast, \
-         patch.object(job_manager, "_match_single_file", new_callable=AsyncMock) as mock_match:
-
+    with (
+        patch(
+            "app.api.websocket.manager.broadcast_title_update", new_callable=AsyncMock
+        ) as mock_broadcast,
+        patch.object(job_manager, "_match_single_file", new_callable=AsyncMock) as mock_match,
+    ):
         # Simulate MakeMKV completing title 1 (filename pattern: B1_t01.mkv)
         fake_path = Path("/staging/B1_t01.mkv")
         await job_manager._on_title_ripped(job_id, 1, fake_path, sorted_titles)
@@ -215,10 +215,10 @@ async def test_on_title_ripped_transitions_to_ripping(client):
         async with db_session() as session:
             title = await session.get(DiscTitle, sorted_titles[1].id)
             assert title is not None
-            assert title.state == TitleState.RIPPING, \
-                f"Expected RIPPING, got {title.state}"
-            assert title.output_filename == str(fake_path), \
+            assert title.state == TitleState.RIPPING, f"Expected RIPPING, got {title.state}"
+            assert title.output_filename == str(fake_path), (
                 f"Expected {fake_path}, got {title.output_filename}"
+            )
 
         # 5. Verify WebSocket broadcast was called
         mock_broadcast.assert_called_once()
@@ -238,7 +238,7 @@ async def test_on_title_ripped_maps_by_filename_index(client):
     Verifies patterns like B1_t03.mkv → title_index=3.
     """
     from pathlib import Path
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from app.database import async_session as db_session
     from app.models.disc_job import DiscTitle, TitleState
@@ -265,19 +265,16 @@ async def test_on_title_ripped_maps_by_filename_index(client):
     from sqlmodel import select
 
     async with db_session() as session:
-        result = await session.execute(
-            select(DiscTitle).where(DiscTitle.job_id == job_id)
-        )
+        result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
         sorted_titles = sorted(result.scalars().all(), key=lambda t: t.title_index)
 
-    with patch("app.api.websocket.manager.broadcast_title_update", new_callable=AsyncMock), \
-         patch.object(job_manager, "_match_single_file", new_callable=AsyncMock):
-
+    with (
+        patch("app.api.websocket.manager.broadcast_title_update", new_callable=AsyncMock),
+        patch.object(job_manager, "_match_single_file", new_callable=AsyncMock),
+    ):
         # Rip title index 3 (filename: title_t03.mkv)
         fake_path = Path("/staging/title_t03.mkv")
-        await job_manager._on_title_ripped(
-            job_id, 99, fake_path, sorted_titles
-        )
+        await job_manager._on_title_ripped(job_id, 99, fake_path, sorted_titles)
 
         # Verify title_index=3 was updated (not rip_index 99)
         async with db_session() as session:

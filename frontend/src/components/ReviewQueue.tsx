@@ -20,6 +20,7 @@ function ReviewQueue() {
 
     useEffect(() => {
         fetchJobDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [jobId]);
 
     const fetchJobDetails = async () => {
@@ -185,6 +186,12 @@ function ReviewQueue() {
             {job.error_message && (
                 <div className="review-notice">
                     ⚠️ {job.error_message}
+                </div>
+            )}
+
+            {job.subtitle_status === 'failed' && !job.error_message?.includes('Subtitle') && (
+                <div className="review-notice warning">
+                    ⚠️ Subtitle download failed. You may need to fetch subtitles manually.
                 </div>
             )}
 

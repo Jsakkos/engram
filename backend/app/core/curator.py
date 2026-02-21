@@ -48,9 +48,27 @@ class EpisodeCurator:
         try:
             # Import from local matcher package
             from app.matcher.episode_identification import EpisodeMatcher
+            from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
 
             # Get cache directory from config (sync version for non-async context)
+            # Get cache directory from config (sync version for non-async context)
             from app.services.config_service import get_config_sync
+
+            # Resolve canonical show name
+            canonical_name = show_name
+            try:
+                # We need to run async TMDB calls in a sync context here or use sync versions?
+                # tmdb_client functions are synchronous (requests based)
+                tmdb_id = fetch_show_id(show_name)
+                if tmdb_id:
+                    details = fetch_show_details(tmdb_id)
+                    if details and "name" in details:
+                        canonical_name = details["name"]
+                        logger.info(
+                            f"Resolved '{show_name}' to canonical '{canonical_name}' for matching"
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to resolve canonical name for '{show_name}': {e}")
 
             config = get_config_sync()
             if config and config.subtitles_cache_path:
@@ -63,13 +81,12 @@ class EpisodeCurator:
 
             self._matcher = EpisodeMatcher(
                 cache_dir=self._cache_dir,
-                show_name=show_name,
+                show_name=canonical_name,
                 min_confidence=self.LOW_CONFIDENCE_THRESHOLD,
             )
             self._initialized = True
             logger.info(
-                f"Episode matcher initialized for show: {show_name} "
-                f"(cache_dir={self._cache_dir})"
+                f"Episode matcher initialized for show: {show_name} (cache_dir={self._cache_dir})"
             )
             return True
         except ImportError as e:
@@ -149,7 +166,7 @@ class EpisodeCurator:
                         needs_review=True,
                     )
                 )
-            
+
             if progress_callback:
                 progress_callback(i + 1, total_files)
 
@@ -163,12 +180,13 @@ class EpisodeCurator:
         progress_callback: Callable[..., None] | None = None,
     ) -> MatchResult:
         """Match a single file to an episode using audio fingerprinting."""
-        logger.info(f"match_single_file called: {file_path.name}, series={series_name}, season={season}")
-        
+        logger.info(
+            f"match_single_file called: {file_path.name}, series={series_name}, season={season}"
+        )
+
         if not file_path.exists():
             logger.error(f"File does not exist: {file_path}")
             # fall through to fallback logic? or return early?
-
 
         # Ensure matcher is initialized for this show
         if series_name:
@@ -199,19 +217,21 @@ class EpisodeCurator:
                 progress_callback,
             )
             logger.debug(f"[Curator] identify_episode returned for {file_path.name}: {match}")
-            
-            if match and match.get('episode') is not None:
+
+            if match and match.get("episode") is not None:
                 episode_code = f"S{match['season']:02d}E{match['episode']:02d}"
-                confidence = match.get('confidence', 0.0)
+                confidence = match.get("confidence", 0.0)
                 needs_review = confidence < self.HIGH_CONFIDENCE_THRESHOLD
-                
-                logger.info(f"Matched {file_path.name} -> {episode_code} (confidence: {confidence:.2f})")
-                
+
+                logger.info(
+                    f"Matched {file_path.name} -> {episode_code} (confidence: {confidence:.2f})"
+                )
+
                 # Include runner_ups in match_details for cascading conflict resolution
-                details = match.get('match_details') or {}
-                if match.get('runner_ups'):
+                details = match.get("match_details") or {}
+                if match.get("runner_ups"):
                     details = dict(details)  # Copy to avoid mutating original
-                    details['runner_ups'] = match['runner_ups']
+                    details["runner_ups"] = match["runner_ups"]
 
                 return MatchResult(
                     file_path=file_path,
@@ -225,17 +245,17 @@ class EpisodeCurator:
                 # No match found - fall back to filename
                 episode_code = self._parse_episode_from_filename(file_path.name)
                 # Preserve stats if available
-                details = match.get('match_details') if match else None
-                
+                details = match.get("match_details") if match else None
+
                 return MatchResult(
                     file_path=file_path,
                     episode_code=episode_code,
                     episode_title=None,
                     confidence=0.3 if episode_code else 0.0,
                     needs_review=True,
-                    match_details=details
+                    match_details=details,
                 )
-                
+
         except Exception as e:
             logger.error(f"Matcher error for {file_path}: {e}")
             # Fall back to filename parsing

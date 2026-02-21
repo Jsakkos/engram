@@ -67,6 +67,9 @@ class TestAddic7edClient:
         client = Addic7edClient()
 
         # Mock the _get method directly
+        # The parser expects nested tabel95 tables: an outer tabel95 containing
+        # an inner tabel95 with td.language, td.NewsTitle, td.newsDate, and
+        # a.buttonDownload elements.
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.url = "http://example.com/referer"
@@ -74,22 +77,36 @@ class TestAddic7edClient:
         <html>
         <body>
             <table class="tabel95">
-                <tr class="epeven">
-                    <td class="language">English</td>
-                    <td class="NewsTitle">1x1 - Pilot</td>
-                    <td class="newsDate">WEB.x264-TBS</td>
-                    <td><a class="buttonDownload" href="/updated/1/123/0">Download</a></td>
-                    <td>500 Downloads</td>
-                    <td>User1</td>
-                </tr>
-                <tr class="epeven">
-                    <td class="language">English</td>
-                    <td class="NewsTitle">1x1 - Pilot</td>
-                    <td class="newsDate">WEB.x264-KILLERS</td>
-                    <td><a class="buttonDownload" href="/updated/1/124/0">Download</a></td>
-                    <td>2000 Downloads</td>
-                    <td>User2</td>
-                </tr>
+                <table class="tabel95">
+                    <tr>
+                        <td class="language">English</td>
+                    </tr>
+                    <tr>
+                        <td class="NewsTitle">Version TBS, 0.35 MBs</td>
+                    </tr>
+                    <tr>
+                        <td class="newsDate">500 Downloads</td>
+                    </tr>
+                    <tr>
+                        <td><a class="buttonDownload" href="/updated/1/123/0">Download</a></td>
+                    </tr>
+                </table>
+            </table>
+            <table class="tabel95">
+                <table class="tabel95">
+                    <tr>
+                        <td class="language">English</td>
+                    </tr>
+                    <tr>
+                        <td class="NewsTitle">Version KILLERS, 0.40 MBs</td>
+                    </tr>
+                    <tr>
+                        <td class="newsDate">2000 Downloads</td>
+                    </tr>
+                    <tr>
+                        <td><a class="buttonDownload" href="/updated/1/124/0">Download</a></td>
+                    </tr>
+                </table>
             </table>
         </body>
         </html>

@@ -72,9 +72,7 @@ class Config(BaseModel):
 
     tmdb_api_key: str | None = None
     show_dir: Path | None = None
-    cache_dir: Path = Field(
-        default_factory=lambda: Path.home() / ".engram" / "cache"
-    )
+    cache_dir: Path = Field(default_factory=lambda: Path.home() / ".engram" / "cache")
     min_confidence: float = 0.7
 
     # OpenSubtitles settings
@@ -108,19 +106,19 @@ class Config(BaseModel):
 
 class ConfigManager:
     """Manages configuration loading and saving."""
-    
+
     def __init__(self, config_path: Path | None = None):
         if config_path:
             self.config_path = config_path
         else:
             self.config_path = Path.home() / ".mkv-episode-matcher" / "config.json"
-        
+
         self.config = self._load_config()
 
     def _load_config(self) -> Config:
         """Load config from file or environment variables."""
         config_data = {}
-        
+
         # Load from file if exists
         if self.config_path.exists():
             try:
@@ -132,7 +130,7 @@ class ConfigManager:
         # Override with environment variables
         if os.getenv("TMDB_API_KEY"):
             config_data["tmdb_api_key"] = os.getenv("TMDB_API_KEY")
-            
+
         # Create Config object
         return Config(**config_data)
 
@@ -141,4 +139,3 @@ class ConfigManager:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.config_path, "w") as f:
             f.write(self.config.model_dump_json(indent=2))
-

@@ -34,9 +34,10 @@ class TestSubtitleWorkflowIntegration:
         mock_config.tmdb_api_key = "test_key_12345"
         mock_config_sync.return_value = mock_config
 
-        # Mock TMDB responses (search + season details)
+        # Mock TMDB responses (search + show details + season details)
         mock_requests.side_effect = [
             Mock(status_code=200, json=lambda: TMDB_SEARCH_ARRESTED_DEVELOPMENT),
+            Mock(status_code=200, json=lambda: {"name": "Arrested Development"}),
             Mock(status_code=200, json=lambda: TMDB_SEASON_DETAILS_S01_3EP),
         ]
 
@@ -108,12 +109,13 @@ class TestSubtitleWorkflowIntegration:
         mock_config.tmdb_api_key = "test_key_12345"
         mock_config_sync.return_value = mock_config
 
-        # First TMDB search fails, second succeeds (variation)
+        # First TMDB search fails, second succeeds (variation), then show details + season
         mock_requests.side_effect = [
             Mock(status_code=200, json=lambda: {"results": []}),  # First attempt fails
             Mock(
                 status_code=200, json=lambda: TMDB_SEARCH_ARRESTED_DEVELOPMENT
             ),  # Variation succeeds
+            Mock(status_code=200, json=lambda: {"name": "Arrested Development"}),  # Show details
             Mock(status_code=200, json=lambda: TMDB_SEASON_DETAILS_S01_3EP),
         ]
 
@@ -125,7 +127,9 @@ class TestSubtitleWorkflowIntegration:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text("Subtitle")
+            save_path.write_text(
+                f"1\n00:00:00,000 --> 00:00:02,000\nSubtitle for {save_path.name}\n"
+            )
             return save_path
 
         client.download_subtitle.side_effect = download_side_effect
@@ -155,18 +159,21 @@ class TestCacheBehavior:
         tmp_path,
     ):
         """Test that cached files aren't re-downloaded."""
-        # Pre-populate cache
+        # Pre-populate cache (valid SRT content with --> markers, >= 50 bytes)
         show_dir = tmp_path / "data" / "Breaking Bad"
         show_dir.mkdir(parents=True)
         for ep in range(1, 4):
-            (show_dir / f"Breaking Bad - S01E{ep:02d}.srt").write_text(f"Cached {ep}")
+            (show_dir / f"Breaking Bad - S01E{ep:02d}.srt").write_text(
+                f"1\n00:00:00,000 --> 00:00:02,000\nCached episode {ep}\n\n"
+                f"2\n00:00:02,000 --> 00:00:04,000\nMore content here\n"
+            )
 
         mock_config = Mock()
         mock_config.subtitles_cache_path = str(tmp_path)
         mock_config.tmdb_api_key = "test_key_12345"
         mock_config_sync.return_value = mock_config
 
-        # Mock TMDB
+        # Mock TMDB (search + show details + season details)
         mock_requests.side_effect = [
             Mock(
                 status_code=200,
@@ -174,9 +181,11 @@ class TestCacheBehavior:
             ),
             Mock(
                 status_code=200,
-                json=lambda: {
-                    "episodes": [{"episode_number": i} for i in range(1, 4)]
-                },
+                json=lambda: {"name": "Breaking Bad"},
+            ),
+            Mock(
+                status_code=200,
+                json=lambda: {"episodes": [{"episode_number": i} for i in range(1, 4)]},
             ),
         ]
 
@@ -210,17 +219,20 @@ class TestCacheBehavior:
         tmp_path,
     ):
         """Test that only missing episodes are downloaded."""
-        # Pre-populate cache with episode 1 only
+        # Pre-populate cache with episode 1 only (valid SRT content with --> markers, >= 50 bytes)
         show_dir = tmp_path / "data" / "Test Show"
         show_dir.mkdir(parents=True)
-        (show_dir / "Test Show - S01E01.srt").write_text("Cached episode 1")
+        (show_dir / "Test Show - S01E01.srt").write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\nCached episode 1\n\n"
+            "2\n00:00:02,000 --> 00:00:04,000\nMore content here\n"
+        )
 
         mock_config = Mock()
         mock_config.subtitles_cache_path = str(tmp_path)
         mock_config.tmdb_api_key = "test_key_12345"
         mock_config_sync.return_value = mock_config
 
-        # Mock TMDB
+        # Mock TMDB (search + show details + season details)
         mock_requests.side_effect = [
             Mock(
                 status_code=200,
@@ -228,9 +240,11 @@ class TestCacheBehavior:
             ),
             Mock(
                 status_code=200,
-                json=lambda: {
-                    "episodes": [{"episode_number": i} for i in range(1, 4)]
-                },
+                json=lambda: {"name": "Test Show"},
+            ),
+            Mock(
+                status_code=200,
+                json=lambda: {"episodes": [{"episode_number": i} for i in range(1, 4)]},
             ),
         ]
 
@@ -243,7 +257,10 @@ class TestCacheBehavior:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text("Downloaded")
+            save_path.write_text(
+                "1\n00:00:00,000 --> 00:00:02,000\nDownloaded subtitle content\n\n"
+                "2\n00:00:02,000 --> 00:00:04,000\nMore downloaded content\n"
+            )
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
@@ -263,9 +280,9 @@ class TestCacheBehavior:
         assert addic7ed_client.get_best_subtitle.call_count == 2
 
         # Verify files exist
-        assert (show_dir / "Test Show - S01E01.srt").read_text() == "Cached episode 1"
-        assert (show_dir / "Test Show - S01E02.srt").read_text() == "Downloaded"
-        assert (show_dir / "Test Show - S01E03.srt").read_text() == "Downloaded"
+        assert "Cached episode 1" in (show_dir / "Test Show - S01E01.srt").read_text()
+        assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E02.srt").read_text()
+        assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E03.srt").read_text()
 
     @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
@@ -280,17 +297,20 @@ class TestCacheBehavior:
         tmp_path,
     ):
         """Test workflow with mixed cache hits, downloads, and not found."""
-        # Pre-populate cache with episode 1
+        # Pre-populate cache with episode 1 (valid SRT content with --> markers, >= 50 bytes)
         show_dir = tmp_path / "data" / "Test Show"
         show_dir.mkdir(parents=True)
-        (show_dir / "Test Show - S01E01.srt").write_text("Cached")
+        (show_dir / "Test Show - S01E01.srt").write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\nCached subtitle content\n\n"
+            "2\n00:00:02,000 --> 00:00:04,000\nMore cached content\n"
+        )
 
         mock_config = Mock()
         mock_config.subtitles_cache_path = str(tmp_path)
         mock_config.tmdb_api_key = "test_key_12345"
         mock_config_sync.return_value = mock_config
 
-        # Mock TMDB
+        # Mock TMDB (search + show details + season details)
         mock_requests.side_effect = [
             Mock(
                 status_code=200,
@@ -298,9 +318,11 @@ class TestCacheBehavior:
             ),
             Mock(
                 status_code=200,
-                json=lambda: {
-                    "episodes": [{"episode_number": i} for i in range(1, 4)]
-                },
+                json=lambda: {"name": "Test Show"},
+            ),
+            Mock(
+                status_code=200,
+                json=lambda: {"episodes": [{"episode_number": i} for i in range(1, 4)]},
             ),
         ]
 
@@ -320,7 +342,10 @@ class TestCacheBehavior:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text("Downloaded")
+            save_path.write_text(
+                "1\n00:00:00,000 --> 00:00:02,000\nDownloaded subtitle content\n\n"
+                "2\n00:00:02,000 --> 00:00:04,000\nMore downloaded content\n"
+            )
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect

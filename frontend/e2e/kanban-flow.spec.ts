@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 test.describe('Kanban Flow - Engram UI', () => {
     test('TV disc flows through states with track-level detail', async ({ page }) => {
         // Insert simulated TV disc at moderate speed to observe intermediate states
-        const { job_id } = await simulateInsertDisc({
+        await simulateInsertDisc({
             ...TV_DISC_ARRESTED_DEVELOPMENT,
             rip_speed_multiplier: 5,
         });
@@ -37,9 +37,9 @@ test.describe('Kanban Flow - Engram UI', () => {
             page.locator(SELECTORS.trackStateRipping).first()
         ).toBeVisible({ timeout: 10000 });
 
-        // Wait for LISTENING state (transcribing phase)
+        // Wait for MATCHING state (episode matching phase)
         await expect(
-            page.getByText(/LISTENING/i).first()
+            page.locator(SELECTORS.trackStateMatching).first()
         ).toBeVisible({ timeout: 30000 });
 
         // Wait for match results (MATCHED state or episode codes)
@@ -57,7 +57,7 @@ test.describe('Kanban Flow - Engram UI', () => {
     });
 
     test('Movie disc flows through to completion', async ({ page }) => {
-        const { job_id } = await simulateInsertDisc(MOVIE_DISC);
+        await simulateInsertDisc(MOVIE_DISC);
 
         // Card should appear with MOVIE badge
         await expect(page.locator(SELECTORS.movieBadge).first()).toBeVisible({ timeout: 5000 });

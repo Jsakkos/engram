@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
@@ -53,9 +54,7 @@ class SubtitleReader:
         return read_file_with_fallback(file_path)
 
     @staticmethod
-    def extract_subtitle_chunk(
-        content: str, start_time: float, end_time: float
-    ) -> list[str]:
+    def extract_subtitle_chunk(content: str, start_time: float, end_time: float) -> list[str]:
         """Extract subtitle text for a specific time window."""
         text_lines = []
         for block in content.strip().split("\n\n"):
@@ -81,9 +80,6 @@ def clean_text(text: str) -> str:
     text = re.sub(r"\[.*?\]|\<.*?\>", "", text)
     text = re.sub(r"([A-Za-z])-\1+", r"\1", text)
     return " ".join(text.split())
-
-
-import subprocess
 
 
 @lru_cache(maxsize=2)
@@ -195,4 +191,3 @@ def extract_audio_chunk(
     except Exception as e:
         logger.error(f"Extraction failed for {video_file}: {e}")
         raise
-

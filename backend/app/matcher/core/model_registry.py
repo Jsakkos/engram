@@ -206,4 +206,3 @@ def get_models_for_hardware(has_gpu: bool = False, vram_gb: int = 0) -> list[str
     )
 
     return recommendations
-

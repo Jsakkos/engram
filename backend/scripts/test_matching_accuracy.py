@@ -18,7 +18,6 @@ Usage:
 
 import argparse
 import json
-import os
 import re
 import sys
 import tempfile
@@ -67,6 +66,7 @@ SHOW_CONFIG = [
 
 
 # ── Ground Truth Extraction ────────────────────────────────────────────────
+
 
 @dataclass
 class TestCase:
@@ -119,18 +119,21 @@ def discover_test_cases(show_filter: str = None) -> list[TestCase]:
             ep = extract_episode_from_filename(mkv.name)
             if ep > 0:
                 label = f"{show_name} S{season:02d}E{ep:02d}"
-                cases.append(TestCase(
-                    show_name=show_name,
-                    season=season,
-                    expected_episode=ep,
-                    video_path=mkv,
-                    label=label,
-                ))
+                cases.append(
+                    TestCase(
+                        show_name=show_name,
+                        season=season,
+                        expected_episode=ep,
+                        video_path=mkv,
+                        label=label,
+                    )
+                )
 
     return cases
 
 
 # ── Subtitle Availability Check ────────────────────────────────────────────
+
 
 def check_subtitles(show_name: str, season: int, episode_count: int) -> tuple[bool, int]:
     """Check if subtitles are cached for a show/season. Returns (all_present, count)."""
@@ -168,9 +171,11 @@ def ensure_subtitles(show_name: str, season: int, needed_episodes: list[int]) ->
 
     try:
         from app.matcher.testing_service import download_subtitles
+
         result = download_subtitles(show_name, season)
-        downloaded = sum(1 for ep in result.get("episodes", [])
-                        if ep.get("status") in ("cached", "downloaded"))
+        downloaded = sum(
+            1 for ep in result.get("episodes", []) if ep.get("status") in ("cached", "downloaded")
+        )
         print(f"    Downloaded/cached: {downloaded} episodes")
         return downloaded >= len(needed_episodes) - len(missing)
     except Exception as e:
@@ -179,6 +184,7 @@ def ensure_subtitles(show_name: str, season: int, needed_episodes: list[int]) ->
 
 
 # ── Matcher Runner ──────────────────────────────────────────────────────────
+
 
 def run_single_test(test_case: TestCase, matcher) -> TestResult:
     """Run a single episode through the matching pipeline."""
@@ -195,10 +201,16 @@ def run_single_test(test_case: TestCase, matcher) -> TestResult:
             result.elapsed_sec = time.time() - t0
 
             if match:
-                result.predicted_season = match.get("season", match.season if hasattr(match, "season") else 0)
-                result.predicted_episode = match.get("episode", match.episode if hasattr(match, "episode") else 0)
-                result.confidence = match.get("confidence", match.confidence if hasattr(match, "confidence") else 0)
-                result.correct = (result.predicted_episode == test_case.expected_episode)
+                result.predicted_season = match.get(
+                    "season", match.season if hasattr(match, "season") else 0
+                )
+                result.predicted_episode = match.get(
+                    "episode", match.episode if hasattr(match, "episode") else 0
+                )
+                result.confidence = match.get(
+                    "confidence", match.confidence if hasattr(match, "confidence") else 0
+                )
+                result.correct = result.predicted_episode == test_case.expected_episode
 
                 # Extract voting details if available
                 details = match.get("match_details", {})
@@ -208,13 +220,14 @@ def run_single_test(test_case: TestCase, matcher) -> TestResult:
                 result.error = "No match returned"
 
     except Exception as e:
-        result.elapsed_sec = time.time() - t0 if 't0' in dir() else 0
+        result.elapsed_sec = time.time() - t0 if "t0" in dir() else 0
         result.error = str(e)
 
     return result
 
 
 # ── Metrics ─────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class ShowMetrics:
@@ -255,10 +268,12 @@ def compute_metrics(results: list[TestResult]) -> dict[str, ShowMetrics]:
         if r.error:
             m.errors += 1
             overall.errors += 1
-            m.mismatches.append({
-                "episode": r.test_case.label,
-                "error": r.error,
-            })
+            m.mismatches.append(
+                {
+                    "episode": r.test_case.label,
+                    "error": r.error,
+                }
+            )
         elif r.correct:
             m.correct += 1
             overall.correct += 1
@@ -267,41 +282,48 @@ def compute_metrics(results: list[TestResult]) -> dict[str, ShowMetrics]:
         elif r.predicted_episode == 0:
             m.no_match += 1
             overall.no_match += 1
-            m.mismatches.append({
-                "episode": r.test_case.label,
-                "predicted": "none",
-                "confidence": 0,
-            })
+            m.mismatches.append(
+                {
+                    "episode": r.test_case.label,
+                    "predicted": "none",
+                    "confidence": 0,
+                }
+            )
         else:
             m.confidences_wrong.append(r.confidence)
             overall.confidences_wrong.append(r.confidence)
-            m.mismatches.append({
-                "episode": r.test_case.label,
-                "expected": f"E{r.test_case.expected_episode:02d}",
-                "predicted": f"E{r.predicted_episode:02d}",
-                "confidence": round(r.confidence, 3),
-            })
-            overall.mismatches.append({
-                "episode": r.test_case.label,
-                "expected": f"E{r.test_case.expected_episode:02d}",
-                "predicted": f"E{r.predicted_episode:02d}",
-                "confidence": round(r.confidence, 3),
-            })
+            m.mismatches.append(
+                {
+                    "episode": r.test_case.label,
+                    "expected": f"E{r.test_case.expected_episode:02d}",
+                    "predicted": f"E{r.predicted_episode:02d}",
+                    "confidence": round(r.confidence, 3),
+                }
+            )
+            overall.mismatches.append(
+                {
+                    "episode": r.test_case.label,
+                    "expected": f"E{r.test_case.expected_episode:02d}",
+                    "predicted": f"E{r.predicted_episode:02d}",
+                    "confidence": round(r.confidence, 3),
+                }
+            )
 
     return dict(by_show), overall
 
 
 # ── Display ─────────────────────────────────────────────────────────────────
 
+
 def fmt_pct(val: float) -> str:
-    return f"{val*100:.1f}%"
+    return f"{val * 100:.1f}%"
 
 
 def print_table(headers, rows, title=""):
     if title:
-        print(f"\n{'='*90}")
+        print(f"\n{'=' * 90}")
         print(f"  {title}")
-        print(f"{'='*90}")
+        print(f"{'=' * 90}")
 
     widths = [len(h) for h in headers]
     for row in rows:
@@ -333,7 +355,7 @@ def display_results(results: list[TestResult], by_show: dict, overall: ShowMetri
             ]
             for r in results
         ],
-        "EPISODE-BY-EPISODE RESULTS"
+        "EPISODE-BY-EPISODE RESULTS",
     )
 
     # Per-show accuracy
@@ -349,7 +371,7 @@ def display_results(results: list[TestResult], by_show: dict, overall: ShowMetri
             ]
             for m in sorted(by_show.values(), key=lambda x: x.show)
         ],
-        "ACCURACY BY SHOW"
+        "ACCURACY BY SHOW",
     )
 
     # Overall
@@ -361,24 +383,28 @@ def display_results(results: list[TestResult], by_show: dict, overall: ShowMetri
             ["Accuracy", fmt_pct(overall.accuracy)],
             ["No Match", str(overall.no_match)],
             ["Errors", str(overall.errors)],
-            ["Total Time", f"{overall.total_time:.0f}s ({overall.total_time/60:.1f}min)"],
+            ["Total Time", f"{overall.total_time:.0f}s ({overall.total_time / 60:.1f}min)"],
             ["Avg Time/Episode", f"{overall.avg_time:.1f}s"],
         ],
-        "OVERALL RESULTS"
+        "OVERALL RESULTS",
     )
 
     # Confidence distribution
     if overall.confidences_correct:
         correct_sorted = sorted(overall.confidences_correct)
         n = len(correct_sorted)
-        print(f"\n  Confidence (correct matches):")
-        print(f"    Min: {correct_sorted[0]:.3f}  Median: {correct_sorted[n//2]:.3f}  Max: {correct_sorted[-1]:.3f}")
+        print("\n  Confidence (correct matches):")
+        print(
+            f"    Min: {correct_sorted[0]:.3f}  Median: {correct_sorted[n // 2]:.3f}  Max: {correct_sorted[-1]:.3f}"
+        )
 
     if overall.confidences_wrong:
         wrong_sorted = sorted(overall.confidences_wrong)
         n = len(wrong_sorted)
-        print(f"  Confidence (wrong matches):")
-        print(f"    Min: {wrong_sorted[0]:.3f}  Median: {wrong_sorted[n//2]:.3f}  Max: {wrong_sorted[-1]:.3f}")
+        print("  Confidence (wrong matches):")
+        print(
+            f"    Min: {wrong_sorted[0]:.3f}  Median: {wrong_sorted[n // 2]:.3f}  Max: {wrong_sorted[-1]:.3f}"
+        )
 
     # Mismatches
     if overall.mismatches:
@@ -393,10 +419,10 @@ def display_results(results: list[TestResult], by_show: dict, overall: ShowMetri
                 ]
                 for m in overall.mismatches
             ],
-            "MISMATCHES (wrong predictions)"
+            "MISMATCHES (wrong predictions)",
         )
     else:
-        print(f"\n  No mismatches -- all predictions correct!")
+        print("\n  No mismatches -- all predictions correct!")
 
 
 def save_results(results: list[TestResult], overall: ShowMetrics):
@@ -436,16 +462,24 @@ def save_results(results: list[TestResult], overall: ShowMetrics):
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="End-to-End Matching Accuracy Test")
-    parser.add_argument("--subset", type=int, default=0,
-                        help="Test only N random episodes (0 = all)")
-    parser.add_argument("--show", type=str, default=None,
-                        help="Test only a specific show (partial name match)")
-    parser.add_argument("--device", type=str, default=None,
-                        help="Force device (cpu/cuda), default: auto-detect")
-    parser.add_argument("--model", type=str, default="small",
-                        help="Whisper model size (tiny/base/small/medium/large)")
+    parser.add_argument(
+        "--subset", type=int, default=0, help="Test only N random episodes (0 = all)"
+    )
+    parser.add_argument(
+        "--show", type=str, default=None, help="Test only a specific show (partial name match)"
+    )
+    parser.add_argument(
+        "--device", type=str, default=None, help="Force device (cpu/cuda), default: auto-detect"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="small",
+        help="Whisper model size (tiny/base/small/medium/large)",
+    )
     args = parser.parse_args()
 
     print("=" * 90)
@@ -474,6 +508,7 @@ def main():
     # 2. Subset if requested
     if args.subset > 0 and args.subset < len(test_cases):
         import random
+
         random.seed(42)
         test_cases = random.sample(test_cases, args.subset)
         print(f"\n  [SUBSET] Testing {args.subset} random episodes")
@@ -485,8 +520,11 @@ def main():
         shows_to_test.add((tc.show_name, tc.season))
 
     for show_name, season in sorted(shows_to_test):
-        needed_eps = [tc.expected_episode for tc in test_cases
-                      if tc.show_name == show_name and tc.season == season]
+        needed_eps = [
+            tc.expected_episode
+            for tc in test_cases
+            if tc.show_name == show_name and tc.season == season
+        ]
         all_present, count = check_subtitles(show_name, season, max(needed_eps))
         if all_present:
             print(f"  {show_name} S{season:02d}: {count} subtitle(s) cached [OK]")
@@ -502,6 +540,7 @@ def main():
     if not device:
         try:
             import ctranslate2
+
             device = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
         except Exception:
             device = "cpu"
@@ -540,27 +579,31 @@ def main():
         results.append(result)
 
         if result.correct:
-            print(f"[OK] E{result.predicted_episode:02d} ({result.confidence:.3f}) in {result.elapsed_sec:.1f}s")
+            print(
+                f"[OK] E{result.predicted_episode:02d} ({result.confidence:.3f}) in {result.elapsed_sec:.1f}s"
+            )
         elif result.error:
             print(f"[ERR] {result.error[:60]} in {result.elapsed_sec:.1f}s")
         else:
-            print(f"[X] predicted E{result.predicted_episode:02d} instead of E{tc.expected_episode:02d} "
-                  f"({result.confidence:.3f}) in {result.elapsed_sec:.1f}s")
+            print(
+                f"[X] predicted E{result.predicted_episode:02d} instead of E{tc.expected_episode:02d} "
+                f"({result.confidence:.3f}) in {result.elapsed_sec:.1f}s"
+            )
 
     total_time = time.time() - start_all
 
     # 6. Results
-    print(f"\n[5/5] Computing results...")
+    print("\n[5/5] Computing results...")
     by_show, overall = compute_metrics(results)
 
     display_results(results, by_show, overall)
 
     # Save to JSON
-    out_path = save_results(results, overall)
+    save_results(results, overall)
 
-    print(f"\n{'='*90}")
-    print(f"  Test complete! Total wall time: {total_time:.0f}s ({total_time/60:.1f}min)")
-    print(f"{'='*90}")
+    print(f"\n{'=' * 90}")
+    print(f"  Test complete! Total wall time: {total_time:.0f}s ({total_time / 60:.1f}min)")
+    print(f"{'=' * 90}")
 
 
 if __name__ == "__main__":

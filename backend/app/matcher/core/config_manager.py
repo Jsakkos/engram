@@ -99,4 +99,3 @@ class ConfigManager:
 def get_config_manager() -> ConfigManager:
     """Get the default configuration manager instance."""
     return ConfigManager()
-

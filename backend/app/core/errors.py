@@ -6,7 +6,6 @@ across the application.
 
 import logging
 from functools import wraps
-from typing import Type
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +74,11 @@ class DatabaseError(EngramError):
 # Error Handling Decorator
 def handle_errors(
     *,
-    error_types: tuple[Type[Exception], ...],
+    error_types: tuple[type[Exception], ...],
     default_message: str,
     log_level: str = "error",
     reraise: bool = True,
-    wrap_as: Type[EngramError] | None = None,
+    wrap_as: type[EngramError] | None = None,
 ):
     """Decorator for standardized error handling.
 
@@ -157,10 +156,10 @@ class error_context:
     def __init__(
         self,
         *,
-        error_types: tuple[Type[Exception], ...],
+        error_types: tuple[type[Exception], ...],
         default_message: str,
         log_level: str = "error",
-        wrap_as: Type[EngramError] | None = None,
+        wrap_as: type[EngramError] | None = None,
     ):
         self.error_types = error_types
         self.default_message = default_message

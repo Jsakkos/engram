@@ -52,7 +52,6 @@ export const SELECTORS = {
 
   // Per-track state indicators
   trackStateRipping: 'text=/RIPPING|EXTRACTING/i',
-  trackStateListening: 'text=/LISTENING/i',
   trackStateMatching: 'text=/MATCHING/i',
   trackStateMatched: 'text=/MATCHED/i',
 
@@ -71,7 +70,7 @@ export const SELECTORS = {
 
   // Clear/Cancel buttons (need to find in new UI structure)
   clearButton: 'button:has-text("Clear")',
-  cancelButton: 'button:has-text("Cancel")',
+  cancelButton: 'button[title="Cancel Job"]',
 };
 
 /**

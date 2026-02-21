@@ -6,14 +6,11 @@
 # the UMA cache across multiple TV shows.
 
 # %% Imports & Configuration
-import hashlib
 import random
 import re
-import struct
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 from pathlib import Path
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -22,10 +19,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 # ── Config ──────────────────────────────────────────────────────────────────
 CACHE_DIR = Path(r"C:\Users\jonat\.uma\cache\data")
 SEED = 42
-NUM_TESTS_PER_EPISODE = 8       # test cases generated per episode
-CHUNK_LENGTHS_SEC = [10, 30, 60, 120]   # seconds of subtitle text to extract
+NUM_TESTS_PER_EPISODE = 8  # test cases generated per episode
+CHUNK_LENGTHS_SEC = [10, 30, 60, 120]  # seconds of subtitle text to extract
 NOISE_DROP_RATES = [0.0, 0.05, 0.10, 0.20]  # fraction of words randomly dropped
-NOISE_SUB_RATE = 0.03           # fraction of words randomly substituted (constant)
+NOISE_SUB_RATE = 0.03  # fraction of words randomly substituted (constant)
 
 random.seed(SEED)
 
@@ -37,16 +34,17 @@ random.seed(SEED)
 
 SHOWS = [
     {"name": "Arrested Development", "season": 1, "pattern": "s_e"},
-    {"name": "Breaking Bad",         "season": 1, "pattern": "n_x"},
-    {"name": "Seinfeld",             "season": 3, "pattern": "s_e"},
-    {"name": "The Office",           "season": 1, "pattern": "s_e"},
-    {"name": "Stranger Things",      "season": 1, "pattern": "s_e"},
-    {"name": "Game of Thrones",      "season": 7, "pattern": "s_e"},
+    {"name": "Breaking Bad", "season": 1, "pattern": "n_x"},
+    {"name": "Seinfeld", "season": 3, "pattern": "s_e"},
+    {"name": "The Office", "season": 1, "pattern": "s_e"},
+    {"name": "Stranger Things", "season": 1, "pattern": "s_e"},
+    {"name": "Game of Thrones", "season": 7, "pattern": "s_e"},
 ]
 
 
 # %% SRT Parser & Text Cleaner
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def parse_timestamp(ts: str) -> float:
     """Parse SRT timestamp '00:01:23,456' into seconds."""
@@ -58,9 +56,9 @@ def parse_timestamp(ts: str) -> float:
 def clean_text(text: str) -> str:
     """Lowercase, strip HTML/bracket tags, collapse whitespace."""
     text = text.lower().strip()
-    text = re.sub(r"\[.*?\]|<.*?>", "", text)          # remove [tags] and <tags>
-    text = re.sub(r"([A-Za-z])-\1+", r"\1", text)      # collapse stutters
-    text = re.sub(r"[^\w\s']", " ", text)               # remove special chars except apostrophes
+    text = re.sub(r"\[.*?\]|<.*?>", "", text)  # remove [tags] and <tags>
+    text = re.sub(r"([A-Za-z])-\1+", r"\1", text)  # collapse stutters
+    text = re.sub(r"[^\w\s']", " ", text)  # remove special chars except apostrophes
     return " ".join(text.split())
 
 
@@ -180,17 +178,20 @@ def load_all_shows() -> dict[str, dict[int, Episode]]:
         if episodes:
             avg_blocks = sum(len(e.blocks) for e in episodes.values()) // len(episodes)
             avg_words = sum(len(e.full_text.split()) for e in episodes.values()) // len(episodes)
-            print(f"    → {len(episodes)} episodes, "
-                  f"avg {avg_blocks} blocks, "
-                  f"avg {avg_words} words each")
+            print(
+                f"    → {len(episodes)} episodes, "
+                f"avg {avg_blocks} blocks, "
+                f"avg {avg_words} words each"
+            )
             all_shows[f"{name} S{season:02d}"] = episodes
         else:
-            print(f"    → [SKIP] No episodes found")
+            print("    → [SKIP] No episodes found")
     return all_shows
 
 
 # %% Chunk Extractor
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def extract_chunk(episode: Episode, start_sec: float, length_sec: float) -> str:
     """Extract subtitle text from [start_sec, start_sec+length_sec]."""
@@ -199,7 +200,9 @@ def extract_chunk(episode: Episode, start_sec: float, length_sec: float) -> str:
     return " ".join(texts)
 
 
-def extract_chunk_at_position(episode: Episode, length_sec: float, position: str) -> tuple[float, str]:
+def extract_chunk_at_position(
+    episode: Episode, length_sec: float, position: str
+) -> tuple[float, str]:
     """Extract a chunk at 'beginning', 'middle', 'end', or 'random' position."""
     max_start = max(0, episode.duration - length_sec)
     if position == "beginning":
@@ -218,26 +221,80 @@ def extract_chunk_at_position(episode: Episode, length_sec: float, position: str
 # ─────────────────────────────────────────────────────────────────────────────
 
 COMMON_WORDS = [
-    "the", "a", "an", "is", "was", "are", "it", "he", "she", "they",
-    "we", "you", "that", "this", "but", "and", "or", "so", "if", "can",
-    "just", "not", "what", "with", "for", "have", "had", "been", "get",
-    "well", "like", "know", "think", "going", "really", "very", "here",
-    "there", "some", "then", "when", "how", "now", "all", "right", "yeah"
+    "the",
+    "a",
+    "an",
+    "is",
+    "was",
+    "are",
+    "it",
+    "he",
+    "she",
+    "they",
+    "we",
+    "you",
+    "that",
+    "this",
+    "but",
+    "and",
+    "or",
+    "so",
+    "if",
+    "can",
+    "just",
+    "not",
+    "what",
+    "with",
+    "for",
+    "have",
+    "had",
+    "been",
+    "get",
+    "well",
+    "like",
+    "know",
+    "think",
+    "going",
+    "really",
+    "very",
+    "here",
+    "there",
+    "some",
+    "then",
+    "when",
+    "how",
+    "now",
+    "all",
+    "right",
+    "yeah",
 ]
 
 # Phonetic substitution pairs that mimic ASR (Whisper) errors
 ASR_SUBSTITUTIONS = [
-    ("their", "there"), ("there", "their"), ("they're", "there"),
-    ("your", "you're"), ("you're", "your"),
-    ("to", "too"), ("too", "to"), ("two", "to"),
-    ("its", "it's"), ("it's", "its"),
-    ("then", "than"), ("than", "then"),
-    ("we're", "were"), ("were", "we're"),
-    ("he's", "his"), ("no", "know"),
-    ("write", "right"), ("right", "write"),
-    ("hear", "here"), ("here", "hear"),
-    ("new", "knew"), ("knew", "new"),
-    ("would", "wood"), ("see", "sea"),
+    ("their", "there"),
+    ("there", "their"),
+    ("they're", "there"),
+    ("your", "you're"),
+    ("you're", "your"),
+    ("to", "too"),
+    ("too", "to"),
+    ("two", "to"),
+    ("its", "it's"),
+    ("it's", "its"),
+    ("then", "than"),
+    ("than", "then"),
+    ("we're", "were"),
+    ("were", "we're"),
+    ("he's", "his"),
+    ("no", "know"),
+    ("write", "right"),
+    ("right", "write"),
+    ("hear", "here"),
+    ("here", "hear"),
+    ("new", "knew"),
+    ("knew", "new"),
+    ("would", "wood"),
+    ("see", "sea"),
 ]
 
 # Filler words that Whisper sometimes hallucinates
@@ -257,10 +314,7 @@ def substitute_words(text: str, rate: float) -> str:
     if rate <= 0:
         return text
     words = text.split()
-    return " ".join(
-        random.choice(COMMON_WORDS) if random.random() < rate else w
-        for w in words
-    )
+    return " ".join(random.choice(COMMON_WORDS) if random.random() < rate else w for w in words)
 
 
 def asr_noise(text: str, sub_rate: float = 0.03, filler_rate: float = 0.02) -> str:
@@ -293,18 +347,19 @@ def add_noise(text: str, drop_rate: float, sub_rate: float) -> str:
 # %% Test Case Generator
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TestCase:
-    show: str           # show identifier (e.g., "Arrested Development S01")
+    show: str  # show identifier (e.g., "Arrested Development S01")
     episode: int
     chunk_length_sec: float
     position: str
     start_sec: float
     drop_rate: float
     sub_rate: float
-    clean_text: str     # before noise
-    noisy_text: str     # after noise
-    label: str = ""     # human-readable ID
+    clean_text: str  # before noise
+    noisy_text: str  # after noise
+    label: str = ""  # human-readable ID
 
 
 def generate_test_cases(show_name: str, episodes: dict[int, Episode]) -> list[TestCase]:
@@ -322,24 +377,27 @@ def generate_test_cases(show_name: str, episodes: dict[int, Episode]) -> list[Te
                 if len(chunk.split()) < 5:
                     continue  # skip empty/tiny chunks
                 noisy = add_noise(chunk, drop_rate, NOISE_SUB_RATE)
-                label = f"{show_name}:E{ep_num:02d}_{length}s_{pos}_{int(drop_rate*100)}%drop"
-                cases.append(TestCase(
-                    show=show_name,
-                    episode=ep_num,
-                    chunk_length_sec=length,
-                    position=pos,
-                    start_sec=start,
-                    drop_rate=drop_rate,
-                    sub_rate=NOISE_SUB_RATE,
-                    clean_text=chunk,
-                    noisy_text=noisy,
-                    label=label,
-                ))
+                label = f"{show_name}:E{ep_num:02d}_{length}s_{pos}_{int(drop_rate * 100)}%drop"
+                cases.append(
+                    TestCase(
+                        show=show_name,
+                        episode=ep_num,
+                        chunk_length_sec=length,
+                        position=pos,
+                        start_sec=start,
+                        drop_rate=drop_rate,
+                        sub_rate=NOISE_SUB_RATE,
+                        clean_text=chunk,
+                        noisy_text=noisy,
+                        label=label,
+                    )
+                )
 
     return cases
 
 
 # %% ── Matching Algorithm ───────────────────────────────────────────────────
+
 
 class TfidfCosineAlgorithm:
     """
@@ -385,6 +443,7 @@ class TfidfCosineAlgorithm:
     insensitive to document length — a 30s chunk can match against
     a 22-minute episode because we compare *direction* not *magnitude*.
     """
+
     name = "TF-IDF Cosine"
 
     def __init__(self):
@@ -424,6 +483,7 @@ class TfidfCosineAlgorithm:
 # %% Test Bench Runner
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class AlgorithmResult:
     algorithm: str
@@ -442,7 +502,9 @@ class AlgorithmResult:
     score_gaps_correct: list[float] = field(default_factory=list)
     score_gaps_wrong: list[float] = field(default_factory=list)
     # Per-episode tracking
-    per_episode: dict = field(default_factory=lambda: defaultdict(lambda: {"total": 0, "correct": 0}))
+    per_episode: dict = field(
+        default_factory=lambda: defaultdict(lambda: {"total": 0, "correct": 0})
+    )
 
     @property
     def accuracy(self) -> float:
@@ -467,7 +529,7 @@ class AlgorithmResult:
             return 0.0
         s = sorted(self.confidences_correct)
         mid = len(s) // 2
-        return s[mid] if len(s) % 2 else (s[mid-1] + s[mid]) / 2
+        return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
 
     @property
     def median_score_gap(self) -> float:
@@ -475,7 +537,7 @@ class AlgorithmResult:
             return 0.0
         s = sorted(self.score_gaps_correct)
         mid = len(s) // 2
-        return s[mid] if len(s) % 2 else (s[mid-1] + s[mid]) / 2
+        return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
 
 
 def run_bench_for_show(
@@ -494,7 +556,7 @@ def run_bench_for_show(
         all_scores = algo.match_all(tc.noisy_text)
         gap = all_scores[0][1] - all_scores[1][1] if len(all_scores) >= 2 else 0.0
 
-        correct = (pred_ep == tc.episode)
+        correct = pred_ep == tc.episode
 
         result.total += 1
         result.total_time_ms += elapsed_ms
@@ -518,7 +580,7 @@ def run_bench_for_show(
         if correct:
             result.by_length[length_key]["correct"] += 1
 
-        noise_key = f"{int(tc.drop_rate*100)}%"
+        noise_key = f"{int(tc.drop_rate * 100)}%"
         result.by_noise[noise_key]["total"] += 1
         if correct:
             result.by_noise[noise_key]["correct"] += 1
@@ -531,16 +593,17 @@ def run_bench_for_show(
 # %% Results Display
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def fmt_pct(val: float) -> str:
-    return f"{val*100:.1f}%"
+    return f"{val * 100:.1f}%"
 
 
 def print_table(headers: list[str], rows: list[list[str]], title: str = ""):
     """Print a formatted ASCII table."""
     if title:
-        print(f"\n{'='*90}")
+        print(f"\n{'=' * 90}")
         print(f"  {title}")
-        print(f"{'='*90}")
+        print(f"{'=' * 90}")
 
     # compute column widths
     widths = [len(h) for h in headers]
@@ -576,7 +639,7 @@ def display_results(result: AlgorithmResult):
             ["Median Confidence (correct)", fmt_pct(result.median_confidence_correct)],
             ["Median Score Gap (top1-top2)", f"{result.median_score_gap:.4f}"],
         ],
-        "OVERALL RESULTS — TF-IDF Cosine Similarity"
+        "OVERALL RESULTS — TF-IDF Cosine Similarity",
     )
 
     # ── Confidence Distribution ──
@@ -586,7 +649,7 @@ def display_results(result: AlgorithmResult):
             _percentile_row("Correct", result.confidences_correct),
             _percentile_row("Wrong", result.confidences_wrong),
         ],
-        "CONFIDENCE DISTRIBUTION"
+        "CONFIDENCE DISTRIBUTION",
     )
 
     # ── Score Gap Distribution ──
@@ -596,7 +659,7 @@ def display_results(result: AlgorithmResult):
             _percentile_row("Correct", result.score_gaps_correct),
             _percentile_row("Wrong", result.score_gaps_wrong),
         ],
-        "SCORE GAP (top-1 minus top-2) — larger = more decisive"
+        "SCORE GAP (top-1 minus top-2) — larger = more decisive",
     )
 
     # ── By Show ──
@@ -605,11 +668,7 @@ def display_results(result: AlgorithmResult):
     for show in sorted(result.by_show.keys()):
         d = result.by_show[show]
         acc = d["correct"] / d["total"] if d["total"] else 0
-        rows_show.append([
-            show,
-            fmt_pct(acc),
-            f"{d['correct']}/{d['total']}"
-        ])
+        rows_show.append([show, fmt_pct(acc), f"{d['correct']}/{d['total']}"])
     print_table(headers_show, rows_show, "ACCURACY BY SHOW")
 
     # ── By Chunk Length ──
@@ -643,7 +702,7 @@ def display_results(result: AlgorithmResult):
     print_table(
         ["Episode", "Accuracy", "Correct/Total"],
         [[ep, fmt_pct(acc), f"{c}/{t}"] for ep, acc, c, t in episode_failures[:15]],
-        "HARDEST EPISODES (lowest accuracy, showing bottom 15)"
+        "HARDEST EPISODES (lowest accuracy, showing bottom 15)",
     )
 
     # ── Confusion Analysis ──
@@ -651,9 +710,11 @@ def display_results(result: AlgorithmResult):
         confusion_rows = sorted(result.confusion.items(), key=lambda x: x[1], reverse=True)
         print_table(
             ["True Episode", "Predicted", "Count"],
-            [[f"E{true:02d}", f"E{pred:02d}", str(count)]
-             for (true, pred), count in confusion_rows[:20]],
-            "TOP CONFUSIONS (True → Predicted, showing top 20)"
+            [
+                [f"E{true:02d}", f"E{pred:02d}", str(count)]
+                for (true, pred), count in confusion_rows[:20]
+            ],
+            "TOP CONFUSIONS (True → Predicted, showing top 20)",
         )
 
     # ── Speed ──
@@ -666,7 +727,7 @@ def display_results(result: AlgorithmResult):
                 ["Avg per Query", f"{result.avg_time_ms:.3f} ms"],
                 ["Queries/sec", f"{qps:.0f}"],
             ],
-            "SPEED"
+            "SPEED",
         )
 
 
@@ -689,6 +750,7 @@ def _percentile_row(label: str, values: list[float]) -> list[str]:
 # %% Real-World Discrepancy Analysis
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def analyze_real_world_discrepancy(episodes: dict[int, Episode]):
     """
     Analyze why real-world disc rip results differ from subtitle-only tests.
@@ -698,9 +760,9 @@ def analyze_real_world_discrepancy(episodes: dict[int, Episode]):
     2. Chunks from specific time offsets (30s, 150s, 270s...) — the production skip pattern
     3. Higher noise levels typical of Whisper ASR output
     """
-    print(f"\n{'='*90}")
+    print(f"\n{'=' * 90}")
     print("  REAL-WORLD DISCREPANCY ANALYSIS — Arrested Development S01")
-    print(f"{'='*90}")
+    print(f"{'=' * 90}")
 
     if not episodes:
         print("  [SKIP] Arrested Development episodes not loaded")
@@ -714,10 +776,10 @@ def analyze_real_world_discrepancy(episodes: dict[int, Episode]):
     production_offsets = [30, 150, 270, 390, 510]  # matches production skip pattern
     chunk_len = 30
 
-    print(f"\n  Testing with production-style sampling:")
+    print("\n  Testing with production-style sampling:")
     print(f"    Chunk length: {chunk_len}s")
     print(f"    Offsets: {production_offsets}")
-    print(f"    Noise: 10% word drop + 3% substitution + ASR noise\n")
+    print("    Noise: 10% word drop + 3% substitution + ASR noise\n")
 
     results_by_ep = {}
 
@@ -740,7 +802,7 @@ def analyze_real_world_discrepancy(episodes: dict[int, Episode]):
             # Match
             all_scores = algo.match_all(noisy)
             pred_ep, score = all_scores[0]
-            gap = all_scores[0][1] - all_scores[1][1] if len(all_scores) >= 2 else 0
+            all_scores[0][1] - all_scores[1][1] if len(all_scores) >= 2 else 0
 
             votes[pred_ep] += score
             total_votes += 1
@@ -750,7 +812,7 @@ def analyze_real_world_discrepancy(episodes: dict[int, Episode]):
         # Determine final vote
         if votes:
             winner = max(votes, key=votes.get)
-            final_correct = (winner == ep_num)
+            final_correct = winner == ep_num
         else:
             winner = -1
             final_correct = False
@@ -769,19 +831,20 @@ def analyze_real_world_discrepancy(episodes: dict[int, Episode]):
     # Summary
     correct = sum(1 for r in results_by_ep.values() if r["correct"])
     total = len(results_by_ep)
-    print(f"\n  Production-style accuracy: {correct}/{total} ({100*correct/total:.1f}%)")
+    print(f"\n  Production-style accuracy: {correct}/{total} ({100 * correct / total:.1f}%)")
 
     # Compare with clean-text accuracy
-    print(f"\n  Factors that reduce real-world accuracy:")
-    print(f"    • ASR transcription noise (Whisper errors)")
-    print(f"    • Fixed 30s chunks (vs variable lengths in ideal test)")
-    print(f"    • Chunks from specific offsets (may hit music/silence)")
-    print(f"    • Subtitle timing mismatches with disc chapter points")
-    print(f"    • Background audio: music, sound effects, laugh tracks")
+    print("\n  Factors that reduce real-world accuracy:")
+    print("    • ASR transcription noise (Whisper errors)")
+    print("    • Fixed 30s chunks (vs variable lengths in ideal test)")
+    print("    • Chunks from specific offsets (may hit music/silence)")
+    print("    • Subtitle timing mismatches with disc chapter points")
+    print("    • Background audio: music, sound effects, laugh tracks")
 
 
 # %% Main
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def main():
     print("=" * 90)
@@ -828,8 +891,10 @@ def main():
         elapsed = (time.perf_counter() - t0) * 1000
         show_d = overall_result.by_show[show_name]
         show_acc = show_d["correct"] / show_d["total"] if show_d["total"] else 0
-        print(f"    → {fmt_pct(show_acc)} accuracy ({show_d['correct']}/{show_d['total']}) "
-              f"in {elapsed:.0f}ms")
+        print(
+            f"    → {fmt_pct(show_acc)} accuracy ({show_d['correct']}/{show_d['total']}) "
+            f"in {elapsed:.0f}ms"
+        )
 
     # Display results
     print("\n[4/4] Results...")

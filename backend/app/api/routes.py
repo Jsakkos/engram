@@ -316,6 +316,7 @@ async def get_job_poster(job_id: int, session: AsyncSession = Depends(get_sessio
 
     # Fetch poster from TMDB
     import requests
+
     from app.matcher.tmdb_client import BASE_IMAGE_URL
     from app.services.config_service import get_config as get_db_config
 
@@ -525,6 +526,7 @@ async def simulate_insert_disc_from_staging(
 
     import asyncio
     from pathlib import Path
+
     from app.services.job_manager import job_manager
 
     staging_dir = Path(staging_path)
@@ -554,7 +556,7 @@ async def simulate_insert_disc_from_staging(
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
             duration = float(stdout.decode().strip()) if stdout.decode().strip() else 1800
-        except (OSError, asyncio.TimeoutError, ValueError) as e:
+        except (TimeoutError, OSError, ValueError) as e:
             logger.debug(f"Could not determine MKV duration via ffprobe: {e}")
             duration = 1800  # Default 30 minutes
 
@@ -591,6 +593,7 @@ async def simulate_insert_disc_from_staging(
 async def get_orphaned_staging(session: AsyncSession = Depends(get_session)) -> dict:
     """Find staging directories that don't belong to active jobs."""
     from pathlib import Path
+
     from app.services.config_service import get_config
 
     config = await get_config()
@@ -622,8 +625,6 @@ async def get_orphaned_staging(session: AsyncSession = Depends(get_session)) -> 
 async def cleanup_orphaned_staging(session: AsyncSession = Depends(get_session)) -> dict:
     """Delete all orphaned staging directories."""
     import shutil
-    from pathlib import Path
-    from app.services.config_service import get_config
 
     orphaned_info = await get_orphaned_staging(session)
 

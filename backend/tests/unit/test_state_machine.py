@@ -3,8 +3,9 @@
 Tests state transition validation, persistence, and broadcasting.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import DiscJob
@@ -86,9 +87,7 @@ class TestStateTransitionValidation:
     def test_can_transition_to_review_from_appropriate_states(self, state_machine):
         """Test transitions to REVIEW_NEEDED state."""
         # Valid transitions to REVIEW_NEEDED
-        assert state_machine.can_transition(
-            JobState.IDENTIFYING, JobState.REVIEW_NEEDED
-        )
+        assert state_machine.can_transition(JobState.IDENTIFYING, JobState.REVIEW_NEEDED)
         assert state_machine.can_transition(JobState.RIPPING, JobState.REVIEW_NEEDED)
         assert state_machine.can_transition(JobState.MATCHING, JobState.REVIEW_NEEDED)
 
@@ -104,9 +103,7 @@ class TestStateTransitionValidation:
 
         # Cannot transition from terminal states
         assert not state_machine.can_transition(JobState.COMPLETED, JobState.RIPPING)
-        assert not state_machine.can_transition(
-            JobState.FAILED, JobState.IDENTIFYING
-        )
+        assert not state_machine.can_transition(JobState.FAILED, JobState.IDENTIFYING)
 
     def test_can_transition_same_state(self, state_machine):
         """Test that staying in the same state is always allowed."""
@@ -129,21 +126,15 @@ class TestStateTransitionValidation:
 class TestStateTransitions:
     """Test actual state transition execution."""
 
-    async def test_transition_updates_state(
-        self, state_machine, sample_job, mock_session
-    ):
+    async def test_transition_updates_state(self, state_machine, sample_job, mock_session):
         """Test that transition updates job state."""
-        result = await state_machine.transition(
-            sample_job, JobState.IDENTIFYING, mock_session
-        )
+        result = await state_machine.transition(sample_job, JobState.IDENTIFYING, mock_session)
 
         assert result is True
         assert sample_job.state == JobState.IDENTIFYING
         assert sample_job.updated_at is not None
 
-    async def test_transition_commits_to_database(
-        self, state_machine, sample_job, mock_session
-    ):
+    async def test_transition_commits_to_database(self, state_machine, sample_job, mock_session):
         """Test that transition commits changes."""
         await state_machine.transition(sample_job, JobState.IDENTIFYING, mock_session)
 
@@ -173,9 +164,7 @@ class TestStateTransitions:
         self, state_machine, sample_job, mock_session
     ):
         """Test that invalid transitions are rejected."""
-        result = await state_machine.transition(
-            sample_job, JobState.MATCHING, mock_session
-        )
+        result = await state_machine.transition(sample_job, JobState.MATCHING, mock_session)
 
         assert result is False
         assert sample_job.state == JobState.IDLE  # State unchanged
@@ -197,13 +186,9 @@ class TestConvenienceMethods:
         assert result is True
         assert sample_job.state == JobState.FAILED
         assert sample_job.error_message == "Test error"
-        mock_broadcaster.broadcast_job_failed.assert_called_once_with(
-            sample_job.id, "Test error"
-        )
+        mock_broadcaster.broadcast_job_failed.assert_called_once_with(sample_job.id, "Test error")
 
-    async def test_transition_to_review(
-        self, state_machine, sample_job, mock_session
-    ):
+    async def test_transition_to_review(self, state_machine, sample_job, mock_session):
         """Test transition_to_review convenience method."""
         # First move to a state that can transition to REVIEW_NEEDED
         sample_job.state = JobState.IDENTIFYING
@@ -254,9 +239,7 @@ class TestErrorCases:
     ):
         """Test that invalid transitions are logged."""
         with patch("app.services.job_state_machine.logger") as mock_logger:
-            result = await state_machine.transition(
-                sample_job, JobState.MATCHING, mock_session
-            )
+            result = await state_machine.transition(sample_job, JobState.MATCHING, mock_session)
 
             assert result is False
             mock_logger.warning.assert_called_once()
@@ -267,9 +250,7 @@ class TestErrorCases:
 class TestStateTransitionSequences:
     """Test realistic state transition sequences."""
 
-    async def test_happy_path_tv_workflow(
-        self, state_machine, sample_job, mock_session
-    ):
+    async def test_happy_path_tv_workflow(self, state_machine, sample_job, mock_session):
         """Test a complete happy path workflow for TV content."""
         transitions = [
             JobState.IDENTIFYING,
@@ -280,15 +261,11 @@ class TestStateTransitionSequences:
         ]
 
         for target_state in transitions:
-            result = await state_machine.transition(
-                sample_job, target_state, mock_session
-            )
+            result = await state_machine.transition(sample_job, target_state, mock_session)
             assert result is True
             assert sample_job.state == target_state
 
-    async def test_review_needed_workflow(
-        self, state_machine, sample_job, mock_session
-    ):
+    async def test_review_needed_workflow(self, state_machine, sample_job, mock_session):
         """Test workflow that requires review."""
         # IDLE -> IDENTIFYING -> REVIEW_NEEDED
         await state_machine.transition(sample_job, JobState.IDENTIFYING, mock_session)
@@ -303,9 +280,7 @@ class TestStateTransitionSequences:
         result = await state_machine.transition(sample_job, JobState.RIPPING, mock_session)
         assert result is True
 
-    async def test_failure_from_any_state(
-        self, state_machine, sample_job, mock_session
-    ):
+    async def test_failure_from_any_state(self, state_machine, sample_job, mock_session):
         """Test that jobs can fail from any non-terminal state."""
         states_to_test = [
             JobState.IDLE,

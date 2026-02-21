@@ -36,13 +36,15 @@ def generate_master_dataset(results_df: pd.DataFrame, transcriptions_dir: Path, 
         season = first_row["season"]
         episode = first_row["episode_actual"]
 
-        json_path = transcriptions_dir / show / f"Season {season:02d}" / f"S{season:02d}E{episode:02d}.json"
+        json_path = (
+            transcriptions_dir / show / f"Season {season:02d}" / f"S{season:02d}E{episode:02d}.json"
+        )
 
         if not json_path.exists():
             print(f"  Warning: Transcription not found: {json_path}")
             continue
 
-        with open(json_path, "r", encoding="utf-8") as f:
+        with open(json_path, encoding="utf-8") as f:
             trans_data = json.load(f)
 
         # Create row for each chunk
@@ -133,15 +135,19 @@ def generate_error_analysis(results_df: pd.DataFrame, transcriptions_dir: Path, 
         # Group by method
         for method, method_errors in errors.groupby("method_name"):
             f.write(f"## Method: {method}\n\n")
-            f.write(f"Errors: {len(method_errors)} / {len(results_df[results_df['method_name'] == method])}\n\n")
+            f.write(
+                f"Errors: {len(method_errors)} / {len(results_df[results_df['method_name'] == method])}\n\n"
+            )
 
             # List each error
             for _, error in method_errors.iterrows():
                 f.write(f"### File: {Path(error['file_path']).name}\n\n")
-                f.write(f"- **Actual Episode**: S{error['season']:02d}E{error['episode_actual']:02d}\n")
+                f.write(
+                    f"- **Actual Episode**: S{error['season']:02d}E{error['episode_actual']:02d}\n"
+                )
 
                 # Format matched episode (handle None case)
-                if pd.notna(error['episode_matched']):
+                if pd.notna(error["episode_matched"]):
                     matched_ep = f"S{error['season']:02d}E{int(error['episode_matched']):02d}"
                 else:
                     matched_ep = "None"
@@ -149,7 +155,9 @@ def generate_error_analysis(results_df: pd.DataFrame, transcriptions_dir: Path, 
 
                 f.write(f"- **Confidence**: {error['confidence']:.3f}\n")
                 f.write(f"- **Weighted Score**: {error['weighted_score']:.3f}\n")
-                f.write(f"- **Chunks Used**: {int(error['chunks_used'])} / {int(error['total_chunks'])}\n")
+                f.write(
+                    f"- **Chunks Used**: {int(error['chunks_used'])} / {int(error['total_chunks'])}\n"
+                )
                 f.write(f"- **Fallback Used**: {error['fallback_used']}\n")
 
                 # Load transcription sample if available
@@ -158,17 +166,22 @@ def generate_error_analysis(results_df: pd.DataFrame, transcriptions_dir: Path, 
                 episode = error["episode_actual"]
 
                 json_path = (
-                    transcriptions_dir / show / f"Season {season:02d}" / f"S{season:02d}E{episode:02d}.json"
+                    transcriptions_dir
+                    / show
+                    / f"Season {season:02d}"
+                    / f"S{season:02d}E{episode:02d}.json"
                 )
 
                 if json_path.exists():
-                    with open(json_path, "r", encoding="utf-8") as tf:
+                    with open(json_path, encoding="utf-8") as tf:
                         trans_data = json.load(tf)
 
                     # Show first few chunks
                     f.write("\n**Sample Transcriptions:**\n\n")
                     for i, chunk in enumerate(trans_data["chunks"][:3]):
-                        f.write(f"- Chunk {i} ({chunk['start_time']:.0f}s): {chunk['cleaned_text'][:150]}...\n")
+                        f.write(
+                            f"- Chunk {i} ({chunk['start_time']:.0f}s): {chunk['cleaned_text'][:150]}...\n"
+                        )
 
                 f.write("\n---\n\n")
 
@@ -251,7 +264,7 @@ def analyze_confusion_patterns(results_df: pd.DataFrame):
     method_error_counts = errors.groupby("method_name").size().sort_values(ascending=False)
     for method, count in method_error_counts.items():
         total = len(results_df[results_df["method_name"] == method])
-        print(f"  {method}: {count}/{total} ({count/total:.1%})")
+        print(f"  {method}: {count}/{total} ({count / total:.1%})")
 
     # Fallback analysis
     print("\nFallback rates by method:")
@@ -298,9 +311,7 @@ def main():
 
     generate_method_comparison(results_df, output_dir / "method_comparison.csv")
 
-    generate_error_analysis(
-        results_df, Path(args.transcriptions), output_dir / "error_analysis.md"
-    )
+    generate_error_analysis(results_df, Path(args.transcriptions), output_dir / "error_analysis.md")
 
     generate_visualization_data(results_df, output_dir / "visualization_data.json")
 
@@ -312,10 +323,10 @@ def main():
     print("=" * 80)
     print(f"\nAll files saved to: {output_dir}")
     print("\nGenerated files:")
-    print(f"  - master_dataset.csv: Chunk-level detailed data")
-    print(f"  - method_comparison.csv: Summary comparison table")
-    print(f"  - error_analysis.md: Detailed error breakdown")
-    print(f"  - visualization_data.json: Data for charts/graphs")
+    print("  - master_dataset.csv: Chunk-level detailed data")
+    print("  - method_comparison.csv: Summary comparison table")
+    print("  - error_analysis.md: Detailed error breakdown")
+    print("  - visualization_data.json: Data for charts/graphs")
 
 
 if __name__ == "__main__":

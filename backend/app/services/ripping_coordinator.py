@@ -70,9 +70,7 @@ class RippingCoordinator:
         self._state_machine = state_machine
         self._loop = loop
 
-    async def run_ripping(
-        self, job: DiscJob, session: AsyncSession, movie_organizer=None
-    ) -> None:
+    async def run_ripping(self, job: DiscJob, session: AsyncSession, movie_organizer=None) -> None:
         """Execute the ripping process for a job.
 
         Args:
@@ -104,9 +102,7 @@ class RippingCoordinator:
             # Filter for selected titles if any selection exists
             has_selection = any(dt.is_selected for dt in disc_titles if dt.is_selected)
             titles_to_rip = (
-                [dt for dt in disc_titles if dt.is_selected]
-                if has_selection
-                else disc_titles
+                [dt for dt in disc_titles if dt.is_selected] if has_selection else disc_titles
             )
 
             # Calculate total size
@@ -151,10 +147,7 @@ class RippingCoordinator:
 
             # Create title completion callback
             def on_title_complete(idx: int, path: Path):
-                logger.info(
-                    f"[CALLBACK] Title complete: idx={idx} path={path.name} "
-                    f"(Job {job_id})"
-                )
+                logger.info(f"[CALLBACK] Title complete: idx={idx} path={path.name} (Job {job_id})")
                 future = asyncio.run_coroutine_threadsafe(
                     self._on_title_ripped(job_id, idx, path, sorted_titles, session),
                     self._loop,
@@ -214,9 +207,7 @@ class RippingCoordinator:
             )
         except Exception as e:
             logger.exception(f"Error ripping job {job_id}")
-            await self._state_machine.transition_to_failed(
-                job, session, error_message=str(e)
-            )
+            await self._state_machine.transition_to_failed(job, session, error_message=str(e))
 
     async def _eject_disc(self, drive_id: str) -> None:
         """Eject disc from drive."""
@@ -347,9 +338,7 @@ class RippingCoordinator:
                 )
 
             if not title:
-                logger.warning(
-                    f"Could not map ripped file {path.name} to any title (Job {job_id})"
-                )
+                logger.warning(f"Could not map ripped file {path.name} to any title (Job {job_id})")
                 return
 
             title.output_filename = str(path)
@@ -381,13 +370,9 @@ class RippingCoordinator:
         This catches any files missed by the real-time filesystem polling.
         """
         # Get current title states
-        result = await session.execute(
-            select(DiscTitle).where(DiscTitle.job_id == job_id)
-        )
+        result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
         titles = result.scalars().all()
-        assigned_indices = {
-            t.title_index for t in titles if t.output_filename is not None
-        }
+        assigned_indices = {t.title_index for t in titles if t.output_filename is not None}
 
         # Scan staging dir for .mkv files
         mkv_files = list(staging_dir.glob("*.mkv")) if staging_dir.exists() else []
@@ -464,8 +449,7 @@ class RippingCoordinator:
                 current_size = file_path.stat().st_size
             except OSError as e:
                 logger.debug(
-                    f"[MATCH] Title {title_id} (Job {job_id}): cannot stat file "
-                    f"({e}), retrying..."
+                    f"[MATCH] Title {title_id} (Job {job_id}): cannot stat file ({e}), retrying..."
                 )
                 await asyncio.sleep(check_interval)
                 continue

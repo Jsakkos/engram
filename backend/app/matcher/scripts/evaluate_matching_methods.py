@@ -28,8 +28,6 @@ from typing import Any
 import pandas as pd
 from rapidfuzz import fuzz
 
-from app.matcher.core.utils import clean_text
-
 
 @dataclass
 class ChunkData:
@@ -431,7 +429,11 @@ class SimpleVoteMethod(MatchingMethod):
         if vote_counts:
             best_episode = max(vote_counts, key=lambda e: vote_counts[e]["count"])
             vote_data = vote_counts[best_episode]
-            best_score = vote_data["total_confidence"] / vote_data["count"] if vote_data["count"] > 0 else 0.0
+            best_score = (
+                vote_data["total_confidence"] / vote_data["count"]
+                if vote_data["count"] > 0
+                else 0.0
+            )
 
         threshold = kwargs.get("threshold", 0.15)
         fallback = best_score < threshold
@@ -542,7 +544,7 @@ def load_transcription_cache(cache_dir: Path) -> dict[str, FileData]:
             continue
 
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(json_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             file_data = FileData(
@@ -567,7 +569,7 @@ def load_references(ref_dir: Path) -> dict[tuple[str, int], list[ReferenceEpisod
 
     for json_file in ref_dir.glob("*.json"):
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(json_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             show_name = data["show_name"]
@@ -608,7 +610,9 @@ def calculate_metrics(results: list[MatchResult] | list[dict]) -> dict[str, Any]
     total = len(results)
     correct = sum(1 for r in results if get_attr(r, "correct"))
     confident = sum(1 for r in results if not get_attr(r, "fallback_used"))
-    confident_correct = sum(1 for r in results if get_attr(r, "correct") and not get_attr(r, "fallback_used"))
+    confident_correct = sum(
+        1 for r in results if get_attr(r, "correct") and not get_attr(r, "fallback_used")
+    )
 
     accuracy = correct / total if total > 0 else 0
     recall = confident / total if total > 0 else 0
@@ -616,13 +620,23 @@ def calculate_metrics(results: list[MatchResult] | list[dict]) -> dict[str, Any]
     fallback_rate = (total - confident) / total if total > 0 else 0
 
     avg_confidence = (
-        sum(get_attr(r, "confidence") for r in results if get_attr(r, "episode_matched") is not None) / total
+        sum(
+            get_attr(r, "confidence") for r in results if get_attr(r, "episode_matched") is not None
+        )
+        / total
         if total > 0
         else 0
     )
-    avg_processing_time = sum(get_attr(r, "processing_time") for r in results) / total if total > 0 else 0
+    avg_processing_time = (
+        sum(get_attr(r, "processing_time") for r in results) / total if total > 0 else 0
+    )
     avg_chunk_utilization = (
-        sum(get_attr(r, "chunks_used") / get_attr(r, "total_chunks") for r in results if get_attr(r, "total_chunks") > 0) / total
+        sum(
+            get_attr(r, "chunks_used") / get_attr(r, "total_chunks")
+            for r in results
+            if get_attr(r, "total_chunks") > 0
+        )
+        / total
         if total > 0
         else 0
     )
@@ -711,7 +725,7 @@ def main():
         for threshold in args.thresholds:
             method_results = []
 
-            for file_path, file_data in transcriptions.items():
+            for _file_path, file_data in transcriptions.items():
                 # Get references for this show/season
                 key = (file_data.show_name, file_data.season)
                 if key not in references:

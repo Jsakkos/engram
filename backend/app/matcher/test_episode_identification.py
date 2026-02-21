@@ -1,6 +1,5 @@
 """Unit tests for episode identification with ranked voting."""
 
-import pytest
 from app.matcher.episode_identification import MatchCoverage
 
 
@@ -84,7 +83,9 @@ class TestMatchCoverageRankedVoting:
 
     def test_get_voting_details(self):
         """Test get_voting_details returns expected metadata."""
-        cov = MatchCoverage("Arrested Development - S01E01", reference_duration=1800, video_duration=1800)
+        cov = MatchCoverage(
+            "Arrested Development - S01E01", reference_duration=1800, video_duration=1800
+        )
 
         cov.add_match(start_time=300, duration=30, confidence=0.8)
         cov.add_match(start_time=600, duration=30, confidence=0.7)
@@ -163,24 +164,23 @@ class TestEpisodeMatcherConfiguration:
     def test_ranked_voting_enabled_by_default(self):
         """Test that ranked voting is enabled by default."""
         from pathlib import Path
+
         from app.matcher.episode_identification import EpisodeMatcher
 
-        matcher = EpisodeMatcher(
-            cache_dir=Path.home() / ".engram" / "cache",
-            show_name="Test Show"
-        )
+        matcher = EpisodeMatcher(cache_dir=Path.home() / ".engram" / "cache", show_name="Test Show")
 
         assert matcher.use_ranked_voting is True
 
     def test_ranked_voting_can_be_disabled(self):
         """Test that ranked voting can be explicitly disabled."""
         from pathlib import Path
+
         from app.matcher.episode_identification import EpisodeMatcher
 
         matcher = EpisodeMatcher(
             cache_dir=Path.home() / ".engram" / "cache",
             show_name="Test Show",
-            use_ranked_voting=False
+            use_ranked_voting=False,
         )
 
         assert matcher.use_ranked_voting is False
@@ -188,12 +188,13 @@ class TestEpisodeMatcherConfiguration:
     def test_ranked_voting_can_be_explicitly_enabled(self):
         """Test that ranked voting can be explicitly enabled."""
         from pathlib import Path
+
         from app.matcher.episode_identification import EpisodeMatcher
 
         matcher = EpisodeMatcher(
             cache_dir=Path.home() / ".engram" / "cache",
             show_name="Test Show",
-            use_ranked_voting=True
+            use_ranked_voting=True,
         )
 
         assert matcher.use_ranked_voting is True

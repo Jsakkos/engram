@@ -7,4 +7,3 @@ for integration with Unified Media Automator.
 from app.matcher.episode_identification import EpisodeMatcher
 
 __all__ = ["EpisodeMatcher"]
-

@@ -60,6 +60,7 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     progress: job.progress_percent || 0,
     currentSpeed: job.current_speed,
     etaSeconds: job.eta_seconds,
+    subtitleStatus: job.subtitle_status || undefined,
     tracks: titles.map(title => transformDiscTitleToTrack(title, job))
   };
 }
@@ -149,24 +150,54 @@ function formatDuration(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
+interface RunnerUp {
+  episode?: string;
+  score?: number;
+  confidence?: number;
+  vote_count?: number;
+  target_votes?: number;
+}
+
+interface MatchDetails {
+  runner_ups?: RunnerUp[];
+  score?: number;
+  vote_count?: number;
+  target_votes?: number;
+  total_chunks?: number;
+  episode?: string;
+}
+
 function extractMatchCandidates(title: DiscTitle): MatchCandidate[] | undefined {
   if (!title.match_details) return undefined;
 
   try {
-    const details = typeof title.match_details === 'string'
+    const details: MatchDetails = typeof title.match_details === 'string'
       ? JSON.parse(title.match_details)
       : title.match_details;
 
-    if (!details.runner_ups || !Array.isArray(details.runner_ups)) {
-      return undefined;
+    // Map runner_ups to candidates if available
+    if (details.runner_ups && Array.isArray(details.runner_ups) && details.runner_ups.length > 0) {
+      return details.runner_ups.map((ru: RunnerUp) => ({
+        episode: ru.episode || 'Unknown',
+        confidence: ru.score || ru.confidence || 0,     // Backend uses 'score'
+        votes: ru.vote_count ?? Math.floor((ru.score || 0) * 5),  // Use actual vote_count (0 is valid!)
+        targetVotes: ru.target_votes ?? details.target_votes ?? details.total_chunks ?? 5
+      }));
     }
 
-    return details.runner_ups.map((ru: any) => ({
-      episode: ru.episode || 'Unknown',
-      confidence: ru.score || ru.confidence || 0,     // Backend uses 'score'
-      votes: ru.vote_count ?? Math.floor((ru.score || 0) * 5),  // Use actual vote_count (0 is valid!)
-      targetVotes: ru.target_votes ?? details.target_votes ?? details.total_chunks ?? 5
-    }));
+    // Fallback: synthesize a single candidate from top-level match info.
+    // For decisive matches with only one candidate, runner_ups may be empty
+    // but the top-level score/vote_count still describes the best match.
+    if (details.score !== undefined && details.vote_count !== undefined) {
+      return [{
+        episode: details.episode || title.matched_episode || 'Matching...',
+        confidence: details.score || 0,
+        votes: details.vote_count ?? 0,
+        targetVotes: details.target_votes ?? details.total_chunks ?? 5
+      }];
+    }
+
+    return undefined;
   } catch (error) {
     console.error('Failed to parse match_details:', error);
     return undefined;

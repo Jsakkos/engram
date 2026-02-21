@@ -100,15 +100,12 @@ class JobStateMachine:
         # Validate transition
         if not self.can_transition(from_state, to_state):
             logger.warning(
-                f"Invalid state transition for job {job.id}: "
-                f"{from_state.value} -> {to_state.value}"
+                f"Invalid state transition for job {job.id}: {from_state.value} -> {to_state.value}"
             )
             return False
 
         # Log transition
-        logger.info(
-            f"Job {job.id} state transition: {from_state.value} -> {to_state.value}"
-        )
+        logger.info(f"Job {job.id} state transition: {from_state.value} -> {to_state.value}")
 
         # Update job state
         job.state = to_state
@@ -121,16 +118,22 @@ class JobStateMachine:
         # Persist to database
         await session.commit()
 
-        # Broadcast state change if requested
+        # Broadcast state change if requested (failure is non-fatal since DB is committed)
         if broadcast:
-            if to_state == JobState.FAILED:
-                await self._broadcaster.broadcast_job_failed(
-                    job.id, error_message or "Unknown error"
+            try:
+                if to_state == JobState.FAILED:
+                    await self._broadcaster.broadcast_job_failed(
+                        job.id, error_message or "Unknown error"
+                    )
+                elif to_state == JobState.COMPLETED:
+                    await self._broadcaster.broadcast_job_completed(job.id)
+                else:
+                    await self._broadcaster.broadcast_job_state_changed(job.id, to_state)
+            except Exception as e:
+                logger.error(
+                    f"Job {job.id}: broadcast failed after committing {to_state.value}: {e}",
+                    exc_info=True,
                 )
-            elif to_state == JobState.COMPLETED:
-                await self._broadcaster.broadcast_job_completed(job.id)
-            else:
-                await self._broadcaster.broadcast_job_state_changed(job.id, to_state)
 
         return True
 
@@ -177,9 +180,7 @@ class JobStateMachine:
         if reason:
             job.error_message = reason
 
-        return await self.transition(
-            job, JobState.REVIEW_NEEDED, session, broadcast=broadcast
-        )
+        return await self.transition(job, JobState.REVIEW_NEEDED, session, broadcast=broadcast)
 
     async def transition_to_completed(
         self,

@@ -3,8 +3,9 @@
 Tests domain-specific event broadcasting abstraction layer.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.api.websocket import ConnectionManager
 from app.models import DiscJob, DiscTitle
@@ -63,17 +64,13 @@ class TestDriveEvents:
         """Test broadcasting disc insertion event."""
         await broadcaster.broadcast_drive_inserted("D:", "TEST_DISC")
 
-        mock_ws_manager.broadcast_drive_event.assert_called_once_with(
-            "D:", "inserted", "TEST_DISC"
-        )
+        mock_ws_manager.broadcast_drive_event.assert_called_once_with("D:", "inserted", "TEST_DISC")
 
     async def test_broadcast_drive_removed(self, broadcaster, mock_ws_manager):
         """Test broadcasting disc removal event."""
         await broadcaster.broadcast_drive_removed("D:", "TEST_DISC")
 
-        mock_ws_manager.broadcast_drive_event.assert_called_once_with(
-            "D:", "removed", "TEST_DISC"
-        )
+        mock_ws_manager.broadcast_drive_event.assert_called_once_with("D:", "removed", "TEST_DISC")
 
 
 @pytest.mark.asyncio
@@ -92,9 +89,7 @@ class TestJobLifecycleEvents:
         """Test broadcasting job state transition."""
         await broadcaster.broadcast_job_state_changed(1, JobState.MATCHING)
 
-        mock_ws_manager.broadcast_job_update.assert_called_once_with(
-            1, JobState.MATCHING.value
-        )
+        mock_ws_manager.broadcast_job_update.assert_called_once_with(1, JobState.MATCHING.value)
 
     async def test_broadcast_job_progress(self, broadcaster, mock_ws_manager):
         """Test broadcasting job progress update."""
@@ -110,9 +105,9 @@ class TestJobLifecycleEvents:
 
         assert call_args[0][0] == 1  # job_id
         assert call_args[0][1] is None  # state unchanged
-        assert call_args[1]["progress_percent"] == 50
-        assert call_args[1]["current_speed"] == "10.5 MB/s"
-        assert call_args[1]["eta_seconds"] == 300
+        assert call_args[1]["progress"] == 50
+        assert call_args[1]["speed"] == "10.5 MB/s"
+        assert call_args[1]["eta"] == 300
 
     async def test_broadcast_job_progress_minimal(self, broadcaster, mock_ws_manager):
         """Test broadcasting job progress with minimal parameters."""
@@ -122,34 +117,30 @@ class TestJobLifecycleEvents:
         call_args = mock_ws_manager.broadcast_job_update.call_args
 
         assert call_args[0][0] == 1
-        assert call_args[1]["progress_percent"] == 75
-        assert call_args[1]["current_speed"] is None
-        assert call_args[1]["eta_seconds"] is None
+        assert call_args[1]["progress"] == 75
+        assert call_args[1]["speed"] is None
+        assert call_args[1]["eta"] is None
 
     async def test_broadcast_job_failed(self, broadcaster, mock_ws_manager):
         """Test broadcasting job failure."""
         await broadcaster.broadcast_job_failed(1, "Ripping failed")
 
         mock_ws_manager.broadcast_job_update.assert_called_once_with(
-            1, JobState.FAILED.value, error_message="Ripping failed"
+            1, JobState.FAILED.value, error="Ripping failed"
         )
 
     async def test_broadcast_job_completed(self, broadcaster, mock_ws_manager):
         """Test broadcasting job completion."""
         await broadcaster.broadcast_job_completed(1)
 
-        mock_ws_manager.broadcast_job_update.assert_called_once_with(
-            1, JobState.COMPLETED.value
-        )
+        mock_ws_manager.broadcast_job_update.assert_called_once_with(1, JobState.COMPLETED.value)
 
 
 @pytest.mark.asyncio
 class TestTitleDiscoveryEvents:
     """Test title discovery event broadcasting."""
 
-    async def test_broadcast_titles_discovered_minimal(
-        self, broadcaster, mock_ws_manager
-    ):
+    async def test_broadcast_titles_discovered_minimal(self, broadcaster, mock_ws_manager):
         """Test broadcasting title discovery with minimal info."""
         titles = [
             DiscTitle(id=1, job_id=1, title_index=0),
@@ -165,9 +156,7 @@ class TestTitleDiscoveryEvents:
         assert len(call_args[0][1]) == 2  # titles
         assert call_args[1]["content_type"] is None
 
-    async def test_broadcast_titles_discovered_full(
-        self, broadcaster, mock_ws_manager
-    ):
+    async def test_broadcast_titles_discovered_full(self, broadcaster, mock_ws_manager):
         """Test broadcasting title discovery with full metadata."""
         titles = [
             DiscTitle(
@@ -220,7 +209,8 @@ class TestTitleStateEvents:
         mock_ws_manager.broadcast_title_update.assert_called_once_with(
             sample_title.job_id,
             sample_title.id,
-            progress_percent=50,
+            state="ripping",
+            match_progress=50,
         )
 
     async def test_broadcast_title_matching_started(
@@ -235,9 +225,7 @@ class TestTitleStateEvents:
             state=TitleState.MATCHING.value,
         )
 
-    async def test_broadcast_title_matched(
-        self, broadcaster, mock_ws_manager, sample_title
-    ):
+    async def test_broadcast_title_matched(self, broadcaster, mock_ws_manager, sample_title):
         """Test broadcasting successful title match."""
         await broadcaster.broadcast_title_matched(sample_title, "S01E05", 0.95)
 
@@ -249,13 +237,9 @@ class TestTitleStateEvents:
             match_confidence=0.95,
         )
 
-    async def test_broadcast_title_state_changed(
-        self, broadcaster, mock_ws_manager, sample_title
-    ):
+    async def test_broadcast_title_state_changed(self, broadcaster, mock_ws_manager, sample_title):
         """Test broadcasting generic title state change."""
-        await broadcaster.broadcast_title_state_changed(
-            sample_title, TitleState.COMPLETED
-        )
+        await broadcaster.broadcast_title_state_changed(sample_title, TitleState.COMPLETED)
 
         mock_ws_manager.broadcast_title_update.assert_called_once_with(
             sample_title.job_id,
@@ -263,9 +247,7 @@ class TestTitleStateEvents:
             state=TitleState.COMPLETED.value,
         )
 
-    async def test_broadcast_title_completed(
-        self, broadcaster, mock_ws_manager, sample_title
-    ):
+    async def test_broadcast_title_completed(self, broadcaster, mock_ws_manager, sample_title):
         """Test broadcasting title processing completed."""
         await broadcaster.broadcast_title_completed(sample_title)
 
@@ -275,9 +257,7 @@ class TestTitleStateEvents:
             state=TitleState.COMPLETED.value,
         )
 
-    async def test_broadcast_title_failed(
-        self, broadcaster, mock_ws_manager, sample_title
-    ):
+    async def test_broadcast_title_failed(self, broadcaster, mock_ws_manager, sample_title):
         """Test broadcasting title processing failed."""
         await broadcaster.broadcast_title_failed(sample_title, "Matching error")
 
@@ -285,7 +265,6 @@ class TestTitleStateEvents:
             sample_title.job_id,
             sample_title.id,
             state=TitleState.FAILED.value,
-            error_message="Matching error",
         )
 
 
@@ -293,9 +272,7 @@ class TestTitleStateEvents:
 class TestSubtitleEvents:
     """Test subtitle-related event broadcasting."""
 
-    async def test_broadcast_subtitle_download_started(
-        self, broadcaster, mock_ws_manager
-    ):
+    async def test_broadcast_subtitle_download_started(self, broadcaster, mock_ws_manager):
         """Test broadcasting subtitle download started."""
         await broadcaster.broadcast_subtitle_download_started(job_id=1, total_count=10)
 
@@ -307,9 +284,7 @@ class TestSubtitleEvents:
             failed_count=0,
         )
 
-    async def test_broadcast_subtitle_download_progress(
-        self, broadcaster, mock_ws_manager
-    ):
+    async def test_broadcast_subtitle_download_progress(self, broadcaster, mock_ws_manager):
         """Test broadcasting subtitle download progress."""
         await broadcaster.broadcast_subtitle_download_progress(
             job_id=1,
@@ -326,9 +301,7 @@ class TestSubtitleEvents:
             failed_count=1,
         )
 
-    async def test_broadcast_subtitle_download_completed(
-        self, broadcaster, mock_ws_manager
-    ):
+    async def test_broadcast_subtitle_download_completed(self, broadcaster, mock_ws_manager):
         """Test broadcasting subtitle download completed."""
         await broadcaster.broadcast_subtitle_download_completed(
             job_id=1,
@@ -344,9 +317,7 @@ class TestSubtitleEvents:
             failed_count=2,
         )
 
-    async def test_broadcast_subtitle_download_failed(
-        self, broadcaster, mock_ws_manager
-    ):
+    async def test_broadcast_subtitle_download_failed(self, broadcaster, mock_ws_manager):
         """Test broadcasting subtitle download failed."""
         await broadcaster.broadcast_subtitle_download_failed(job_id=1)
 
@@ -357,9 +328,7 @@ class TestSubtitleEvents:
 class TestAbstractionLayer:
     """Test that EventBroadcaster properly abstracts WebSocket calls."""
 
-    async def test_encapsulates_websocket_details(
-        self, broadcaster, mock_ws_manager
-    ):
+    async def test_encapsulates_websocket_details(self, broadcaster, mock_ws_manager):
         """Test that domain events don't expose WebSocket implementation."""
         # Call domain-specific method
         await broadcaster.broadcast_job_state_changed(1, JobState.RIPPING)

@@ -11,9 +11,7 @@ from loguru import logger
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def retry_network_operation(
-    max_retries: int = 3, base_delay: float = 1.0
-) -> Callable[[F], F]:
+def retry_network_operation(max_retries: int = 3, base_delay: float = 1.0) -> Callable[[F], F]:
     """Decorator for retrying network operations."""
 
     def decorator(func: F) -> F:
@@ -109,16 +107,17 @@ def fetch_show_id(show_name: str) -> str | None:
     """
     # Try to get API key from Engram settings first, then fallback to matcher config
     from app.services.config_service import get_config_sync
-    
+
     config = get_config_sync()
     api_key = config.tmdb_api_key
 
     if not api_key:
         logger.warning("TMDB API key not configured in Engram settings")
         return None
-    
-    logger.debug(f"Searching TMDB for '{show_name}' using API key ending in ...{api_key[-4:] if len(api_key) > 4 else '****'}")
 
+    logger.debug(
+        f"Searching TMDB for '{show_name}' using API key ending in ...{api_key[-4:] if len(api_key) > 4 else '****'}"
+    )
 
     url = "https://api.themoviedb.org/3/search/tv"
 
@@ -147,13 +146,13 @@ def fetch_show_id(show_name: str) -> str | None:
         variations.append(current.replace("&", "and"))
     elif " and " in current.lower():
         # Try with ampersand if "and" exists
-        variations.append(re.sub(r'\\band\\b', '&', current, flags=re.IGNORECASE))
+        variations.append(re.sub(r"\band\b", "&", current, flags=re.IGNORECASE))
 
     # 3. Try removing common words
     common_words = ["Season", "Complete", "Series", "Collection"]
     for word in common_words:
         if word.lower() in current.lower():
-            cleaned = re.sub(rf'\\s*\\b{word}\\b\\s*', ' ', current, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(rf"\s*\b{word}\b\s*", " ", current, flags=re.IGNORECASE).strip()
             if cleaned and cleaned != current:
                 variations.append(cleaned)
 
@@ -165,48 +164,48 @@ def fetch_show_id(show_name: str) -> str | None:
 
     # Remove season/disc indicators (S1, S1D1, Season 1, etc.)
     patterns_to_remove = [
-        r'\\s+S\\d+D\\d+',  # " S1D1", " S2D3"
-        r'\\s+S\\d+',      # " S1", " S2"
-        r'\\s+Season\\s+\\d+',  # " Season 1"
-        r'\\s+Disc\\s+\\d+',    # " Disc 1"
-        r'\\s+D\\d+',      # " D1"
+        r"\s+S\d+D\d+",  # " S1D1", " S2D3"
+        r"\s+S\d+",  # " S1", " S2"
+        r"\s+Season\s+\d+",  # " Season 1"
+        r"\s+Disc\s+\d+",  # " Disc 1"
+        r"\s+D\d+",  # " D1"
     ]
 
     for pattern in patterns_to_remove:
-        cleaned = re.sub(pattern, '', current, flags=re.IGNORECASE)
+        cleaned = re.sub(pattern, "", current, flags=re.IGNORECASE)
         if cleaned != current and cleaned.strip():
             variations.append(cleaned.strip())
             current = cleaned.strip()
 
     # Remove year/parenthetical content
-    cleaned = re.sub(r'\\s*\\(\\d{4}\\)', '', current).strip()
+    cleaned = re.sub(r"\s*\(\d{4}\)", "", current).strip()
     if cleaned != current and cleaned:
         variations.append(cleaned)
         current = cleaned
 
-    cleaned = re.sub(r'\\s*\\([^)]+\\)', '', current).strip()
+    cleaned = re.sub(r"\s*\([^)]+\)", "", current).strip()
     if cleaned != current and cleaned:
         variations.append(cleaned)
 
     # Remove subtitle after dash
-    if ' - ' in current:
-        before_dash = current.split(' - ')[0].strip()
+    if " - " in current:
+        before_dash = current.split(" - ")[0].strip()
         if before_dash and before_dash != current:
             variations.append(before_dash)
 
     # Remove common suffixes
     suffixes_to_try = [
-        r'\\s+Complete\\s+Series$',
-        r'\\s+The\\s+Complete\\s+Series$',
-        r'\\s+US$',
-        r'\\s+UK$',
-        r'\\s+\\(US\\)$',
-        r'\\s+\\(UK\\)$',
+        r"\s+Complete\s+Series$",
+        r"\s+The\s+Complete\s+Series$",
+        r"\s+US$",
+        r"\s+UK$",
+        r"\s+\(US\)$",
+        r"\s+\(UK\)$",
     ]
 
     for suffix in suffixes_to_try:
         for var in [show_name] + variations[:]:  # Check original + variations so far
-            cleaned = re.sub(suffix, '', var, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(suffix, "", var, flags=re.IGNORECASE).strip()
             if cleaned and cleaned not in variations and cleaned != show_name:
                 variations.append(cleaned)
 
@@ -224,7 +223,7 @@ def fetch_show_id(show_name: str) -> str | None:
             if without_last and len(without_last) > 2 and without_last != without_first:
                 variations.append(without_last)
 
-    # Remove duplicates while preserving order
+    # Remove duplicate variations
     seen = {show_name}
     unique_variations = []
     for v in variations:
@@ -234,25 +233,49 @@ def fetch_show_id(show_name: str) -> str | None:
 
     variations = unique_variations
 
+    # 4. Handle "NameNumber" (e.g. Southpark6 -> Southpark)
+    # This catches cases where the season/volume number is appended directly to the name
+    name_num_match = re.match(r"^(.+?)(\d+)$", current)
+    if name_num_match:
+        name_part, num_part = name_num_match.groups()
+        if len(name_part) > 2:  # Avoid matching very short names
+            name_part = name_part.strip()
+            variations.append(name_part)
+            variations.append(f"{name_part} {num_part}")
+
+            # Also try splitting the name part if it looks like a compound word
+            if " " not in name_part and 6 <= len(name_part) <= 20:
+                for i in range(2, len(name_part) - 1):
+                    variations.append(f"{name_part[:i]} {name_part[i:]}")
+
+    # 5. Brute Force Split (e.g. Southpark -> South Park)
+    # If the name is a single word and reasonably short, try splitting it
+    if " " not in current and 6 <= len(current) <= 20:
+        for i in range(2, len(current) - 1):
+            split_var = f"{current[:i]} {current[i:]}"
+            variations.append(split_var)
+
     # Try exact match first
     headers = {}
     params = {"query": show_name}
-    
+
     # Check if key is v3 (hex, 32 chars) or v4 (longer)
-    if len(api_key) > 40: # v4 tokens are long JWTs
+    if len(api_key) > 40:  # v4 tokens are long JWTs
         headers["Authorization"] = f"Bearer {api_key}"
     else:
         params["api_key"] = api_key
 
     response = requests.get(url, headers=headers, params=params, timeout=30)
-    
+
     results = []
     if response.status_code == 200:
         results = response.json().get("results", [])
         logger.debug(f"TMDB search for '{show_name}': {len(results)} results")
-        
+
         if results:
-            logger.debug(f"Top result: {results[0].get('name')} ({results[0].get('first_air_date')}) ID: {results[0].get('id')}")
+            logger.debug(
+                f"Top result: {results[0].get('name')} ({results[0].get('first_air_date')}) ID: {results[0].get('id')}"
+            )
             # ... (logging)
             best_match = results[0]
             logger.info(
@@ -265,7 +288,7 @@ def fetch_show_id(show_name: str) -> str | None:
             if variation != show_name and variation:  # Skip if same or empty
                 variation_params = params.copy()
                 variation_params["query"] = variation
-                
+
                 response = requests.get(url, headers=headers, params=variation_params, timeout=30)
                 if response.status_code == 200:
                     results = response.json().get("results", [])
@@ -277,6 +300,39 @@ def fetch_show_id(show_name: str) -> str | None:
                             f"'{best_match['name']}' (ID: {best_match['id']})"
                         )
                         return str(best_match["id"])
+
+    # Fallback: Fuzzy match against popular shows
+    # This handles cases like "Southpark" -> "South Park" (missing spaces)
+    try:
+        popular_shows = fetch_popular_shows(page=1)
+        # Also fetch page 2/3? "South Park" is usually very popular, top 20.
+        # But let's fetch a few pages if needed or just cache?
+        # For now, just page 1 is a good start.
+        # Actually, "South Park" might not be in top 20 currently airing?
+        # Let's try to match against what we have.
+
+        # Build map of name -> id
+        popular_map = {s["name"]: s["id"] for s in popular_shows}
+
+        # Normalize keys for better matching (lowercase)
+        popular_names = list(popular_map.keys())
+
+        import difflib
+
+        # Try matching the original name and the cleaned name
+        candidates = [show_name, current] + variations
+        for candidate in candidates:
+            matches = difflib.get_close_matches(candidate, popular_names, n=1, cutoff=0.8)
+            if matches:
+                match_name = matches[0]
+                match_id = popular_map[match_name]
+                logger.info(
+                    f"Fuzzy matched '{show_name}' to popular show: '{match_name}' (ID: {match_id})"
+                )
+                return str(match_id)
+
+    except Exception as e:
+        logger.warning(f"Error during popular show fuzzy match: {e}")
 
     num_variations = len([v for v in variations if v != show_name and v]) + 1
     logger.warning(
@@ -300,6 +356,7 @@ def fetch_show_details(show_id: int) -> dict | None:
         None: If request fails or API key not configured
     """
     from app.services.config_service import get_config_sync
+
     config = get_config_sync()
     api_key = config.tmdb_api_key
 
@@ -308,10 +365,10 @@ def fetch_show_details(show_id: int) -> dict | None:
         return None
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}"
-    
+
     headers = {}
     params = {}
-    
+
     if len(api_key) > 40:
         headers["Authorization"] = f"Bearer {api_key}"
     else:
@@ -338,6 +395,7 @@ def fetch_popular_shows(page: int = 1) -> list[dict]:
         list[dict]: List of show objects (id, name, etc.)
     """
     from app.services.config_service import get_config_sync
+
     config = get_config_sync()
     if not config.tmdb_api_key:
         logger.warning("TMDB API key not configured")
@@ -345,8 +403,8 @@ def fetch_popular_shows(page: int = 1) -> list[dict]:
 
     # Sanitize API key
     api_key = config.tmdb_api_key.strip()
-    url = f"https://api.themoviedb.org/3/tv/popular"
-    
+    url = "https://api.themoviedb.org/3/tv/popular"
+
     headers = {}
     params = {"language": "en-US", "page": page}
 
@@ -362,7 +420,7 @@ def fetch_popular_shows(page: int = 1) -> list[dict]:
         except requests.HTTPError as e:
             logger.error(f"HTTP Error {response.status_code}: {response.text}")
             raise e
-            
+
         return response.json().get("results", [])
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch popular shows: {e}")
@@ -383,10 +441,16 @@ def fetch_season_details(show_id: str, season_number: int) -> int:
     """
     logger.info(f"Fetching season details for Season {season_number}...")
     from app.services.config_service import get_config_sync
+
     config = get_config_sync()
     tmdb_api_key = config.tmdb_api_key
+
+    if not tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return 0
+
     url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
-    
+
     headers = {}
     params = {}
     if len(tmdb_api_key) > 40:
@@ -404,9 +468,7 @@ def fetch_season_details(show_id: str, season_number: int) -> int:
         logger.error(f"Failed to fetch season details for Season {season_number}: {e}")
         return 0
     except KeyError:
-        logger.error(
-            f"Missing 'episodes' key in response JSON data for Season {season_number}"
-        )
+        logger.error(f"Missing 'episodes' key in response JSON data for Season {season_number}")
         return 0
 
 
@@ -471,17 +533,18 @@ def get_number_of_seasons(show_id: str) -> int:
     - requests.HTTPError: If there is an error while making the API request.
     """
     from app.services.config_service import get_config_sync
+
     config = get_config_sync()
     tmdb_api_key = config.tmdb_api_key
     url = f"https://api.themoviedb.org/3/tv/{show_id}"
-    
+
     headers = {}
     params = {}
     if len(tmdb_api_key) > 40:
         headers["Authorization"] = f"Bearer {tmdb_api_key}"
     else:
         params["api_key"] = tmdb_api_key
-        
+
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
     show_data = response.json()

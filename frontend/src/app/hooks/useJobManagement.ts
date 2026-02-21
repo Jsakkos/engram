@@ -98,12 +98,27 @@ export function useJobManagement(devMode: boolean = false) {
                     match_stage: message.match_stage,
                     full_message: message
                 });
-                setTitlesMap(prev => ({
-                    ...prev,
-                    [message.job_id]: prev[message.job_id]?.map(title =>
-                        title.id === message.title_id ? { ...title, ...message } : title
-                    ) || []
-                }));
+                setTitlesMap(prev => {
+                    const updated = {
+                        ...prev,
+                        [message.job_id]: prev[message.job_id]?.map(title =>
+                            title.id === message.title_id ? { ...title, ...message } : title
+                        ) || []
+                    };
+
+                    // Check if all titles are terminal but job might still be active
+                    const updatedTitles = updated[message.job_id];
+                    if (updatedTitles && updatedTitles.length > 0) {
+                        const terminalStates = ['matched', 'completed', 'review', 'failed'];
+                        const allDone = updatedTitles.every(t => terminalStates.includes(t.state));
+                        if (allDone) {
+                            // Schedule a refresh to catch missed job_update messages
+                            setTimeout(() => fetchJobsAndTitles(), 3000);
+                        }
+                    }
+
+                    return updated;
+                });
                 break;
 
             case 'titles_discovered':

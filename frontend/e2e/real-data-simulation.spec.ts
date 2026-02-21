@@ -24,7 +24,7 @@ test.describe('Real Data Simulation', () => {
         test.skip(!stagingPathExists, `Staging path not found: ${TV_DISC_ARRESTED_DEVELOPMENT_REAL.staging_path}`);
         test.setTimeout(180_000);
 
-        const { job_id, titles_count } = await simulateInsertDiscFromStaging(
+        const { titles_count } = await simulateInsertDiscFromStaging(
             TV_DISC_ARRESTED_DEVELOPMENT_REAL,
         );
         expect(titles_count).toBeGreaterThan(0);

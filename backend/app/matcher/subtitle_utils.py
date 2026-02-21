@@ -2,9 +2,7 @@ import re
 from pathlib import Path
 
 
-def generate_subtitle_patterns(
-    series_name: str, season: int, episode: int
-) -> list[str]:
+def generate_subtitle_patterns(series_name: str, season: int, episode: int) -> list[str]:
     """
     Generate various common subtitle filename patterns.
 
@@ -80,4 +78,3 @@ def sanitize_filename(filename: str) -> str:
     filename = re.sub(r'[<>:"/\\|?*]', "", filename)
 
     return filename.strip()
-

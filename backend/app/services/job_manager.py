@@ -113,11 +113,15 @@ class JobManager:
         config = await get_config()
         await ensure_paths_exist(config)
 
-        # Initialize matching concurrency limiter
-        self._match_semaphore = asyncio.Semaphore(config.max_concurrent_matches)
-        logger.info(
-            f"Job manager started (max_concurrent_matches={config.max_concurrent_matches})"
-        )
+        # Initialize matching concurrency limiter (guard against invalid DB values)
+        concurrency = max(1, config.max_concurrent_matches)
+        if concurrency != config.max_concurrent_matches:
+            logger.warning(
+                f"Invalid max_concurrent_matches={config.max_concurrent_matches} "
+                f"in config, using {concurrency}"
+            )
+        self._match_semaphore = asyncio.Semaphore(concurrency)
+        logger.info(f"Job manager started (max_concurrent_matches={concurrency})")
 
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
@@ -173,7 +177,10 @@ class JobManager:
             from app.services.config_service import get_config as get_db_config
 
             db_config = await get_db_config()
-            staging_dir = Path(db_config.staging_path).expanduser() / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            staging_dir = (
+                Path(db_config.staging_path).expanduser()
+                / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
 
             # Create new job
             job = DiscJob(
@@ -225,19 +232,21 @@ class JobManager:
 
                 # Extract disc number from volume label (e.g., "SHOW_S01D2" -> 2)
                 import re
-                disc_match = re.search(r'd(?:isc)?[_\s]*(\d+)', job.volume_label, re.IGNORECASE)
+
+                disc_match = re.search(r"d(?:isc)?[_\s]*(\d+)", job.volume_label, re.IGNORECASE)
                 if disc_match:
                     job.disc_number = int(disc_match.group(1))
-                    logger.info(f"Detected disc number: {job.disc_number} from volume label: {job.volume_label}")
+                    logger.info(
+                        f"Detected disc number: {job.disc_number} from volume label: {job.volume_label}"
+                    )
                 else:
                     job.disc_number = 1  # Default per user preference
                     logger.info("No disc number detected in volume label, defaulting to 1")
 
                 # Clear any existing titles for this job (e.g. from a previous scan)
                 from sqlalchemy import delete
-                await session.execute(
-                    delete(DiscTitle).where(DiscTitle.job_id == job_id)
-                )
+
+                await session.execute(delete(DiscTitle).where(DiscTitle.job_id == job_id))
 
                 # Save title information
                 for title in titles:
@@ -283,9 +292,7 @@ class JobManager:
                     # Start background subtitle download with tracking
                     self._subtitle_ready[job_id] = asyncio.Event()
                     self._subtitle_tasks[job_id] = asyncio.create_task(
-                        self._download_subtitles(
-                            job_id, job.detected_title, job.detected_season
-                        )
+                        self._download_subtitles(job_id, job.detected_title, job.detected_season)
                     )
                     logger.info(
                         f"Job {job_id}: starting subtitle download for "
@@ -296,31 +303,33 @@ class JobManager:
                     # Special handling for Ambiguous Movies (Multiple Feature-Length Titles)
                     # "Rip First, Review Later" workflow
                     is_ambiguous_movie = (
-                        job.content_type == ContentType.MOVIE 
+                        job.content_type == ContentType.MOVIE
                         and "Multiple long titles found" in (analysis.review_reason or "")
                     )
 
                     if is_ambiguous_movie:
-                        logger.info(f"Job {job_id}: Ambiguous movie detected. Auto-ripping candidates for later review.")
-                        
+                        logger.info(
+                            f"Job {job_id}: Ambiguous movie detected. Auto-ripping candidates for later review."
+                        )
+
                         # Select all long titles (candidates) for ripping
-                        # We need to re-fetch the titles we just added to session? 
-                        # We just added them to session but didn't commit? 
+                        # We need to re-fetch the titles we just added to session?
+                        # We just added them to session but didn't commit?
                         # Wait, the code above adds them to session: `session.add(disc_title)`
                         # We can iterate over `titles` (the MakeMKV TitleInfo objects) and match by index?
                         # Or just query them back.
-                        
+
                         # Let's use the `titles` list we have from scan_disc and the session objects
                         # Actually, we haven't committed `disc_title` inserts yet.
                         # We can iterate through the session.new objects? or just use a query after flush.
-                        
+
                         # Commit first to save titles
                         await session.commit()
-                        
+
                         # Fetch back to update is_selected
                         statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
                         db_titles = (await session.execute(statement)).scalars().all()
-                        
+
                         candidate_count = 0
                         for dt in db_titles:
                             # Heuristic: Select titles > 80 mins (same as Analyst)
@@ -328,14 +337,14 @@ class JobManager:
                                 dt.is_selected = True
                                 candidate_count += 1
                                 session.add(dt)
-                        
+
                         await session.commit()
-                        
-                        # Broadcast title updates so UI shows them selected? 
+
+                        # Broadcast title updates so UI shows them selected?
                         # Actually broadcast_titles_discovered is called above, but before selection.
-                        # The UI might need an update? 
+                        # The UI might need an update?
                         # We can send a job update.
-                        
+
                         job.state = JobState.RIPPING
                         await session.commit()
                         await ws_manager.broadcast_job_update(
@@ -344,7 +353,7 @@ class JobManager:
                             content_type=job.content_type.value,
                             detected_title=job.detected_title,
                         )
-                        
+
                         # Run ripping
                         await self._run_ripping(job_id)
                         return
@@ -360,9 +369,7 @@ class JobManager:
                         detected_season=job.detected_season,
                         total_titles=job.total_titles,
                     )
-                    logger.info(
-                        f"Job {job_id} needs review: {analysis.review_reason}"
-                    )
+                    logger.info(f"Job {job_id} needs review: {analysis.review_reason}")
                 else:
                     # High-confidence detection - auto-start ripping
                     job.state = JobState.RIPPING
@@ -410,7 +417,9 @@ class JobManager:
 
     async def _check_job_completion(self, session, job_id: int):
         """Check if all titles in a job are processed, and if so, finalize."""
-        # Refresh job to get latest state
+        # Expire cached objects to ensure fresh reads from DB
+        session.expire_all()
+
         job = await session.get(DiscJob, job_id)
         if not job:
             return
@@ -422,6 +431,14 @@ class JobManager:
 
         active_states = [TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING]
         active_titles = [t for t in titles if t.state in active_states]
+
+        # ── Diagnostic: log ALL title states every time this is called ──
+        state_summary = ", ".join(
+            f"t{t.title_index}={t.state.value}" for t in sorted(titles, key=lambda x: x.title_index)
+        )
+        logger.info(
+            f"[COMPLETION-CHECK] Job {job_id}: {len(active_titles)} active / {len(titles)} total — [{state_summary}]"
+        )
 
         if active_titles:
             logger.debug(
@@ -452,7 +469,7 @@ class JobManager:
             await state_machine.transition_to_review(
                 job,
                 session,
-                reason=f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment"
+                reason=f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
             )
         elif all_failed and not has_completed:
             # Only FAILED if ALL titles failed (actual errors)
@@ -527,7 +544,9 @@ class JobManager:
                 # Find conflicts
                 conflicts = {ep: tlist for ep, tlist in candidates.items() if len(tlist) > 1}
                 if not conflicts:
-                    logger.info(f"Conflict resolution round {round_num + 1}: no conflicts remaining")
+                    logger.info(
+                        f"Conflict resolution round {round_num + 1}: no conflicts remaining"
+                    )
                     break
 
                 logger.info(
@@ -543,13 +562,15 @@ class JobManager:
                     ranked = []
                     for t in title_list:
                         score, vote_count, file_cov, runner_ups = _get_metrics(t)
-                        ranked.append({
-                            "title": t,
-                            "score": score,
-                            "vote_count": vote_count,
-                            "file_coverage": file_cov,
-                            "runner_ups": runner_ups,
-                        })
+                        ranked.append(
+                            {
+                                "title": t,
+                                "score": score,
+                                "vote_count": vote_count,
+                                "file_coverage": file_cov,
+                                "runner_ups": runner_ups,
+                            }
+                        )
 
                     ranked.sort(
                         key=lambda x: (x["vote_count"], x["score"], x["file_coverage"]),
@@ -645,7 +666,9 @@ class JobManager:
                     t.state = TitleState.COMPLETED
                     # Store organization tracking info
                     t.organized_from = source_file.name
-                    t.organized_to = str(org_result.get("final_path")) if org_result.get("final_path") else None
+                    t.organized_to = (
+                        str(org_result.get("final_path")) if org_result.get("final_path") else None
+                    )
                     t.is_extra = False
                 else:
                     t.state = TitleState.REVIEW
@@ -666,6 +689,11 @@ class JobManager:
                     is_extra=t.is_extra,
                     match_details=t.match_details,
                 )
+
+            # Persist title states before determining job outcome —
+            # if anything fails between here and the job transition,
+            # the title states are still correctly saved.
+            await session.commit()
 
             # Determine final job state
             has_review = any(t.state == TitleState.REVIEW for t in titles)
@@ -714,6 +742,7 @@ class JobManager:
             try:
                 # Remove all files and directory
                 import shutil
+
                 shutil.rmtree(staging_path)
                 logger.info(f"Cleaned up staging directory: {staging_path}")
             except Exception as e:
@@ -728,12 +757,9 @@ class JobManager:
 
             # Calculate title count for initial update
             title_count = job.total_titles or 0
-            
+
             await ws_manager.broadcast_job_update(
-                job_id, 
-                JobState.RIPPING.value,
-                current_title=1,
-                total_titles=title_count
+                job_id, JobState.RIPPING.value, current_title=1, total_titles=title_count
             )
 
             try:
@@ -742,27 +768,27 @@ class JobManager:
                 # Calculate total size of selected titles
                 total_job_bytes = 0
                 title_sizes = {}
-                
+
                 # Fetch titles to get sizes
                 titles_result = await session.execute(
                     select(DiscTitle).where(DiscTitle.job_id == job_id)
                 )
                 disc_titles = titles_result.scalars().all()
-                
+
                 for t in disc_titles:
                     # If any titles are explicitly selected, skip unselected ones
                     # (This supports Pre-Rip selection workflow)
                     has_selection = any(dt.is_selected for dt in disc_titles if dt.is_selected)
                     if has_selection and not t.is_selected:
                         continue
-                        
+
                     total_job_bytes += t.file_size_bytes
                     title_sizes[t.title_index] = t.file_size_bytes
 
                 # Filter disc_titles for ripping if selection exists
                 titles_to_rip = disc_titles
                 if any(dt.is_selected for dt in disc_titles):
-                     titles_to_rip = [dt for dt in disc_titles if dt.is_selected]
+                    titles_to_rip = [dt for dt in disc_titles if dt.is_selected]
 
                 # Sort titles by index for mapping rip order to title records
                 sorted_titles = sorted(titles_to_rip, key=lambda t: t.title_index)
@@ -790,10 +816,10 @@ class JobManager:
                     active_title = None
 
                     if 0 <= (current_idx - 1) < len(sorted_titles):
-                         active_title = sorted_titles[current_idx - 1]
-                         active_title_size = active_title.file_size_bytes
-                         for i in range(current_idx - 1):
-                             cumulative_previous += sorted_titles[i].file_size_bytes
+                        active_title = sorted_titles[current_idx - 1]
+                        active_title_size = active_title.file_size_bytes
+                        for i in range(current_idx - 1):
+                            cumulative_previous += sorted_titles[i].file_size_bytes
 
                     current_title_bytes = int((progress.percent / 100.0) * active_title_size)
                     total_bytes_done = cumulative_previous + current_title_bytes
@@ -853,8 +879,7 @@ class JobManager:
                 # Define granular callback — called from extractor thread
                 def on_title_complete(idx: int, path: Path):
                     logger.info(
-                        f"[CALLBACK] Title complete: idx={idx} path={path.name} "
-                        f"(Job {job_id})"
+                        f"[CALLBACK] Title complete: idx={idx} path={path.name} (Job {job_id})"
                     )
                     future = asyncio.run_coroutine_threadsafe(
                         self._on_title_ripped(job_id, idx, path, sorted_titles),
@@ -866,7 +891,9 @@ class JobManager:
                         try:
                             fut.result(timeout=30)
                         except TimeoutError as e:
-                            logger.error(f"[CALLBACK] _on_title_ripped timed out for {path.name} (Job {job_id}): {e}")
+                            logger.error(
+                                f"[CALLBACK] _on_title_ripped timed out for {path.name} (Job {job_id}): {e}"
+                            )
                         except Exception as e:
                             logger.exception(
                                 f"[CALLBACK] _on_title_ripped failed for "
@@ -887,9 +914,7 @@ class JobManager:
                     job.drive_id,
                     output_dir,
                     title_indices=rip_indices,
-                    progress_callback=lambda p: asyncio.create_task(
-                        progress_callback(p)
-                    ),
+                    progress_callback=lambda p: asyncio.create_task(progress_callback(p)),
                     title_complete_callback=on_title_complete,
                 )
 
@@ -910,84 +935,101 @@ class JobManager:
                 # For TV, we rely on the granular callbacks to handle moving/matching.
                 # Once ripping returns, we update job state to MATCHING if still ripping?
                 if job.content_type == ContentType.TV:
+                    logger.info(
+                        f"[RIP-DONE] Job {job_id}: rip_titles returned, "
+                        f"{len(result.output_files)} files produced. "
+                        f"Job state={job.state.value}. Running backfill..."
+                    )
                     # Fallback: fire _on_title_ripped for any .mkv files that the
                     # filesystem polling didn't catch (e.g. timing edge cases).
                     await self._backfill_unmatched_titles(
                         job_id, Path(job.staging_path), sorted_titles
                     )
 
-                    job.state = JobState.MATCHING
-                    await session.commit()
-                    await ws_manager.broadcast_job_update(
-                        job_id, JobState.MATCHING.value
-                    )
+                    # Refresh job from DB — matching tasks may have already
+                    # advanced the job past RIPPING (same stale-state issue
+                    # that required expunging title objects at line 776-781).
+                    session.expire(job)
+                    await session.refresh(job)
+
+                    if job.state == JobState.RIPPING:
+                        succeeded = await state_machine.transition(
+                            job, JobState.MATCHING, session, broadcast=False
+                        )
+                        if succeeded:
+                            await ws_manager.broadcast_job_update(job_id, JobState.MATCHING.value)
+                    else:
+                        logger.info(
+                            f"Job {job_id}: skipping RIPPING->MATCHING transition, "
+                            f"job already in {job.state.value}"
+                        )
 
                 else:
                     # For movies, check if we have multiple ripped versions (Ambiguous Movie workflow)
                     # We can check how many titles were selected for ripping
                     ripped_titles = [t for t in disc_titles if t.is_selected]
-                    
+
                     # If multiple titles were ripped, we need user to select the correct one
-                    # CAUTION: If user manually selected multiple titles in Pre-Rip flow (if we supported that), 
+                    # CAUTION: If user manually selected multiple titles in Pre-Rip flow (if we supported that),
                     # this would also trigger.
                     if len(ripped_titles) > 1:
-                         await state_machine.transition_to_review(
-                             job,
-                             session,
-                             reason="Multiple versions ripped. Please select the correct one.",
-                             broadcast=False
-                         )
-                         await ws_manager.broadcast_job_update(
+                        await state_machine.transition_to_review(
+                            job,
+                            session,
+                            reason="Multiple versions ripped. Please select the correct one.",
+                            broadcast=False,
+                        )
+                        await ws_manager.broadcast_job_update(
                             job_id,
                             JobState.REVIEW_NEEDED.value,
-                            error="Multiple versions ripped. Please select the correct one."
-                         )
-                         logger.info(f"Job {job_id}: Multiple movie versions ripped. Waiting for user selection.")
-                         return
+                            error="Multiple versions ripped. Please select the correct one.",
+                        )
+                        logger.info(
+                            f"Job {job_id}: Multiple movie versions ripped. Waiting for user selection."
+                        )
+                        return
 
                     # Single title flow (Standard Movie)
                     job.state = JobState.ORGANIZING
                     await session.commit()
-                    await ws_manager.broadcast_job_update(
-                        job_id, JobState.ORGANIZING.value
-                    )
-                    
+                    await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
+
                     # Identify the file to organize
                     # If we have a single selected title, use its index to find the file
                     # File naming usually `*_tXX.mkv`
-                    
-                    target_path = Path(job.staging_path)
-                    
+
+                    Path(job.staging_path)
+
                     # If we know exactly which title index we ripped (ripped_titles has 1 item)
                     # We can try to be specific to avoid "largest file" heuristics which might be wrong if extras are huge?
                     # But MakeMKV robot mode output filenames are not always predictable ID-wise.
                     # Generally `title_t00.mkv`.
-                    
+
                     # Let's rely on `movie_organizer`'s directory scan for the single-file case
                     # OR if we have `ripped_titles`, we can try to find that specific file.
                     # But `DiscTitle` doesn't store the output filename until we verify it exists.
                     # `extractor` output `output_files`. We didn't save them to `DiscTitle` yet?
                     # `_on_title_ripped` SAVES `output_filename` to `DiscTitle`.
-                    
+
                     # So `ripped_titles[0].output_filename` should be set?
                     # `_on_title_ripped` is called via callback. It might race with this code?
                     # We use `await self._extractor.rip_titles` which waits for process.
                     # And `title_complete_callback` fires `_on_title_ripped`.
                     # But `_on_title_ripped` is async.
-                    # `rip_titles` implementation waits for callbacks? 
+                    # `rip_titles` implementation waits for callbacks?
                     # Looking at `extractor.py`: `title_complete_callback` is called synchronously from the thread?
                     # No, `job_manager` wraps it in `run_coroutine_threadsafe`.
                     # The `progress_callback` in `rip_titles` waits for queue.
                     # The `title_complete_callback` is called from `_check_for_completed_files`.
-                    
+
                     # We should refresh the session/titles to ensure we have the latest data (output_filenames).
                     # `session` here is open. `_on_title_ripped` uses its own session?
                     # `_on_title_ripped` uses `async with async_session()`.
                     # So we need to `session.refresh` the titles or re-query.
-                    
-                    # If we only have 1 title, let's just let existing `movie_organizer` logic work 
+
+                    # If we only have 1 title, let's just let existing `movie_organizer` logic work
                     # (it finds largest file). It's robust enough for single-movie discs.
-                    
+
                     # Run organizer in thread to not block
                     organize_result = await asyncio.to_thread(
                         movie_organizer.organize,
@@ -995,14 +1037,12 @@ class JobManager:
                         job.volume_label,
                         job.detected_title,
                     )
-                    
+
                     if organize_result["success"]:
                         job.final_path = str(organize_result["main_file"])
                         job.progress_percent = 100.0
                         await state_machine.transition_to_completed(job, session)
-                        logger.info(
-                            f"Job {job_id} completed: {organize_result['main_file']}"
-                        )
+                        logger.info(f"Job {job_id} completed: {organize_result['main_file']}")
                     else:
                         await state_machine.transition_to_failed(
                             job, session, error_message=organize_result["error"]
@@ -1060,9 +1100,7 @@ class JobManager:
                 )
 
             if not title:
-                logger.warning(
-                    f"Could not map ripped file {path.name} to any title (Job {job_id})"
-                )
+                logger.warning(f"Could not map ripped file {path.name} to any title (Job {job_id})")
                 return
 
             title.output_filename = str(path)
@@ -1086,7 +1124,10 @@ class JobManager:
             # If TV, queue matching task (will wait for file to finish writing)
             job = await session.get(DiscJob, job_id)
             if job and job.content_type == ContentType.TV:
-                asyncio.create_task(self._match_single_file(job_id, title.id, path))
+                task = asyncio.create_task(self._match_single_file(job_id, title.id, path))
+                task.add_done_callback(
+                    lambda t, jid=job_id, tid=title.id: self._on_match_task_done(t, jid, tid)
+                )
 
     async def _backfill_unmatched_titles(
         self, job_id: int, staging_dir: Path, sorted_titles: list[DiscTitle]
@@ -1100,13 +1141,9 @@ class JobManager:
 
         async with async_session() as session:
             # Get current title states
-            result = await session.execute(
-                select(DiscTitle).where(DiscTitle.job_id == job_id)
-            )
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
             titles = result.scalars().all()
-            assigned_indices = {
-                t.title_index for t in titles if t.output_filename is not None
-            }
+            assigned_indices = {t.title_index for t in titles if t.output_filename is not None}
 
             # Scan staging dir for .mkv files
             mkv_files = list(staging_dir.glob("*.mkv")) if staging_dir.exists() else []
@@ -1115,9 +1152,7 @@ class JobManager:
                 # Extract title index from filename
                 idx_match = _re.search(r"t(\d+)\.mkv$", mkv.name, _re.IGNORECASE)
                 if not idx_match:
-                    idx_match = _re.search(
-                        r"title[_]?(\d+)\.mkv$", mkv.name, _re.IGNORECASE
-                    )
+                    idx_match = _re.search(r"title[_]?(\d+)\.mkv$", mkv.name, _re.IGNORECASE)
                 if not idx_match:
                     continue
 
@@ -1129,9 +1164,7 @@ class JobManager:
                     f"Backfill: found unmatched file {mkv.name} "
                     f"(title_index={title_index}, Job {job_id})"
                 )
-                await self._on_title_ripped(
-                    job_id, 0, mkv, sorted_titles
-                )
+                await self._on_title_ripped(job_id, 0, mkv, sorted_titles)
 
     async def _wait_for_file_ready(
         self, file_path: Path, title_id: int, job_id: int, timeout: float | None = None
@@ -1145,6 +1178,7 @@ class JobManager:
         Returns True if file is ready, False on timeout.
         """
         from app.services.config_service import get_config
+
         config = await get_config()
         check_interval = config.ripping_file_poll_interval
         required_stable = config.ripping_stability_checks
@@ -1189,7 +1223,7 @@ class JobManager:
                     match_stage="waiting_for_file",
                     match_progress=0.0,
                     expected_size_bytes=expected_size,
-                    actual_size_bytes=0
+                    actual_size_bytes=0,
                 )
                 continue
 
@@ -1197,8 +1231,7 @@ class JobManager:
                 current_size = file_path.stat().st_size
             except OSError as e:
                 logger.debug(
-                    f"[MATCH] Title {title_id} (Job {job_id}): cannot stat file "
-                    f"({e}), retrying..."
+                    f"[MATCH] Title {title_id} (Job {job_id}): cannot stat file ({e}), retrying..."
                 )
                 await asyncio.sleep(check_interval)
                 continue
@@ -1210,15 +1243,34 @@ class JobManager:
                 size_matches_expected = True
                 if expected_size > 0:
                     size_ratio = current_size / expected_size
-                    size_matches_expected = size_ratio >= 0.95
+                    # MakeMKV scan estimates are approximate; allow 15% tolerance
+                    size_matches_expected = size_ratio >= 0.85
 
                 logger.debug(
                     f"[MATCH] Title {title_id} (Job {job_id}): file size stable "
                     f"({current_size / 1024 / 1024:.0f} MB) — check {stable_count}/{required_stable}"
-                    + (f" — size {size_ratio*100:.1f}% of expected {expected_size / 1024 / 1024:.0f} MB" if expected_size > 0 else "")
+                    + (
+                        f" — size {size_ratio * 100:.1f}% of expected {expected_size / 1024 / 1024:.0f} MB"
+                        if expected_size > 0
+                        else ""
+                    )
                 )
 
                 if stable_count >= required_stable and size_matches_expected:
+                    # Extra check on Windows: MakeMKV may still hold the file open
+                    # for writing even after size is stable, causing ffprobe EACCES.
+                    # Try opening for read; if denied, wait another cycle.
+                    try:
+                        with open(file_path, "rb") as _f:
+                            _f.read(1)
+                    except PermissionError:
+                        logger.debug(
+                            f"[MATCH] Title {title_id} (Job {job_id}): size stable but "
+                            f"file still locked ({file_path.name}) — waiting..."
+                        )
+                        stable_count = 0
+                        await asyncio.sleep(check_interval)
+                        continue
                     logger.info(
                         f"[MATCH] Title {title_id} (Job {job_id}): file ready "
                         f"({current_size / 1024 / 1024:.0f} MB, stable for "
@@ -1230,7 +1282,7 @@ class JobManager:
                     logger.debug(
                         f"[MATCH] Title {title_id} (Job {job_id}): file size stable but only "
                         f"{current_size / 1024 / 1024:.0f} MB of expected "
-                        f"{expected_size / 1024 / 1024:.0f} MB ({size_ratio*100:.1f}%) — still writing"
+                        f"{expected_size / 1024 / 1024:.0f} MB ({size_ratio * 100:.1f}%) — still writing"
                     )
                     stable_count = 0  # Reset and keep waiting
             else:
@@ -1242,7 +1294,7 @@ class JobManager:
                 stable_count = 0
 
             last_size = current_size
-            
+
             # Broadcast wait progress
             if expected_size > 0:
                 # Progress based on size (capped at 99%)
@@ -1250,7 +1302,7 @@ class JobManager:
             else:
                 # Fallback: stable_count goes from 0 to 3 explicitly
                 wait_progress = min(99.0, (stable_count / required_stable) * 100.0)
-                
+
             await ws_manager.broadcast_title_update(
                 job_id,
                 title_id,
@@ -1258,7 +1310,7 @@ class JobManager:
                 match_stage="waiting_for_file",
                 match_progress=wait_progress,
                 expected_size_bytes=expected_size,
-                actual_size_bytes=current_size
+                actual_size_bytes=current_size,
             )
 
             await asyncio.sleep(check_interval)
@@ -1270,6 +1322,38 @@ class JobManager:
         )
         return False
 
+    def _on_match_task_done(self, task: asyncio.Task, job_id: int, title_id: int) -> None:
+        """Handle matching task completion/failure."""
+        if task.cancelled():
+            logger.warning(f"[MATCH] Title {title_id} (Job {job_id}): task cancelled")
+            asyncio.ensure_future(self._handle_match_failure(job_id, title_id, "Task cancelled"))
+        elif exc := task.exception():
+            logger.error(
+                f"[MATCH] Title {title_id} (Job {job_id}): task failed: {exc}",
+                exc_info=exc,
+            )
+            asyncio.ensure_future(self._handle_match_failure(job_id, title_id, str(exc)))
+
+    async def _handle_match_failure(self, job_id: int, title_id: int, error: str) -> None:
+        """Clean up after a matching task fails unexpectedly."""
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            active_states = (TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING)
+            if title and title.state in active_states:
+                title.state = TitleState.REVIEW
+                title.match_details = json.dumps(
+                    {"error": "matching_task_failed", "message": error}
+                )
+                session.add(title)
+                await session.commit()
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    title_id,
+                    title.state.value,
+                    match_details=title.match_details,
+                )
+            await self._check_job_completion(session, job_id)
+
     async def _match_single_file(self, job_id: int, title_id: int, file_path: Path) -> None:
         """Run matching for a single ripped file."""
         logger.info(
@@ -1277,24 +1361,30 @@ class JobManager:
         )
 
         # 1. Wait for subtitles to be ready before matching
+        logger.info(
+            f"[MATCH] Title {title_id} (Job {job_id}): _match_single_file entered. "
+            f"subtitle_ready event exists: {job_id in self._subtitle_ready}"
+        )
         if job_id in self._subtitle_ready:
             logger.info(
                 f"[MATCH] Title {title_id} (Job {job_id}): waiting for subtitle download..."
             )
             try:
                 # Log before wait
-                logger.debug(f"[MATCH] Title {title_id} (Job {job_id}): entering wait_for(subtitle_ready)")
-                await asyncio.wait_for(self._subtitle_ready[job_id].wait(), timeout=300)
-                logger.info(
-                    f"[MATCH] Title {title_id} (Job {job_id}): subtitle event received"
+                logger.debug(
+                    f"[MATCH] Title {title_id} (Job {job_id}): entering wait_for(subtitle_ready)"
                 )
+                await asyncio.wait_for(self._subtitle_ready[job_id].wait(), timeout=300)
+                logger.info(f"[MATCH] Title {title_id} (Job {job_id}): subtitle event received")
             except TimeoutError:
                 logger.warning(
                     f"[MATCH] Title {title_id} (Job {job_id}): subtitle download timed out "
                     f"after 300s"
                 )
             except Exception as e:
-                logger.error(f"[MATCH] Title {title_id} (Job {job_id}): error waiting for subtitles: {e}")
+                logger.error(
+                    f"[MATCH] Title {title_id} (Job {job_id}): error waiting for subtitles: {e}"
+                )
 
         # 1b. Check subtitle status from database - BLOCK matching if failed
         async with async_session() as session:
@@ -1313,10 +1403,12 @@ class JobManager:
                 if title:
                     title.state = TitleState.REVIEW
                     title.match_confidence = 0.0
-                    title.match_details = json.dumps({
-                        "error": "subtitle_download_failed",
-                        "message": "Subtitle download failed, cannot auto-match. Manual episode assignment needed."
-                    })
+                    title.match_details = json.dumps(
+                        {
+                            "error": "subtitle_download_failed",
+                            "message": "Subtitle download failed, cannot auto-match. Manual episode assignment needed.",
+                        }
+                    )
                     session.add(title)
                     await session.commit()
                     await ws_manager.broadcast_title_update(
@@ -1361,6 +1453,7 @@ class JobManager:
                     title.state = TitleState.FAILED
                     session.add(title)
                     await session.commit()
+                await self._check_job_completion(session, job_id)
             return
 
         # 1c. Duration pre-filter: skip matching for tracks that don't match any
@@ -1389,9 +1482,7 @@ class JobManager:
                     if runtimes and title.duration_seconds:
                         title_minutes = title.duration_seconds / 60
                         tolerance = 5  # minutes
-                        matches_any = any(
-                            abs(title_minutes - rt) <= tolerance for rt in runtimes
-                        )
+                        matches_any = any(abs(title_minutes - rt) <= tolerance for rt in runtimes)
                         if not matches_any:
                             logger.info(
                                 f"[MATCH] Title {title_id} (Job {job_id}): duration {title_minutes:.0f}min "
@@ -1429,18 +1520,26 @@ class JobManager:
                                 title.state = TitleState.COMPLETED
                                 # Store organization tracking info for extras
                                 title.organized_from = file_path.name
-                                title.organized_to = str(org_result.get("final_path")) if org_result.get("final_path") else None
+                                title.organized_to = (
+                                    str(org_result.get("final_path"))
+                                    if org_result.get("final_path")
+                                    else None
+                                )
                                 title.is_extra = True
-                                title.match_details = json.dumps({
-                                    "auto_sorted": "extras",
-                                    "reason": f"Duration {title_minutes:.0f}min doesn't match episode runtimes",
-                                })
+                                title.match_details = json.dumps(
+                                    {
+                                        "auto_sorted": "extras",
+                                        "reason": f"Duration {title_minutes:.0f}min doesn't match episode runtimes",
+                                    }
+                                )
                             else:
                                 title.state = TitleState.COMPLETED
-                                title.match_details = json.dumps({
-                                    "auto_sorted": "extras",
-                                    "organize_error": org_result["error"],
-                                })
+                                title.match_details = json.dumps(
+                                    {
+                                        "auto_sorted": "extras",
+                                        "organize_error": org_result["error"],
+                                    }
+                                )
                                 logger.warning(
                                     f"[MATCH] Title {title_id}: extras organize failed: {org_result['error']}"
                                 )
@@ -1468,13 +1567,9 @@ class JobManager:
 
         # 3. Acquire semaphore to limit concurrent matching (Whisper ASR is GPU-heavy)
         if self._match_semaphore is not None:
-            logger.info(
-                f"[MATCH] Title {title_id} (Job {job_id}): waiting for match semaphore..."
-            )
+            logger.info(f"[MATCH] Title {title_id} (Job {job_id}): waiting for match semaphore...")
             await self._match_semaphore.acquire()
-            logger.info(
-                f"[MATCH] Title {title_id} (Job {job_id}): acquired match semaphore"
-            )
+            logger.info(f"[MATCH] Title {title_id} (Job {job_id}): acquired match semaphore")
 
         # 4. Transition title to MATCHING now that file is ready and slot acquired
         async with async_session() as session:
@@ -1493,21 +1588,24 @@ class JobManager:
 
         # 5. Run matching
         try:
-            logger.debug(f"[MATCH] Title {title_id} (Job {job_id}): entering _match_single_file_inner")
+            logger.debug(
+                f"[MATCH] Title {title_id} (Job {job_id}): entering _match_single_file_inner"
+            )
             await self._match_single_file_inner(job_id, title_id, file_path)
-            logger.debug(f"[MATCH] Title {title_id} (Job {job_id}): returned from _match_single_file_inner")
+            logger.debug(
+                f"[MATCH] Title {title_id} (Job {job_id}): returned from _match_single_file_inner"
+            )
         except Exception as e:
-            logger.exception(f"[MATCH] Title {title_id} (Job {job_id}): error in _match_single_file_inner: {e}")
+            logger.exception(
+                f"[MATCH] Title {title_id} (Job {job_id}): error in _match_single_file_inner: {e}"
+            )
+            raise  # Let _on_match_task_done trigger _handle_match_failure
         finally:
             if self._match_semaphore is not None:
                 self._match_semaphore.release()
-                logger.info(
-                    f"[MATCH] Title {title_id} (Job {job_id}): released match semaphore"
-                )
+                logger.info(f"[MATCH] Title {title_id} (Job {job_id}): released match semaphore")
 
-    async def _match_single_file_inner(
-        self, job_id: int, title_id: int, file_path: Path
-    ) -> None:
+    async def _match_single_file_inner(self, job_id: int, title_id: int, file_path: Path) -> None:
         """Inner matching logic, called under the match semaphore."""
 
         match_start = time.monotonic()
@@ -1547,14 +1645,18 @@ class JobManager:
                         details = None
                         if vote_data:
                             # Build interim match_details with current standings
+                            # Include ALL candidates in runner_ups so the UI can
+                            # display the full voting leaderboard during matching.
                             best = vote_data[0] if vote_data else None
                             target = best.get("target_votes", 5) if best else 5
-                            details = _json_dumps({
-                                "score": best["score"] if best else 0,
-                                "vote_count": best["vote_count"] if best else 0,
-                                "target_votes": target,
-                                "runner_ups": vote_data[1:] if len(vote_data) > 1 else [],
-                            })
+                            details = _json_dumps(
+                                {
+                                    "score": best["score"] if best else 0,
+                                    "vote_count": best["vote_count"] if best else 0,
+                                    "target_votes": target,
+                                    "runner_ups": vote_data,
+                                }
+                            )
                         coro = ws_manager.broadcast_title_update(
                             job_id,
                             title_id,
@@ -1568,14 +1670,18 @@ class JobManager:
                         logger.warning(f"[MATCH] Title {title_id}: progress callback error: {e}")
 
                 # Run the episode matcher (Whisper ASR or subtitle matching)
-                logger.info(f"[MATCH] Title {title_id} (Job {job_id}): calling episode_curator.match_single_file for {file_path.name}")
+                logger.info(
+                    f"[MATCH] Title {title_id} (Job {job_id}): calling episode_curator.match_single_file for {file_path.name}"
+                )
                 result = await episode_curator.match_single_file(
                     file_path,
                     series_name=job.detected_title,
                     season=job.detected_season,
                     progress_callback=on_progress,
                 )
-                logger.info(f"[MATCH] Title {title_id} (Job {job_id}): episode_curator.match_single_file returned for {file_path.name}")
+                logger.info(
+                    f"[MATCH] Title {title_id} (Job {job_id}): episode_curator.match_single_file returned for {file_path.name}"
+                )
 
                 elapsed = time.monotonic() - match_start
 
@@ -1590,7 +1696,7 @@ class JobManager:
                     else:
                         # No match found — needs human episode assignment
                         title.state = TitleState.REVIEW
-                    
+
                     logger.info(
                         f"[MATCH] Title {title_id} (Job {job_id}): needs review — "
                         f"episode={result.episode_code}, confidence={result.confidence:.2f}, "
@@ -1617,9 +1723,11 @@ class JobManager:
                 if title.match_details:
                     try:
                         details = json.loads(title.match_details)
-                        runner_ups = details.get('runner_ups', [])
+                        runner_ups = details.get("runner_ups", [])
                         matches_found += len(runner_ups)
-                        matches_rejected = len([r for r in runner_ups if r.get('confidence', 0) < 0.5])
+                        matches_rejected = len(
+                            [r for r in runner_ups if r.get("confidence", 0) < 0.5]
+                        )
                     except (json.JSONDecodeError, KeyError, TypeError):
                         pass  # No match details available
 
@@ -1644,7 +1752,6 @@ class JobManager:
                 # DEFERRED ORGANIZATION: We wait for all titles to be matched.
                 # Logic moved to _finalize_disc_job.
 
-
                 # Check if ALL titles are done to update parent job
                 await self._check_job_completion(session, job_id)
 
@@ -1659,9 +1766,7 @@ class JobManager:
                 await session.commit()
                 await self._check_job_completion(session, job_id)
 
-    async def _download_subtitles(
-        self, job_id: int, show_name: str, season: int
-    ) -> None:
+    async def _download_subtitles(self, job_id: int, show_name: str, season: int) -> None:
         """Download subtitles in background. Failure BLOCKS matching."""
         from sqlalchemy import update
 
@@ -1669,16 +1774,14 @@ class JobManager:
             # Set initial status — targeted update to avoid overwriting job state
             async with async_session() as session:
                 await session.execute(
-                    update(DiscJob).where(DiscJob.id == job_id).values(
-                        subtitle_status="downloading"
-                    )
+                    update(DiscJob)
+                    .where(DiscJob.id == job_id)
+                    .values(subtitle_status="downloading")
                 )
                 await session.commit()
 
             logger.info(f"Starting background subtitle download for {show_name} S{season}")
-            await ws_manager.broadcast_subtitle_event(
-                job_id, "downloading", downloaded=0, total=0
-            )
+            await ws_manager.broadcast_subtitle_event(job_id, "downloading", downloaded=0, total=0)
 
             from app.matcher.testing_service import download_subtitles
 
@@ -1689,13 +1792,15 @@ class JobManager:
             downloaded = sum(
                 1 for ep in result["episodes"] if ep["status"] in ("downloaded", "cached")
             )
-            failed = sum(
-                1 for ep in result["episodes"] if ep["status"] in ("not_found", "failed")
-            )
+            failed = sum(1 for ep in result["episodes"] if ep["status"] in ("not_found", "failed"))
             total = len(result["episodes"])
 
             # Determine final status
             status = "completed" if failed == 0 else ("partial" if downloaded > 0 else "failed")
+
+            error_msg = None
+            if status == "failed":
+                error_msg = "Subtitle download failed: No subtitles found"
 
             logger.info(
                 f"Subtitle download complete for {show_name} S{season}: "
@@ -1704,10 +1809,18 @@ class JobManager:
 
             # PERSIST STATUS — targeted update to avoid overwriting job state
             async with async_session() as session:
+                update_values = {"subtitle_status": status}
+
+                # Update to canonical name if it changed
+                if result.get("show_name") and result["show_name"] != show_name:
+                    logger.info(f"Updating job {job_id} title to canonical: {result['show_name']}")
+                    update_values["detected_title"] = result["show_name"]
+
+                if error_msg:
+                    update_values["error_message"] = error_msg
+
                 await session.execute(
-                    update(DiscJob).where(DiscJob.id == job_id).values(
-                        subtitle_status=status
-                    )
+                    update(DiscJob).where(DiscJob.id == job_id).values(**update_values)
                 )
                 await session.commit()
 
@@ -1719,9 +1832,9 @@ class JobManager:
             logger.error(f"Subtitle download ValueError for {show_name} S{season}: {e}")
             async with async_session() as session:
                 await session.execute(
-                    update(DiscJob).where(DiscJob.id == job_id).values(
-                        subtitle_status="failed", error_message=str(e)
-                    )
+                    update(DiscJob)
+                    .where(DiscJob.id == job_id)
+                    .values(subtitle_status="failed", error_message=str(e))
                 )
                 await session.commit()
             await ws_manager.broadcast_subtitle_event(job_id, "failed")
@@ -1732,9 +1845,9 @@ class JobManager:
             )
             async with async_session() as session:
                 await session.execute(
-                    update(DiscJob).where(DiscJob.id == job_id).values(
-                        subtitle_status="failed", error_message=f"Download error: {str(e)}"
-                    )
+                    update(DiscJob)
+                    .where(DiscJob.id == job_id)
+                    .values(subtitle_status="failed", error_message=f"Download error: {str(e)}")
                 )
                 await session.commit()
             await ws_manager.broadcast_subtitle_event(job_id, "failed")
@@ -1743,9 +1856,6 @@ class JobManager:
             # ALWAYS set event (matching will check status before proceeding)
             if job_id in self._subtitle_ready:
                 self._subtitle_ready[job_id].set()
-
-
-
 
     async def cancel_job(self, job_id: int) -> None:
         """Cancel a running job."""
@@ -1763,7 +1873,11 @@ class JobManager:
                 )
 
     async def apply_review(
-        self, job_id: int, title_id: int, episode_code: str | None = None, edition: str | None = None
+        self,
+        job_id: int,
+        title_id: int,
+        episode_code: str | None = None,
+        edition: str | None = None,
     ) -> None:
         """Apply a user's review decision for a title."""
         from app.core.organizer import movie_organizer, tv_organizer
@@ -1779,10 +1893,10 @@ class JobManager:
 
             if episode_code:
                 title.matched_episode = episode_code
-            
+
             if edition:
                 title.edition = edition
-                
+
             title.match_confidence = 1.0  # User-confirmed
             session.add(title)
             await session.commit()
@@ -1797,7 +1911,7 @@ class JobManager:
 
                 # For movies, we organize the selected title immediately
                 # We assume the user selects the MAIN title(s) they want.
-                
+
                 # Update status
                 job.state = JobState.ORGANIZING
                 await session.commit()
@@ -1807,39 +1921,41 @@ class JobManager:
                 if title.output_filename:
                     source_file = Path(title.output_filename)
                     if not source_file.exists():
-                        logger.info(f"Source file {source_file} not found. Triggering ripping for selected title.")
-                        
+                        logger.info(
+                            f"Source file {source_file} not found. Triggering ripping for selected title."
+                        )
+
                         # Set other titles to is_selected=False
                         # The user selected 'title', so we ensure only this one is selected
                         statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
                         all_titles = (await session.execute(statement)).scalars().all()
                         for t in all_titles:
-                            t.is_selected = (t.id == title.id)
+                            t.is_selected = t.id == title.id
                             session.add(t)
-                        
+
                         # Trigger ripping
                         await session.commit()
-                        
+
                         # We need to call start_ripping, but we are inside an async_session context.
                         # start_ripping creates its own session. We should schedule it outside or handle it carefully.
                         # JobManager methods usually handle their own sessions.
                         # We can just update state here and call _run_ripping as a task?
-                        # Or better, return from here and call start_ripping? 
+                        # Or better, return from here and call start_ripping?
                         # But apply_review is atomic.
-                        
+
                         # Let's update state to REVIEW_NEEDED -> RIPPING manually here?
                         # start_ripping checks for IDLE/REVIEW_NEEDED.
-                        
-                        # Let's close this transaction and call start_ripping? 
+
+                        # Let's close this transaction and call start_ripping?
                         # We can't easily do that inside the context manager.
-                        
+
                         # Option: Update state to RIPPING here, then spawn the task.
                         job.state = JobState.RIPPING
                         job.updated_at = datetime.utcnow()
                         session.add(job)
                         await session.commit()
                         await event_broadcaster.broadcast_job_state_changed(job_id, job.state)
-                        
+
                         # Spawn ripping task
                         task = asyncio.create_task(self._run_ripping(job_id))
                         self._active_jobs[job_id] = task
@@ -1847,36 +1963,42 @@ class JobManager:
 
                     else:
                         # File exists, proceed to organize (Post-Rip workflow)
-                        
+
                         # Clean up unselected ripped files (Ambiguous Movie workflow)
                         # If we ripped multiple versions, delete the ones not selected
                         cleanup_statement = select(DiscTitle).where(
-                            DiscTitle.job_id == job_id, 
+                            DiscTitle.job_id == job_id,
                             DiscTitle.id != title_id,
-                            DiscTitle.output_filename.isnot(None)
+                            DiscTitle.output_filename.isnot(None),
                         )
-                        unselected_titles = (await session.execute(cleanup_statement)).scalars().all()
-                        
+                        unselected_titles = (
+                            (await session.execute(cleanup_statement)).scalars().all()
+                        )
+
                         for unselected in unselected_titles:
                             try:
                                 p = Path(unselected.output_filename)
                                 if p.exists():
                                     p.unlink()
                                     logger.info(f"Deleted unselected file: {p}")
-                                
+
                                 unselected.state = TitleState.FAILED
-                                unselected.match_details = json.dumps({"reason": "Unselected by user"})
+                                unselected.match_details = json.dumps(
+                                    {"reason": "Unselected by user"}
+                                )
                                 session.add(unselected)
                             except Exception as e:
-                                logger.warning(f"Failed to delete unselected file {unselected.output_filename}: {e}")
+                                logger.warning(
+                                    f"Failed to delete unselected file {unselected.output_filename}: {e}"
+                                )
 
                         # Pass edition to organizer if supported, or append to title?
                         # movie_organizer.organize signature: (file_path, volume_label, detected_title)
                         # We might need to update movie_organizer to accept edition, OR append it to detected_title temporarily
-                        
+
                         final_title = job.detected_title or job.volume_label
                         if edition and edition.lower() not in final_title.lower():
-                             final_title = f"{final_title} {{edition-{edition}}}"
+                            final_title = f"{final_title} {{edition-{edition}}}"
 
                         org_result = await asyncio.to_thread(
                             movie_organizer.organize,
@@ -1884,36 +2006,44 @@ class JobManager:
                             job.volume_label,
                             final_title,
                         )
-                        
-                        if org_result["success"]:
-                             title.state = TitleState.COMPLETED
-                             job.progress_percent = 100.0
-                             job.error_message = None
-                             job.final_path = str(org_result["main_file"])
-                             await state_machine.transition_to_completed(job, session)
-                             logger.info(f"Organized movie: {org_result['main_file']}")
-                        elif org_result.get("error_code") == "FILE_EXISTS":
-                             title.state = TitleState.REVIEW
-                             try:
-                                 # Preserve existing details if JSON
-                                 existing_details = json.loads(title.match_details) if title.match_details else {}
-                                 existing_details.update({"error": "file_exists", "message": str(org_result['error'])})
-                                 title.match_details = json.dumps(existing_details)
-                             except (json.JSONDecodeError, TypeError):
-                                 # Fall back to creating new details JSON
-                                 title.match_details = json.dumps({"error": "file_exists", "message": str(org_result['error'])})
 
-                             await state_machine.transition_to_review(
-                                 job, session, reason="File already exists in library"
-                             )
-                             logger.warning(f"Organization conflict for movie: {org_result['error']}")
+                        if org_result["success"]:
+                            title.state = TitleState.COMPLETED
+                            job.progress_percent = 100.0
+                            job.error_message = None
+                            job.final_path = str(org_result["main_file"])
+                            await state_machine.transition_to_completed(job, session)
+                            logger.info(f"Organized movie: {org_result['main_file']}")
+                        elif org_result.get("error_code") == "FILE_EXISTS":
+                            title.state = TitleState.REVIEW
+                            try:
+                                # Preserve existing details if JSON
+                                existing_details = (
+                                    json.loads(title.match_details) if title.match_details else {}
+                                )
+                                existing_details.update(
+                                    {"error": "file_exists", "message": str(org_result["error"])}
+                                )
+                                title.match_details = json.dumps(existing_details)
+                            except (json.JSONDecodeError, TypeError):
+                                # Fall back to creating new details JSON
+                                title.match_details = json.dumps(
+                                    {"error": "file_exists", "message": str(org_result["error"])}
+                                )
+
+                            await state_machine.transition_to_review(
+                                job, session, reason="File already exists in library"
+                            )
+                            logger.warning(
+                                f"Organization conflict for movie: {org_result['error']}"
+                            )
                         else:
-                             title.state = TitleState.FAILED
-                             logger.error(f"Failed to organize movie: {org_result['error']}")
-                             await state_machine.transition_to_failed(
-                                 job, session, error_message=org_result["error"]
-                             )
-                             return
+                            title.state = TitleState.FAILED
+                            logger.error(f"Failed to organize movie: {org_result['error']}")
+                            await state_machine.transition_to_failed(
+                                job, session, error_message=org_result["error"]
+                            )
+                            return
 
             # Handle TV Workflow (Original Logic)
             # Check if all titles for this job are now resolved
@@ -1930,9 +2060,7 @@ class JobManager:
                 job.state = JobState.ORGANIZING
                 session.add(job)
                 await session.commit()
-                await ws_manager.broadcast_job_update(
-                    job_id, JobState.ORGANIZING.value
-                )
+                await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
 
                 # Get all resolved titles for this job
                 all_titles_result = await session.execute(
@@ -1946,7 +2074,7 @@ class JobManager:
                 # Organize each file
                 success_count = 0
                 conflict_count = 0
-                
+
                 for disc_title in resolved_titles:
                     if disc_title.output_filename and disc_title.matched_episode != "skip":
                         source_file = Path(disc_title.output_filename)
@@ -1961,7 +2089,11 @@ class JobManager:
                                 success_count += 1
                                 # Store organization tracking info
                                 disc_title.organized_from = source_file.name
-                                disc_title.organized_to = str(org_result.get("final_path")) if org_result.get("final_path") else None
+                                disc_title.organized_to = (
+                                    str(org_result.get("final_path"))
+                                    if org_result.get("final_path")
+                                    else None
+                                )
                                 disc_title.is_extra = False
                                 disc_title.state = TitleState.COMPLETED
                                 logger.info(f"Organized: {org_result['final_path']}")
@@ -1969,13 +2101,29 @@ class JobManager:
                                 conflict_count += 1
                                 disc_title.state = TitleState.REVIEW
                                 try:
-                                    existing = json.loads(disc_title.match_details) if disc_title.match_details else {}
-                                    existing.update({"error": "file_exists", "message": str(org_result['error'])})
+                                    existing = (
+                                        json.loads(disc_title.match_details)
+                                        if disc_title.match_details
+                                        else {}
+                                    )
+                                    existing.update(
+                                        {
+                                            "error": "file_exists",
+                                            "message": str(org_result["error"]),
+                                        }
+                                    )
                                     disc_title.match_details = json.dumps(existing)
                                 except (json.JSONDecodeError, TypeError):
                                     # Fall back to creating new details JSON
-                                    disc_title.match_details = json.dumps({"error": "file_exists", "message": str(org_result['error'])})
-                                logger.warning(f"Organization conflict for TV: {org_result['error']}")
+                                    disc_title.match_details = json.dumps(
+                                        {
+                                            "error": "file_exists",
+                                            "message": str(org_result["error"]),
+                                        }
+                                    )
+                                logger.warning(
+                                    f"Organization conflict for TV: {org_result['error']}"
+                                )
                             else:
                                 logger.error(f"Failed to organize: {org_result['error']}")
 
@@ -2031,8 +2179,9 @@ class JobManager:
         # Parse detected_title: remove season/disc suffix (e.g., "_S1D1", "_S01D01")
         default_title = volume_label.replace("_", " ").title()
         import re
+
         # Remove season/disc patterns like "S1D1", "S01D01", etc.
-        default_title = re.sub(r'\s+S\d+D?\d*$', '', default_title, flags=re.IGNORECASE)
+        default_title = re.sub(r"\s+S\d+D?\d*$", "", default_title, flags=re.IGNORECASE)
         detected_title = params.get("detected_title", default_title)
         detected_season = params.get("detected_season", 1)
         simulate_ripping = params.get("simulate_ripping", False)
@@ -2137,13 +2286,9 @@ class JobManager:
             if simulate_ripping:
                 # Start simulated ripping in background
                 task = asyncio.create_task(
-                    self._simulate_ripping(
-                        job.id, titles, rip_speed_multiplier, content_type
-                    )
+                    self._simulate_ripping(job.id, titles, rip_speed_multiplier, content_type)
                 )
-                task.add_done_callback(
-                    lambda t, jid=job.id: self._on_task_done(t, jid)
-                )
+                task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
             else:
                 # Just move to ripping state
@@ -2165,7 +2310,6 @@ class JobManager:
         Simulate disc insertion using real MKV files from staging.
         Uses 10-second ripping simulation per track with progress updates.
         """
-        from app.services.config_service import get_config as get_sim_config
 
         drive_id = params.get("drive_id", "E:")
         volume_label = params.get("volume_label", "REAL_DATA_DISC")
@@ -2269,9 +2413,7 @@ class JobManager:
 
             # Start realistic ripping simulation
             task = asyncio.create_task(
-                self._simulate_realistic_ripping(
-                    job.id, titles, content_type, rip_speed_multiplier
-                )
+                self._simulate_realistic_ripping(job.id, titles, content_type, rip_speed_multiplier)
             )
             self._active_jobs[job.id] = task
 
@@ -2554,10 +2696,13 @@ class JobManager:
                 if title_db:
                     title_db.state = TitleState.FAILED
                     title_db.match_confidence = 0.0
-                    title_db.match_details = json.dumps({
-                        "error": "subtitle_download_failed",
-                        "message": job.error_message or "Subtitle download failed, cannot match without reference files"
-                    })
+                    title_db.match_details = json.dumps(
+                        {
+                            "error": "subtitle_download_failed",
+                            "message": job.error_message
+                            or "Subtitle download failed, cannot match without reference files",
+                        }
+                    )
                     await session.commit()
                     await ws_manager.broadcast_title_update(
                         job_id,
@@ -2568,11 +2713,15 @@ class JobManager:
                     )
             # Mark job as FAILED
             await state_machine.transition_to_failed(
-                job, session, error_message="Subtitle download failed - cannot proceed with matching"
+                job,
+                session,
+                error_message="Subtitle download failed - cannot proceed with matching",
             )
             return
 
-        logger.info(f"[SIMULATE] Job {job_id}: subtitle status '{subtitle_status}', proceeding with matching simulation")
+        logger.info(
+            f"[SIMULATE] Job {job_id}: subtitle status '{subtitle_status}', proceeding with matching simulation"
+        )
 
         needs_review = False
         for i, title in enumerate(titles):
@@ -2595,11 +2744,13 @@ class JobManager:
             for j in range(num_candidates):
                 alt_episode = f"S{season:02d}E{(i + j + 1):02d}"
                 alt_score = confidence if j == 0 else random.uniform(0.3, confidence - 0.1)
-                runner_ups.append({
-                    "episode": alt_episode,
-                    "score": alt_score,
-                    "vote_count": 0,
-                })
+                runner_ups.append(
+                    {
+                        "episode": alt_episode,
+                        "score": alt_score,
+                        "vote_count": 0,
+                    }
+                )
 
             # Simulate voting rounds — candidates accumulate votes
             target_votes = 4
@@ -2610,12 +2761,14 @@ class JobManager:
                     if random.random() < ru["score"]:
                         ru["vote_count"] = min(target_votes, ru["vote_count"] + 1)
 
-                interim_details = json.dumps({
-                    "score": confidence,
-                    "vote_count": vote_round + 1,
-                    "target_votes": target_votes,
-                    "runner_ups": runner_ups,
-                })
+                interim_details = json.dumps(
+                    {
+                        "score": confidence,
+                        "vote_count": vote_round + 1,
+                        "target_votes": target_votes,
+                        "runner_ups": runner_ups,
+                    }
+                )
                 await ws_manager.broadcast_title_update(
                     job_id,
                     title_db.id,
@@ -2629,12 +2782,14 @@ class JobManager:
             # Phase 2: Final match result
             title_db.matched_episode = episode_code
             title_db.match_confidence = confidence
-            title_db.match_details = json.dumps({
-                "score": confidence,
-                "vote_count": min(target_votes, int(confidence * target_votes)),
-                "file_cov": random.uniform(0.6, 0.95),
-                "runner_ups": runner_ups,
-            })
+            title_db.match_details = json.dumps(
+                {
+                    "score": confidence,
+                    "vote_count": min(target_votes, int(confidence * target_votes)),
+                    "file_cov": random.uniform(0.6, 0.95),
+                    "runner_ups": runner_ups,
+                }
+            )
 
             if confidence >= 0.6:
                 title_db.state = TitleState.COMPLETED
