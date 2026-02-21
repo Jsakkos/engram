@@ -8,7 +8,22 @@ All user-configurable settings (paths, API keys, feature flags)
 live in the database via AppConfig — see models/app_config.py.
 """
 
+import sys
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_database_url() -> str:
+    """Return the default database URL, using ~/.engram/ for frozen (PyInstaller) builds."""
+    if getattr(sys, "frozen", False):
+        # Frozen build: store DB in a stable, user-writable location
+        db_dir = Path.home() / ".engram"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        db_path = db_dir / "engram.db"
+        return f"sqlite+aiosqlite:///{db_path}"
+    # Development: store DB in the working directory (backend/)
+    return "sqlite+aiosqlite:///./engram.db"
 
 
 class Settings(BaseSettings):
@@ -21,7 +36,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./engram.db"
+    database_url: str = _default_database_url()
 
     # Server
     host: str = "127.0.0.1"

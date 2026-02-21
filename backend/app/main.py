@@ -167,9 +167,21 @@ if os.path.isdir(_static_dir):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug,
-    )
+    is_frozen = getattr(sys, "frozen", False)
+
+    try:
+        uvicorn.run(
+            app,
+            host=settings.host,
+            port=settings.port,
+            # reload is incompatible with passing app object directly
+            # and also incompatible with frozen PyInstaller bundles
+            reload=False if is_frozen else settings.debug,
+            factory=False,
+        )
+    except Exception as e:
+        logger.error(f"Fatal error: {e}", exc_info=True)
+        if is_frozen:
+            print(f"\nFatal error: {e}")
+            input("Press Enter to exit...")
+            sys.exit(1)

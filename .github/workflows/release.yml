@@ -46,18 +46,7 @@ jobs:
           uv pip install pyinstaller
       - name: Build executable
         working-directory: backend
-        run: |
-          uv run pyinstaller --onedir --name engram `
-            --add-data "app/static;app/static" `
-            --hidden-import app.api `
-            --hidden-import app.core `
-            --hidden-import app.models `
-            --hidden-import app.services `
-            --hidden-import app.matcher `
-            --collect-data faster_whisper `
-            --collect-data ctranslate2 `
-            app/main.py
-        shell: pwsh
+        run: uv run pyinstaller engram.spec
       - name: Package
         run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-windows-x64.zip
         shell: pwsh
