@@ -33,7 +33,7 @@ jobs:
         shell: pwsh
 
       # Build backend executable
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
       - uses: actions/setup-python@v5
