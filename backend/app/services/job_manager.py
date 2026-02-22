@@ -852,21 +852,19 @@ class JobManager:
                         # Track locally — don't modify expunged ORM objects
                         _titles_marked_ripping.add(active_title.id)
 
-                    # Broadcast per-title file size progress if file exists
-                    if active_title and active_title.output_filename:
-                        output_path = Path(active_title.output_filename)
-                        if output_path.exists():
-                            try:
-                                actual_bytes = output_path.stat().st_size
-                                await ws_manager.broadcast_title_update(
-                                    job_id,
-                                    active_title.id,
-                                    TitleState.RIPPING.value,
-                                    expected_size_bytes=active_title.file_size_bytes,
-                                    actual_size_bytes=actual_bytes,
-                                )
-                            except OSError:
-                                pass  # File access error, skip this update
+                    # Broadcast per-title byte progress calculated from RipProgress percent.
+                    # Don't rely on output_filename — it's None on the expunged ORM object
+                    # until _on_title_ripped sets it after the title finishes.
+                    if active_title and active_title.file_size_bytes:
+                        await ws_manager.broadcast_title_update(
+                            job_id,
+                            active_title.id,
+                            TitleState.RIPPING.value,
+                            expected_size_bytes=active_title.file_size_bytes,
+                            actual_size_bytes=min(
+                                current_title_bytes, active_title.file_size_bytes
+                            ),
+                        )
 
                     await ws_manager.broadcast_job_update(
                         job_id,
