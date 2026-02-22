@@ -14,6 +14,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from app.matcher.asr_models import get_cached_model
+from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.utils import extract_season_episode
 
 console = Console()
@@ -441,7 +442,7 @@ class EpisodeMatcher:
             logger.debug("Returning cached reference files")
             return self.reference_files_cache[cache_key]
 
-        reference_dir = self.cache_dir / "data" / self.show_name
+        reference_dir = self.cache_dir / "data" / sanitize_filename(self.show_name)
         patterns = [
             f"S{season_number:02d}E",
             f"S{season_number}E",
@@ -699,7 +700,7 @@ class EpisodeMatcher:
             # 1. Get Reference Files
             reference_files = self.get_reference_files(season_number)
             if not reference_files:
-                reference_dir = self.cache_dir / "data" / self.show_name
+                reference_dir = self.cache_dir / "data" / sanitize_filename(self.show_name)
                 logger.error(
                     f"No reference subtitle files found for '{self.show_name}' season {season_number}. "
                     f"Expected directory: {reference_dir}. "

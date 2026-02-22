@@ -251,7 +251,9 @@ def process_reference_srt_files(series_name):
     config = get_config_manager().load()
 
     reference_files = {}
-    reference_dir = config.cache_dir / "data" / series_name
+    from app.matcher.subtitle_utils import sanitize_filename
+
+    reference_dir = config.cache_dir / "data" / sanitize_filename(series_name)
 
     for dirpath, _, filenames in os.walk(reference_dir):
         for filename in filenames:

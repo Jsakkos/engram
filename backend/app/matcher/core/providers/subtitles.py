@@ -12,6 +12,7 @@ from loguru import logger
 # from opensubtitlescom import OpenSubtitles  # REMOVED: Using opensubtitles_scraper instead
 from app.matcher.core.config_manager import get_config_manager
 from app.matcher.core.models import EpisodeInfo, SubtitleFile
+from app.matcher.subtitle_utils import sanitize_filename
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -97,7 +98,7 @@ class LocalSubtitleProvider(SubtitleProvider):
         tmdb_id: int | None = None,
     ) -> list[SubtitleFile]:
         """Get all subtitle files for a specific show and season."""
-        show_dir = self.cache_dir / show_name
+        show_dir = self.cache_dir / sanitize_filename(show_name)
         if not show_dir.exists():
             # logger.warning(f"No subtitle cache found at {show_dir}")
             return []
@@ -317,7 +318,7 @@ class OpenSubtitlesProvider(SubtitleProvider):
         logger.info(f"Searching OpenSubtitles for {search_show_name} S{season:02d}")
 
         # Prepare cache directory
-        cache_dir = self.config.cache_dir / "data" / show_name
+        cache_dir = self.config.cache_dir / "data" / sanitize_filename(show_name)
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         downloaded_subtitles = []
