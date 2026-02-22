@@ -46,6 +46,8 @@ SHOW_NAME_ALIASES = {
     "Rings of Power": "The Rings of Power",
     # Stargate - use colon
     "Stargate Atlantis": "Stargate: Atlantis",
+    # Star Trek: Picard - preserve colon
+    "Star Trek: Picard": "Star Trek: Picard",
 }
 
 
@@ -117,11 +119,15 @@ class Addic7edClient:
     def _sanitize_show_name_for_url(self, show_name: str) -> str:
         """Sanitize show name for use in Addic7ed URLs.
 
-        Addic7ed uses URL-encoded show names with spaces preserved.
+        Addic7ed uses underscores for spaces and URL-encodes special chars
+        like colons (e.g., Star_Trek%3A_Picard).
         """
-        # Replace special characters but keep spaces for URL encoding
-        sanitized = re.sub(r"[^\w\s\-']", "", show_name)
-        return quote(sanitized, safe="")
+        # Remove special characters but keep spaces, colons, hyphens, apostrophes
+        sanitized = re.sub(r"[^\w\s\-':]", "", show_name)
+        # Replace spaces with underscores (Addic7ed URL format)
+        sanitized = sanitized.replace(" ", "_")
+        # URL-encode remaining special chars (colons become %3A)
+        return quote(sanitized, safe="_-'")
 
     def search_show(self, show_name: str) -> list[dict]:
         """Search for a TV show by name.

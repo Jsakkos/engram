@@ -94,7 +94,7 @@ class OpenSubtitlesClient:
         # Build search URL
         # Format: /en/search/sublanguageid-{lang}/searchonlytvseries-on/moviename-{name}
         # With season/episode: /season-{s}/episode-{e}
-        encoded_name = quote(show_name.lower().replace(" ", "%20"))
+        encoded_name = quote(show_name.lower(), safe="")
 
         url_parts = [
             f"{self.BASE_URL}/en/search",
