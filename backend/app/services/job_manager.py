@@ -164,7 +164,9 @@ class JobManager:
             result = await session.execute(
                 select(DiscJob).where(
                     DiscJob.drive_id == drive_letter,
-                    DiscJob.state.not_in([JobState.COMPLETED, JobState.FAILED]),
+                    DiscJob.state.not_in(
+                        [JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED]
+                    ),
                 )
             )
             existing_job = result.scalar_one_or_none()
@@ -2043,7 +2045,9 @@ class JobManager:
                             await state_machine.transition_to_failed(
                                 job, session, error_message=org_result["error"]
                             )
-                            return
+
+                # Movie workflow complete — don't fall through to TV workflow
+                return
 
             # Handle TV Workflow (Original Logic)
             # Check if all titles for this job are now resolved
@@ -2165,6 +2169,128 @@ class JobManager:
                     )
             else:
                 await session.commit()
+
+    async def process_matched_titles(self, job_id: int) -> dict:
+        """Process all matched titles for a job without waiting for unresolved ones.
+
+        Organizes titles that already have matches while leaving unresolved titles
+        in REVIEW_NEEDED state. Returns counts of processed, conflicted, and remaining titles.
+        """
+        from app.core.organizer import tv_organizer
+        from app.services.config_service import get_config as get_db_config
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError("Job not found")
+
+            # Query titles that have a match, are not skipped, and are not already terminal
+            result = await session.execute(
+                select(DiscTitle).where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.matched_episode.isnot(None),
+                    DiscTitle.matched_episode != "skip",
+                    DiscTitle.state.not_in([TitleState.COMPLETED, TitleState.FAILED]),
+                )
+            )
+            matched_titles = result.scalars().all()
+
+            success_count = 0
+            conflict_count = 0
+
+            for disc_title in matched_titles:
+                if not disc_title.output_filename:
+                    continue
+
+                source_file = Path(disc_title.output_filename)
+                if not source_file.exists():
+                    logger.warning(f"Source file not found: {source_file}")
+                    continue
+
+                org_result = await asyncio.to_thread(
+                    tv_organizer.organize,
+                    source_file,
+                    job.detected_title or job.volume_label,
+                    disc_title.matched_episode,
+                )
+
+                if org_result["success"]:
+                    success_count += 1
+                    disc_title.organized_from = source_file.name
+                    disc_title.organized_to = (
+                        str(org_result.get("final_path")) if org_result.get("final_path") else None
+                    )
+                    disc_title.is_extra = disc_title.matched_episode == "extra"
+                    disc_title.state = TitleState.COMPLETED
+                    logger.info(f"Organized: {org_result['final_path']}")
+                elif org_result.get("error_code") == "FILE_EXISTS":
+                    conflict_count += 1
+                    disc_title.state = TitleState.REVIEW
+                    try:
+                        existing = (
+                            json.loads(disc_title.match_details) if disc_title.match_details else {}
+                        )
+                        existing.update(
+                            {
+                                "error": "file_exists",
+                                "message": str(org_result["error"]),
+                            }
+                        )
+                        disc_title.match_details = json.dumps(existing)
+                    except (json.JSONDecodeError, TypeError):
+                        disc_title.match_details = json.dumps(
+                            {
+                                "error": "file_exists",
+                                "message": str(org_result["error"]),
+                            }
+                        )
+                    logger.warning(f"Organization conflict for TV: {org_result['error']}")
+                else:
+                    logger.error(f"Failed to organize: {org_result['error']}")
+                    continue
+
+                session.add(disc_title)
+                await session.commit()
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    disc_title.id,
+                    disc_title.state.value,
+                    matched_episode=disc_title.matched_episode,
+                    match_confidence=disc_title.match_confidence,
+                    organized_from=disc_title.organized_from,
+                    organized_to=disc_title.organized_to,
+                    output_filename=disc_title.output_filename,
+                    is_extra=disc_title.is_extra,
+                    match_details=disc_title.match_details,
+                )
+
+            # Check if any unresolved titles remain
+            unresolved_result = await session.execute(
+                select(DiscTitle).where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.state.not_in([TitleState.COMPLETED, TitleState.FAILED]),
+                    DiscTitle.matched_episode.is_(None),
+                )
+            )
+            unresolved = unresolved_result.scalars().all()
+
+            if not unresolved and conflict_count == 0:
+                job.progress_percent = 100.0
+                job.error_message = None
+                db_config = await get_db_config()
+                job.final_path = str(
+                    Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
+                )
+                await state_machine.transition_to_completed(job, session)
+            else:
+                # Keep in REVIEW_NEEDED — unresolved titles or conflicts remain
+                await session.commit()
+
+        return {
+            "organized": success_count,
+            "conflicts": conflict_count,
+            "unresolved": len(unresolved),
+        }
 
     # --- Simulation Methods ---
 
