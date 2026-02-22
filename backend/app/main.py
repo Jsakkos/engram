@@ -128,16 +128,6 @@ async def websocket_endpoint(websocket: WebSocket):
         await ws_manager.disconnect(websocket)
 
 
-@app.get("/")
-async def root():
-    """Root endpoint - API status."""
-    return {
-        "name": "Engram",
-        "version": "0.1.0",
-        "status": "running",
-    }
-
-
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -145,8 +135,12 @@ async def health_check():
 
 
 # Serve bundled frontend in production/PyInstaller builds
-_bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-_static_dir = os.path.join(_bundle_dir, "static")
+# In frozen builds, _MEIPASS is the bundle root and static files are at app/static/
+# In dev, __file__ is inside app/ so we just append "static"
+if getattr(sys, "_MEIPASS", None):
+    _static_dir = os.path.join(sys._MEIPASS, "app", "static")
+else:
+    _static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 if os.path.isdir(_static_dir):
     from fastapi.responses import FileResponse
@@ -162,6 +156,17 @@ if os.path.isdir(_static_dir):
         if os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(_static_dir, "index.html"))
+
+else:
+
+    @app.get("/")
+    async def root():
+        """Root endpoint - API status (dev mode only, no bundled frontend)."""
+        return {
+            "name": "Engram",
+            "version": "0.1.0",
+            "status": "running",
+        }
 
 
 if __name__ == "__main__":
