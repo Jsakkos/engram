@@ -6,8 +6,9 @@ Engram is a Windows disc ripping and media organization tool. It monitors your o
 
 - **Windows** (drive monitoring uses kernel32/pywin32)
 - [MakeMKV](https://www.makemkv.com/) with a valid license
-- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
-- Node.js 18+
+- TMDB API Read Access Token (v4) [TMDB](https://www.themoviedb.org/settings/api)
+- If running from source, Python 3.11+ and [uv](https://docs.astral.sh/uv/)
+- If running from source, Node.js 18+
 
 ## Install
 
