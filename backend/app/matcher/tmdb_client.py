@@ -1,4 +1,5 @@
 # tmdb_client.py
+import re
 import time
 from collections.abc import Callable
 from functools import wraps
@@ -94,41 +95,20 @@ class RateLimitedRequest:
 rate_limited_request = RateLimitedRequest(rate_limit=30, period=1)
 
 
-@retry_network_operation(max_retries=3, base_delay=1.0)
-def fetch_show_id(show_name: str) -> str | None:
-    """
-    Fetch the TMDb ID for a given show name with fuzzy fallback.
+def generate_name_variations(name: str) -> list[str]:
+    """Generate search query variations for a show/movie name.
+
+    Handles underscores, season indicators, punctuation, "The" prefix, etc.
+    Used by fetch_show_id, fetch_movie_id, and tmdb_classifier.
 
     Args:
-        show_name (str): The name of the show.
+        name: Raw name parsed from volume label
 
     Returns:
-        str: The TMDb ID of the show, or None if not found.
+        List of alternative search strings to try (deduplicated, excluding original)
     """
-    # Try to get API key from Engram settings first, then fallback to matcher config
-    from app.services.config_service import get_config_sync
-
-    config = get_config_sync()
-    api_key = config.tmdb_api_key
-
-    if not api_key:
-        logger.warning("TMDB API key not configured in Engram settings")
-        return None
-
-    logger.debug(
-        f"Searching TMDB for '{show_name}' using API key ending in ...{api_key[-4:] if len(api_key) > 4 else '****'}"
-    )
-
-    url = "https://api.themoviedb.org/3/search/tv"
-
-    # Generate comprehensive variations of the show name
-    import re
-
     variations = []
-    current = show_name
-
-    # Add baseline variations that work for ALL show names
-    # These ensure we try multiple variations even for clean names like "Arrested Development"
+    current = name
 
     # 1. Try without "The" prefix
     if current.lower().startswith("the "):
@@ -145,7 +125,6 @@ def fetch_show_id(show_name: str) -> str | None:
     if "&" in current:
         variations.append(current.replace("&", "and"))
     elif " and " in current.lower():
-        # Try with ampersand if "and" exists
         variations.append(re.sub(r"\band\b", "&", current, flags=re.IGNORECASE))
 
     # 3. Try removing common words
@@ -156,7 +135,7 @@ def fetch_show_id(show_name: str) -> str | None:
             if cleaned and cleaned != current:
                 variations.append(cleaned)
 
-    # Start with underscore/dot/dash normalization
+    # Underscore/dot/dash normalization
     normalized = current.replace("_", " ").replace(".", " ")
     if normalized != current:
         variations.append(normalized)
@@ -164,11 +143,11 @@ def fetch_show_id(show_name: str) -> str | None:
 
     # Remove season/disc indicators (S1, S1D1, Season 1, etc.)
     patterns_to_remove = [
-        r"\s+S\d+D\d+",  # " S1D1", " S2D3"
-        r"\s+S\d+",  # " S1", " S2"
-        r"\s+Season\s+\d+",  # " Season 1"
-        r"\s+Disc\s+\d+",  # " Disc 1"
-        r"\s+D\d+",  # " D1"
+        r"\s+S\d+D\d+",
+        r"\s+S\d+",
+        r"\s+Season\s+\d+",
+        r"\s+Disc\s+\d+",
+        r"\s+D\d+",
     ]
 
     for pattern in patterns_to_remove:
@@ -204,56 +183,82 @@ def fetch_show_id(show_name: str) -> str | None:
     ]
 
     for suffix in suffixes_to_try:
-        for var in [show_name] + variations[:]:  # Check original + variations so far
+        for var in [name] + variations[:]:
             cleaned = re.sub(suffix, "", var, flags=re.IGNORECASE).strip()
-            if cleaned and cleaned not in variations and cleaned != show_name:
+            if cleaned and cleaned not in variations and cleaned != name:
                 variations.append(cleaned)
 
-    # Add word-based fallback variations for clean names
-    # This ensures we have at least some variations even for simple names
+    # Word-based fallback variations for clean names
     if len(variations) == 0:
-        words = show_name.split()
+        words = name.split()
         if len(words) > 1:
-            # Try without first word (e.g., "Arrested Development" -> "Development")
             without_first = " ".join(words[1:])
             if without_first and len(without_first) > 2:
                 variations.append(without_first)
-            # Try without last word (e.g., "Arrested Development" -> "Arrested")
             without_last = " ".join(words[:-1])
             if without_last and len(without_last) > 2 and without_last != without_first:
                 variations.append(without_last)
 
-    # Remove duplicate variations
-    seen = {show_name}
+    # Deduplicate
+    seen = {name}
     unique_variations = []
     for v in variations:
-        if v and v not in seen and len(v) > 2:  # Skip very short variations
+        if v and v not in seen and len(v) > 2:
             seen.add(v)
             unique_variations.append(v)
 
     variations = unique_variations
 
-    # 4. Handle "NameNumber" (e.g. Southpark6 -> Southpark)
-    # This catches cases where the season/volume number is appended directly to the name
+    # Handle "NameNumber" (e.g. Southpark6 -> Southpark)
     name_num_match = re.match(r"^(.+?)(\d+)$", current)
     if name_num_match:
         name_part, num_part = name_num_match.groups()
-        if len(name_part) > 2:  # Avoid matching very short names
+        if len(name_part) > 2:
             name_part = name_part.strip()
             variations.append(name_part)
             variations.append(f"{name_part} {num_part}")
 
-            # Also try splitting the name part if it looks like a compound word
             if " " not in name_part and 6 <= len(name_part) <= 20:
                 for i in range(2, len(name_part) - 1):
                     variations.append(f"{name_part[:i]} {name_part[i:]}")
 
-    # 5. Brute Force Split (e.g. Southpark -> South Park)
-    # If the name is a single word and reasonably short, try splitting it
+    # Brute force split (e.g. Southpark -> South Park)
     if " " not in current and 6 <= len(current) <= 20:
         for i in range(2, len(current) - 1):
             split_var = f"{current[:i]} {current[i:]}"
             variations.append(split_var)
+
+    return variations
+
+
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def fetch_show_id(show_name: str) -> str | None:
+    """
+    Fetch the TMDb ID for a given show name with fuzzy fallback.
+
+    Args:
+        show_name (str): The name of the show.
+
+    Returns:
+        str: The TMDb ID of the show, or None if not found.
+    """
+    # Try to get API key from Engram settings first, then fallback to matcher config
+    from app.services.config_service import get_config_sync
+
+    config = get_config_sync()
+    api_key = config.tmdb_api_key
+
+    if not api_key:
+        logger.warning("TMDB API key not configured in Engram settings")
+        return None
+
+    logger.debug(
+        f"Searching TMDB for '{show_name}' using API key ending in ...{api_key[-4:] if len(api_key) > 4 else '****'}"
+    )
+
+    url = "https://api.themoviedb.org/3/search/tv"
+
+    variations = generate_name_variations(show_name)
 
     # Try exact match first
     headers = {}
@@ -319,8 +324,8 @@ def fetch_show_id(show_name: str) -> str | None:
 
         import difflib
 
-        # Try matching the original name and the cleaned name
-        candidates = [show_name, current] + variations
+        # Try matching the original name and variations
+        candidates = [show_name] + variations
         for candidate in candidates:
             matches = difflib.get_close_matches(candidate, popular_names, n=1, cutoff=0.8)
             if matches:
@@ -551,3 +556,67 @@ def get_number_of_seasons(show_id: str) -> int:
     num_seasons = show_data.get("number_of_seasons", 0)
     logger.info(f"Found {num_seasons} seasons")
     return num_seasons
+
+
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def fetch_movie_id(movie_name: str) -> str | None:
+    """Fetch the TMDB ID for a given movie name with variation fallback.
+
+    Args:
+        movie_name: The name of the movie.
+
+    Returns:
+        The TMDB ID of the movie, or None if not found.
+    """
+    from app.services.config_service import get_config_sync
+
+    config = get_config_sync()
+    api_key = config.tmdb_api_key
+
+    if not api_key:
+        logger.warning("TMDB API key not configured")
+        return None
+
+    url = "https://api.themoviedb.org/3/search/movie"
+    variations = generate_name_variations(movie_name)
+
+    headers = {}
+    params = {"query": movie_name}
+
+    if len(api_key) > 40:
+        headers["Authorization"] = f"Bearer {api_key}"
+    else:
+        params["api_key"] = api_key
+
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+
+    results = []
+    if response.status_code == 200:
+        results = response.json().get("results", [])
+        if results:
+            best_match = results[0]
+            logger.info(
+                f"Matched movie '{movie_name}' to TMDB: "
+                f"'{best_match.get('title')}' (ID: {best_match['id']})"
+            )
+            return str(best_match["id"])
+
+        # Try variations if exact match fails
+        for variation in variations:
+            if variation != movie_name and variation:
+                variation_params = params.copy()
+                variation_params["query"] = variation
+
+                response = requests.get(url, headers=headers, params=variation_params, timeout=30)
+                if response.status_code == 200:
+                    results = response.json().get("results", [])
+                    if results:
+                        best_match = results[0]
+                        logger.info(
+                            f"Matched movie '{movie_name}' (via '{variation}') to TMDB: "
+                            f"'{best_match.get('title')}' (ID: {best_match['id']})"
+                        )
+                        return str(best_match["id"])
+
+    logger.warning(f"Could not find movie '{movie_name}' on TMDB")
+    return None

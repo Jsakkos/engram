@@ -221,8 +221,31 @@ class JobManager:
                     )
                     return
 
+                # Attempt TMDB lookup for classification signal
+                tmdb_signal = None
+                detected_name, _, _ = DiscAnalyst._parse_volume_label(job.volume_label)
+                if detected_name:
+                    try:
+                        from app.core.tmdb_classifier import classify_from_tmdb
+                        from app.services.config_service import get_config_sync
+
+                        config = get_config_sync()
+                        if config.tmdb_api_key:
+                            tmdb_signal = classify_from_tmdb(detected_name, config.tmdb_api_key)
+                            if tmdb_signal:
+                                logger.info(
+                                    f"Job {job_id}: TMDB signal: "
+                                    f"{tmdb_signal.content_type.value} "
+                                    f"({tmdb_signal.confidence:.0%}) - "
+                                    f"{tmdb_signal.tmdb_name}"
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            f"Job {job_id}: TMDB lookup failed, using heuristics only: {e}"
+                        )
+
                 # Analyze disc content
-                analysis = self._analyst.analyze(titles, job.volume_label)
+                analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
                 logger.info(f"Job {job_id} Analysis Result: {analysis}")
 
                 # Update job with analysis results
@@ -261,6 +284,26 @@ class JobManager:
                         video_resolution=title.video_resolution,
                     )
                     session.add(disc_title)
+
+                # For TV discs, deselect "Play All" concatenation titles
+                if analysis.content_type == ContentType.TV and analysis.play_all_title_indices:
+                    await session.flush()  # Ensure titles have IDs
+                    play_all_set = set(analysis.play_all_title_indices)
+                    stmt = select(DiscTitle).where(DiscTitle.job_id == job_id)
+                    db_titles_for_filter = (await session.execute(stmt)).scalars().all()
+
+                    deselected = 0
+                    for dt in db_titles_for_filter:
+                        if dt.title_index in play_all_set:
+                            dt.is_selected = False
+                            deselected += 1
+                            logger.info(
+                                f"Job {job_id}: Deselected 'Play All' title {dt.title_index} "
+                                f"({dt.duration_seconds // 60}min)"
+                            )
+
+                    if deselected:
+                        logger.info(f"Job {job_id}: Deselected {deselected} 'Play All' title(s)")
 
                 # Broadcast titles discovered with full metadata
                 titles_result = await session.execute(
@@ -894,9 +937,7 @@ class JobManager:
                             if tidx in _title_file_cache:
                                 actual_bytes = _title_file_cache[tidx].stat().st_size
                             else:
-                                matches = list(
-                                    output_dir.glob(f"*_t{tidx:02d}.mkv")
-                                )
+                                matches = list(output_dir.glob(f"*_t{tidx:02d}.mkv"))
                                 if matches:
                                     _title_file_cache[tidx] = matches[0]
                                     actual_bytes = matches[0].stat().st_size
@@ -907,9 +948,7 @@ class JobManager:
                             active_title.id,
                             TitleState.RIPPING.value,
                             expected_size_bytes=active_title.file_size_bytes,
-                            actual_size_bytes=min(
-                                actual_bytes, active_title.file_size_bytes
-                            ),
+                            actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
                         )
 
                     await ws_manager.broadcast_job_update(
