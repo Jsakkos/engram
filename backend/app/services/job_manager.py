@@ -164,7 +164,9 @@ class JobManager:
             result = await session.execute(
                 select(DiscJob).where(
                     DiscJob.drive_id == drive_letter,
-                    DiscJob.state.not_in([JobState.COMPLETED, JobState.FAILED]),
+                    DiscJob.state.not_in(
+                        [JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED]
+                    ),
                 )
             )
             existing_job = result.scalar_one_or_none()
@@ -806,9 +808,12 @@ class JobManager:
                 # Track which titles have been set to RIPPING locally
                 # (since we expunged title objects from the session)
                 _titles_marked_ripping: set[int] = set()
+                _last_title_idx: int | None = None
+                _title_file_cache: dict[int, Path] = {}  # title_index → resolved Path
 
                 # Progress callback
                 async def progress_callback(progress: RipProgress) -> None:
+                    nonlocal _last_title_idx
                     current_idx = progress.current_title
 
                     active_title_size = 0
@@ -830,6 +835,34 @@ class JobManager:
                     if total_job_bytes > 0:
                         global_percent = (total_bytes_done / total_job_bytes) * 100.0
 
+                    # When active title changes, transition previous title out of RIPPING.
+                    # This ensures only one track shows as RIPPING at a time.
+                    if _last_title_idx is not None and current_idx != _last_title_idx:
+                        prev_list_idx = _last_title_idx - 1
+                        if 0 <= prev_list_idx < len(sorted_titles):
+                            prev_title = sorted_titles[prev_list_idx]
+                            try:
+                                async with async_session() as sess:
+                                    prev_db = await sess.get(DiscTitle, prev_title.id)
+                                    if prev_db and prev_db.state == TitleState.RIPPING:
+                                        prev_db.state = TitleState.MATCHING
+                                        sess.add(prev_db)
+                                        await sess.commit()
+                                        await ws_manager.broadcast_title_update(
+                                            job_id,
+                                            prev_db.id,
+                                            TitleState.MATCHING.value,
+                                            expected_size_bytes=prev_title.file_size_bytes,
+                                            actual_size_bytes=prev_title.file_size_bytes,
+                                        )
+                            except Exception:
+                                logger.warning(
+                                    f"Failed to transition title {prev_title.id} "
+                                    f"from RIPPING to MATCHING (Job {job_id})",
+                                    exc_info=True,
+                                )
+                    _last_title_idx = current_idx
+
                     # Set active title to RIPPING state if not already
                     if active_title and active_title.id not in _titles_marked_ripping:
                         async with async_session() as session:
@@ -850,21 +883,34 @@ class JobManager:
                         # Track locally — don't modify expunged ORM objects
                         _titles_marked_ripping.add(active_title.id)
 
-                    # Broadcast per-title file size progress if file exists
-                    if active_title and active_title.output_filename:
-                        output_path = Path(active_title.output_filename)
-                        if output_path.exists():
-                            try:
-                                actual_bytes = output_path.stat().st_size
-                                await ws_manager.broadcast_title_update(
-                                    job_id,
-                                    active_title.id,
-                                    TitleState.RIPPING.value,
-                                    expected_size_bytes=active_title.file_size_bytes,
-                                    actual_size_bytes=actual_bytes,
+                    # Broadcast per-title byte progress.
+                    # Use actual file size on disk (ground truth) with cached path lookup.
+                    # Fall back to calculated bytes from RipProgress.percent if file
+                    # not found yet (MakeMKV may not have created it at rip start).
+                    if active_title and active_title.file_size_bytes:
+                        actual_bytes = current_title_bytes  # Fallback
+                        tidx = active_title.title_index
+                        try:
+                            if tidx in _title_file_cache:
+                                actual_bytes = _title_file_cache[tidx].stat().st_size
+                            else:
+                                matches = list(
+                                    output_dir.glob(f"*_t{tidx:02d}.mkv")
                                 )
-                            except OSError:
-                                pass  # File access error, skip this update
+                                if matches:
+                                    _title_file_cache[tidx] = matches[0]
+                                    actual_bytes = matches[0].stat().st_size
+                        except OSError:
+                            pass  # Use calculated fallback
+                        await ws_manager.broadcast_title_update(
+                            job_id,
+                            active_title.id,
+                            TitleState.RIPPING.value,
+                            expected_size_bytes=active_title.file_size_bytes,
+                            actual_size_bytes=min(
+                                actual_bytes, active_title.file_size_bytes
+                            ),
+                        )
 
                     await ws_manager.broadcast_job_update(
                         job_id,
@@ -1104,7 +1150,10 @@ class JobManager:
                 return
 
             title.output_filename = str(path)
-            title.state = TitleState.RIPPING  # File detected but may still be written
+            # Only advance from PENDING → RIPPING; don't regress a title that
+            # progress_callback already transitioned to MATCHING.
+            if title.state == TitleState.PENDING:
+                title.state = TitleState.RIPPING
             session.add(title)
             await session.commit()
             await ws_manager.broadcast_title_update(
@@ -2043,7 +2092,9 @@ class JobManager:
                             await state_machine.transition_to_failed(
                                 job, session, error_message=org_result["error"]
                             )
-                            return
+
+                # Movie workflow complete — don't fall through to TV workflow
+                return
 
             # Handle TV Workflow (Original Logic)
             # Check if all titles for this job are now resolved
@@ -2165,6 +2216,128 @@ class JobManager:
                     )
             else:
                 await session.commit()
+
+    async def process_matched_titles(self, job_id: int) -> dict:
+        """Process all matched titles for a job without waiting for unresolved ones.
+
+        Organizes titles that already have matches while leaving unresolved titles
+        in REVIEW_NEEDED state. Returns counts of processed, conflicted, and remaining titles.
+        """
+        from app.core.organizer import tv_organizer
+        from app.services.config_service import get_config as get_db_config
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError("Job not found")
+
+            # Query titles that have a match, are not skipped, and are not already terminal
+            result = await session.execute(
+                select(DiscTitle).where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.matched_episode.isnot(None),
+                    DiscTitle.matched_episode != "skip",
+                    DiscTitle.state.not_in([TitleState.COMPLETED, TitleState.FAILED]),
+                )
+            )
+            matched_titles = result.scalars().all()
+
+            success_count = 0
+            conflict_count = 0
+
+            for disc_title in matched_titles:
+                if not disc_title.output_filename:
+                    continue
+
+                source_file = Path(disc_title.output_filename)
+                if not source_file.exists():
+                    logger.warning(f"Source file not found: {source_file}")
+                    continue
+
+                org_result = await asyncio.to_thread(
+                    tv_organizer.organize,
+                    source_file,
+                    job.detected_title or job.volume_label,
+                    disc_title.matched_episode,
+                )
+
+                if org_result["success"]:
+                    success_count += 1
+                    disc_title.organized_from = source_file.name
+                    disc_title.organized_to = (
+                        str(org_result.get("final_path")) if org_result.get("final_path") else None
+                    )
+                    disc_title.is_extra = disc_title.matched_episode == "extra"
+                    disc_title.state = TitleState.COMPLETED
+                    logger.info(f"Organized: {org_result['final_path']}")
+                elif org_result.get("error_code") == "FILE_EXISTS":
+                    conflict_count += 1
+                    disc_title.state = TitleState.REVIEW
+                    try:
+                        existing = (
+                            json.loads(disc_title.match_details) if disc_title.match_details else {}
+                        )
+                        existing.update(
+                            {
+                                "error": "file_exists",
+                                "message": str(org_result["error"]),
+                            }
+                        )
+                        disc_title.match_details = json.dumps(existing)
+                    except (json.JSONDecodeError, TypeError):
+                        disc_title.match_details = json.dumps(
+                            {
+                                "error": "file_exists",
+                                "message": str(org_result["error"]),
+                            }
+                        )
+                    logger.warning(f"Organization conflict for TV: {org_result['error']}")
+                else:
+                    logger.error(f"Failed to organize: {org_result['error']}")
+                    continue
+
+                session.add(disc_title)
+                await session.commit()
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    disc_title.id,
+                    disc_title.state.value,
+                    matched_episode=disc_title.matched_episode,
+                    match_confidence=disc_title.match_confidence,
+                    organized_from=disc_title.organized_from,
+                    organized_to=disc_title.organized_to,
+                    output_filename=disc_title.output_filename,
+                    is_extra=disc_title.is_extra,
+                    match_details=disc_title.match_details,
+                )
+
+            # Check if any unresolved titles remain
+            unresolved_result = await session.execute(
+                select(DiscTitle).where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.state.not_in([TitleState.COMPLETED, TitleState.FAILED]),
+                    DiscTitle.matched_episode.is_(None),
+                )
+            )
+            unresolved = unresolved_result.scalars().all()
+
+            if not unresolved and conflict_count == 0:
+                job.progress_percent = 100.0
+                job.error_message = None
+                db_config = await get_db_config()
+                job.final_path = str(
+                    Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
+                )
+                await state_machine.transition_to_completed(job, session)
+            else:
+                # Keep in REVIEW_NEEDED — unresolved titles or conflicts remain
+                await session.commit()
+
+        return {
+            "organized": success_count,
+            "conflicts": conflict_count,
+            "unresolved": len(unresolved),
+        }
 
     # --- Simulation Methods ---
 

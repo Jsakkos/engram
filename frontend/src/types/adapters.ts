@@ -114,7 +114,11 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
     state: trackState,
     progress: trackState === 'matching'
       ? (title.match_progress ?? 0)
-      : (title.match_confidence || 0) * 100,
+      : trackState === 'ripping'
+        ? (title.actual_size_bytes && title.expected_size_bytes
+            ? (title.actual_size_bytes / title.expected_size_bytes) * 100
+            : 0)
+        : (title.match_confidence || 0) * 100,
     matchCandidates: extractMatchCandidates(title),
     finalMatch: title.matched_episode || undefined,
     finalMatchConfidence: finalMatchInfo?.confidence,

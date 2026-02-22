@@ -53,6 +53,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
+    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean}>({makemkv: false, tmdb: false});
 
     const totalSteps = 4;
 
@@ -66,6 +67,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 }
                 const data = await response.json();
                 console.log('Loaded config from backend:', data);
+                // Track which sensitive keys are already saved in the database
+                setSavedKeys({
+                    makemkv: data.makemkv_key === '***',
+                    tmdb: data.tmdb_api_key === '***',
+                });
                 // Note: API keys are redacted as "***" for security
                 setConfig({
                     stagingPath: data.staging_path || '',
@@ -351,13 +357,18 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         </div>
 
                         <div className="form-group" style={{ marginTop: '1.5rem' }}>
-                            <label htmlFor="licenseKey">MakeMKV License Key</label>
+                            <label htmlFor="licenseKey">
+                                MakeMKV License Key
+                                {savedKeys.makemkv && (
+                                    <span className="ml-2 text-xs font-normal text-green-500">Key saved</span>
+                                )}
+                            </label>
                             <input
                                 id="licenseKey"
                                 type="text"
                                 value={config.makemkvKey}
                                 onChange={(e) => handleInputChange('makemkvKey', e.target.value)}
-                                placeholder="T-xxxxx-xxxxx-xxxxx-xxxxx (or leave blank to keep existing)"
+                                placeholder={savedKeys.makemkv ? "Enter new key to replace existing" : "T-xxxxx-xxxxx-xxxxx-xxxxx"}
                             />
                             <span className="form-hint">
                                 Found in MakeMKV under Help &rarr; Register. Leave blank to use the beta key (requires periodic updates).
@@ -382,13 +393,18 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         </p>
 
                         <div className="form-group">
-                            <label htmlFor="tmdbApiKey">TMDB Read Access Token</label>
+                            <label htmlFor="tmdbApiKey">
+                                TMDB Read Access Token
+                                {savedKeys.tmdb && (
+                                    <span className="ml-2 text-xs font-normal text-green-500">Token saved</span>
+                                )}
+                            </label>
                             <input
                                 id="tmdbApiKey"
                                 type="text"
                                 value={config.tmdbApiKey}
                                 onChange={(e) => handleInputChange('tmdbApiKey', e.target.value)}
-                                placeholder="eyJhbGciOiJIUzI1NiJ9... (or leave blank to keep existing)"
+                                placeholder={savedKeys.tmdb ? "Enter new token to replace existing" : "eyJhbGciOiJIUzI1NiJ9..."}
                             />
                             <span className="form-hint">
                                 The Read Access Token is a long JWT string starting with "eyJ...".
@@ -461,8 +477,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 <dd>{config.libraryMoviesPath || 'Not set'}</dd>
                                 <dt>TV Shows:</dt>
                                 <dd>{config.libraryTvPath || 'Not set'}</dd>
+                                <dt>MakeMKV Key:</dt>
+                                <dd>{config.makemkvKey ? 'New key entered' : (savedKeys.makemkv ? 'Configured' : 'Not set')}</dd>
                                 <dt>TMDB Token:</dt>
-                                <dd>{config.tmdbApiKey ? 'Configured' : 'Not set'}</dd>
+                                <dd>{config.tmdbApiKey ? 'New token entered' : (savedKeys.tmdb ? 'Configured' : 'Not set')}</dd>
                                 <dt>Transcoding:</dt>
                                 <dd>{config.transcodingEnabled ? 'Enabled' : 'Disabled (Passthrough)'}</dd>
                             </dl>

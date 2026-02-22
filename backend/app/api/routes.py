@@ -250,6 +250,22 @@ async def retry_subtitle_download(
     return {"status": "retry_started", "job_id": job_id}
 
 
+@router.post("/jobs/{job_id}/process-matched")
+async def process_matched_titles(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+    """Process all matched titles for a job without waiting for unresolved ones."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(status_code=400, detail="Job is not awaiting review")
+
+    from app.services.job_manager import job_manager
+
+    result = await job_manager.process_matched_titles(job_id)
+    return {"status": "processed", "job_id": job_id, **result}
+
+
 @router.get("/config", response_model=ConfigResponse)
 async def get_config() -> ConfigResponse:
     """Get current configuration from database.
