@@ -38,6 +38,7 @@ class JobResponse(BaseModel):
     subtitles_downloaded: int | None = None
     subtitles_total: int | None = None
     subtitles_failed: int | None = None
+    review_reason: str | None = None
 
 
 class ConfigResponse(BaseModel):
@@ -214,6 +215,34 @@ async def submit_review(
         job_id, review.title_id, episode_code=review.episode_code, edition=review.edition
     )
     return {"status": "reviewed", "job_id": job_id}
+
+
+class SetNameRequest(BaseModel):
+    """Request model for setting a user-provided name on an unlabeled disc."""
+
+    name: str
+    content_type: str  # "tv" | "movie" | "unknown"
+    season: int | None = None
+
+
+@router.post("/jobs/{job_id}/set-name")
+async def set_job_name(
+    job_id: int,
+    req: SetNameRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Set a user-provided name for a disc with unreadable volume label, then resume ripping."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(status_code=400, detail="Job is not awaiting name input")
+
+    from app.services.job_manager import job_manager
+
+    await job_manager.set_name_and_resume(job_id, req.name, req.content_type, req.season)
+    return {"status": "ok", "job_id": job_id}
 
 
 @router.post("/jobs/{job_id}/retry-subtitles")

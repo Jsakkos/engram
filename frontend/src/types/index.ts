@@ -34,6 +34,7 @@ export interface Job {
     subtitles_downloaded?: number;
     subtitles_total?: number;
     subtitles_failed?: number;
+    review_reason?: string | null;
 }
 
 export interface DiscTitle {
@@ -84,6 +85,7 @@ export interface JobUpdate {
     content_type?: ContentType;
     detected_title?: string;
     detected_season?: number;
+    review_reason?: string | null;
 }
 
 export interface TitleUpdate {

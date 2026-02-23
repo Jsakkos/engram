@@ -64,6 +64,7 @@ class ConnectionManager:
         content_type: str | None = None,
         detected_title: str | None = None,
         detected_season: int | None = None,
+        review_reason: str | None = None,
     ) -> None:
         """Broadcast a job status update.
 
@@ -94,6 +95,8 @@ class ConnectionManager:
             data["detected_title"] = detected_title
         if detected_season is not None:
             data["detected_season"] = detected_season
+        if review_reason is not None:
+            data["review_reason"] = review_reason
         await self.broadcast(data)
 
     async def broadcast_drive_event(

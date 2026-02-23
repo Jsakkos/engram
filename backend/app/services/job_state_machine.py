@@ -178,7 +178,7 @@ class JobStateMachine:
             True if transition succeeded
         """
         if reason:
-            job.error_message = reason
+            job.review_reason = reason
 
         return await self.transition(job, JobState.REVIEW_NEEDED, session, broadcast=broadcast)
 

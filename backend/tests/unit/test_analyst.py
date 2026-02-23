@@ -376,3 +376,109 @@ class TestPlayAllDetection:
 
         assert result.content_type == ContentType.TV
         assert 2 in result.play_all_title_indices  # Title 2 (90min) is Play All
+
+
+class TestGenericVolumeLabelDetection:
+    """Test that generic Windows/disc placeholder labels are rejected."""
+
+    def test_logical_volume_id_returns_none(self):
+        """LOGICAL_VOLUME_ID is a generic placeholder — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("LOGICAL_VOLUME_ID")
+        assert name is None
+        assert season is None
+        assert disc is None
+
+    def test_video_ts_returns_none(self):
+        """VIDEO_TS is a generic DVD placeholder — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("VIDEO_TS")
+        assert name is None
+
+    def test_bdmv_returns_none(self):
+        """BDMV is a Blu-ray generic label — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("BDMV")
+        assert name is None
+
+    def test_disc_label_returns_none(self):
+        """'DISC' alone is a generic placeholder — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("DISC")
+        assert name is None
+
+    def test_real_disc_label_not_blocked(self):
+        """A real disc label should NOT be treated as generic."""
+        name, season, disc = DiscAnalyst._parse_volume_label("THE_ITALIAN_JOB")
+        assert name is not None
+        assert "Italian" in name
+
+    def test_real_tv_label_not_blocked(self):
+        """A real TV label should NOT be treated as generic."""
+        name, season, disc = DiscAnalyst._parse_volume_label("THE_OFFICE_S01D02")
+        assert name is not None
+        assert season == 1
+        assert disc == 2
+
+
+class TestTmdbNameSimilarityGuard:
+    """Test that dissimilar TMDB names do not override the parsed disc name."""
+
+    def test_dissimilar_tmdb_name_rejected(self):
+        """TMDB returns unrelated name → parsed name is kept."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([140])
+        # Simulate the bug: TMDB matched "Idioms Origins Volume 1" for "Logical Volume Id"
+        signal = TmdbSignal(
+            content_type=ContentType.MOVIE,
+            confidence=0.70,
+            tmdb_id=999,
+            tmdb_name="Idioms Origins Volume 1",
+        )
+        result = analyst.analyze(titles, "THE_ITALIAN_JOB", tmdb_signal=signal)
+
+        # TMDB name should NOT override the parsed name "The Italian Job"
+        assert result.detected_name != "Idioms Origins Volume 1"
+        assert result.detected_name == "The Italian Job"
+
+    def test_similar_tmdb_name_accepted(self):
+        """TMDB returns a name that matches the parsed name → TMDB name wins (canonical form)."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([22, 22, 23, 22])
+        signal = TmdbSignal(
+            content_type=ContentType.TV,
+            confidence=0.85,
+            tmdb_id=85949,
+            tmdb_name="Star Trek: Picard",
+        )
+        result = analyst.analyze(titles, "STAR_TREK_PICARD_S1D3", tmdb_signal=signal)
+
+        # TMDB name "Star Trek: Picard" is similar to parsed "Star Trek Picard" → accepted
+        assert result.detected_name == "Star Trek: Picard"
+
+    def test_tmdb_name_none_does_not_override(self):
+        """TMDB signal with no tmdb_name → parsed name unchanged."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([140])
+        signal = TmdbSignal(
+            content_type=ContentType.MOVIE,
+            confidence=0.70,
+            tmdb_id=12345,
+            tmdb_name=None,
+        )
+        result = analyst.analyze(titles, "THE_ITALIAN_JOB", tmdb_signal=signal)
+
+        assert result.detected_name == "The Italian Job"
+
+    def test_tmdb_name_accepted_when_parsed_name_is_none(self):
+        """If parsed name is None (generic label), TMDB name is accepted unconditionally."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([140])
+        signal = TmdbSignal(
+            content_type=ContentType.MOVIE,
+            confidence=0.85,
+            tmdb_id=27205,
+            tmdb_name="Inception",
+        )
+        # Simulate a generic label → parsed name will be None
+        # Use analyze() directly with a generic label
+        result = analyst.analyze(titles, "LOGICAL_VOLUME_ID", tmdb_signal=signal)
+
+        # Since parsed name is None, TMDB name is accepted
+        assert result.detected_name == "Inception"

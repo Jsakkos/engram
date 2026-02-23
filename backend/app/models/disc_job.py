@@ -76,6 +76,7 @@ class DiscJob(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     error_message: str | None = None
+    review_reason: str | None = None  # Human-readable reason why review is needed
 
     # Title information (JSON stored as string for simplicity)
     titles_json: str | None = None  # List of titles with durations

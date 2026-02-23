@@ -199,7 +199,7 @@ class TestConvenienceMethods:
 
         assert result is True
         assert sample_job.state == JobState.REVIEW_NEEDED
-        assert sample_job.error_message == "Ambiguous content"
+        assert sample_job.review_reason == "Ambiguous content"
 
     async def test_transition_to_completed(
         self, state_machine, sample_job, mock_session, mock_broadcaster

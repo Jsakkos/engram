@@ -62,6 +62,24 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
+    async function setJobName(
+        jobId: number,
+        name: string,
+        contentType: string,
+        season?: number,
+    ) {
+        try {
+            await fetch(`/api/jobs/${jobId}/set-name`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, content_type: contentType, season: season ?? null }),
+            });
+            // Job will update via WebSocket
+        } catch (error) {
+            console.error('Failed to set job name:', error);
+        }
+    }
+
     // Handle WebSocket messages
     useEffect(() => {
         if (!lastMessage || devMode) return;
@@ -171,5 +189,6 @@ export function useJobManagement(devMode: boolean = false) {
         isConnected,
         cancelJob,
         clearCompleted,
+        setJobName,
     };
 }

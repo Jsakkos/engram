@@ -328,6 +328,28 @@ class JobManager:
                     detected_season=job.detected_season,
                 )
 
+                # If no title could be determined (e.g. generic volume label like LOGICAL_VOLUME_ID),
+                # block ripping and ask the user to supply a name.
+                if not job.detected_title:
+                    await state_machine.transition_to_review(
+                        job,
+                        session,
+                        reason="Disc label unreadable. Please enter the title to continue.",
+                        broadcast=False,
+                    )
+                    await ws_manager.broadcast_job_update(
+                        job_id,
+                        JobState.REVIEW_NEEDED.value,
+                        content_type=job.content_type.value if job.content_type else None,
+                        total_titles=job.total_titles,
+                        review_reason="Disc label unreadable. Please enter the title to continue.",
+                    )
+                    logger.info(
+                        f"Job {job_id}: no title detected (volume label: '{job.volume_label}'), "
+                        f"waiting for user to supply name"
+                    )
+                    return
+
                 # Start subtitle download for ALL TV content (regardless of review status)
                 if (
                     job.content_type == ContentType.TV
@@ -440,6 +462,50 @@ class JobManager:
             except Exception as e:
                 logger.exception(f"Error identifying disc for job {job_id}")
                 await state_machine.transition_to_failed(job, session, str(e))
+
+    async def set_name_and_resume(
+        self,
+        job_id: int,
+        name: str,
+        content_type_str: str,
+        season: int | None = None,
+    ) -> None:
+        """Set a user-provided name for an unlabeled disc and resume ripping.
+
+        Called when a disc had no readable volume label and the user has entered
+        the title manually via the NamePromptModal.
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+
+            if job.state != JobState.REVIEW_NEEDED:
+                raise ValueError(f"Cannot set name on job in state: {job.state}")
+
+            job.detected_title = name
+            job.content_type = ContentType(content_type_str)
+            if season is not None:
+                job.detected_season = season
+            job.state = JobState.RIPPING
+            job.updated_at = datetime.utcnow()
+            await session.commit()
+
+            await ws_manager.broadcast_job_update(
+                job_id,
+                JobState.RIPPING.value,
+                content_type=job.content_type.value,
+                detected_title=job.detected_title,
+                detected_season=job.detected_season,
+            )
+
+            logger.info(
+                f"Job {job_id}: user set name to '{name}' ({content_type_str}), resuming rip"
+            )
+
+        task = asyncio.create_task(self._run_ripping(job_id))
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
+        self._active_jobs[job_id] = task
 
     async def start_ripping(self, job_id: int) -> None:
         """Start the ripping process for a job."""

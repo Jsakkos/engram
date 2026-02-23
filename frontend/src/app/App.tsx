@@ -7,11 +7,14 @@ import { useJobManagement } from "./hooks/useJobManagement";
 import { useKanbanColumns } from "./hooks/useKanbanColumns";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
+import NamePromptModal from "../components/NamePromptModal";
+import type { Job } from "../types";
 
 function MainDashboard() {
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [namePromptJob, setNamePromptJob] = useState<Job | null>(null);
 
   // Check for development mock mode
   const DEV_MODE = window.location.search.includes('mock=true');
@@ -34,10 +37,21 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, cancelJob, clearCompleted } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, cancelJob, clearCompleted, setJobName } = useJobManagement(DEV_MODE);
 
   // Kanban column organization
   const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount } = useKanbanColumns(jobs, titlesMap, DEV_MODE);
+
+  // Show name prompt modal for jobs that need a name (generic/unreadable volume label)
+  useEffect(() => {
+    const needsName = jobs.find(
+      (j) =>
+        j.state === 'review_needed' &&
+        j.review_reason?.includes('label unreadable') &&
+        !j.detected_title,
+    );
+    setNamePromptJob(needsName ?? null);
+  }, [jobs]);
 
   return (
     <div className="min-h-screen bg-black relative overflow-hidden">
@@ -177,6 +191,23 @@ function MainDashboard() {
           </div>
         )}
       </div>
+
+      {/* Name Prompt Modal — appears when disc label is unreadable */}
+      <AnimatePresence>
+        {namePromptJob && (
+          <NamePromptModal
+            job={namePromptJob}
+            onSubmit={(name, contentType, season) => {
+              setJobName(namePromptJob.id, name, contentType, season);
+              setNamePromptJob(null);
+            }}
+            onCancel={() => {
+              cancelJob(String(namePromptJob.id));
+              setNamePromptJob(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Onboarding Wizard (first run) */}
       {showOnboarding && (

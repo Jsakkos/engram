@@ -12,6 +12,42 @@ from app.models.disc_job import ContentType
 
 logger = logging.getLogger(__name__)
 
+# Generic Windows/disc placeholder volume labels that carry no meaningful title information.
+# Normalized form: uppercased with underscores and spaces removed.
+_GENERIC_VOLUME_LABELS: frozenset[str] = frozenset(
+    {
+        "LOGICALVOLUMEID",
+        "VIDEOTS",
+        "BDMV",
+        "DISC",
+        "DVD",
+        "BLURAY",
+        "BD",
+        "NOLABEL",
+        "UNTITLED",
+        "VOLUME",
+        "NEWVOLUME",
+    }
+)
+
+
+def _names_are_similar(a: str, b: str, threshold: float = 0.35) -> bool:
+    """Return True if two title strings share enough word tokens (Jaccard similarity).
+
+    Prevents TMDB from replacing a parsed name with a completely unrelated title.
+    Examples:
+      "Logical Volume Id" vs "Idioms Origins Volume 1" -> ~0.14 -> rejected
+      "Star Trek Picard" vs "Star Trek: Picard" -> 0.67 -> accepted
+    """
+
+    def tokens(s: str) -> set[str]:
+        return {w.lower() for w in re.sub(r"[^\w\s]", "", s).split() if len(w) > 1}
+
+    a_tok, b_tok = tokens(a), tokens(b)
+    if not a_tok or not b_tok:
+        return True  # Can't compare — allow override
+    return len(a_tok & b_tok) / len(a_tok | b_tok) >= threshold
+
 
 @dataclass
 class TitleInfo:
@@ -103,10 +139,16 @@ class DiscAnalyst:
         if is_likely_tv:
             logger.info(f"Volume label indicates TV (season {detected_season})")
 
-        # Use TMDB name if available and better than parsed name
+        # Use TMDB name only if it's semantically related to the parsed name
         effective_name = detected_name
         if tmdb_signal and tmdb_signal.tmdb_name:
-            effective_name = tmdb_signal.tmdb_name
+            if detected_name is None or _names_are_similar(detected_name, tmdb_signal.tmdb_name):
+                effective_name = tmdb_signal.tmdb_name
+            else:
+                logger.warning(
+                    f"TMDB name '{tmdb_signal.tmdb_name}' is dissimilar to parsed name "
+                    f"'{detected_name}' — ignoring TMDB name override"
+                )
 
         # ALWAYS check for movie first (content overrides label)
         movie_result = self._detect_movie(titles)
@@ -305,9 +347,12 @@ class DiscAnalyst:
                 if result.needs_review and not result.review_reason:
                     result.needs_review = False
 
-        # Use TMDB name if available
+        # Use TMDB name if similar enough to the heuristic name (same guard as analyze())
         if tmdb_signal.tmdb_name:
-            result.detected_name = tmdb_signal.tmdb_name
+            if result.detected_name is None or _names_are_similar(
+                result.detected_name, tmdb_signal.tmdb_name
+            ):
+                result.detected_name = tmdb_signal.tmdb_name
 
         return result
 
@@ -507,6 +552,14 @@ class DiscAnalyst:
             "BREAKING_BAD_SEASON_2" -> ("Breaking Bad", 2, None)
         """
         if not label:
+            return None, None, None
+
+        # Reject generic Windows/disc placeholder labels (e.g. LOGICAL_VOLUME_ID, VIDEO_TS)
+        normalized_check = re.sub(r"[_\s]", "", label).upper()
+        if normalized_check in _GENERIC_VOLUME_LABELS:
+            logger.info(
+                f"Volume label '{label}' is a generic placeholder — treating as unlabeled disc"
+            )
             return None, None, None
 
         # Clean up the label
