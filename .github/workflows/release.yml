@@ -50,7 +50,7 @@ jobs:
       - name: Package
         run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-windows-x64.zip
         shell: pwsh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: engram-windows-x64
           path: engram-windows-x64.zip
