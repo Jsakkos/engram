@@ -197,9 +197,7 @@ class RippingCoordinator:
                         if tidx in _title_file_cache:
                             actual_bytes = _title_file_cache[tidx].stat().st_size
                         else:
-                            matches = list(
-                                output_dir.glob(f"*_t{tidx:02d}.mkv")
-                            )
+                            matches = list(output_dir.glob(f"*_t{tidx:02d}.mkv"))
                             if matches:
                                 _title_file_cache[tidx] = matches[0]
                                 actual_bytes = matches[0].stat().st_size
@@ -210,9 +208,7 @@ class RippingCoordinator:
                         active_title.id,
                         TitleState.RIPPING.value,
                         expected_size_bytes=active_title.file_size_bytes,
-                        actual_size_bytes=min(
-                            actual_bytes, active_title.file_size_bytes
-                        ),
+                        actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
                     )
 
                 await self._ws.broadcast_job_update(

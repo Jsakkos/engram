@@ -185,11 +185,14 @@ class TestInputSanitization:
 
     def test_path_traversal_prevention(self):
         """Test that path traversal attacks are prevented."""
+        # Use forward slashes only — backslash traversal (e.g. ..\\..\\) is
+        # Windows-specific and Path.resolve() on Linux treats \\ as literal
+        # filename characters, not directory separators.
         dangerous_paths = [
             "../../../etc/passwd",
-            "..\\..\\..\\windows\\system32",
+            "../../../windows/system32",
             "/tmp/../etc/passwd",
-            "C:\\Users\\..\\..\\Windows\\System32",
+            "/Users/../../Windows/System32",
         ]
 
         for path in dangerous_paths:
