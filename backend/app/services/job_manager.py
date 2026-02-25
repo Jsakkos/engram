@@ -1197,6 +1197,26 @@ class JobManager:
                     if organize_result["success"]:
                         job.final_path = str(organize_result["main_file"])
                         job.progress_percent = 100.0
+
+                        # Transition all movie titles to COMPLETED
+                        result = await session.execute(
+                            select(DiscTitle).where(DiscTitle.job_id == job_id)
+                        )
+                        for t in result.scalars().all():
+                            if t.state not in (TitleState.COMPLETED, TitleState.FAILED):
+                                t.state = TitleState.COMPLETED
+                                t.organized_from = t.output_filename
+                                t.organized_to = str(organize_result.get("main_file", ""))
+                                session.add(t)
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    t.id,
+                                    TitleState.COMPLETED.value,
+                                    organized_from=t.organized_from,
+                                    organized_to=t.organized_to,
+                                )
+                        await session.commit()
+
                         await state_machine.transition_to_completed(job, session)
                         logger.info(f"Job {job_id} completed: {organize_result['main_file']}")
                     else:
