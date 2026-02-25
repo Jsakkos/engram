@@ -256,6 +256,13 @@ class TestMovieDiscWorkflow:
         titles = response.json()
         assert len(titles) > 0
 
+        # 5. Verify no movie title is in MATCHING state (issue #15)
+        for title in titles:
+            assert title["state"] != "matching", (
+                f"Movie title {title['id']} in MATCHING state — "
+                f"movies should skip MATCHING (bug #15)"
+            )
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -412,6 +419,198 @@ class TestConcurrency:
         assert response.status_code == 200
         jobs = response.json()
         assert len(jobs) >= 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestMovieTitleStateLifecycle:
+    """Integration tests for issue #15: Movie titles must never enter MATCHING state.
+
+    These tests exercise real code paths via simulation endpoints and assert
+    on individual title states — not just job states. This is the critical gap
+    that allowed bug #15 to ship: previous tests only verified the job-level
+    state machine, never the title-level transitions.
+    """
+
+    async def test_movie_titles_never_enter_matching_state(self, client, test_config):
+        """REGRESSION: Movie titles must go RIPPING → MATCHED, never MATCHING.
+
+        Bug #15: Movie titles incorrectly transitioned to MATCHING state
+        (audio fingerprinting phase that only applies to TV episodes).
+        This test polls title states during the simulation and asserts that
+        no movie title ever enters the MATCHING state.
+        """
+        # 1. Simulate movie disc insertion with ripping
+        response = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "500DAYSOFSUMMER",
+                "content_type": "movie",
+                "simulate_ripping": True,
+            },
+        )
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        # 2. Poll title states throughout the workflow
+        #    We sample frequently to catch transient MATCHING states
+        observed_title_states: dict[int, list[str]] = {}
+        max_wait = 30
+        start = asyncio.get_event_loop().time()
+
+        while asyncio.get_event_loop().time() - start < max_wait:
+            # Check job state
+            response = await client.get(f"/api/jobs/{job_id}")
+            assert response.status_code == 200
+            job_state = response.json()["state"]
+
+            # Record all title states
+            response = await client.get(f"/api/jobs/{job_id}/titles")
+            if response.status_code == 200:
+                for title in response.json():
+                    tid = title["id"]
+                    state = title["state"]
+                    if tid not in observed_title_states:
+                        observed_title_states[tid] = []
+                    # Only record new states (avoid duplicates)
+                    if not observed_title_states[tid] or observed_title_states[tid][-1] != state:
+                        observed_title_states[tid].append(state)
+
+            if job_state in ("completed", "failed", "review_needed"):
+                break
+            await asyncio.sleep(0.3)  # Fast polling to catch transient states
+
+        # 3. CRITICAL ASSERTION: No movie title should ever enter MATCHING
+        for tid, states in observed_title_states.items():
+            assert "matching" not in states, (
+                f"Movie title {tid} entered MATCHING state! "
+                f"Observed lifecycle: {' → '.join(states)}. "
+                f"Movies should go RIPPING → MATCHED, never MATCHING."
+            )
+
+    async def test_movie_titles_reach_matched_after_ripping(self, client, test_config):
+        """Movie titles should reach MATCHED (not MATCHING) after ripping completes."""
+        response = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "INCEPTION_TITLE_TEST",
+                "content_type": "movie",
+                "simulate_ripping": True,
+            },
+        )
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        # Wait for ripping to complete
+        max_wait = 30
+        start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start < max_wait:
+            response = await client.get(f"/api/jobs/{job_id}")
+            job_state = response.json()["state"]
+            # Job moves past ripping → titles should be in post-rip state
+            if job_state in ("organizing", "completed", "failed", "review_needed"):
+                break
+            await asyncio.sleep(0.5)
+
+        # Check title states — all should be MATCHED or later (never MATCHING)
+        response = await client.get(f"/api/jobs/{job_id}/titles")
+        assert response.status_code == 200
+        titles = response.json()
+        assert len(titles) > 0, "Movie should have at least one title"
+
+        for title in titles:
+            assert title["state"] != "matching", (
+                f"Title {title['id']} (index {title['title_index']}) is in MATCHING state. "
+                f"Movie titles must never enter MATCHING — this is the bug from issue #15."
+            )
+            # After ripping, titles should be at least MATCHED
+            assert title["state"] in ("matched", "completed", "review", "failed"), (
+                f"Title {title['id']} in unexpected state '{title['state']}' after ripping."
+            )
+
+    async def test_movie_titles_reach_completed_after_job_completes(self, client, test_config):
+        """When a movie job reaches COMPLETED, all titles should also be COMPLETED.
+
+        Second bug found during #15 investigation: job state transitions to
+        COMPLETED but individual title states were left in MATCHED indefinitely.
+        """
+        response = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "MOVIE_TITLE_COMPLETION",
+                "content_type": "movie",
+                "simulate_ripping": True,
+            },
+        )
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        # Wait for job to complete
+        max_wait = 30
+        start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start < max_wait:
+            response = await client.get(f"/api/jobs/{job_id}")
+            job_state = response.json()["state"]
+            if job_state in ("completed", "failed", "review_needed"):
+                break
+            await asyncio.sleep(0.5)
+
+        response = await client.get(f"/api/jobs/{job_id}")
+        final_job = response.json()
+
+        # Only check title completion if the job itself completed successfully
+        if final_job["state"] == "completed":
+            response = await client.get(f"/api/jobs/{job_id}/titles")
+            titles = response.json()
+            assert len(titles) > 0
+
+            for title in titles:
+                assert title["state"] == "completed", (
+                    f"Job is COMPLETED but title {title['id']} "
+                    f"(index {title['title_index']}) is stuck in '{title['state']}'. "
+                    f"All titles should reach COMPLETED when the job does."
+                )
+
+    async def test_tv_titles_can_enter_matching_state(self, client, test_config):
+        """Positive control: TV titles SHOULD enter MATCHING state.
+
+        This verifies we haven't broken TV workflows while fixing movie titles.
+        """
+        response = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "TV_MATCHING_CONTROL",
+                "content_type": "tv",
+                "simulate_ripping": True,
+            },
+        )
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        # Poll title states throughout the workflow
+        ever_saw_matching = False
+        max_wait = 30
+        start = asyncio.get_event_loop().time()
+
+        while asyncio.get_event_loop().time() - start < max_wait:
+            response = await client.get(f"/api/jobs/{job_id}")
+            job_state = response.json()["state"]
+
+            response = await client.get(f"/api/jobs/{job_id}/titles")
+            if response.status_code == 200:
+                for title in response.json():
+                    if title["state"] == "matching":
+                        ever_saw_matching = True
+
+            if job_state in ("completed", "failed", "review_needed"):
+                break
+            await asyncio.sleep(0.3)
+
+        # TV titles should enter MATCHING (audio fingerprint phase)
+        assert ever_saw_matching, (
+            "TV titles never entered MATCHING state during simulation. "
+            "This is unexpected — TV titles should go through MATCHING for episode matching."
+        )
 
 
 @pytest.mark.asyncio

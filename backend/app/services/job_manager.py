@@ -2838,6 +2838,16 @@ class JobManager:
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.ORGANIZING)
                 await asyncio.sleep(0.5)
                 job.progress_percent = 100.0
+                # Transition all movie titles to COMPLETED before completing job
+                for title in titles:
+                    title_db = await session.get(DiscTitle, title.id)
+                    if title_db and title_db.state not in (
+                        TitleState.COMPLETED,
+                        TitleState.FAILED,
+                    ):
+                        title_db.state = TitleState.COMPLETED
+                        session.add(title_db)
+                await session.commit()
                 await state_machine.transition_to_completed(job, session)
 
     async def _simulate_ripping(
@@ -2955,6 +2965,16 @@ class JobManager:
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.ORGANIZING)
                 await asyncio.sleep(0.5)
                 job.progress_percent = 100.0
+                # Transition all movie titles to COMPLETED before completing job
+                for title in titles:
+                    title_db = await session.get(DiscTitle, title.id)
+                    if title_db and title_db.state not in (
+                        TitleState.COMPLETED,
+                        TitleState.FAILED,
+                    ):
+                        title_db.state = TitleState.COMPLETED
+                        session.add(title_db)
+                await session.commit()
                 await state_machine.transition_to_completed(job, session)
 
     async def _simulate_subtitle_download(self, job_id: int, total: int, show_name: str) -> None:
