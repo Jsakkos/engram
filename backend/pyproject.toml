@@ -1,6 +1,6 @@
 [project]
 name = "engram-backend"
-version = "0.1.9"
+version = "0.2.0"
 description = "Engram - Disc ripping and media organization backend"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }

@@ -11,8 +11,8 @@ export function mapJobStateToDiscState(jobState: Job['state']): DiscState {
     'identifying': 'scanning',
     'review_needed': 'scanning',
     'ripping': 'ripping',
-    'matching': 'ripping',
-    'organizing': 'ripping',
+    'matching': 'processing',
+    'organizing': 'processing',
     'completed': 'completed',
     'failed': 'error'
   };
