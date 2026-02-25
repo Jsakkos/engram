@@ -468,6 +468,8 @@ class SimulateDiscRequest(BaseModel):
     titles: list[dict] | None = None
     simulate_ripping: bool = True
     rip_speed_multiplier: int = 10
+    force_review_needed: bool = False
+    review_reason: str | None = None
 
 
 @router.post("/simulate/insert-disc")
@@ -479,7 +481,7 @@ async def simulate_insert_disc(req: SimulateDiscRequest) -> dict:
     from app.services.job_manager import job_manager
 
     params = req.model_dump()
-    if params.get("detected_title") is None:
+    if not params.get("force_review_needed") and params.get("detected_title") is None:
         params["detected_title"] = req.volume_label.replace("_", " ").title()
     if params.get("titles") is None:
         params.pop("titles", None)

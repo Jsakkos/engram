@@ -1,0 +1,77 @@
+{
+  "volume_label": "THE TERMINATOR",
+  "staging_path": "C:/Video/THE TERMINATOR",
+  "tracks": [
+    {
+      "index": 0,
+      "filename": "THE TERMINATOR_t00.mkv",
+      "duration_seconds": 599,
+      "size_bytes": 611418867,
+      "chapter_count": 7,
+      "video_resolution": "480p",
+      "expected_episode": null
+    },
+    {
+      "index": 1,
+      "filename": "THE TERMINATOR_t01.mkv",
+      "duration_seconds": 6423,
+      "size_bytes": 30614003858,
+      "chapter_count": 32,
+      "video_resolution": "1080p",
+      "expected_episode": null
+    },
+    {
+      "index": 2,
+      "filename": "THE TERMINATOR_t02.mkv",
+      "duration_seconds": 6423,
+      "size_bytes": 31513883840,
+      "chapter_count": 32,
+      "video_resolution": "1080p",
+      "expected_episode": null
+    },
+    {
+      "index": 3,
+      "filename": "THE TERMINATOR_t03.mkv",
+      "duration_seconds": 599,
+      "size_bytes": 611855206,
+      "chapter_count": 7,
+      "video_resolution": "480p",
+      "expected_episode": null
+    },
+    {
+      "index": 4,
+      "filename": "THE TERMINATOR_t04.mkv",
+      "duration_seconds": 1230,
+      "size_bytes": 1269728373,
+      "chapter_count": 0,
+      "video_resolution": "480p",
+      "expected_episode": null
+    },
+    {
+      "index": 5,
+      "filename": "THE TERMINATOR_t05.mkv",
+      "duration_seconds": 260,
+      "size_bytes": 267624118,
+      "chapter_count": 0,
+      "video_resolution": "480p",
+      "expected_episode": null
+    },
+    {
+      "index": 6,
+      "filename": "THE TERMINATOR_t06.mkv",
+      "duration_seconds": 778,
+      "size_bytes": 792752907,
+      "chapter_count": 0,
+      "video_resolution": "480p",
+      "expected_episode": null
+    }
+  ],
+  "expected_content_type": "movie",
+  "expected_detected_name": "The Terminator",
+  "expected_season": null,
+  "expected_play_all_indices": [],
+  "expected_needs_review": true,
+  "expected_review_reason": "ambiguous_movie",
+  "tmdb_signal": null,
+  "notes": "7 tracks: 2 identical-duration features at 6423s (107min) in 1080p, 5 extras in 480p. The duplicate features trigger ambiguous_movie review. t00/t03 are 480p versions of the same 10min featurette."
+}

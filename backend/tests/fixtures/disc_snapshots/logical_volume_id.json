@@ -1,0 +1,104 @@
+{
+  "volume_label": "LOGICAL_VOLUME_ID",
+  "staging_path": "C:/Video/LOGICAL_VOLUME_ID",
+  "tracks": [
+    {
+      "index": 0,
+      "filename": "title_t00.mkv",
+      "duration_seconds": 6632,
+      "size_bytes": 19755906658,
+      "chapter_count": 16,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 1,
+      "filename": "title_t01.mkv",
+      "duration_seconds": 525,
+      "size_bytes": 333769756,
+      "chapter_count": 6,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 2,
+      "filename": "title_t02.mkv",
+      "duration_seconds": 242,
+      "size_bytes": 154275563,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 3,
+      "filename": "title_t03.mkv",
+      "duration_seconds": 355,
+      "size_bytes": 211782029,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 4,
+      "filename": "title_t04.mkv",
+      "duration_seconds": 339,
+      "size_bytes": 260771528,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 5,
+      "filename": "title_t05.mkv",
+      "duration_seconds": 1098,
+      "size_bytes": 828631029,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 6,
+      "filename": "title_t06.mkv",
+      "duration_seconds": 337,
+      "size_bytes": 257195801,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 7,
+      "filename": "title_t07.mkv",
+      "duration_seconds": 473,
+      "size_bytes": 369338749,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 8,
+      "filename": "title_t08.mkv",
+      "duration_seconds": 348,
+      "size_bytes": 258871259,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 9,
+      "filename": "title_t09.mkv",
+      "duration_seconds": 173,
+      "size_bytes": 358740177,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    }
+  ],
+  "expected_content_type": "movie",
+  "expected_detected_name": null,
+  "expected_season": null,
+  "expected_play_all_indices": [],
+  "expected_needs_review": true,
+  "expected_review_reason": "generic_label",
+  "tmdb_signal": null,
+  "notes": "10 tracks: 1 feature at 6632s (110.5min, 19.8GB), 9 extras (2.5-18.3min). Generic volume label triggers detected_name=null, requiring user to provide the movie name (The Italian Job 2003)."
+}

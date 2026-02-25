@@ -1,0 +1,64 @@
+{
+  "volume_label": "STAR TREK PICARD S1D3",
+  "staging_path": "C:/Video/STAR TREK PICARD S1D3",
+  "tracks": [
+    {
+      "index": 0,
+      "filename": "Star Trek- Picard Season 1 Disc 3_t00.mkv",
+      "duration_seconds": 3395,
+      "size_bytes": 11659264873,
+      "chapter_count": 6,
+      "video_resolution": "1080p",
+      "expected_episode": "S01E07"
+    },
+    {
+      "index": 1,
+      "filename": "Star Trek- Picard Season 1 Disc 3_t01.mkv",
+      "duration_seconds": 2696,
+      "size_bytes": 9242778731,
+      "chapter_count": 6,
+      "video_resolution": "1080p",
+      "expected_episode": "S01E08"
+    },
+    {
+      "index": 2,
+      "filename": "Star Trek- Picard Season 1 Disc 3_t02.mkv",
+      "duration_seconds": 3325,
+      "size_bytes": 11375319742,
+      "chapter_count": 6,
+      "video_resolution": "1080p",
+      "expected_episode": "S01E09"
+    },
+    {
+      "index": 3,
+      "filename": "Star Trek- Picard Season 1 Disc 3_t03.mkv",
+      "duration_seconds": 9416,
+      "size_bytes": 32277351940,
+      "chapter_count": 18,
+      "video_resolution": "1080p",
+      "expected_episode": null
+    },
+    {
+      "index": 4,
+      "filename": "Star Trek- Picard Season 1 Disc 3_t04.mkv",
+      "duration_seconds": 306,
+      "size_bytes": 853769261,
+      "chapter_count": 0,
+      "video_resolution": "1080p",
+      "expected_episode": null
+    }
+  ],
+  "expected_content_type": "tv",
+  "expected_detected_name": "Star Trek Picard",
+  "expected_season": 1,
+  "expected_play_all_indices": [3],
+  "expected_needs_review": false,
+  "expected_review_reason": null,
+  "tmdb_signal": {
+    "content_type": "tv",
+    "confidence": 0.9,
+    "tmdb_id": 85949,
+    "tmdb_name": "Star Trek: Picard"
+  },
+  "notes": "5 tracks: 3 episodes (44.9-56.6min), 1 Play All at 9416s (sum of episodes = 3395+2696+3325 = 9416), 1 extra (5.1min). Label 'STAR TREK PICARD S1D3' parses to season=1, disc=3."
+}

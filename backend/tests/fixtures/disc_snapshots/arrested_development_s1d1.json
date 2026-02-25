@@ -1,0 +1,118 @@
+{
+  "volume_label": "ARRESTED_Development_S1D1",
+  "staging_path": "C:/Video/ARRESTED_Development_S1D1",
+  "tracks": [
+    {
+      "index": 0,
+      "filename": "B1_t00.mkv",
+      "duration_seconds": 1714,
+      "size_bytes": 668897237,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E01"
+    },
+    {
+      "index": 2,
+      "filename": "B1_t02.mkv",
+      "duration_seconds": 1307,
+      "size_bytes": 524788760,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E03"
+    },
+    {
+      "index": 3,
+      "filename": "B1_t03.mkv",
+      "duration_seconds": 1326,
+      "size_bytes": 580133133,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E04"
+    },
+    {
+      "index": 4,
+      "filename": "B1_t04.mkv",
+      "duration_seconds": 1332,
+      "size_bytes": 533503132,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E05"
+    },
+    {
+      "index": 5,
+      "filename": "B1_t05.mkv",
+      "duration_seconds": 1306,
+      "size_bytes": 519383009,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E06"
+    },
+    {
+      "index": 6,
+      "filename": "B1_t06.mkv",
+      "duration_seconds": 1305,
+      "size_bytes": 540108878,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E07"
+    },
+    {
+      "index": 7,
+      "filename": "B1_t07.mkv",
+      "duration_seconds": 1306,
+      "size_bytes": 519952776,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E08"
+    },
+    {
+      "index": 1,
+      "filename": "C1_t01.mkv",
+      "duration_seconds": 1714,
+      "size_bytes": 668897237,
+      "chapter_count": 5,
+      "video_resolution": "unknown",
+      "expected_episode": "S01E02"
+    },
+    {
+      "index": 10,
+      "filename": "D1_t10.mkv",
+      "duration_seconds": 391,
+      "size_bytes": 153142769,
+      "chapter_count": 4,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 9,
+      "filename": "D4_t09.mkv",
+      "duration_seconds": 149,
+      "size_bytes": 56802881,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    },
+    {
+      "index": 8,
+      "filename": "E1_t08.mkv",
+      "duration_seconds": 996,
+      "size_bytes": 363861577,
+      "chapter_count": 0,
+      "video_resolution": "unknown",
+      "expected_episode": null
+    }
+  ],
+  "expected_content_type": "tv",
+  "expected_detected_name": "Arrested Development",
+  "expected_season": 1,
+  "expected_play_all_indices": [],
+  "expected_needs_review": false,
+  "expected_review_reason": null,
+  "tmdb_signal": {
+    "content_type": "tv",
+    "confidence": 0.9,
+    "tmdb_id": 4589,
+    "tmdb_name": "Arrested Development"
+  },
+  "notes": "11 tracks: 8 episodes (pilots 28.6min, regular 21.7-22.2min), 3 short extras. Multi-prefix filenames (B1, C1, D1, D4, E1) from multi-disc MakeMKV rip. Non-sequential track numbering."
+}

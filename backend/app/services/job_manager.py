@@ -2561,7 +2561,22 @@ class JobManager:
                     f"Job {job.id}: starting simulated subtitle download for {detected_title} S{detected_season}"
                 )
 
-            if simulate_ripping:
+            force_review = params.get("force_review_needed", False)
+            if force_review:
+                # Transition directly to review_needed (for E2E testing name prompt, etc.)
+                job.state = JobState.REVIEW_NEEDED
+                job.detected_title = None  # Clear title to trigger name prompt
+                job.review_reason = params.get("review_reason", "Disc label unreadable")
+                await session.commit()
+                await ws_manager.broadcast_job_update(
+                    job.id,
+                    JobState.REVIEW_NEEDED.value,
+                    content_type=content_type.value,
+                    detected_title=None,
+                    review_reason=job.review_reason,
+                    total_titles=len(title_params),
+                )
+            elif simulate_ripping:
                 # Start simulated ripping in background
                 task = asyncio.create_task(
                     self._simulate_ripping(job.id, titles, rip_speed_multiplier, content_type)

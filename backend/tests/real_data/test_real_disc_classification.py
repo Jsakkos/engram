@@ -101,3 +101,55 @@ class TestRealDiscClassification:
         result = analyst.analyze(titles, volume_label=real_staging_path.name)
         assert result.content_type == ContentType.MOVIE
         assert result.confidence >= 0.7
+
+    @pytest.mark.parametrize(
+        "real_staging_path",
+        ["C:/Video/STAR TREK PICARD S1D3"],
+        indirect=True,
+    )
+    def test_classify_real_picard_disc(self, real_staging_path):
+        """Real Picard disc → TV classification with Play All detected."""
+        config = AppConfig()
+        analyst = DiscAnalyst(config=config)
+        titles = _scan_mkv_durations(real_staging_path)
+
+        assert len(titles) > 0, f"No MKV files in {real_staging_path}"
+
+        result = analyst.analyze(titles, volume_label=real_staging_path.name)
+        assert result.content_type == ContentType.TV
+        assert result.detected_season == 1
+        assert len(result.play_all_title_indices) > 0
+
+    @pytest.mark.parametrize(
+        "real_staging_path",
+        ["C:/Video/THE TERMINATOR"],
+        indirect=True,
+    )
+    def test_classify_real_terminator_disc(self, real_staging_path):
+        """Real Terminator disc → Movie with ambiguous features needing review."""
+        config = AppConfig()
+        analyst = DiscAnalyst(config=config)
+        titles = _scan_mkv_durations(real_staging_path)
+
+        assert len(titles) > 0, f"No MKV files in {real_staging_path}"
+
+        result = analyst.analyze(titles, volume_label=real_staging_path.name)
+        assert result.content_type == ContentType.MOVIE
+        assert result.needs_review is True
+
+    @pytest.mark.parametrize(
+        "real_staging_path",
+        ["C:/Video/LOGICAL_VOLUME_ID"],
+        indirect=True,
+    )
+    def test_classify_real_generic_label_disc(self, real_staging_path):
+        """Generic label disc → Movie, detected_name is None."""
+        config = AppConfig()
+        analyst = DiscAnalyst(config=config)
+        titles = _scan_mkv_durations(real_staging_path)
+
+        assert len(titles) > 0, f"No MKV files in {real_staging_path}"
+
+        result = analyst.analyze(titles, volume_label=real_staging_path.name)
+        assert result.content_type == ContentType.MOVIE
+        assert result.detected_name is None
