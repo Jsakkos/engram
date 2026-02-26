@@ -28,18 +28,6 @@ def populated_cache_dir(temp_cache_dir):
 
 
 @pytest.fixture
-def mock_config(temp_cache_dir):
-    """Mock Config object with test paths."""
-    from app.matcher.core.models import Config
-
-    return Config(
-        tmdb_api_key="test_key_12345678901234567890123456789012",
-        cache_dir=temp_cache_dir,
-        min_confidence=0.7,
-    )
-
-
-@pytest.fixture
 def mock_tmdb_responses():
     """Pre-built TMDB API response data."""
     return {

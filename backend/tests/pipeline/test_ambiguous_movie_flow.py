@@ -40,9 +40,7 @@ class TestTerminatorAmbiguousMovie:
         snap = load_snapshot("the_terminator")
         titles = snapshot_to_titles(snap)
         config = analyst._get_config()
-        long_titles = [
-            t for t in titles if t.duration_seconds >= config.analyst_movie_min_duration
-        ]
+        long_titles = [t for t in titles if t.duration_seconds >= config.analyst_movie_min_duration]
         assert len(long_titles) == 2
         assert long_titles[0].duration_seconds == long_titles[1].duration_seconds  # Both 6423s
 
@@ -56,10 +54,7 @@ class TestTerminatorAmbiguousMovie:
         titles = snapshot_to_titles(snap)
         result = analyst.analyze(titles, snap["volume_label"])
 
-        is_ambiguous_movie = (
-            result.content_type == ContentType.MOVIE
-            and result.needs_review
-        )
+        is_ambiguous_movie = result.content_type == ContentType.MOVIE and result.needs_review
         assert is_ambiguous_movie
 
 
@@ -77,9 +72,7 @@ class TestNonAmbiguousMovies:
         # Note: it may still need review due to the generic label — but
         # the review reason should be about the label, not multiple features
         config = analyst._get_config()
-        long_titles = [
-            t for t in titles if t.duration_seconds >= config.analyst_movie_min_duration
-        ]
+        long_titles = [t for t in titles if t.duration_seconds >= config.analyst_movie_min_duration]
         assert len(long_titles) == 1  # Only t00 at 6632s
 
 

@@ -90,7 +90,10 @@ class TestTVEpisodeOrganizationPaths:
         source.write_bytes(b"x" * 1024)
 
         result = organize_tv_episode(
-            source, "Star Trek Picard", "S01E07", library_path=library,
+            source,
+            "Star Trek Picard",
+            "S01E07",
+            library_path=library,
         )
         assert result["success"]
         assert result["final_path"].name == "Star Trek Picard - S01E07.mkv"
@@ -106,7 +109,9 @@ class TestTVEpisodeOrganizationPaths:
             source.write_bytes(b"x" * 1024)
 
             result = organize_tv_episode(
-                source, "Arrested Development", f"S01E{ep_num:02d}",
+                source,
+                "Arrested Development",
+                f"S01E{ep_num:02d}",
                 library_path=library,
             )
             assert result["success"]
@@ -126,8 +131,12 @@ class TestTVExtrasOrganizationPaths:
         source.write_bytes(b"x" * 1024)
 
         result = organize_tv_extras(
-            source, "Star Trek Picard", season=1,
-            library_path=library, disc_number=3, extra_index=1,
+            source,
+            "Star Trek Picard",
+            season=1,
+            library_path=library,
+            disc_number=3,
+            extra_index=1,
         )
         assert result["success"]
         assert "Extras" in str(result["final_path"])
@@ -141,8 +150,12 @@ class TestTVExtrasOrganizationPaths:
         source.write_bytes(b"x" * 1024)
 
         result = organize_tv_extras(
-            source, "Arrested Development", season=1,
-            library_path=library, disc_number=1, extra_index=1,
+            source,
+            "Arrested Development",
+            season=1,
+            library_path=library,
+            disc_number=1,
+            extra_index=1,
         )
         assert result["success"]
         assert "Extras" in str(result["final_path"])
