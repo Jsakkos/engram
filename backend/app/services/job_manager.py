@@ -954,20 +954,25 @@ class JobManager:
                                 async with async_session() as sess:
                                     prev_db = await sess.get(DiscTitle, prev_title.id)
                                     if prev_db and prev_db.state == TitleState.RIPPING:
-                                        prev_db.state = TitleState.MATCHING
+                                        # Movies skip matching — go straight to MATCHED
+                                        if job.content_type == ContentType.TV:
+                                            new_state = TitleState.MATCHING
+                                        else:
+                                            new_state = TitleState.MATCHED
+                                        prev_db.state = new_state
                                         sess.add(prev_db)
                                         await sess.commit()
                                         await ws_manager.broadcast_title_update(
                                             job_id,
                                             prev_db.id,
-                                            TitleState.MATCHING.value,
+                                            new_state.value,
                                             expected_size_bytes=prev_title.file_size_bytes,
                                             actual_size_bytes=prev_title.file_size_bytes,
                                         )
                             except Exception:
                                 logger.warning(
                                     f"Failed to transition title {prev_title.id} "
-                                    f"from RIPPING to MATCHING (Job {job_id})",
+                                    f"out of RIPPING (Job {job_id})",
                                     exc_info=True,
                                 )
                     _last_title_idx = current_idx
@@ -1192,6 +1197,26 @@ class JobManager:
                     if organize_result["success"]:
                         job.final_path = str(organize_result["main_file"])
                         job.progress_percent = 100.0
+
+                        # Transition all movie titles to COMPLETED
+                        result = await session.execute(
+                            select(DiscTitle).where(DiscTitle.job_id == job_id)
+                        )
+                        for t in result.scalars().all():
+                            if t.state not in (TitleState.COMPLETED, TitleState.FAILED):
+                                t.state = TitleState.COMPLETED
+                                t.organized_from = t.output_filename
+                                t.organized_to = str(organize_result.get("main_file", ""))
+                                session.add(t)
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    t.id,
+                                    TitleState.COMPLETED.value,
+                                    organized_from=t.organized_from,
+                                    organized_to=t.organized_to,
+                                )
+                        await session.commit()
+
                         await state_machine.transition_to_completed(job, session)
                         logger.info(f"Job {job_id} completed: {organize_result['main_file']}")
                     else:
@@ -2773,13 +2798,16 @@ class JobManager:
                         actual_size_bytes=min(title_actual, title_bytes),
                     )
 
-                # Mark title as done ripping
-                title_db.state = TitleState.MATCHING
+                # Mark title as done ripping — movies skip matching
+                post_rip_state = (
+                    TitleState.MATCHING if content_type == ContentType.TV else TitleState.MATCHED
+                )
+                title_db.state = post_rip_state
                 await session.commit()
                 await ws_manager.broadcast_title_update(
                     job_id,
                     title_db.id,
-                    TitleState.MATCHING.value,
+                    post_rip_state.value,
                     duration_seconds=title_db.duration_seconds,
                     file_size_bytes=title_db.file_size_bytes,
                 )
@@ -2810,6 +2838,16 @@ class JobManager:
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.ORGANIZING)
                 await asyncio.sleep(0.5)
                 job.progress_percent = 100.0
+                # Transition all movie titles to COMPLETED before completing job
+                for title in titles:
+                    title_db = await session.get(DiscTitle, title.id)
+                    if title_db and title_db.state not in (
+                        TitleState.COMPLETED,
+                        TitleState.FAILED,
+                    ):
+                        title_db.state = TitleState.COMPLETED
+                        session.add(title_db)
+                await session.commit()
                 await state_machine.transition_to_completed(job, session)
 
     async def _simulate_ripping(
@@ -2883,16 +2921,21 @@ class JobManager:
                         actual_size_bytes=min(title_actual, title_bytes),
                     )
 
-                # Title done
+                # Title done — movies skip matching
                 title_db = await session.get(DiscTitle, title.id)
                 if title_db:
                     title_db.output_filename = f"simulated_title_{title.title_index}.mkv"
-                    title_db.state = TitleState.MATCHING
+                    post_rip_state = (
+                        TitleState.MATCHING
+                        if content_type == ContentType.TV
+                        else TitleState.MATCHED
+                    )
+                    title_db.state = post_rip_state
                     await session.commit()
                     await ws_manager.broadcast_title_update(
                         job_id,
                         title_db.id,
-                        TitleState.MATCHING.value,
+                        post_rip_state.value,
                         duration_seconds=title_db.duration_seconds,
                         file_size_bytes=title_db.file_size_bytes,
                     )
@@ -2922,6 +2965,16 @@ class JobManager:
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.ORGANIZING)
                 await asyncio.sleep(0.5)
                 job.progress_percent = 100.0
+                # Transition all movie titles to COMPLETED before completing job
+                for title in titles:
+                    title_db = await session.get(DiscTitle, title.id)
+                    if title_db and title_db.state not in (
+                        TitleState.COMPLETED,
+                        TitleState.FAILED,
+                    ):
+                        title_db.state = TitleState.COMPLETED
+                        session.add(title_db)
+                await session.commit()
                 await state_machine.transition_to_completed(job, session)
 
     async def _simulate_subtitle_download(self, job_id: int, total: int, show_name: str) -> None:
