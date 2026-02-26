@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.matcher.core.providers.subtitles import (
+from app.matcher.subtitle_provider import (
     LocalSubtitleProvider,
     parse_season_episode,
 )

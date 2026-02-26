@@ -30,8 +30,7 @@ from typing import Any
 from tqdm import tqdm
 
 from app.matcher.asr_models import get_cached_model
-from app.matcher.core.utils import clean_text, extract_audio_chunk, get_video_duration
-from app.matcher.episode_identification import SubtitleReader
+from app.matcher.srt_utils import SubtitleReader, clean_text, extract_audio_chunk, get_video_duration
 
 
 @dataclass

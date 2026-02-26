@@ -1,23 +1,17 @@
 import re
 import subprocess
 import tempfile
-from functools import lru_cache
 from pathlib import Path
 
-import chardet
 import ctranslate2
 import numpy as np
 from loguru import logger
-from rich import print
-from rich.console import Console
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from app.matcher.asr_models import get_cached_model
+from app.matcher.srt_utils import SubtitleReader, extract_season_episode
 from app.matcher.subtitle_utils import sanitize_filename
-from app.matcher.utils import extract_season_episode
-
-console = Console()
 
 
 class SubtitleCache:
@@ -92,42 +86,6 @@ def _clean_subtitle_text(text: str) -> str:
     text = re.sub(r"([A-Za-z])-\1+", r"\1", text)  # collapse stutters
     text = re.sub(r"[^\w\s']", " ", text)  # remove special chars except apostrophes
     return " ".join(text.split())
-
-
-def _is_watermark_block(block_text: str, block_lines: list[str], subtitle_start: float) -> bool:
-    """Detect subtitle blocks that are watermarks, ads, or non-dialogue annotations.
-
-    Generically identifies watermark content regardless of source by checking for:
-    - URLs or domain-like patterns (e.g., www.tvsubtitles.net, opensubtitles.org)
-    - Blocks near timestamp 0:00 with non-dialogue content (ad overlays)
-    - Font color/size tags wrapping the entire content (styled ads)
-    """
-    text_lower = block_text.lower().strip()
-
-    # Check for URLs or domain patterns
-    if re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", text_lower):
-        return True
-
-    # Check for blocks that are only font/styling tags wrapping a URL or brand name
-    stripped = re.sub(r"<[^>]+>", "", text_lower).strip()
-    if stripped and re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", stripped):
-        return True
-
-    # Very short non-dialogue at start (e.g., "sync by", "subtitles by", "corrected by")
-    if subtitle_start < 5.0 and len(stripped.split()) <= 8:
-        credit_patterns = [
-            "sync",
-            "subtitles by",
-            "corrected by",
-            "ripped by",
-            "encoded by",
-            "transcript by",
-            "timing by",
-        ]
-        if any(p in stripped for p in credit_patterns):
-            return True
-
-    return False
 
 
 class TfidfMatcher:
@@ -555,13 +513,13 @@ class EpisodeMatcher:
                     best_match = Path(ref_file)
 
                 if confidence > self.min_confidence:
-                    print(f"Matched with {best_match} (confidence: {best_confidence:.2f})")
+                    logger.info(f"Matched with {best_match} (confidence: {best_confidence:.2f})")
                     try:
                         season, episode = extract_season_episode(best_match.stem)
                     except Exception as e:
-                        print(f"Error extracting season/episode: {e}")
+                        logger.error(f"Error extracting season/episode: {e}")
                         continue
-                    print(
+                    logger.info(
                         f"Season: {season}, Episode: {episode} (confidence: {best_confidence:.2f})"
                     )
                     if season and episode:
@@ -1133,179 +1091,3 @@ def get_video_duration(video_file, _retries: int = 6, _retry_delay: float = 5.0)
     raise last_error or RuntimeError(
         f"Failed to get duration for {video_file} after {_retries} attempts"
     )
-
-
-def detect_file_encoding(file_path):
-    """
-    Detect the encoding of a file using chardet.
-
-    Args:
-        file_path (str or Path): Path to the file
-
-    Returns:
-        str: Detected encoding, defaults to 'utf-8' if detection fails
-    """
-    try:
-        with open(file_path, "rb") as f:
-            raw_data = f.read(min(1024 * 1024, Path(file_path).stat().st_size))  # Read up to 1MB
-        result = chardet.detect(raw_data)
-        encoding = result["encoding"]
-        confidence = result["confidence"]
-
-        logger.debug(
-            f"Detected encoding {encoding} with {confidence:.2%} confidence for {file_path}"
-        )
-        return encoding if encoding else "utf-8"
-    except Exception as e:
-        logger.warning(f"Error detecting encoding for {file_path}: {e}")
-        return "utf-8"
-
-
-@lru_cache(maxsize=100)
-def read_file_with_fallback(file_path, encodings=None):
-    """
-    Read a file trying multiple encodings in order of preference.
-
-    Args:
-        file_path (str or Path): Path to the file
-        encodings (list): List of encodings to try, defaults to common subtitle encodings
-
-    Returns:
-        str: File contents
-
-    Raises:
-        ValueError: If file cannot be read with any encoding
-    """
-    if encodings is None:
-        # First try detected encoding, then fallback to common subtitle encodings
-        detected = detect_file_encoding(file_path)
-        encodings = [detected, "utf-8", "latin-1", "cp1252", "iso-8859-1"]
-
-    file_path = Path(file_path)
-    errors = []
-
-    for encoding in encodings:
-        try:
-            with open(file_path, encoding=encoding) as f:
-                content = f.read()
-            logger.debug(f"Successfully read {file_path} using {encoding} encoding")
-            return content
-        except UnicodeDecodeError as e:
-            errors.append(f"{encoding}: {str(e)}")
-            continue
-
-    error_msg = f"Failed to read {file_path} with any encoding. Errors:\n" + "\n".join(errors)
-    logger.error(error_msg)
-    raise ValueError(error_msg)
-
-
-class SubtitleReader:
-    """Helper class for reading and parsing subtitle files."""
-
-    @staticmethod
-    def parse_timestamp(timestamp):
-        """Parse SRT timestamp into seconds."""
-        hours, minutes, seconds = timestamp.replace(",", ".").split(":")
-        return float(hours) * 3600 + float(minutes) * 60 + float(seconds)
-
-    @staticmethod
-    def read_srt_file(file_path):
-        """
-        Read an SRT file and return its contents with robust encoding handling.
-
-        Args:
-            file_path (str or Path): Path to the SRT file
-
-        Returns:
-            str: Contents of the SRT file
-        """
-        return read_file_with_fallback(file_path)
-
-    @staticmethod
-    def extract_subtitle_chunk(content, start_time, end_time):
-        """
-        Extract subtitle text for a specific time window.
-
-        Args:
-            content (str): Full SRT file content
-            start_time (float): Chunk start time in seconds
-            end_time (float): Chunk end time in seconds
-
-        Returns:
-            list: List of subtitle texts within the time window
-        """
-        text_lines = []
-
-        for block in content.strip().split("\n\n"):
-            lines = block.split("\n")
-            if len(lines) < 3 or "-->" not in lines[1]:
-                continue
-
-            try:
-                timestamp = lines[1]
-                time_parts = timestamp.split(" --> ")
-                start_stamp = time_parts[0].strip()
-                end_stamp = time_parts[1].strip()
-
-                subtitle_start = SubtitleReader.parse_timestamp(start_stamp)
-                subtitle_end = SubtitleReader.parse_timestamp(end_stamp)
-
-                # Check if this subtitle overlaps with our chunk
-                if subtitle_end >= start_time and subtitle_start <= end_time:
-                    text = " ".join(lines[2:])
-
-                    # Skip watermark/ad blocks (URLs, credit lines, etc.)
-                    if _is_watermark_block(text, lines, subtitle_start):
-                        logger.debug(
-                            f"Filtered watermark/ad block at {subtitle_start:.1f}s: {text[:80]}"
-                        )
-                        continue
-
-                    text_lines.append(text)
-
-            except (IndexError, ValueError) as e:
-                logger.warning(f"Error parsing subtitle block: {e}")
-                continue
-
-        return text_lines
-
-    @staticmethod
-    def get_duration(content):
-        """
-        Get the duration of the subtitle file (max end timestamp across all blocks).
-
-        Uses max() instead of last-block because some subtitle files have
-        watermark/ad blocks appended at the end with timestamps near 0:00,
-        which would incorrectly report the duration as ~2 seconds.
-
-        Args:
-            content (str): Full SRT file content
-
-        Returns:
-            float: Duration in seconds, or 0 if parsing fails
-        """
-        try:
-            blocks = content.strip().split("\n\n")
-            if not blocks:
-                return 0.0
-
-            max_end = 0.0
-            for block in blocks:
-                lines = block.split("\n")
-                if len(lines) >= 2 and "-->" in lines[1]:
-                    try:
-                        time_parts = lines[1].split(" --> ")
-                        end_stamp = time_parts[1].strip()
-                        end_time = SubtitleReader.parse_timestamp(end_stamp)
-                        if end_time > max_end:
-                            max_end = end_time
-                    except (IndexError, ValueError):
-                        continue
-
-            return max_end
-        except Exception as e:
-            logger.warning(f"Error getting duration from subtitle content: {e}")
-            return 0.0
-
-
-# Note: Model caching is now handled by the ASR abstraction layer in asr_models.py
