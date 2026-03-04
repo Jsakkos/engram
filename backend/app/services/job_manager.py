@@ -92,6 +92,7 @@ class JobManager:
         self._active_jobs: dict[int, asyncio.Task] = {}
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._subtitle_ready: dict[int, asyncio.Event] = {}
+        self._drive_locks: dict[str, asyncio.Lock] = {}  # Per-drive lock to prevent duplicate jobs
         self._episode_runtimes: dict[int, list[int]] = {}  # job_id → episode runtimes in minutes
         self._loop: asyncio.AbstractEventLoop | None = None
         self._match_semaphore: asyncio.Semaphore | None = None
@@ -99,6 +100,11 @@ class JobManager:
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
         self._loop = asyncio.get_event_loop()
+
+        # Clean up stale jobs from previous crashes/restarts.
+        # Jobs stuck in IDENTIFYING or RIPPING can't be resumed because the
+        # MakeMKV subprocess is gone. Mark them FAILED so a fresh job can start.
+        await self._cleanup_stale_jobs()
 
         # Set up drive monitor callback
         self._drive_monitor.set_async_callback(
@@ -122,6 +128,44 @@ class JobManager:
             )
         self._match_semaphore = asyncio.Semaphore(concurrency)
         logger.info(f"Job manager started (max_concurrent_matches={concurrency})")
+
+    async def _cleanup_stale_jobs(self) -> None:
+        """Mark stale jobs as FAILED on startup.
+
+        Jobs left in IDENTIFYING, RIPPING, or MATCHING states from a previous
+        process cannot be resumed (their subprocesses/tasks are gone). Marking
+        them FAILED allows the sentinel to create fresh jobs when it detects
+        discs still in the drive.
+        """
+        stale_states = [
+            JobState.IDENTIFYING,
+            JobState.RIPPING,
+            JobState.MATCHING,
+            JobState.ORGANIZING,
+        ]
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob).where(DiscJob.state.in_(stale_states))
+            )
+            stale_jobs = result.scalars().all()
+
+            if not stale_jobs:
+                return
+
+            for job in stale_jobs:
+                old_state = job.state
+                job.state = JobState.FAILED
+                job.error_message = (
+                    f"Server restarted while job was in {old_state.value} state"
+                )
+                job.updated_at = datetime.utcnow()
+                logger.info(
+                    f"Cleaned up stale job {job.id} "
+                    f"(was {old_state.value}, now FAILED)"
+                )
+
+            await session.commit()
+            logger.info(f"Cleaned up {len(stale_jobs)} stale job(s) from previous run")
 
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
@@ -159,48 +203,54 @@ class JobManager:
 
     async def _create_job_for_disc(self, drive_letter: str, volume_label: str) -> None:
         """Create a new job when a disc is inserted."""
-        async with async_session() as session:
-            # Check if there's already an active job for this drive
-            result = await session.execute(
-                select(DiscJob).where(
-                    DiscJob.drive_id == drive_letter,
-                    DiscJob.state.not_in(
-                        [JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED]
-                    ),
+        # Per-drive lock prevents race condition when multiple insert events
+        # fire concurrently (e.g., startup + first poll cycle overlap)
+        if drive_letter not in self._drive_locks:
+            self._drive_locks[drive_letter] = asyncio.Lock()
+
+        async with self._drive_locks[drive_letter]:
+            async with async_session() as session:
+                # Check if there's already an active job for this drive
+                result = await session.execute(
+                    select(DiscJob).where(
+                        DiscJob.drive_id == drive_letter,
+                        DiscJob.state.not_in(
+                            [JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED]
+                        ),
+                    )
                 )
-            )
-            existing_job = result.scalar_one_or_none()
+                existing_job = result.scalar_one_or_none()
 
-            if existing_job:
-                logger.info(f"Job already exists for drive {drive_letter}")
-                return
+                if existing_job:
+                    logger.info(f"Job already exists for drive {drive_letter}")
+                    return
 
-            # Create staging directory for this job
-            from app.services.config_service import get_config as get_db_config
+                # Create staging directory for this job
+                from app.services.config_service import get_config as get_db_config
 
-            db_config = await get_db_config()
-            staging_dir = (
-                Path(db_config.staging_path).expanduser()
-                / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            )
+                db_config = await get_db_config()
+                staging_dir = (
+                    Path(db_config.staging_path).expanduser()
+                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                )
 
-            # Create new job
-            job = DiscJob(
-                drive_id=drive_letter,
-                volume_label=volume_label,
-                staging_path=str(staging_dir),
-                state=JobState.IDENTIFYING,
-            )
+                # Create new job
+                job = DiscJob(
+                    drive_id=drive_letter,
+                    volume_label=volume_label,
+                    staging_path=str(staging_dir),
+                    state=JobState.IDENTIFYING,
+                )
 
-            session.add(job)
-            await session.commit()
-            await session.refresh(job)
+                session.add(job)
+                await session.commit()
+                await session.refresh(job)
 
-            logger.info(f"Created job {job.id} for disc in {drive_letter}")
+                logger.info(f"Created job {job.id} for disc in {drive_letter}")
 
-            # Start identification in background
-            task = asyncio.create_task(self._identify_disc(job.id))
-            self._active_jobs[job.id] = task
+                # Start identification in background
+                task = asyncio.create_task(self._identify_disc(job.id))
+                self._active_jobs[job.id] = task
 
     async def _identify_disc(self, job_id: int) -> None:
         """Identify the disc contents using MakeMKV and the Analyst."""
