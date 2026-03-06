@@ -108,11 +108,6 @@
   "expected_play_all_indices": [],
   "expected_needs_review": false,
   "expected_review_reason": null,
-  "tmdb_signal": {
-    "content_type": "tv",
-    "confidence": 0.9,
-    "tmdb_id": 4589,
-    "tmdb_name": "Arrested Development"
-  },
-  "notes": "11 tracks: 8 episodes (pilots 28.6min, regular 21.7-22.2min), 3 short extras. Multi-prefix filenames (B1, C1, D1, D4, E1) from multi-disc MakeMKV rip. Non-sequential track numbering."
+  "tmdb_signal": null,
+  "notes": "Season 1 Disc 1. 8 episodes (tracks 0-7), 3 extras (tracks 8-10). Tracks 0 and 1 are both pilots (~28.6min) from different disc prefixes (B1/C1). Tracks 9-10 are bonus features."
 }

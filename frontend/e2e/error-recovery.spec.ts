@@ -77,10 +77,11 @@ test.describe('Error Recovery - Engram UI', () => {
     });
 
     test('cancel button triggers job cancellation', async ({ page }) => {
-        // Insert a disc with ripping simulation
+        // Insert a disc with ripping simulation (slow enough to observe RIPPING state)
         const { job_id: _job_id } = await simulateInsertDisc({
             ...TV_DISC_ARRESTED_DEVELOPMENT,
             simulate_ripping: true,
+            rip_speed_multiplier: 2,
         });
 
         // Switch to ALL filter so failed jobs remain visible

@@ -4,15 +4,14 @@ Verifies naming conventions without actually needing a running database.
 Uses tmp_path for real file operations with tiny dummy files.
 """
 
+
 import pytest
-from pathlib import Path
 
 from app.core.organizer import (
     clean_movie_name,
     organize_movie,
     organize_tv_episode,
     organize_tv_extras,
-    sanitize_filename,
 )
 
 

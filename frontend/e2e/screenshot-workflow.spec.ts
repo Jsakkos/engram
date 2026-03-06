@@ -36,12 +36,12 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await expect(card).toBeVisible({ timeout: 10000 });
         await page.screenshot({ path: `${SCREENSHOT_DIR}/02-card-appeared.png`, fullPage: true });
 
-        // 03: PROCESSING state (ripping) — the StateIndicator label for ripping/matching
-        await expect(card.getByText('PROCESSING')).toBeVisible({ timeout: 15000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/03-processing-state.png`, fullPage: true });
+        // 03: RIPPING state — the StateIndicator label during rip phase
+        await expect(card.getByText('RIPPING').first()).toBeVisible({ timeout: 15000 });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/03-ripping-state.png`, fullPage: true });
 
         // 04: Track grid visible
-        await expect(card.locator('div.grid.grid-cols-2')).toBeVisible({ timeout: 15000 });
+        await expect(card.locator('div.grid.grid-cols-2.gap-2').first()).toBeVisible({ timeout: 15000 });
         await page.screenshot({ path: `${SCREENSHOT_DIR}/04-track-grid-visible.png`, fullPage: true });
 
         // 05: Per-track RIPPING state on individual tracks

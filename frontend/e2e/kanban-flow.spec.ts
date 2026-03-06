@@ -32,7 +32,7 @@ test.describe('Kanban Flow - Engram UI', () => {
         await expect(page.locator(SELECTORS.stateRipping).first()).toBeVisible({ timeout: 10000 });
 
         // Should see per-track RIPPING labels in track grid
-        await expect(page.locator(SELECTORS.trackGrid)).toBeVisible({ timeout: 10000 });
+        await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 10000 });
         await expect(
             page.locator(SELECTORS.trackStateRipping).first()
         ).toBeVisible({ timeout: 10000 });

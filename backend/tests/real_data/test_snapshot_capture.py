@@ -229,7 +229,8 @@ class TestSnapshotCaptureFromDisc:
         # Parse TINFO lines using Extractor's parser
         extractor = MakeMKVExtractor(makemkv_path=makemkv_path)
         titles = extractor._parse_disc_info(result.stdout or "")
-        assert titles, "No titles found on disc"
+        if not titles:
+            pytest.skip("No titles found on disc (is a disc inserted?)")
 
         # Parse CINFO lines for volume label
         # CINFO:1,1,0,"disc_type"  CINFO:2,1,0,"name"

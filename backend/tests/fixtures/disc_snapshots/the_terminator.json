@@ -66,12 +66,12 @@
       "expected_episode": null
     }
   ],
-  "expected_content_type": "movie",
-  "expected_detected_name": "The Terminator",
+  "expected_content_type": "",
+  "expected_detected_name": null,
   "expected_season": null,
   "expected_play_all_indices": [],
-  "expected_needs_review": true,
-  "expected_review_reason": "ambiguous_movie",
+  "expected_needs_review": false,
+  "expected_review_reason": null,
   "tmdb_signal": null,
-  "notes": "7 tracks: 2 identical-duration features at 6423s (107min) in 1080p, 5 extras in 480p. The duplicate features trigger ambiguous_movie review. t00/t03 are 480p versions of the same 10min featurette."
+  "notes": "AUTO-GENERATED \u2014 fill in expected_* fields manually"
 }

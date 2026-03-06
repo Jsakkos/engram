@@ -73,7 +73,7 @@ test.describe('Progress Display - Engram UI', () => {
         });
 
         // Wait for track grid to appear (TV shows have track grids)
-        await expect(page.locator(SELECTORS.trackGrid)).toBeVisible({ timeout: 15000 });
+        await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
 
         // Should have multiple track items
         const trackCount = await page.locator(SELECTORS.trackItem).count();
@@ -87,7 +87,7 @@ test.describe('Progress Display - Engram UI', () => {
         });
 
         // Wait for track grid
-        await expect(page.locator(SELECTORS.trackGrid)).toBeVisible({ timeout: 15000 });
+        await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
 
         // Should see RIPPING state on individual tracks
         await expect(

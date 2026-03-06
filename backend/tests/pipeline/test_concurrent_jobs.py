@@ -36,9 +36,6 @@ class TestReviewDoesNotBlock:
         This tests the design assumption documented in job_manager.py's
         _create_job_for_disc method.
         """
-        # States that should NOT block new job creation on a different drive
-        non_blocking_states = {JobState.COMPLETED, JobState.FAILED}
-
         # REVIEW_NEEDED should be treated specially — it blocks the SAME drive
         # from starting a new job (disc is still in the drive), but does NOT
         # block other drives from processing.

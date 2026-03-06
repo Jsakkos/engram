@@ -8,7 +8,6 @@ import pytest
 
 from app.core.analyst import DiscAnalyst
 from app.models.disc_job import ContentType
-
 from tests.pipeline.conftest import load_snapshot, snapshot_to_titles, snapshot_to_tmdb_signal
 
 

@@ -4,14 +4,12 @@ Verifies the chain from Analyst classification through to Organizer path generat
 using real disc metadata snapshots.
 """
 
+
 import pytest
-from pathlib import Path
 
 from app.core.organizer import organize_tv_episode, organize_tv_extras
 from app.models.disc_job import ContentType
-
 from tests.pipeline.conftest import (
-    _default_config,
     load_snapshot,
     snapshot_to_titles,
     snapshot_to_tmdb_signal,
@@ -68,12 +66,6 @@ class TestPicardTrackSelection:
         """Organizer produces correct paths for Picard episodes."""
         library = tmp_path / "tv"
         snap = load_snapshot("star_trek_picard_s1d3")
-
-        episode_map = {
-            0: "S01E07",
-            1: "S01E08",
-            2: "S01E09",
-        }
 
         for track in snap["tracks"]:
             ep = track.get("expected_episode")

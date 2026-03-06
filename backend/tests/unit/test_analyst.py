@@ -403,6 +403,28 @@ class TestGenericVolumeLabelDetection:
         name, season, disc = DiscAnalyst._parse_volume_label("DISC")
         assert name is None
 
+    def test_dvd_video_returns_none(self):
+        """DVD_VIDEO is a common generic DVD label — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("DVD_VIDEO")
+        assert name is None
+        assert season is None
+        assert disc is None
+
+    def test_dvd_volume_returns_none(self):
+        """DVD_VOLUME is a generic DVD label — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("DVD_VOLUME")
+        assert name is None
+
+    def test_bd_rom_returns_none(self):
+        """BD_ROM is a generic Blu-ray label — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("BD_ROM")
+        assert name is None
+
+    def test_bluray_disc_returns_none(self):
+        """BLURAY_DISC is a generic Blu-ray label — should return (None, None, None)."""
+        name, season, disc = DiscAnalyst._parse_volume_label("BLURAY_DISC")
+        assert name is None
+
     def test_real_disc_label_not_blocked(self):
         """A real disc label should NOT be treated as generic."""
         name, season, disc = DiscAnalyst._parse_volume_label("THE_ITALIAN_JOB")

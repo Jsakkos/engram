@@ -21,6 +21,11 @@ _GENERIC_VOLUME_LABELS: frozenset[str] = frozenset(
         "BDMV",
         "DISC",
         "DVD",
+        "DVDVIDEO",
+        "DVDVOLUME",
+        "DVDDISC",
+        "BDROM",
+        "BLURAYDISC",
         "BLURAY",
         "BD",
         "NOLABEL",
@@ -76,6 +81,7 @@ class DiscAnalysisResult:
     tmdb_name: str | None = None
     classification_source: str = "heuristic"
     play_all_title_indices: list[int] = field(default_factory=list)
+    is_ambiguous_movie: bool = False
 
 
 class DiscAnalyst:
@@ -236,6 +242,7 @@ class DiscAnalyst:
                 confidence=0.0,
                 needs_review=True,
                 review_reason=movie_result["reason"],
+                is_ambiguous_movie=True,
             )
             return self._apply_tmdb_signal(result, tmdb_signal)
 

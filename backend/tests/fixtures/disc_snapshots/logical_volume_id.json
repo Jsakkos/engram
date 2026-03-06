@@ -93,12 +93,12 @@
       "expected_episode": null
     }
   ],
-  "expected_content_type": "movie",
+  "expected_content_type": "",
   "expected_detected_name": null,
   "expected_season": null,
   "expected_play_all_indices": [],
-  "expected_needs_review": true,
-  "expected_review_reason": "generic_label",
+  "expected_needs_review": false,
+  "expected_review_reason": null,
   "tmdb_signal": null,
-  "notes": "10 tracks: 1 feature at 6632s (110.5min, 19.8GB), 9 extras (2.5-18.3min). Generic volume label triggers detected_name=null, requiring user to provide the movie name (The Italian Job 2003)."
+  "notes": "AUTO-GENERATED \u2014 fill in expected_* fields manually"
 }

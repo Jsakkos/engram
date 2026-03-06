@@ -52,7 +52,7 @@ test.describe('Visual Verification - UI Correctness', () => {
     });
 
     // Wait for track grid to appear
-    await expect(page.locator(SELECTORS.trackGrid)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
 
     // Track grid must be visible (no defensive check)
     const trackItems = page.locator(SELECTORS.trackItem);
@@ -179,7 +179,7 @@ test.describe('Visual Verification - Enhanced Track Display', () => {
     });
 
     // Wait for track grid
-    await expect(page.locator(SELECTORS.trackGrid)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
 
     // Per-track RIPPING state label should appear
     await expect(

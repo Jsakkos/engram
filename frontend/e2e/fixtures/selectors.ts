@@ -33,7 +33,8 @@ export const SELECTORS = {
 
   // State indicator (labels from StateIndicator.tsx)
   stateScanning: 'text=/SCANNING/i',
-  stateRipping: 'text=/PROCESSING/i',
+  stateRipping: 'text=/RIPPING/i',
+  stateProcessing: 'text=/PROCESSING/i',
   stateCompleted: 'text=/COMPLETE/i',
   stateFailed: 'text=/ERROR/i',
 
@@ -45,8 +46,8 @@ export const SELECTORS = {
   speed: 'text=/\\d+(\\.\\d+)?x/',
   eta: 'text=/\\d+\\s*h|\\d+\\s*min|< 1 min/',
 
-  // Track grid (for TV shows)
-  trackGrid: 'div.grid.grid-cols-2',
+  // Track grid (for TV shows) — use gap-2 to distinguish from DiscCard's gap-4 grid
+  trackGrid: 'div.grid.grid-cols-2.gap-2',
   trackItem: 'div.border-2',
   trackTitle: 'div.font-bold.text-sm',
 

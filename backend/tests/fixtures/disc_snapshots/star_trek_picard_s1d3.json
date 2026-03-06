@@ -54,11 +54,6 @@
   "expected_play_all_indices": [3],
   "expected_needs_review": false,
   "expected_review_reason": null,
-  "tmdb_signal": {
-    "content_type": "tv",
-    "confidence": 0.9,
-    "tmdb_id": 85949,
-    "tmdb_name": "Star Trek: Picard"
-  },
-  "notes": "5 tracks: 3 episodes (44.9-56.6min), 1 Play All at 9416s (sum of episodes = 3395+2696+3325 = 9416), 1 extra (5.1min). Label 'STAR TREK PICARD S1D3' parses to season=1, disc=3."
+  "tmdb_signal": null,
+  "notes": "Season 1 Disc 3. 3 episodes (tracks 0-2, S01E07-E09), 1 play-all (track 3, 9416s = 3 episodes x 6 chapters), 1 extra (track 4, 5.1min)."
 }

@@ -23,6 +23,7 @@ export default defineConfig({
             url: 'http://localhost:8000/health',
             reuseExistingServer: !process.env.CI,
             timeout: 30000,
+            env: { ...process.env, DEBUG: 'true' },
         },
         {
             command: 'npm run dev',

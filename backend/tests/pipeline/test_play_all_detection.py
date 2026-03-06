@@ -8,7 +8,6 @@ import pytest
 
 from app.core.analyst import DiscAnalyst, TitleInfo
 from app.models.disc_job import ContentType
-
 from tests.pipeline.conftest import (
     _default_config,
     load_snapshot,

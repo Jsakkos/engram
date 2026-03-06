@@ -121,7 +121,7 @@ test.describe('Realistic Disc Flows', () => {
         await expect(page.locator(SELECTORS.stateRipping).first()).toBeVisible({ timeout: 10000 });
 
         // Track grid should appear with individual tracks
-        await expect(page.locator(SELECTORS.trackGrid)).toBeVisible({ timeout: 10000 });
+        await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 10000 });
 
         // Should see per-track ripping state
         await expect(

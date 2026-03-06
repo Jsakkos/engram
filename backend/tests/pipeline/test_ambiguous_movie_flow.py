@@ -8,7 +8,6 @@ import pytest
 
 from app.core.analyst import DiscAnalyst, TitleInfo
 from app.models.disc_job import ContentType
-
 from tests.pipeline.conftest import _default_config, load_snapshot, snapshot_to_titles
 
 
@@ -49,18 +48,15 @@ class TestTerminatorAmbiguousMovie:
     def test_rip_first_review_later_precondition(self, analyst):
         """Verify the precondition for JobManager's auto-rip-then-review path.
 
-        JobManager checks: content_type == MOVIE and needs_review and
-        review_reason contains 'Multiple' -> auto-rip all candidates.
+        JobManager checks: content_type == MOVIE and analysis.is_ambiguous_movie.
         """
         snap = load_snapshot("the_terminator")
         titles = snapshot_to_titles(snap)
         result = analyst.analyze(titles, snap["volume_label"])
 
-        is_ambiguous_movie = (
-            result.content_type == ContentType.MOVIE
-            and result.needs_review
-        )
-        assert is_ambiguous_movie
+        assert result.is_ambiguous_movie is True
+        assert result.content_type == ContentType.MOVIE
+        assert result.needs_review is True
 
 
 @pytest.mark.pipeline
@@ -112,3 +108,4 @@ class TestSyntheticAmbiguousMovies:
         result = analyst.analyze(titles, "CLEAR_MOVIE")
         assert result.content_type == ContentType.MOVIE
         assert result.needs_review is False
+        assert result.is_ambiguous_movie is False
