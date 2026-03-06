@@ -59,7 +59,7 @@ class TestOpenSubtitlesCleanup:
 
     def test_matcher_config_has_no_opensubtitles_fields(self):
         """Matcher Config should not have open_subtitles fields."""
-        from app.matcher.core.models import Config
+        from app.matcher.models import Config
 
         assert "open_subtitles_api_key" not in Config.model_fields
         assert "open_subtitles_username" not in Config.model_fields

@@ -26,10 +26,10 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from app.matcher.asr_provider import get_asr_provider
 from app.matcher.core.matcher import MultiSegmentMatcher
-from app.matcher.core.models import Config, MatchResult
-from app.matcher.core.providers.asr import get_asr_provider
-from app.matcher.core.providers.subtitles import (
+from app.matcher.models import Config, MatchResult
+from app.matcher.subtitle_provider import (
     Addic7edProvider,
     CompositeSubtitleProvider,
     LocalSubtitleProvider,
@@ -484,7 +484,7 @@ class MatchEngineV2:
                             f"[yellow]No subtitles found for {show_name} S{season:02d} - skipping {len(group_files)} files[/yellow]"
                         )
                     # Mark all files in group as failed
-                    from app.matcher.core.models import FailedMatch
+                    from app.matcher.models import FailedMatch
 
                     for f in group_files:
                         failures.append(
@@ -565,7 +565,7 @@ class MatchEngineV2:
                                     f"[red]FAILED[/red] {video_file.name} - No match{conf_str}"
                                 )
 
-                            from app.matcher.core.models import FailedMatch
+                            from app.matcher.models import FailedMatch
 
                             failures.append(
                                 FailedMatch(

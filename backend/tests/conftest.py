@@ -30,7 +30,7 @@ def populated_cache_dir(temp_cache_dir):
 @pytest.fixture
 def mock_config(temp_cache_dir):
     """Mock Config object with test paths."""
-    from app.matcher.core.models import Config
+    from app.matcher.models import Config
 
     return Config(
         tmdb_api_key="test_key_12345678901234567890123456789012",
