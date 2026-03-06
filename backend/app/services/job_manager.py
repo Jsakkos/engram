@@ -421,7 +421,7 @@ class JobManager:
                     # "Rip First, Review Later" workflow
                     is_ambiguous_movie = (
                         job.content_type == ContentType.MOVIE
-                        and "Multiple long titles found" in (analysis.review_reason or "")
+                        and analysis.is_ambiguous_movie
                     )
 
                     if is_ambiguous_movie:
@@ -946,9 +946,21 @@ class JobManager:
                     total_job_bytes += t.file_size_bytes
                     title_sizes[t.title_index] = t.file_size_bytes
 
+                # For movies without explicit selection, auto-select the main feature
+                has_selection = any(dt.is_selected for dt in disc_titles)
+                if not has_selection and job.content_type == ContentType.MOVIE and disc_titles:
+                    longest = max(disc_titles, key=lambda t: t.duration_seconds or 0)
+                    longest.is_selected = True
+                    async with async_session() as select_session:
+                        db_title = await select_session.get(DiscTitle, longest.id)
+                        if db_title:
+                            db_title.is_selected = True
+                            await select_session.commit()
+                    has_selection = True
+
                 # Filter disc_titles for ripping if selection exists
                 titles_to_rip = disc_titles
-                if any(dt.is_selected for dt in disc_titles):
+                if has_selection:
                     titles_to_rip = [dt for dt in disc_titles if dt.is_selected]
 
                 # Sort titles by index for mapping rip order to title records
@@ -970,29 +982,33 @@ class JobManager:
                 _last_title_idx: int | None = None
                 _title_file_cache: dict[int, Path] = {}  # title_index → resolved Path
 
+                # Set to hold background task references (prevents GC)
+                _background_tasks: set[asyncio.Task] = set()
+
                 # Progress callback
                 async def progress_callback(progress: RipProgress) -> None:
                     nonlocal _last_title_idx
+                    logger.debug(
+                        f"Job {job_id}: PRGV progress update — "
+                        f"title={progress.current_title}, percent={progress.percent:.1f}%, "
+                        f"total_titles={progress.total_titles}"
+                    )
                     current_idx = progress.current_title
 
                     active_title_size = 0
-                    cumulative_previous = 0
                     active_title = None
 
                     if 0 <= (current_idx - 1) < len(sorted_titles):
                         active_title = sorted_titles[current_idx - 1]
                         active_title_size = active_title.file_size_bytes
-                        for i in range(current_idx - 1):
-                            cumulative_previous += sorted_titles[i].file_size_bytes
 
                     current_title_bytes = int((progress.percent / 100.0) * active_title_size)
-                    total_bytes_done = cumulative_previous + current_title_bytes
 
-                    speed_calc.update(total_bytes_done)
-
-                    global_percent = 0
-                    if total_job_bytes > 0:
-                        global_percent = (total_bytes_done / total_job_bytes) * 100.0
+                    # NOTE: Overall job progress (progress bar, speed, ETA) is handled
+                    # exclusively by _filesystem_progress_monitor to avoid two sources
+                    # fighting over the same SpeedCalculator and broadcasting conflicting
+                    # values. This callback only manages title-level state transitions
+                    # and per-title byte broadcasts.
 
                     # When active title changes, transition previous title out of RIPPING.
                     # This ensures only one track shows as RIPPING at a time.
@@ -1072,16 +1088,6 @@ class JobManager:
                             actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
                         )
 
-                    await ws_manager.broadcast_job_update(
-                        job_id,
-                        JobState.RIPPING.value,
-                        progress=global_percent,
-                        speed=speed_calc.speed_str,
-                        eta=speed_calc.eta_seconds,
-                        current_title=progress.current_title,
-                        total_titles=len(sorted_titles),
-                    )
-
                 # Define granular callback — called from extractor thread
                 def on_title_complete(idx: int, path: Path):
                     logger.info(
@@ -1115,14 +1121,82 @@ class JobManager:
                 if len(rip_indices) == len(disc_titles):
                     rip_indices = None
 
+                # Store task refs to prevent GC of fire-and-forget tasks
+                def _fire_progress(p):
+                    t = asyncio.create_task(progress_callback(p))
+                    _background_tasks.add(t)
+                    t.add_done_callback(_background_tasks.discard)
+
+                # Filesystem-based progress monitor — ground truth independent of PRGV
+                async def _filesystem_progress_monitor():
+                    """Periodically check actual file sizes and broadcast progress."""
+                    while True:
+                        await asyncio.sleep(2.0)
+                        try:
+                            total_done = 0
+                            current_title_num = 0
+                            for i, t in enumerate(sorted_titles):
+                                pattern = f"*_t{t.title_index:02d}.mkv"
+                                matches = list(output_dir.glob(pattern))
+                                if matches:
+                                    fsize = matches[0].stat().st_size
+                                    total_done += fsize
+                                    if fsize < t.file_size_bytes:
+                                        current_title_num = i + 1
+
+                            if total_job_bytes > 0:
+                                pct = min((total_done / total_job_bytes) * 100, 100.0)
+                                speed_calc.update(total_done)
+
+                                # Update DB so REST API returns current progress
+                                try:
+                                    async with async_session() as prog_session:
+                                        db_job = await prog_session.get(DiscJob, job_id)
+                                        if db_job:
+                                            db_job.progress_percent = pct
+                                            await prog_session.commit()
+                                except Exception:
+                                    logger.debug(
+                                        f"Job {job_id}: failed to update progress in DB",
+                                        exc_info=True,
+                                    )
+
+                                await ws_manager.broadcast_job_update(
+                                    job_id,
+                                    JobState.RIPPING.value,
+                                    progress=pct,
+                                    speed=speed_calc.speed_str,
+                                    eta=speed_calc.eta_seconds,
+                                    current_title=current_title_num or 1,
+                                    total_titles=len(sorted_titles),
+                                )
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:
+                            logger.debug(
+                                f"Job {job_id}: filesystem progress monitor error",
+                                exc_info=True,
+                            )
+
+                monitor_task = asyncio.create_task(_filesystem_progress_monitor())
+                _background_tasks.add(monitor_task)
+                monitor_task.add_done_callback(_background_tasks.discard)
+
                 # Run extraction
-                result = await self._extractor.rip_titles(
-                    job.drive_id,
-                    output_dir,
-                    title_indices=rip_indices,
-                    progress_callback=lambda p: asyncio.create_task(progress_callback(p)),
-                    title_complete_callback=on_title_complete,
-                )
+                try:
+                    result = await self._extractor.rip_titles(
+                        job.drive_id,
+                        output_dir,
+                        title_indices=rip_indices,
+                        progress_callback=_fire_progress,
+                        title_complete_callback=on_title_complete,
+                    )
+                finally:
+                    monitor_task.cancel()
+                    try:
+                        await monitor_task
+                    except asyncio.CancelledError:
+                        pass
 
                 if not result.success:
                     await state_machine.transition_to_failed(
@@ -2141,11 +2215,6 @@ class JobManager:
                 # For movies, we organize the selected title immediately
                 # We assume the user selects the MAIN title(s) they want.
 
-                # Update status
-                job.state = JobState.ORGANIZING
-                await session.commit()
-                await event_broadcaster.broadcast_job_state_changed(job_id, job.state)
-
                 # Organize
                 if title.output_filename:
                     source_file = Path(title.output_filename)
@@ -2187,11 +2256,15 @@ class JobManager:
 
                         # Spawn ripping task
                         task = asyncio.create_task(self._run_ripping(job_id))
+                        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
                         self._active_jobs[job_id] = task
                         return
 
                     else:
                         # File exists, proceed to organize (Post-Rip workflow)
+                        job.state = JobState.ORGANIZING
+                        await session.commit()
+                        await event_broadcaster.broadcast_job_state_changed(job_id, job.state)
 
                         # Clean up unselected ripped files (Ambiguous Movie workflow)
                         # If we ripped multiple versions, delete the ones not selected

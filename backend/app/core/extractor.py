@@ -360,7 +360,10 @@ class MakeMKVExtractor:
                                 max_val = int(match.group(3))
 
                                 if max_val > 0:
-                                    percent = (current / max_val) * 100
+                                    # `total` = per-title target, `max` = overall target
+                                    # Use `total` for per-title % (what the callback expects)
+                                    divisor = total if total > 0 else max_val
+                                    percent = (current / divisor) * 100
 
                                     # In "all" mode, use PRGC-reported title
                                     # (authoritative from MakeMKV). In multi-
@@ -437,13 +440,14 @@ class MakeMKVExtractor:
 
                 # Poll for progress updates while ripping
                 while not future.done():
-                    try:
-                        # Get progress updates with timeout
-                        progress = progress_queue.get(timeout=0.5)
-                        if progress_callback:
-                            progress_callback(progress)
-                    except queue.Empty:
-                        pass
+                    # Drain all available progress updates (non-blocking)
+                    while True:
+                        try:
+                            progress = progress_queue.get_nowait()
+                            if progress_callback:
+                                progress_callback(progress)
+                        except queue.Empty:
+                            break
 
                     # Filesystem polling from async context — runs even if
                     # MakeMKV stdout is block-buffered and PRGV lines don't
