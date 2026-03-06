@@ -95,7 +95,7 @@ async def update_config(**kwargs) -> AppConfig:
 
         # Update provided fields
         # Special handling for sensitive fields: don't overwrite with empty strings
-        sensitive_fields = {"makemkv_key", "tmdb_api_key", "opensubtitles_api_key"}
+        sensitive_fields = {"makemkv_key", "tmdb_api_key"}
 
         for key, value in kwargs.items():
             if not hasattr(config, key):

@@ -7,9 +7,24 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 
+from app.config import settings
 from app.database import get_session
 from app.main import app
 from app.models import AppConfig
+
+
+@pytest.fixture(autouse=True, scope="session")
+def enable_debug_mode():
+    """Enable debug mode for all integration tests.
+
+    Simulation endpoints require DEBUG=true. Rather than relying on a .env file
+    (which varies between dev machines and worktrees), integration tests should
+    be self-contained and explicitly enable debug mode.
+    """
+    original = settings.debug
+    settings.debug = True
+    yield
+    settings.debug = original
 
 # Test database URL for integration tests
 INTEGRATION_DB_URL = "sqlite+aiosqlite:///:memory:"

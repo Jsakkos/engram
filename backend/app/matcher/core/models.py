@@ -75,12 +75,6 @@ class Config(BaseModel):
     cache_dir: Path = Field(default_factory=lambda: Path.home() / ".engram" / "cache")
     min_confidence: float = 0.7
 
-    # OpenSubtitles settings
-    open_subtitles_api_key: str | None = None
-    open_subtitles_username: str | None = None
-    open_subtitles_password: str | None = None
-    open_subtitles_user_agent: str = "Oz 1.0.0"
-
     # Provider settings
     asr_provider: Literal["whisper", "parakeet"] = "whisper"  # parakeet kept for migration
     asr_model_name: str = "small"

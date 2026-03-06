@@ -195,12 +195,14 @@ class OpenSubtitlesProvider(SubtitleProvider):
         self._authenticate()
 
     def _authenticate(self):
-        if not self.config.open_subtitles_api_key:
-            logger.warning("OpenSubtitles API key not configured")
+        # OpenSubtitles API fields were removed in v0.2.0 — this provider
+        # is retained for backwards compatibility but will no-op without keys.
+        api_key = getattr(self.config, "open_subtitles_api_key", None)
+        if not api_key:
+            logger.warning("OpenSubtitles API key not configured — provider disabled")
             return
 
         try:
-            # Try to import opensubtitlescom - if missing, disable this provider
             try:
                 from opensubtitlescom import OpenSubtitles as OpenSubtitlesClient
             except ImportError:
@@ -210,15 +212,12 @@ class OpenSubtitlesProvider(SubtitleProvider):
                 self.client = None
                 return
 
-            self.client = OpenSubtitlesClient(
-                self.config.open_subtitles_user_agent,
-                self.config.open_subtitles_api_key,
-            )
-            if self.config.open_subtitles_username and self.config.open_subtitles_password:
-                self.client.login(
-                    self.config.open_subtitles_username,
-                    self.config.open_subtitles_password,
-                )
+            user_agent = getattr(self.config, "open_subtitles_user_agent", "Oz 1.0.0")
+            self.client = OpenSubtitlesClient(user_agent, api_key)
+            username = getattr(self.config, "open_subtitles_username", None)
+            password = getattr(self.config, "open_subtitles_password", None)
+            if username and password:
+                self.client.login(username, password)
                 logger.debug("Logged in to OpenSubtitles")
             else:
                 logger.debug("Initialized OpenSubtitles (no login)")

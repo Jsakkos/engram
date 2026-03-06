@@ -30,11 +30,6 @@ class AppConfig(SQLModel, table=True):
     subtitles_cache_path: str = "~/.engram/cache"
     matcher_min_confidence: float = 0.6
 
-    # OpenSubtitles API (for downloading reference subtitles)
-    opensubtitles_username: str = ""
-    opensubtitles_password: str = ""
-    opensubtitles_api_key: str = ""
-
     # TMDB API (for show metadata)
     tmdb_api_key: str = ""
 

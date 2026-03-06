@@ -46,6 +46,9 @@ class MakeMKVExtractor:
         self._makemkv_path_override = makemkv_path
         self._current_process: asyncio.subprocess.Process | None = None
         self._cancelled = False
+        # Per-drive locks prevent concurrent MakeMKV operations on the same drive.
+        # Two makemkvcon processes fighting over one drive causes both to stall/fail.
+        self._drive_locks: dict[str, asyncio.Lock] = {}
 
     @property
     def makemkv_path(self) -> Path:
@@ -56,6 +59,14 @@ class MakeMKVExtractor:
 
         return Path(get_config_sync().makemkv_path)
 
+    def _get_drive_lock(self, drive: str) -> asyncio.Lock:
+        """Get or create a per-drive lock to serialize MakeMKV operations."""
+        # Normalize drive key (e.g., "F:" and "dev:F:" should use same lock)
+        key = drive.replace("dev:", "").replace("disc:", "").rstrip("\\")
+        if key not in self._drive_locks:
+            self._drive_locks[key] = asyncio.Lock()
+        return self._drive_locks[key]
+
     async def scan_disc(self, drive: str) -> list[TitleInfo]:
         """Scan a disc and return title information.
 
@@ -65,6 +76,18 @@ class MakeMKVExtractor:
         Returns:
             List of titles found on the disc
         """
+        lock = self._get_drive_lock(drive)
+        if lock.locked():
+            logger.warning(
+                f"Drive {drive} is already in use by another MakeMKV operation, "
+                f"waiting for it to finish"
+            )
+
+        async with lock:
+            return await self._scan_disc_unlocked(drive)
+
+    async def _scan_disc_unlocked(self, drive: str) -> list[TitleInfo]:
+        """Internal scan implementation (caller must hold drive lock)."""
         # Normalize drive specification
         if not drive.startswith("disc:"):
             # Convert drive letter to disc index
@@ -87,20 +110,23 @@ class MakeMKVExtractor:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120,  # 2 minute timeout for scanning
+                timeout=600,  # 10 minute timeout (disc decryption + title scan)
             )
 
         try:
             # Run in thread to avoid blocking event loop
             result = await asyncio.to_thread(run_makemkv)
 
-            logger.debug(f"MakeMKV stdout: {result.stdout[:500] if result.stdout else 'empty'}")
+            logger.debug(
+                f"MakeMKV stdout: {result.stdout[:500] if result.stdout else 'empty'}"
+            )
             if result.stderr:
                 logger.debug(f"MakeMKV stderr: {result.stderr[:500]}")
 
             if result.returncode != 0:
                 logger.error(
-                    f"MakeMKV scan failed (exit code {result.returncode}): {result.stderr}"
+                    f"MakeMKV scan failed (exit code {result.returncode}): "
+                    f"{result.stderr}"
                 )
                 return []
 
@@ -138,6 +164,28 @@ class MakeMKVExtractor:
         Returns:
             RipResult with success status and output files
         """
+        lock = self._get_drive_lock(drive)
+        if lock.locked():
+            logger.warning(
+                f"Drive {drive} is already in use by another MakeMKV operation, "
+                f"waiting for it to finish"
+            )
+
+        async with lock:
+            return await self._rip_titles_unlocked(
+                drive, output_dir, title_indices,
+                progress_callback, title_complete_callback,
+            )
+
+    async def _rip_titles_unlocked(
+        self,
+        drive: str,
+        output_dir: Path,
+        title_indices: list[int] | None = None,
+        progress_callback: ProgressCallback | None = None,
+        title_complete_callback: TitleCompleteCallback | None = None,
+    ) -> RipResult:
+        """Internal rip implementation (caller must hold drive lock)."""
         self._cancelled = False
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -252,6 +300,10 @@ class MakeMKVExtractor:
             last_fs_check = _time.monotonic()
             combined_stderr = ""
             final_returncode = 0
+            # Track the current title from PRGC messages (1-based for reporting).
+            # In "all" mode, MakeMKV emits PRGC:current,total,"name" where
+            # `current` is the 0-based index of the title being processed.
+            prgc_current_title: int = 1
 
             try:
                 self._cancelled = False
@@ -262,7 +314,8 @@ class MakeMKVExtractor:
 
                     current_title_idx += 1
                     logger.info(
-                        f"Executing rip command {current_title_idx}/{len(commands)}: {' '.join(cmd)}"
+                        f"Executing rip command {current_title_idx}/{len(commands)}: "
+                        f"{' '.join(cmd)}"
                     )
 
                     process = subprocess.Popen(
@@ -288,28 +341,37 @@ class MakeMKVExtractor:
 
                         # Parse progress messages
                         if line.startswith("PRGC:"):
-                            match = re.match(r"PRGC:\d+,(\d+),", line)
+                            match = re.match(r"PRGC:(\d+),(\d+),", line)
                             if match:
-                                total = int(match.group(1))
+                                cur = int(match.group(1))
+                                total = int(match.group(2))
+                                # PRGC current is 0-based; convert to 1-based
+                                prgc_current_title = cur + 1
                                 if total > 0 and len(commands) == 1:
-                                    # Update total only for single-command mode (e.g. "all")
-                                    # For multi-command loop, we know total from len(title_indices)
                                     total_titles_count = total
 
                         elif line.startswith("PRGV:"):
-                            match = re.match(r"PRGV:\s*(\d+),\s*(\d+),\s*(\d+)", line)
+                            match = re.match(
+                                r"PRGV:\s*(\d+),\s*(\d+),\s*(\d+)", line
+                            )
                             if match:
                                 current = int(match.group(1))
-                                total = int(match.group(2))  # Sub-task total
+                                total = int(match.group(2))
                                 max_val = int(match.group(3))
 
                                 if max_val > 0:
-                                    percent = (current / max_val) * 100
+                                    # `total` = per-title target, `max` = overall target
+                                    # Use `total` for per-title % (what the callback expects)
+                                    divisor = total if total > 0 else max_val
+                                    percent = (current / divisor) * 100
 
-                                    report_title_idx = current_title_idx
+                                    # In "all" mode, use PRGC-reported title
+                                    # (authoritative from MakeMKV). In multi-
+                                    # command mode, use command loop counter.
                                     if len(commands) == 1 and not title_indices:
-                                        # "All" mode: use dynamic file count as proxy for title index
-                                        report_title_idx = len(completed_files) + 1
+                                        report_title_idx = prgc_current_title
+                                    else:
+                                        report_title_idx = current_title_idx
 
                                     progress = RipProgress(
                                         percent=percent,
@@ -378,13 +440,14 @@ class MakeMKVExtractor:
 
                 # Poll for progress updates while ripping
                 while not future.done():
-                    try:
-                        # Get progress updates with timeout
-                        progress = progress_queue.get(timeout=0.5)
-                        if progress_callback:
-                            progress_callback(progress)
-                    except queue.Empty:
-                        pass
+                    # Drain all available progress updates (non-blocking)
+                    while True:
+                        try:
+                            progress = progress_queue.get_nowait()
+                            if progress_callback:
+                                progress_callback(progress)
+                        except queue.Empty:
+                            break
 
                     # Filesystem polling from async context — runs even if
                     # MakeMKV stdout is block-buffered and PRGV lines don't

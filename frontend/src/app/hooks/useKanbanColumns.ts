@@ -52,7 +52,7 @@ export function useKanbanColumns(
         return {
             scanning: filteredDiscs.filter((d) => d.state === "scanning" || d.state === "idle"),
             ripping: filteredDiscs.filter((d) => d.state === "ripping" || d.state === "archiving_iso"),
-            processing: filteredDiscs.filter((d) => d.state === "ripping"), // Processing happens during ripping
+            processing: filteredDiscs.filter((d) => d.state === "processing"),
             review: filteredDiscs.filter((d) => d.needsReview === true),
             done: filteredDiscs.filter((d) => d.state === "completed" || d.state === "error"),
         };

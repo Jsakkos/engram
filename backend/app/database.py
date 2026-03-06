@@ -4,7 +4,8 @@ import logging
 from collections.abc import AsyncGenerator
 
 import sqlalchemy
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy import text as sa_text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
@@ -45,41 +46,109 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    # Run lightweight column migrations for existing databases
-    await _migrate_add_columns()
+    # Run schema migration to handle column additions, removals, and table changes
+    await _migrate_schema(engine)
 
     logger.info("Database initialized successfully")
 
 
-async def _migrate_add_columns() -> None:
-    """Add new columns to existing tables. Idempotent — ignores if column exists."""
-    migrations = [
-        "ALTER TABLE app_config ADD COLUMN max_concurrent_matches INTEGER NOT NULL DEFAULT 2",
-        "ALTER TABLE disc_titles ADD COLUMN video_resolution VARCHAR",
-        "ALTER TABLE disc_titles ADD COLUMN edition VARCHAR",
-        # Phase 4: Analyst configuration thresholds
-        "ALTER TABLE app_config ADD COLUMN analyst_movie_min_duration INTEGER NOT NULL DEFAULT 4800",
-        "ALTER TABLE app_config ADD COLUMN analyst_tv_duration_variance INTEGER NOT NULL DEFAULT 120",
-        "ALTER TABLE app_config ADD COLUMN analyst_tv_min_cluster_size INTEGER NOT NULL DEFAULT 3",
-        "ALTER TABLE app_config ADD COLUMN analyst_tv_min_duration INTEGER NOT NULL DEFAULT 1080",
-        "ALTER TABLE app_config ADD COLUMN analyst_tv_max_duration INTEGER NOT NULL DEFAULT 4200",
-        "ALTER TABLE app_config ADD COLUMN analyst_movie_dominance_threshold REAL NOT NULL DEFAULT 0.6",
-        # Phase 4: Ripping coordination settings
-        "ALTER TABLE app_config ADD COLUMN ripping_file_poll_interval REAL NOT NULL DEFAULT 5.0",
-        "ALTER TABLE app_config ADD COLUMN ripping_stability_checks INTEGER NOT NULL DEFAULT 3",
-        "ALTER TABLE app_config ADD COLUMN ripping_file_ready_timeout REAL NOT NULL DEFAULT 600.0",
-        # Phase 4: Sentinel monitoring
-        "ALTER TABLE app_config ADD COLUMN sentinel_poll_interval REAL NOT NULL DEFAULT 2.0",
-    ]
-    async with engine.begin() as conn:
-        for stmt in migrations:
-            try:
-                await conn.execute(sqlalchemy.text(stmt))
-                logger.info(f"Migration applied: {stmt}")
-            except sqlalchemy.exc.OperationalError:
-                # Column already exists — expected for non-first runs
-                logger.debug(f"Migration skipped (already applied): {stmt}")
-                pass
+def _get_expected_columns(table_name: str) -> set[str]:
+    """Get expected column names from the SQLModel metadata for a table."""
+    table = SQLModel.metadata.tables.get(table_name)
+    if table is None:
+        return set()
+    return {col.name for col in table.columns}
+
+
+async def _get_actual_columns(conn, table_name: str) -> set[str]:
+    """Get actual column names from the database for a table."""
+    result = await conn.execute(sa_text(f"PRAGMA table_info('{table_name}')"))
+    rows = result.fetchall()
+    return {row[1] for row in rows}  # column name is at index 1
+
+
+async def _migrate_schema(target_engine: AsyncEngine | None = None) -> None:
+    """Compare live schema against SQLModel models and resolve mismatches.
+
+    - **app_config**: Preserve data — read existing rows, drop/recreate table,
+      restore values (mapping by column name). Users never lose API keys.
+    - **disc_jobs / disc_titles**: Transient data — drop and recreate cleanly.
+    - Idempotent: no-op when schema already matches.
+    """
+    eng = target_engine or engine
+
+    async with eng.begin() as conn:
+        # Check which tables exist
+        result = await conn.execute(sa_text("SELECT name FROM sqlite_master WHERE type='table'"))
+        existing_tables = {row[0] for row in result.fetchall()}
+
+        # --- app_config migration (preserve data) ---
+        if "app_config" in existing_tables:
+            actual_cols = await _get_actual_columns(conn, "app_config")
+            expected_cols = _get_expected_columns("app_config")
+
+            if actual_cols != expected_cols:
+                extra = actual_cols - expected_cols
+                missing = expected_cols - actual_cols
+                logger.info(
+                    f"Schema mismatch in app_config — "
+                    f"extra: {extra or 'none'}, missing: {missing or 'none'}"
+                )
+
+                # 1. Read existing config data
+                rows = (await conn.execute(sa_text("SELECT * FROM app_config"))).fetchall()
+                col_result = await conn.execute(sa_text("PRAGMA table_info('app_config')"))
+                old_col_names = [row[1] for row in col_result.fetchall()]
+
+                # 2. Drop old table
+                await conn.execute(sa_text("DROP TABLE app_config"))
+
+                # 3. Recreate with correct schema
+                await conn.run_sync(
+                    lambda sync_conn: AppConfig.__table__.create(sync_conn, checkfirst=True)
+                )
+
+                # 4. Restore data using ORM to pick up column defaults
+                if rows:
+                    new_fields = set(AppConfig.model_fields.keys())
+                    for row in rows:
+                        old_data = dict(zip(old_col_names, row, strict=False))
+                        # Start with a default AppConfig to fill in all NOT NULL columns
+                        config = AppConfig()
+                        # Overlay old values for columns that still exist
+                        for key, value in old_data.items():
+                            if key == "id":
+                                continue  # Let auto-increment handle id
+                            if key in new_fields and value is not None:
+                                setattr(config, key, value)
+                        # Insert via raw SQL using all model fields
+                        insert_data = {}
+                        for field_name in new_fields:
+                            if field_name == "id":
+                                continue
+                            insert_data[field_name] = getattr(config, field_name)
+                        cols_str = ", ".join(insert_data.keys())
+                        placeholders = ", ".join(f":{k}" for k in insert_data.keys())
+                        await conn.execute(
+                            sa_text(f"INSERT INTO app_config ({cols_str}) VALUES ({placeholders})"),
+                            insert_data,
+                        )
+                        logger.info(f"Restored app_config row with {len(insert_data)} fields")
+
+        # --- disc_jobs / disc_titles migration (drop and recreate) ---
+        transient_tables = ["disc_titles", "disc_jobs"]  # titles first (FK dependency)
+        for table_name in transient_tables:
+            if table_name in existing_tables:
+                actual_cols = await _get_actual_columns(conn, table_name)
+                expected_cols = _get_expected_columns(table_name)
+
+                if actual_cols != expected_cols:
+                    logger.info(f"Schema mismatch in {table_name} — dropping and recreating")
+                    await conn.execute(sa_text(f"DROP TABLE {table_name}"))
+                    table_obj = SQLModel.metadata.tables[table_name]
+                    await conn.run_sync(
+                        lambda sync_conn, t=table_obj: t.create(sync_conn, checkfirst=True)
+                    )
 
 
 async def reset_db() -> None:

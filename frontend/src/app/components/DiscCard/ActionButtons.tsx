@@ -17,7 +17,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview }: ActionBu
     return (
         <div className="flex items-center gap-2">
             {/* Cancel Button */}
-            {onCancel && (isHovered || ['scanning', 'ripping'].includes(state)) && (
+            {onCancel && (isHovered || ['scanning', 'ripping', 'processing'].includes(state)) && (
                 <motion.button
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
