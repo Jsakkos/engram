@@ -116,9 +116,10 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
         exit={{ opacity: 0, y: -20 }}
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
-        className="relative overflow-hidden rounded-none bg-black border-2 border-cyan-500/30 shadow-2xl"
+        className="relative overflow-hidden rounded-none bg-black border-2 border-transparent shadow-2xl"
         style={{
-          boxShadow: "0 0 20px rgba(6, 182, 212, 0.3), inset 0 0 20px rgba(6, 182, 212, 0.1)",
+          borderImage: "linear-gradient(135deg, rgba(6, 182, 212, 0.5), rgba(236, 72, 153, 0.3)) 1",
+          boxShadow: "0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(236, 72, 153, 0.1), inset 0 0 20px rgba(6, 182, 212, 0.1)",
         }}
       >
         {/* Scanline effect */}

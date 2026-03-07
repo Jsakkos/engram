@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
     await expect(page.locator(SELECTORS.connectionStatus.connected)).toBeVisible({ timeout: 10000 });
 });
 
-test.describe('Kanban Flow - Engram UI', () => {
+test.describe('Disc Flow - Engram UI', () => {
     test('TV disc flows through states with track-level detail', async ({ page }) => {
         // Insert simulated TV disc at moderate speed to observe intermediate states
         await simulateInsertDisc({

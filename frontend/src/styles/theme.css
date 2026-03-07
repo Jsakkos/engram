@@ -79,6 +79,18 @@
 }
 
 @theme inline {
+  /* Custom magenta palette for cyberpunk dual-tone aesthetic */
+  --color-magenta-50: #fdf2f8;
+  --color-magenta-100: #fce7f3;
+  --color-magenta-200: #fbcfe8;
+  --color-magenta-300: #f9a8d4;
+  --color-magenta-400: #f472b6;
+  --color-magenta-500: #ec4899;
+  --color-magenta-600: #db2777;
+  --color-magenta-700: #be185d;
+  --color-magenta-800: #9d174d;
+  --color-magenta-900: #831843;
+  --color-magenta-950: #500724;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

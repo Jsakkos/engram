@@ -81,7 +81,7 @@ Hub-and-spoke design. The Job Manager orchestrates five modules through a state 
 
 ```
                         React Dashboard
-          (Kanban Board, Review Queue, Config Wizard)
+          (Dashboard, Review Queue, Config Wizard)
                              |
                           WebSocket
                              |

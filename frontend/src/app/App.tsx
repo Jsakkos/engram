@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Disc3, Zap, ZapOff, Settings, Trash2 } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
 import { useJobManagement } from "./hooks/useJobManagement";
-import { useKanbanColumns } from "./hooks/useKanbanColumns";
+import { useDiscFilters } from "./hooks/useDiscFilters";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
@@ -39,8 +39,8 @@ function MainDashboard() {
   // Job management with WebSocket
   const { jobs, titlesMap, isConnected, cancelJob, clearCompleted, setJobName } = useJobManagement(DEV_MODE);
 
-  // Kanban column organization
-  const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount } = useKanbanColumns(jobs, titlesMap, DEV_MODE);
+  // Disc filtering and transformation
+  const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
 
   // Show name prompt modal for jobs that need a name (generic/unreadable volume label)
   useEffect(() => {
@@ -83,7 +83,7 @@ function MainDashboard() {
       />
 
       {/* Header */}
-      <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-black/80 sticky top-0 z-10" style={{ boxShadow: "0 0 20px rgba(6, 182, 212, 0.2)" }}>
+      <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-black/80 sticky top-0 z-10" style={{ boxShadow: "0 0 20px rgba(6, 182, 212, 0.2), 0 0 40px rgba(236, 72, 153, 0.1)" }}>
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -102,7 +102,7 @@ function MainDashboard() {
                 </motion.div>
               </motion.div>
               <div>
-                <h1 className="text-3xl font-bold text-cyan-400 tracking-wider font-mono uppercase" style={{ textShadow: "0 0 20px rgba(6, 182, 212, 0.8)" }}>
+                <h1 className="text-3xl font-bold text-cyan-400 tracking-wider font-mono uppercase" style={{ textShadow: "0 0 10px rgba(6, 182, 212, 1), 0 0 30px rgba(6, 182, 212, 0.6), 0 0 60px rgba(6, 182, 212, 0.3), 0 0 80px rgba(236, 72, 153, 0.2)" }}>
                   Engram
                 </h1>
                 <p className="text-sm text-slate-400 font-mono tracking-wider">&gt; MEDIA ARCHIVAL PLATFORM v{__APP_VERSION__}</p>
@@ -135,21 +135,21 @@ function MainDashboard() {
               <button
                 onClick={() => setFilter("all")}
                 className="px-4 py-2 font-mono font-bold text-sm uppercase tracking-wider transition-all border-2 bg-black text-slate-400 border-slate-700 hover:text-slate-200"
-                style={filter === "all" ? { boxShadow: "0 0 20px rgba(255, 0, 0, 0.6)" } : {}}
+                style={filter === "all" ? { boxShadow: "0 0 15px rgba(6, 182, 212, 0.5), 0 0 30px rgba(236, 72, 153, 0.2)", borderColor: "rgba(6, 182, 212, 0.7)" } : {}}
               >
                 ALL [{discsData.length}]
               </button>
               <button
                 onClick={() => setFilter("active")}
                 className="px-4 py-2 font-mono font-bold text-sm uppercase tracking-wider transition-all border-2 bg-black text-slate-400 border-slate-700 hover:text-slate-200"
-                style={filter === "active" ? { boxShadow: "0 0 20px rgba(255, 0, 0, 0.6)" } : {}}
+                style={filter === "active" ? { boxShadow: "0 0 15px rgba(6, 182, 212, 0.5), 0 0 30px rgba(236, 72, 153, 0.2)", borderColor: "rgba(6, 182, 212, 0.7)" } : {}}
               >
                 ACTIVE [{activeCount}]
               </button>
               <button
                 onClick={() => setFilter("completed")}
                 className="px-4 py-2 font-mono font-bold text-sm uppercase tracking-wider transition-all border-2 bg-black text-slate-400 border-slate-700 hover:text-slate-200"
-                style={filter === "completed" ? { boxShadow: "0 0 20px rgba(255, 0, 0, 0.6)" } : {}}
+                style={filter === "completed" ? { boxShadow: "0 0 15px rgba(6, 182, 212, 0.5), 0 0 30px rgba(236, 72, 153, 0.2)", borderColor: "rgba(6, 182, 212, 0.7)" } : {}}
               >
                 DONE [{completedCount}]
               </button>
@@ -239,7 +239,7 @@ function MainDashboard() {
       )}
 
       {/* Stats Footer */}
-      <div className="fixed bottom-0 left-0 right-0 border-t-2 border-cyan-500/30 backdrop-blur-xl bg-black/90" style={{ boxShadow: "0 0 20px rgba(6, 182, 212, 0.2)" }}>
+      <div className="fixed bottom-0 left-0 right-0 border-t-2 border-cyan-500/30 backdrop-blur-xl bg-black/90" style={{ boxShadow: "0 0 20px rgba(6, 182, 212, 0.2), 0 0 40px rgba(236, 72, 153, 0.1)" }}>
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between text-sm font-mono">
             <div className="flex items-center gap-8">

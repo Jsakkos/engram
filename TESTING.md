@@ -140,7 +140,7 @@ Run: `cd frontend && npm run test:e2e`
 
 | File | Tests | What It Covers |
 |------|------:|----------------|
-| `kanban-flow.spec.ts` | 6 | Core Kanban UI: TV disc state progression with track detail, movie disc flow, filter buttons (ACTIVE/DONE/ALL), empty state, multiple simultaneous discs, progress percentage |
+| `disc-flow.spec.ts` | 6 | Core disc flow UI: TV disc state progression with track detail, movie disc flow, filter buttons (ACTIVE/DONE/ALL), empty state, multiple simultaneous discs, progress percentage |
 | `progress-display.spec.ts` | 9 | Progress visualization: ripping percentage updates, speed/ETA display, cyberpunk progress bar styling, track grid for TV, per-track byte counts, LISTENING state during transcription, match candidates with confidence, completed green styling, WebSocket status indicator |
 | `review-flow.spec.ts` | 5 | Review workflow: ambiguous disc shows ANALYZING badge, card displays basic info (title, subtitle), review page navigation (skipped), review candidates UI, review submission resumes processing |
 | `error-recovery.spec.ts` | 4 | Error handling UI: failed job shows ERROR badge, error message text displayed, WebSocket reconnection, cancel button triggers job cancellation |
@@ -335,7 +335,7 @@ cd backend && uv run pytest tests/unit/ --cov=app --cov-report=term-missing
 cd frontend && npx vitest run src/types/__tests__/adapters.test.ts
 
 # E2E: single spec
-cd frontend && npx playwright test kanban-flow.spec.ts
+cd frontend && npx playwright test disc-flow.spec.ts
 
 # E2E: headed mode (see the browser)
 cd frontend && npm run test:e2e:headed

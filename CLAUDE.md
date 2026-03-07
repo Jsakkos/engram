@@ -52,6 +52,12 @@ curl -X POST "localhost:8000/api/simulate/remove-disc?drive_id=E%3A"
 
 # Manually advance a job to its next state
 curl -X POST localhost:8000/api/simulate/advance-job/1
+
+# Reset all jobs (useful for test cleanup)
+curl -X DELETE localhost:8000/api/simulate/reset-all-jobs
+
+# Insert disc from staging directory
+curl -X POST localhost:8000/api/simulate/insert-disc-from-staging
 ```
 
 ## Architecture
@@ -64,19 +70,26 @@ curl -X POST localhost:8000/api/simulate/advance-job/1
 - **Config**: `config.py` — Pydantic Settings for server-level overrides (host, port, debug). No `.env` file required — all fields have defaults
 - **Database**: `database.py` — Async SQLite via SQLModel + aiosqlite. Tables auto-created on startup
 
-### Core Modules (`backend/app/core/`) — The Four Spokes
+### Core Modules (`backend/app/core/`)
 
 Each module maps to a stage in the disc processing pipeline:
 
-1. **Sentinel** (`sentinel.py`) — Drive monitor. Polls optical drives on Windows using ctypes/kernel32. Fires async callbacks on disc insert/remove events.
+1. **Sentinel** (`sentinel.py`) — Drive monitor (`DriveMonitor` class). Polls optical drives on Windows using ctypes/kernel32. Fires async callbacks on disc insert/remove events.
 2. **Analyst** (`analyst.py`) — Disc classification. Heuristic-based TV vs Movie detection (cluster analysis of title durations). Outputs `DiscAnalysisResult` with content type, confidence score, and whether review is needed.
 3. **Extractor** (`extractor.py`) — MakeMKV CLI wrapper. Async subprocess management for `makemkvcon` scanning and ripping. Emits `RipProgress` callbacks.
 4. **Curator** (`curator.py`) — Episode matching via audio fingerprinting. Classifies matches into high-confidence (auto-organize) and needs-review buckets.
 5. **Organizer** (`organizer.py`) — File organization. Moves from staging to library with naming conventions: `Movies/Name (Year)/Name (Year).mkv` and `TV/Show/Season XX/Show - SXXEXX.mkv`.
+6. **TMDB Classifier** (`tmdb_classifier.py`) — TMDB-based content type classification. Provides strong signals for TV vs Movie detection beyond the heuristic-based Analyst.
+7. **Errors** (`errors.py`) — Custom exception hierarchy (`EngramError` base, with `MakeMKVError`, `MatchingError`, `ConfigurationError`, `OrganizationError`, `SubtitleError`, `DatabaseError`). Includes `@handle_errors` decorator for standardized error handling.
+8. **Logging** (`logging.py`) — Centralized logging configuration.
 
 ### Orchestration (`backend/app/services/`)
 
-- **JobManager** (`job_manager.py`) — Singleton that wires the four spokes together. Manages the `DiscJob` state machine lifecycle: `IDLE → IDENTIFYING → RIPPING → MATCHING → ORGANIZING → COMPLETED`. Handles `REVIEW_NEEDED` branching and `FAILED` states. Broadcasts all state transitions via WebSocket. Coordinates subtitle download with matching via `asyncio.Event`. Includes simulation methods for E2E testing.
+- **JobManager** (`job_manager.py`) — Singleton that wires the spokes together. Manages the `DiscJob` state machine lifecycle. Handles `REVIEW_NEEDED` branching and `FAILED` states. Broadcasts all state transitions via WebSocket. Coordinates subtitle download with matching via `asyncio.Event`. Includes simulation methods for E2E testing.
+- **JobStateMachine** (`job_state_machine.py`) — Explicit state machine implementation: `IDLE → IDENTIFYING → RIPPING → MATCHING → ORGANIZING → COMPLETED`, with `REVIEW_NEEDED` and `FAILED` branching.
+- **RippingCoordinator** (`ripping_coordinator.py`) — Coordinates the ripping process with subtitle coordination.
+- **EventBroadcaster** (`event_broadcaster.py`) — Abstraction layer for broadcasting events to WebSocket clients. Wraps `ConnectionManager` with typed methods for each event type.
+- **ConfigService** (`config_service.py`) — Configuration service with helper functions for loading and updating config.
 
 ### Data Models (`backend/app/models/`)
 
@@ -86,26 +99,37 @@ Each module maps to a stage in the disc processing pipeline:
 
 ### Matcher (`backend/app/matcher/`)
 
-Integrated from standalone `mkv-episode-matcher` project. Contains its own `core/` with engine, config management, model registry, and providers (`asr.py` for speech recognition, `subtitles.py` for subtitle matching). Uses faster-whisper/onnxruntime for ASR.
+Integrated from standalone `mkv-episode-matcher` project. Flattened directory structure (as of v0.2.0):
+
+- **Top-level modules**: `asr_provider.py` (speech recognition), `subtitle_provider.py` (subtitle matching), `models.py`, `config_manager.py`, `model_registry.py`, `srt_utils.py`, `tmdb_client.py`, `episode_identification.py`
+- **Core**: `core/engine.py` and `core/matcher.py` — matching engine logic
+- **Subtitle sources**: `addic7ed_client.py`, `opensubtitles_scraper.py`, `subtitle_utils.py`
+- Uses faster-whisper/onnxruntime for ASR
 
 ### API (`backend/app/api/`)
 
-- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation)
+- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation, staging management)
+- `validation.py` — Tool validation endpoints (`POST /api/validate/makemkv`, `POST /api/validate/ffmpeg`, `GET /api/detect-tools`)
 - `test_routes.py` — Standalone testing endpoints for subtitle download, transcription, matching
-- `websocket.py` — `ConnectionManager` singleton for broadcasting real-time job updates, drive events, subtitle progress, and title discovery to all connected clients
+- `websocket.py` — `ConnectionManager` singleton for broadcasting real-time updates to all connected clients
 
 ### Frontend (`frontend/src/`)
 
 React 18 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at localhost:8000.
 
-- **KanbanBoard** — 5-column Kanban layout (Scanning, Ripping, Processing, Review, Done) with enhanced job cards showing content type badges, progress bars with percentage overlays, speed/ETA, track counts, subtitle download indicators, expandable track lists, and cancel buttons
-- **ReviewQueue** — Human-in-the-Loop UI for resolving ambiguous episode matches
-- **ConfigWizard** — First-run setup for library paths, MakeMKV license, TMDB Read Access Token, preferences
-- **useWebSocket** hook — Manages WebSocket connection and message parsing
+**Key libraries**: React Router v7, Framer Motion, Recharts, React Hook Form, Tailwind CSS v4, shadcn/ui components.
+
+- **Dashboard** (`app/App.tsx`) — Filterable job card list (Active, Done, All) with `DiscCard` components showing content type badges, progress bars, speed/ETA, track counts, subtitle indicators, expandable track lists, and cancel buttons. Cyberpunk dual-tone cyan/magenta theme.
+- **DiscCard** (`app/components/DiscCard.tsx`) — Main job display component with subcomponents: `DiscCard/MediaTypeBadge`, `DiscCard/DiscMetadata`, `DiscCard/ActionButtons`, `DiscCard/hooks/usePosterImage`
+- **Supporting components**: `StateIndicator`, `CyberpunkProgressBar`, `TrackGrid`, `MatchingVisualizer`
+- **ReviewQueue** (`components/ReviewQueue.tsx`) — Human-in-the-Loop UI with subcomponents: `TVTitleCard`, `MovieTitleCard`, `EpisodeSelector`, `EditionInput`, `hooks/useReviewState`
+- **ConfigWizard** (`components/ConfigWizard.tsx`) — First-run setup and settings modal for library paths, MakeMKV license, TMDB Read Access Token, preferences
+- **NamePromptModal** (`components/NamePromptModal.tsx`) — Modal for unreadable disc labels
+- **Hooks**: `useDiscFilters` (job filtering/transformation), `useJobManagement` (job lifecycle + WebSocket), `useWebSocket` (connection management)
 
 ### E2E Tests (`frontend/e2e/`)
 
-Playwright-based E2E tests that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include TV disc flow, movie disc flow, progress display, subtitle indicators, cancel/clear, and review flow.
+Playwright-based E2E tests (9 spec files) that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include disc flow, progress display, review flow, error recovery, visual verification, realistic disc scenarios, and screenshot capture.
 
 ## Key Patterns
 
@@ -113,8 +137,10 @@ Playwright-based E2E tests that use simulation endpoints to test the full UI wor
 - **Singleton services**: `job_manager`, `ws_manager`, `curator`, `movie_organizer`, `tv_organizer` are module-level singletons
 - **State machine driven**: All job lifecycle is tracked through `JobState` transitions persisted in SQLite
 - **Subtitle coordination**: Subtitle download runs in background during ripping; matching awaits `asyncio.Event` before proceeding
-- **Simulation endpoints**: `POST /api/simulate/insert-disc`, `POST /api/simulate/remove-disc`, `POST /api/simulate/advance-job/{id}` — only available when `DEBUG=true`
+- **Simulation endpoints**: `POST /api/simulate/insert-disc`, `POST /api/simulate/remove-disc`, `POST /api/simulate/advance-job/{id}`, `DELETE /api/simulate/reset-all-jobs` — only available when `DEBUG=true`
+- **Custom error hierarchy**: All domain errors extend `EngramError` with typed subclasses. Use `@handle_errors` decorator for standardized error handling in services.
 - **Ruff config**: Line length 100, target Python 3.11, rules E/F/I/UP/B, double quotes
+- **Tailwind v4**: Uses `@theme inline` blocks in CSS for custom colors (including custom `magenta` palette), not `tailwind.config.js`. No PostCSS config — uses `@tailwindcss/vite` plugin directly.
 
 ## TMDB Configuration
 
@@ -124,10 +150,11 @@ The TMDB setting (`tmdb_api_key` in config) accepts a **TMDB Read Access Token**
 
 ### Backend Error Handling
 
-- **Principle**: Use specific exception types, never bare `except` clauses
+- **Principle**: Use specific exception types from `app/core/errors.py`, never bare `except` clauses
 - **Logging**: Always log exceptions with `exc_info=True` for full stack traces
 - **Recovery**: Distinguish between recoverable errors (log warning, continue) and fatal errors (log error, raise)
 - **State consistency**: Failed operations should leave jobs in a valid state (e.g., `FAILED` state with error message in `error` field)
+- **Decorator**: Use `@handle_errors` for standardized error handling in service methods
 
 **Common patterns**:
 ```python
@@ -177,6 +204,12 @@ All WebSocket messages follow the format: `{"type": "...", "data": {...}}`
 | `subtitle_progress` | `{"job_id": int, "downloaded": int, "total": int, "failed": int}` | Subtitle download progress |
 | `title_discovered` | `{"job_id": int, "title": DiscTitle}` | New title found during ripping |
 | `rip_progress` | `{"job_id": int, "current_bytes": int, "total_bytes": int, "speed": str, "eta": int}` | Ripping progress update |
+| `title_ripping_started` | `{"job_id": int, "title_id": int}` | Title ripping started |
+| `title_ripping_progress` | `{"job_id": int, "title_id": int, ...}` | Per-track ripping progress |
+| `title_matching_started` | `{"job_id": int, "title_id": int}` | Title matching started |
+| `title_matched` | `{"job_id": int, "title_id": int, ...}` | Successful title match |
+| `title_state_changed` | `{"job_id": int, "title_id": int, "state": str}` | Generic title state change |
+| `title_failed` | `{"job_id": int, "title_id": int, "error": str}` | Title processing failed |
 
 ### Client → Server Messages
 
@@ -246,6 +279,7 @@ Components use updated settings
 Validation occurs in:
 - **Pydantic models**: Type checking, required fields
 - **API routes**: Path existence checks, MakeMKV license validation
+- **Validation endpoints**: `POST /api/validate/makemkv`, `POST /api/validate/ffmpeg`, `GET /api/detect-tools`
 - **JobManager**: Pre-flight checks before starting jobs
 
 ## Testing Guidelines
@@ -253,7 +287,7 @@ Validation occurs in:
 ### Backend Testing
 
 **Unit tests** (`tests/unit/`):
-- Test individual modules in isolation (Analyst, Extractor, Curator)
+- Test individual modules in isolation (Analyst, Extractor, Curator, StateMachine, EventBroadcaster, ConfigService, TMDB, validation, etc.)
 - Mock external dependencies (MakeMKV CLI, TMDB API, filesystem)
 - Fast execution (< 1 second per test)
 
@@ -262,15 +296,15 @@ Validation occurs in:
 - Use simulation endpoints to avoid physical disc requirements
 - Test real database operations with cleanup fixtures
 - Validate WebSocket message broadcasting end-to-end
-- Execution: ~11 seconds for 8 tests (fast enough for CI/CD)
+- Files: `test_workflow.py`, `test_simulation.py`, `test_websocket_e2e.py`, `test_error_recovery.py`, `test_movie_edition_workflow.py`, `test_subtitle_workflow.py`
 
-**Test suite** (`tests/integration/test_workflow.py`):
-- `TestTVDiscWorkflow` (3 tests) — Complete TV disc processing, cancellation, review needed
-- `TestMovieDiscWorkflow` (1 test) — Movie disc workflow
-- `TestDiscRemoval` (1 test) — Disc removal event handling
-- `TestStateAdvancement` (1 test) — Manual state progression
-- `TestSubtitleCoordination` (1 test) — Subtitle download blocks matching
-- `TestConcurrency` (1 test) — Multiple concurrent jobs
+**Pipeline tests** (`tests/pipeline/`):
+- Snapshot-based pipeline tests for classification, organization, and flow scenarios
+- Files: `test_classification.py`, `test_play_all_detection.py`, `test_generic_label_flow.py`, `test_concurrent_jobs.py`, `test_ambiguous_movie_flow.py`, `test_organization_paths.py`, `test_tv_episode_pipeline.py`
+
+**Real data tests** (`tests/real_data/`):
+- Tests requiring actual MKV files (auto-skipped if files don't exist)
+- Files: `test_real_episode_matching.py`, `test_real_disc_classification.py`, `test_snapshot_capture.py`
 
 **Setup pattern**:
 ```python
@@ -304,6 +338,7 @@ async def setup_db():
 cd backend
 uv run pytest                    # All tests
 uv run pytest tests/unit/        # Unit tests only
+uv run pytest tests/pipeline/    # Pipeline tests only
 uv run pytest -k test_name       # Specific test
 uv run pytest --cov=app          # With coverage
 ```
@@ -311,25 +346,10 @@ uv run pytest --cov=app          # With coverage
 ### Frontend Testing
 
 **E2E tests** (`frontend/e2e/`):
-- Full UI workflow testing using Playwright
+- Full UI workflow testing using Playwright (9 spec files)
 - Requires backend running with `DEBUG=true`
 - Uses simulation endpoints to fake disc insertion/ripping
 - Tests user interactions (clicking, form submission, WebSocket updates)
-
-**Test structure**:
-```typescript
-test('TV disc workflow', async ({ page }) => {
-  // 1. Start backend simulation
-  await fetch('http://localhost:8000/api/simulate/insert-disc', {...})
-
-  // 2. Verify UI updates
-  await page.goto('http://localhost:5173')
-  await expect(page.locator('[data-testid="job-card"]')).toBeVisible()
-
-  // 3. Interact with UI
-  await page.locator('button:has-text("Clear")').click()
-})
-```
 
 **Running E2E tests**:
 ```bash

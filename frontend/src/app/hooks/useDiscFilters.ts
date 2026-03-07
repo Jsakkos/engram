@@ -1,5 +1,5 @@
 /**
- * Kanban column organization and filtering logic
+ * Disc filtering and transformation logic
  */
 
 import { useState, useMemo } from 'react';
@@ -7,7 +7,7 @@ import type { Job, DiscTitle } from '../../types';
 import { transformJobToDiscData } from '../../types/adapters';
 import { generateMockDiscs } from '../utils/mockData';
 
-export function useKanbanColumns(
+export function useDiscFilters(
     jobs: Job[],
     titlesMap: Record<number, DiscTitle[]>,
     devMode: boolean = false
@@ -47,23 +47,11 @@ export function useKanbanColumns(
         return discsData.filter((d) => d.state === "completed").length;
     }, [discsData]);
 
-    // Organize discs into Kanban columns
-    const columns = useMemo(() => {
-        return {
-            scanning: filteredDiscs.filter((d) => d.state === "scanning" || d.state === "idle"),
-            ripping: filteredDiscs.filter((d) => d.state === "ripping" || d.state === "archiving_iso"),
-            processing: filteredDiscs.filter((d) => d.state === "processing"),
-            review: filteredDiscs.filter((d) => d.needsReview === true),
-            done: filteredDiscs.filter((d) => d.state === "completed" || d.state === "error"),
-        };
-    }, [filteredDiscs]);
-
     return {
         filter,
         setFilter,
         discsData,
         filteredDiscs,
-        columns,
         activeCount,
         completedCount,
     };
