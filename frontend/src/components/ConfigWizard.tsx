@@ -54,6 +54,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
     const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean}>({makemkv: false, tmdb: false});
+    const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
 
     const totalSteps = 4;
 
@@ -178,6 +179,30 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
             alert(`Failed to save configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleTestTmdb = async () => {
+        const key = config.tmdbApiKey.trim();
+        if (!key) {
+            setTmdbValidation({status: 'invalid', error: 'Please enter a token first'});
+            return;
+        }
+        setTmdbValidation({status: 'testing'});
+        try {
+            const response = await fetch('/api/validate/tmdb', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ api_key: key }),
+            });
+            const result = await response.json();
+            if (result.valid) {
+                setTmdbValidation({status: 'valid'});
+            } else {
+                setTmdbValidation({status: 'invalid', error: result.error || 'Invalid token'});
+            }
+        } catch {
+            setTmdbValidation({status: 'invalid', error: 'Failed to reach validation endpoint'});
         }
     };
 
@@ -403,9 +428,29 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 id="tmdbApiKey"
                                 type="text"
                                 value={config.tmdbApiKey}
-                                onChange={(e) => handleInputChange('tmdbApiKey', e.target.value)}
+                                onChange={(e) => {
+                                    handleInputChange('tmdbApiKey', e.target.value);
+                                    setTmdbValidation({status: 'idle'});
+                                }}
                                 placeholder={savedKeys.tmdb ? "Enter new token to replace existing" : "eyJhbGciOiJIUzI1NiJ9..."}
                             />
+                            <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                <button
+                                    type="button"
+                                    onClick={handleTestTmdb}
+                                    disabled={tmdbValidation.status === 'testing' || (!config.tmdbApiKey && !savedKeys.tmdb)}
+                                    className="btn-secondary"
+                                    style={{padding: '0.25rem 0.75rem', fontSize: '0.85rem'}}
+                                >
+                                    {tmdbValidation.status === 'testing' ? 'Testing...' : 'Test Token'}
+                                </button>
+                                {tmdbValidation.status === 'valid' && (
+                                    <span style={{color: '#22c55e', fontSize: '0.85rem'}}>Valid token</span>
+                                )}
+                                {tmdbValidation.status === 'invalid' && (
+                                    <span style={{color: '#ef4444', fontSize: '0.85rem'}}>{tmdbValidation.error}</span>
+                                )}
+                            </div>
                             <span className="form-hint">
                                 The Read Access Token is a long JWT string starting with "eyJ...".
                                 Find it under API &rarr; Read Access Token in your TMDB account settings.
