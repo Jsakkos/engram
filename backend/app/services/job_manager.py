@@ -144,9 +144,7 @@ class JobManager:
             JobState.ORGANIZING,
         ]
         async with async_session() as session:
-            result = await session.execute(
-                select(DiscJob).where(DiscJob.state.in_(stale_states))
-            )
+            result = await session.execute(select(DiscJob).where(DiscJob.state.in_(stale_states)))
             stale_jobs = result.scalars().all()
 
             if not stale_jobs:
@@ -155,14 +153,9 @@ class JobManager:
             for job in stale_jobs:
                 old_state = job.state
                 job.state = JobState.FAILED
-                job.error_message = (
-                    f"Server restarted while job was in {old_state.value} state"
-                )
+                job.error_message = f"Server restarted while job was in {old_state.value} state"
                 job.updated_at = datetime.utcnow()
-                logger.info(
-                    f"Cleaned up stale job {job.id} "
-                    f"(was {old_state.value}, now FAILED)"
-                )
+                logger.info(f"Cleaned up stale job {job.id} (was {old_state.value}, now FAILED)")
 
             await session.commit()
             logger.info(f"Cleaned up {len(stale_jobs)} stale job(s) from previous run")
@@ -428,8 +421,7 @@ class JobManager:
                     # Special handling for Ambiguous Movies (Multiple Feature-Length Titles)
                     # "Rip First, Review Later" workflow
                     is_ambiguous_movie = (
-                        job.content_type == ContentType.MOVIE
-                        and analysis.is_ambiguous_movie
+                        job.content_type == ContentType.MOVIE and analysis.is_ambiguous_movie
                     )
 
                     if is_ambiguous_movie:

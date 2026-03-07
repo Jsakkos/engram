@@ -4,7 +4,6 @@ Verifies the chain from Analyst classification through to Organizer path generat
 using real disc metadata snapshots.
 """
 
-
 import pytest
 
 from app.core.organizer import organize_tv_episode, organize_tv_extras
@@ -29,7 +28,9 @@ class TestPicardTrackSelection:
         episode_tracks = [
             t
             for t in titles
-            if config.analyst_tv_min_duration <= t.duration_seconds <= config.analyst_tv_max_duration
+            if config.analyst_tv_min_duration
+            <= t.duration_seconds
+            <= config.analyst_tv_max_duration
         ]
         assert len(episode_tracks) == 3
         assert {t.index for t in episode_tracks} == {0, 1, 2}
@@ -40,11 +41,7 @@ class TestPicardTrackSelection:
         titles = snapshot_to_titles(snap)
         config = analyst._get_config()
 
-        short_tracks = [
-            t
-            for t in titles
-            if t.duration_seconds < config.analyst_tv_min_duration
-        ]
+        short_tracks = [t for t in titles if t.duration_seconds < config.analyst_tv_min_duration]
         assert len(short_tracks) == 1
         assert short_tracks[0].index == 4
 
@@ -76,9 +73,7 @@ class TestPicardTrackSelection:
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_bytes(b"x" * 1024)
 
-            result = organize_tv_episode(
-                source, "Star Trek Picard", ep, library_path=library
-            )
+            result = organize_tv_episode(source, "Star Trek Picard", ep, library_path=library)
             assert result["success"], f"Failed for {ep}: {result.get('error')}"
             assert ep.upper() in str(result["final_path"])
             assert "Season 01" in str(result["final_path"])
@@ -92,8 +87,12 @@ class TestPicardTrackSelection:
         source.write_bytes(b"x" * 1024)
 
         result = organize_tv_extras(
-            source, "Star Trek Picard", season=1, library_path=library,
-            disc_number=3, extra_index=1,
+            source,
+            "Star Trek Picard",
+            season=1,
+            library_path=library,
+            disc_number=3,
+            extra_index=1,
         )
         assert result["success"]
         assert "Extras" in str(result["final_path"])
@@ -113,7 +112,9 @@ class TestArrestedDevPipeline:
         episode_tracks = [
             t
             for t in titles
-            if config.analyst_tv_min_duration <= t.duration_seconds <= config.analyst_tv_max_duration
+            if config.analyst_tv_min_duration
+            <= t.duration_seconds
+            <= config.analyst_tv_max_duration
         ]
         assert len(episode_tracks) == 8
 
@@ -123,11 +124,7 @@ class TestArrestedDevPipeline:
         titles = snapshot_to_titles(snap)
         config = analyst._get_config()
 
-        short_tracks = [
-            t
-            for t in titles
-            if t.duration_seconds < config.analyst_tv_min_duration
-        ]
+        short_tracks = [t for t in titles if t.duration_seconds < config.analyst_tv_min_duration]
         assert len(short_tracks) == 3
         short_indices = {t.index for t in short_tracks}
         assert short_indices == {8, 9, 10}
@@ -162,7 +159,10 @@ class TestArrestedDevPipeline:
             source.write_bytes(b"x" * 1024)
 
             result = organize_tv_episode(
-                source, "Arrested Development", ep, library_path=library,
+                source,
+                "Arrested Development",
+                ep,
+                library_path=library,
             )
             assert result["success"], f"Failed for {ep}: {result.get('error')}"
             organized_codes.append(ep)

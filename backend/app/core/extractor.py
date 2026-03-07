@@ -114,9 +114,7 @@ class MakeMKVExtractor:
 
         def run_makemkv() -> subprocess.CompletedProcess:
             """Run MakeMKV in a thread (Windows asyncio subprocess workaround)."""
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             self._current_process = proc
             try:
                 stdout, stderr = proc.communicate(timeout=600)
@@ -134,9 +132,7 @@ class MakeMKVExtractor:
             result = await asyncio.to_thread(run_makemkv)
 
             elapsed = time.monotonic() - start
-            logger.debug(
-                f"MakeMKV stdout: {result.stdout[:500] if result.stdout else 'empty'}"
-            )
+            logger.debug(f"MakeMKV stdout: {result.stdout[:500] if result.stdout else 'empty'}")
             if result.stderr:
                 logger.debug(f"MakeMKV stderr: {result.stderr[:500]}")
 
@@ -157,9 +153,7 @@ class MakeMKVExtractor:
         except subprocess.TimeoutExpired:
             elapsed = time.monotonic() - start
             logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for drive {drive}")
-            raise ScanTimeoutError(
-                f"Disc scan timed out after 10 minutes on drive {drive}"
-            )
+            raise ScanTimeoutError(f"Disc scan timed out after 10 minutes on drive {drive}")
         except Exception as e:
             logger.exception(f"Error scanning disc: {e}")
             return []
@@ -193,8 +187,11 @@ class MakeMKVExtractor:
 
         async with lock:
             return await self._rip_titles_unlocked(
-                drive, output_dir, title_indices,
-                progress_callback, title_complete_callback,
+                drive,
+                output_dir,
+                title_indices,
+                progress_callback,
+                title_complete_callback,
             )
 
     async def _rip_titles_unlocked(
@@ -371,9 +368,7 @@ class MakeMKVExtractor:
                                     total_titles_count = total
 
                         elif line.startswith("PRGV:"):
-                            match = re.match(
-                                r"PRGV:\s*(\d+),\s*(\d+),\s*(\d+)", line
-                            )
+                            match = re.match(r"PRGV:\s*(\d+),\s*(\d+),\s*(\d+)", line)
                             if match:
                                 current = int(match.group(1))
                                 total = int(match.group(2))

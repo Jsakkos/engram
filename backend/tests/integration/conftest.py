@@ -26,6 +26,7 @@ def enable_debug_mode():
     yield
     settings.debug = original
 
+
 # Test database URL for integration tests
 INTEGRATION_DB_URL = "sqlite+aiosqlite:///:memory:"
 
