@@ -149,6 +149,52 @@ class TestClassifyFromTmdb:
         assert "api_key" in call_kwargs.kwargs.get("params", {})
 
 
+    @patch("app.core.tmdb_classifier.requests.get")
+    def test_both_match_name_similarity_wins_over_popularity(self, mock_get):
+        """When both TV and movie match but one has a much closer name, prefer it.
+
+        Regression test for The Grandmaster misclassification (#33).
+        """
+        tv_response = _mock_response(
+            json_data={
+                "results": [{"id": 500, "name": "The Grand Master Chef", "popularity": 200.0}]
+            }
+        )
+        movie_response = _mock_response(
+            json_data={
+                "results": [{"id": 600, "title": "The Grandmaster", "popularity": 30.0}]
+            }
+        )
+        mock_get.side_effect = [tv_response, movie_response]
+
+        result = classify_from_tmdb(
+            "The Grandmaster", "fake_api_key_that_is_long_enough_for_v4_auth"
+        )
+        assert result is not None
+        assert result.content_type == ContentType.MOVIE
+        assert result.tmdb_id == 600
+
+    @patch("app.core.tmdb_classifier.requests.get")
+    def test_search_picks_best_name_match_from_results(self, mock_get):
+        """_search_tmdb should prefer name-similar results over the first result."""
+        movie_response = _mock_response(
+            json_data={
+                "results": [
+                    {"id": 1, "title": "Grandmaster Flash", "popularity": 50.0},
+                    {"id": 2, "title": "The Grandmaster", "popularity": 30.0},
+                ]
+            }
+        )
+        tv_response = _mock_response(json_data={"results": []})
+        mock_get.side_effect = [tv_response, movie_response]
+
+        result = classify_from_tmdb(
+            "The Grandmaster", "fake_api_key_that_is_long_enough_for_v4_auth"
+        )
+        assert result is not None
+        assert result.tmdb_id == 2  # Better name match, not first result
+
+
 class TestTmdbSignal:
     """Test TmdbSignal dataclass."""
 

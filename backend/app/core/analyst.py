@@ -36,13 +36,14 @@ _GENERIC_VOLUME_LABELS: frozenset[str] = frozenset(
 )
 
 
-def _names_are_similar(a: str, b: str, threshold: float = 0.35) -> bool:
+def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
     """Return True if two title strings share enough word tokens (Jaccard similarity).
 
     Prevents TMDB from replacing a parsed name with a completely unrelated title.
     Examples:
       "Logical Volume Id" vs "Idioms Origins Volume 1" -> ~0.14 -> rejected
       "Star Trek Picard" vs "Star Trek: Picard" -> 0.67 -> accepted
+      "The Grandmaster" vs "Grandmaster" -> 0.50 -> accepted (at threshold)
     """
 
     def tokens(s: str) -> set[str]:
@@ -341,8 +342,8 @@ class DiscAnalyst:
             result.confidence = override_confidence
             result.classification_source = "tmdb"
 
-            # If the override confidence is low, flag for review
-            if override_confidence < 0.5:
+            # If the override confidence is not strong, flag for review
+            if override_confidence < 0.6:
                 result.needs_review = True
                 result.review_reason = (
                     f"TMDB suggests {tmdb_type.value} but heuristics suggest "

@@ -271,8 +271,23 @@ class TestTmdbSignalIntegration:
         """TMDB contradicts strong heuristic with low confidence -> needs_review."""
         analyst = DiscAnalyst(config=_default_config())
         titles = _make_titles([140])  # Clear movie at 0.9 confidence
-        # Low-confidence TMDB TV signal: 0.55 * 0.8 = 0.44 < 0.5
+        # Low-confidence TMDB TV signal: 0.55 * 0.8 = 0.44 < 0.6
         signal = TmdbSignal(content_type=ContentType.TV, confidence=0.55)
+        result = analyst.analyze(titles, "SOME_DISC", tmdb_signal=signal)
+
+        assert result.needs_review is True
+        assert "TMDB suggests" in result.review_reason
+
+    def test_tmdb_moderate_confidence_override_triggers_review(self):
+        """TMDB contradicts heuristic with moderate confidence (0.5-0.6) -> needs_review.
+
+        Regression test for #33: override confidence between 0.5 and 0.6 should
+        still flag for review, not silently flip the content type.
+        """
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([140])  # Clear movie at 0.9 confidence
+        # TMDB TV signal: 0.70 * 0.8 = 0.56 — above old 0.5 but below new 0.6
+        signal = TmdbSignal(content_type=ContentType.TV, confidence=0.70)
         result = analyst.analyze(titles, "SOME_DISC", tmdb_signal=signal)
 
         assert result.needs_review is True
