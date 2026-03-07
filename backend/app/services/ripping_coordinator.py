@@ -152,20 +152,26 @@ class RippingCoordinator:
                             async with async_session() as sess:
                                 prev_db = await sess.get(DiscTitle, prev_title.id)
                                 if prev_db and prev_db.state == TitleState.RIPPING:
-                                    prev_db.state = TitleState.MATCHING
+                                    # Movies skip matching — go straight to MATCHED
+                                    new_state = (
+                                        TitleState.MATCHING
+                                        if job.content_type == ContentType.TV
+                                        else TitleState.MATCHED
+                                    )
+                                    prev_db.state = new_state
                                     sess.add(prev_db)
                                     await sess.commit()
                                     await self._ws.broadcast_title_update(
                                         job_id,
                                         prev_db.id,
-                                        TitleState.MATCHING.value,
+                                        new_state.value,
                                         expected_size_bytes=prev_title.file_size_bytes,
                                         actual_size_bytes=prev_title.file_size_bytes,
                                     )
                         except Exception:
                             logger.warning(
                                 f"Failed to transition title {prev_title.id} "
-                                f"from RIPPING to MATCHING (Job {job_id})",
+                                f"out of RIPPING state (Job {job_id})",
                                 exc_info=True,
                             )
                 _last_title_idx = current_idx
