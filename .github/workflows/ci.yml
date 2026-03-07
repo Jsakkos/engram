@@ -22,8 +22,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv sync --no-install-project
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+      - run: uvx ruff check
+      - run: uvx ruff format
 
   backend-test:
     name: Backend Tests
