@@ -10,7 +10,7 @@ import { DiscMetadata } from "./DiscCard/DiscMetadata";
 import { ActionButtons } from "./DiscCard/ActionButtons";
 
 export type MediaType = "movie" | "tv" | "unknown";
-export type DiscState = "idle" | "scanning" | "archiving_iso" | "ripping" | "processing" | "completed" | "error";
+export type DiscState = "idle" | "scanning" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
 export type TrackState = "pending" | "ripping" | "matching" | "matched" | "failed";
 
 export interface MatchCandidate {
@@ -89,7 +89,9 @@ const stateColors = {
   scanning: { from: "#06b6d4", to: "#22d3ee" }, // cyan
   archiving_iso: { from: "#8b5cf6", to: "#a78bfa" },
   ripping: { from: "#ec4899", to: "#f472b6" }, // magenta
-  processing: { from: "#f59e0b", to: "#fbbf24" }, // amber — matching/organizing
+  matching: { from: "#f59e0b", to: "#fbbf24" }, // amber
+  organizing: { from: "#8b5cf6", to: "#a78bfa" }, // violet
+  processing: { from: "#f59e0b", to: "#fbbf24" }, // amber — legacy fallback
   completed: { from: "#10b981", to: "#34d399" },
   error: { from: "#ef4444", to: "#f87171" },
 };
@@ -208,7 +210,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 />
 
                 {/* State overlay icon */}
-                {["scanning", "archiving_iso", "ripping", "processing"].includes(disc.state) && (
+                {["scanning", "archiving_iso", "ripping", "matching", "organizing", "processing"].includes(disc.state) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                     <motion.div
                       animate={{ rotate: 360 }}
@@ -323,22 +325,25 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 </>
               )}
 
-              {/* Processing state (matching/organizing) - show track grid with status */}
-              {disc.state === "processing" && disc.tracks && (
+              {/* Matching state - show track grid with match progress */}
+              {disc.state === "matching" && disc.tracks && (
                 <>
                   <div className="flex items-center gap-3 text-sm text-amber-400 font-mono mb-3">
                     <motion.div
                       animate={{ opacity: [0.4, 1, 0.4] }}
                       transition={{ duration: 1.5, repeat: Infinity }}
                     >
-                      &gt; {disc.mediaType === "tv" ? "MATCHING EPISODES..." : "ORGANIZING FILES..."}
+                      &gt; MATCHING EPISODES...
                     </motion.div>
+                    {disc.subtitleStatus === 'downloading' && (
+                      <span className="text-xs text-cyan-400">(downloading subtitles)</span>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 font-mono">
+                  <div className="grid grid-cols-3 gap-4 font-mono">
                     <div className="flex flex-col">
                       <span className="text-xs text-slate-400 uppercase tracking-wider mb-1 font-bold" style={{ textShadow: "0 0 4px rgba(148, 163, 184, 0.5)" }}>
-                        &gt; COMPLETED
+                        &gt; MATCHED
                       </span>
                       <span className="text-sm font-bold text-green-400" style={{ textShadow: "0 0 8px rgba(16, 185, 129, 0.8)" }}>
                         {disc.tracks.filter(t => t.state === "matched").length}/{disc.tracks.length}
@@ -352,9 +357,68 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                         {disc.tracks.filter(t => t.state === "matching").length}
                       </span>
                     </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-400 uppercase tracking-wider mb-1 font-bold" style={{ textShadow: "0 0 4px rgba(148, 163, 184, 0.5)" }}>
+                        &gt; PENDING
+                      </span>
+                      <span className="text-sm font-bold text-slate-400" style={{ textShadow: "0 0 4px rgba(148, 163, 184, 0.5)" }}>
+                        {disc.tracks.filter(t => t.state === "pending").length}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Track Grid */}
+                  <TrackGrid tracks={disc.tracks} />
+                </>
+              )}
+
+              {/* Organizing state - show file organization progress */}
+              {disc.state === "organizing" && disc.tracks && (
+                <>
+                  <div className="flex items-center gap-3 text-sm text-violet-400 font-mono mb-3">
+                    <motion.div
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    >
+                      &gt; ORGANIZING TO LIBRARY...
+                    </motion.div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 font-mono">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-400 uppercase tracking-wider mb-1 font-bold" style={{ textShadow: "0 0 4px rgba(148, 163, 184, 0.5)" }}>
+                        &gt; ORGANIZED
+                      </span>
+                      <span className="text-sm font-bold text-green-400" style={{ textShadow: "0 0 8px rgba(16, 185, 129, 0.8)" }}>
+                        {disc.tracks.filter(t => t.organizedTo).length}/{disc.tracks.length}
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-400 uppercase tracking-wider mb-1 font-bold" style={{ textShadow: "0 0 4px rgba(148, 163, 184, 0.5)" }}>
+                        &gt; REMAINING
+                      </span>
+                      <span className="text-sm font-bold text-violet-400" style={{ textShadow: "0 0 8px rgba(139, 92, 246, 0.8)" }}>
+                        {disc.tracks.filter(t => !t.organizedTo).length}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Track Grid */}
+                  <TrackGrid tracks={disc.tracks} />
+                </>
+              )}
+
+              {/* Legacy processing state fallback */}
+              {disc.state === "processing" && disc.tracks && (
+                <>
+                  <div className="flex items-center gap-3 text-sm text-amber-400 font-mono mb-3">
+                    <motion.div
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    >
+                      &gt; PROCESSING...
+                    </motion.div>
+                  </div>
                   <TrackGrid tracks={disc.tracks} />
                 </>
               )}
