@@ -299,12 +299,28 @@ class JobManager:
                 analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
                 logger.info(f"Job {job_id} Analysis Result: {analysis}")
 
+                # Save snapshot for debugging and test fixture generation
+                from app.core.snapshot import save_snapshot
+
+                save_snapshot(job.volume_label, analysis)
+
                 # Update job with analysis results
                 job.content_type = analysis.content_type
                 job.detected_title = analysis.detected_name
                 job.detected_season = analysis.detected_season
                 job.total_titles = len(titles)
                 job.updated_at = datetime.utcnow()
+
+                # Persist classification metadata
+                job.classification_confidence = analysis.confidence
+                job.classification_source = analysis.classification_source
+                job.tmdb_id = analysis.tmdb_id
+                job.tmdb_name = analysis.tmdb_name
+                job.is_ambiguous_movie = analysis.is_ambiguous_movie
+                if analysis.play_all_title_indices:
+                    import json
+
+                    job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
 
                 # Extract disc number from volume label (e.g., "SHOW_S01D2" -> 2)
                 import re
