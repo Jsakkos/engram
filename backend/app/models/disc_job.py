@@ -1,12 +1,12 @@
 """DiscJob model - the core state machine for disc processing."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlmodel import Field, SQLModel
 
 
-class JobState(str, Enum):
+class JobState(StrEnum):
     """States in the disc processing lifecycle."""
 
     IDLE = "idle"
@@ -19,7 +19,7 @@ class JobState(str, Enum):
     FAILED = "failed"
 
 
-class ContentType(str, Enum):
+class ContentType(StrEnum):
     """Type of content on the disc."""
 
     TV = "tv"
@@ -27,7 +27,7 @@ class ContentType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class TitleState(str, Enum):
+class TitleState(StrEnum):
     """State of an individual title."""
 
     PENDING = "pending"
