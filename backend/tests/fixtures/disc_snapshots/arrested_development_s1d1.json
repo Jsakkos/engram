@@ -9,7 +9,7 @@
       "size_bytes": 668897237,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E01"
+      "expected_episode": null
     },
     {
       "index": 2,
@@ -18,7 +18,7 @@
       "size_bytes": 524788760,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E03"
+      "expected_episode": null
     },
     {
       "index": 3,
@@ -27,7 +27,7 @@
       "size_bytes": 580133133,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E04"
+      "expected_episode": null
     },
     {
       "index": 4,
@@ -36,7 +36,7 @@
       "size_bytes": 533503132,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E05"
+      "expected_episode": null
     },
     {
       "index": 5,
@@ -45,7 +45,7 @@
       "size_bytes": 519383009,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E06"
+      "expected_episode": null
     },
     {
       "index": 6,
@@ -54,7 +54,7 @@
       "size_bytes": 540108878,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E07"
+      "expected_episode": null
     },
     {
       "index": 7,
@@ -63,7 +63,7 @@
       "size_bytes": 519952776,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E08"
+      "expected_episode": null
     },
     {
       "index": 1,
@@ -72,7 +72,7 @@
       "size_bytes": 668897237,
       "chapter_count": 5,
       "video_resolution": "unknown",
-      "expected_episode": "S01E02"
+      "expected_episode": null
     },
     {
       "index": 10,
@@ -102,12 +102,12 @@
       "expected_episode": null
     }
   ],
-  "expected_content_type": "tv",
-  "expected_detected_name": "Arrested Development",
-  "expected_season": 1,
+  "expected_content_type": "",
+  "expected_detected_name": null,
+  "expected_season": null,
   "expected_play_all_indices": [],
   "expected_needs_review": false,
   "expected_review_reason": null,
   "tmdb_signal": null,
-  "notes": "Season 1 Disc 1. 8 episodes (tracks 0-7), 3 extras (tracks 8-10). Tracks 0 and 1 are both pilots (~28.6min) from different disc prefixes (B1/C1). Tracks 9-10 are bonus features."
+  "notes": "AUTO-GENERATED \u2014 fill in expected_* fields manually"
 }

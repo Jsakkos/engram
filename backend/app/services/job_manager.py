@@ -18,7 +18,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.curator import curator as episode_curator
 from app.core.errors import MatchingError
-from app.core.extractor import MakeMKVExtractor, RipProgress
+from app.core.extractor import MakeMKVExtractor, RipProgress, ScanTimeoutError
 from app.core.organizer import movie_organizer
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
@@ -263,11 +263,19 @@ class JobManager:
                 # Scan disc with MakeMKV
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.IDENTIFYING)
 
-                titles = await self._extractor.scan_disc(job.drive_id)
+                try:
+                    titles = await self._extractor.scan_disc(job.drive_id)
+                except ScanTimeoutError:
+                    await state_machine.transition_to_failed(
+                        job,
+                        session,
+                        "Disc scan timed out after 10 minutes — disc may be encrypted or damaged",
+                    )
+                    return
 
                 if not titles:
                     await state_machine.transition_to_failed(
-                        job, session, "No titles found on disc or MakeMKV error"
+                        job, session, "No titles found on disc"
                     )
                     return
 

@@ -7,6 +7,7 @@ import asyncio
 import logging
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,10 @@ class RipResult:
     success: bool
     output_files: list[Path]
     error_message: str | None = None
+
+
+class ScanTimeoutError(Exception):
+    """MakeMKV disc scan exceeded time limit."""
 
 
 class MakeMKVExtractor:
@@ -102,21 +107,33 @@ class MakeMKVExtractor:
             drive_spec,
         ]
 
+        start = time.monotonic()
         logger.info(f"Scanning disc: {' '.join(cmd)}")
+
+        self._cancelled = False
 
         def run_makemkv() -> subprocess.CompletedProcess:
             """Run MakeMKV in a thread (Windows asyncio subprocess workaround)."""
-            return subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minute timeout (disc decryption + title scan)
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
+            self._current_process = proc
+            try:
+                stdout, stderr = proc.communicate(timeout=600)
+                return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()  # Clean up zombie process
+                raise
+            finally:
+                if self._current_process is proc:
+                    self._current_process = None
 
         try:
             # Run in thread to avoid blocking event loop
             result = await asyncio.to_thread(run_makemkv)
 
+            elapsed = time.monotonic() - start
             logger.debug(
                 f"MakeMKV stdout: {result.stdout[:500] if result.stdout else 'empty'}"
             )
@@ -125,21 +142,24 @@ class MakeMKVExtractor:
 
             if result.returncode != 0:
                 logger.error(
-                    f"MakeMKV scan failed (exit code {result.returncode}): "
-                    f"{result.stderr}"
+                    f"MakeMKV scan failed after {elapsed:.1f}s "
+                    f"(exit code {result.returncode}): {result.stderr}"
                 )
                 return []
 
             titles = self._parse_disc_info(result.stdout or "")
-            logger.info(f"Found {len(titles)} titles on disc")
+            logger.info(f"Scan completed in {elapsed:.1f}s, found {len(titles)} titles")
             return titles
 
         except FileNotFoundError:
             logger.error(f"MakeMKV not found at: {self.makemkv_path}")
             return []
         except subprocess.TimeoutExpired:
-            logger.error("MakeMKV scan timed out")
-            return []
+            elapsed = time.monotonic() - start
+            logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for drive {drive}")
+            raise ScanTimeoutError(
+                f"Disc scan timed out after 10 minutes on drive {drive}"
+            )
         except Exception as e:
             logger.exception(f"Error scanning disc: {e}")
             return []
