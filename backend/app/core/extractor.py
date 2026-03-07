@@ -150,10 +150,12 @@ class MakeMKVExtractor:
         except FileNotFoundError:
             logger.error(f"MakeMKV not found at: {self.makemkv_path}")
             return []
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
             logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for drive {drive}")
-            raise ScanTimeoutError(f"Disc scan timed out after 10 minutes on drive {drive}")
+            raise ScanTimeoutError(
+                f"Disc scan timed out after 10 minutes on drive {drive}"
+            ) from e
         except Exception as e:
             logger.exception(f"Error scanning disc: {e}")
             return []
