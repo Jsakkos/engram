@@ -9,9 +9,8 @@ from typing import Any, TypeVar
 
 from loguru import logger
 
-# from opensubtitlescom import OpenSubtitles  # REMOVED: Using opensubtitles_scraper instead
-from app.matcher.core.config_manager import get_config_manager
-from app.matcher.core.models import EpisodeInfo, SubtitleFile
+from app.matcher.config_manager import get_config_manager
+from app.matcher.models import EpisodeInfo, SubtitleFile
 from app.matcher.subtitle_utils import sanitize_filename
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -100,7 +99,6 @@ class LocalSubtitleProvider(SubtitleProvider):
         """Get all subtitle files for a specific show and season."""
         show_dir = self.cache_dir / sanitize_filename(show_name)
         if not show_dir.exists():
-            # logger.warning(f"No subtitle cache found at {show_dir}")
             return []
 
         subtitles = []
@@ -351,9 +349,6 @@ class OpenSubtitlesProvider(SubtitleProvider):
 
             logger.info(f"Found {len(response.data)} potential subtitles")
 
-            # Limit downloads to a reasonable number or try to match specifically?
-            # For now, let's download unique episodes for this season.
-
             seen_episodes = set()
             logger.debug(f"Starting subtitle download loop for season {season}")
 
@@ -477,7 +472,6 @@ class OpenSubtitlesWebProvider(SubtitleProvider):
             # Convert to SubtitleFile objects
             subtitles = []
             for episode_code, srt_path in downloaded.items():
-                # Parse episode number from code like "S01E05"
                 import re
 
                 match = re.match(r"S(\d+)E(\d+)", episode_code)

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.matcher.core.models import Config
+from app.matcher.models import Config
 
 
 class ConfigManager:

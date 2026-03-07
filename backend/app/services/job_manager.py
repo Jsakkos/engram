@@ -18,7 +18,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.curator import curator as episode_curator
 from app.core.errors import MatchingError
-from app.core.extractor import MakeMKVExtractor, RipProgress
+from app.core.extractor import MakeMKVExtractor, RipProgress, ScanTimeoutError
 from app.core.organizer import movie_organizer
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
@@ -144,9 +144,7 @@ class JobManager:
             JobState.ORGANIZING,
         ]
         async with async_session() as session:
-            result = await session.execute(
-                select(DiscJob).where(DiscJob.state.in_(stale_states))
-            )
+            result = await session.execute(select(DiscJob).where(DiscJob.state.in_(stale_states)))
             stale_jobs = result.scalars().all()
 
             if not stale_jobs:
@@ -155,14 +153,9 @@ class JobManager:
             for job in stale_jobs:
                 old_state = job.state
                 job.state = JobState.FAILED
-                job.error_message = (
-                    f"Server restarted while job was in {old_state.value} state"
-                )
+                job.error_message = f"Server restarted while job was in {old_state.value} state"
                 job.updated_at = datetime.utcnow()
-                logger.info(
-                    f"Cleaned up stale job {job.id} "
-                    f"(was {old_state.value}, now FAILED)"
-                )
+                logger.info(f"Cleaned up stale job {job.id} (was {old_state.value}, now FAILED)")
 
             await session.commit()
             logger.info(f"Cleaned up {len(stale_jobs)} stale job(s) from previous run")
@@ -263,11 +256,19 @@ class JobManager:
                 # Scan disc with MakeMKV
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.IDENTIFYING)
 
-                titles = await self._extractor.scan_disc(job.drive_id)
+                try:
+                    titles = await self._extractor.scan_disc(job.drive_id)
+                except ScanTimeoutError:
+                    await state_machine.transition_to_failed(
+                        job,
+                        session,
+                        "Disc scan timed out after 10 minutes — disc may be encrypted or damaged",
+                    )
+                    return
 
                 if not titles:
                     await state_machine.transition_to_failed(
-                        job, session, "No titles found on disc or MakeMKV error"
+                        job, session, "No titles found on disc"
                     )
                     return
 
@@ -420,8 +421,7 @@ class JobManager:
                     # Special handling for Ambiguous Movies (Multiple Feature-Length Titles)
                     # "Rip First, Review Later" workflow
                     is_ambiguous_movie = (
-                        job.content_type == ContentType.MOVIE
-                        and analysis.is_ambiguous_movie
+                        job.content_type == ContentType.MOVIE and analysis.is_ambiguous_movie
                     )
 
                     if is_ambiguous_movie:

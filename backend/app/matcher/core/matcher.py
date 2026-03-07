@@ -4,9 +4,9 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.matcher.core.models import MatchCandidate, MatchResult, SubtitleFile
-from app.matcher.core.providers.asr import ASRProvider
-from app.matcher.core.utils import (
+from app.matcher.asr_provider import ASRProvider
+from app.matcher.models import MatchCandidate, MatchResult, SubtitleFile
+from app.matcher.srt_utils import (
     SubtitleReader,
     clean_text,
     extract_audio_chunk,

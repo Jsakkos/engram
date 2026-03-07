@@ -12,12 +12,10 @@ from pathlib import Path
 from loguru import logger
 
 from app.matcher.addic7ed_client import Addic7edClient
-
-# from app.matcher.core.config_manager import get_config_manager # REMOVED
-from app.matcher.core.providers.asr import get_asr_provider
-from app.matcher.core.providers.subtitles import LocalSubtitleProvider
-from app.matcher.core.utils import extract_audio_chunk, get_video_duration
+from app.matcher.asr_provider import get_asr_provider
 from app.matcher.opensubtitles_scraper import OpenSubtitlesClient
+from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
+from app.matcher.subtitle_provider import LocalSubtitleProvider
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
 

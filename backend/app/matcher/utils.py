@@ -8,7 +8,7 @@ from loguru import logger
 from rich.console import Console
 from rich.panel import Panel
 
-from app.matcher.core.config_manager import get_config_manager
+from app.matcher.config_manager import get_config_manager
 from app.matcher.subtitle_utils import sanitize_filename
 
 console = Console()
