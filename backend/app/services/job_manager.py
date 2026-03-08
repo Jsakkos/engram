@@ -447,11 +447,17 @@ class JobManager:
                     if deselected:
                         logger.info(f"Job {job_id}: Deselected {deselected} 'Play All' title(s)")
 
-                # For movies with DiscDB mappings, only select the MainMovie title
+                # For movies with DiscDB mappings, tag extras so post-rip can
+                # handle them according to extras policy (keep/skip/ask)
                 discdb_maps = self._discdb_mappings.get(job_id, [])
                 if analysis.content_type == ContentType.MOVIE and discdb_maps:
                     main_indices = {
                         m.index for m in discdb_maps if m.title_type == "MainMovie"
+                    }
+                    extra_indices = {
+                        m.index
+                        for m in discdb_maps
+                        if m.title_type in ("Extra", "") and m.index not in main_indices
                     }
                     if main_indices:
                         await session.flush()
@@ -460,11 +466,15 @@ class JobManager:
                             await session.execute(stmt)
                         ).scalars().all()
                         for dt in db_titles_for_select:
-                            dt.is_selected = dt.title_index in main_indices
+                            if dt.title_index in extra_indices:
+                                dt.is_extra = True
+                            elif dt.title_index not in main_indices:
+                                # Unknown title not in DiscDB — treat as extra
+                                dt.is_extra = True
                             session.add(dt)
                         logger.info(
-                            f"Job {job_id}: TheDiscDB selected MainMovie title(s) "
-                            f"{main_indices}, deselected extras"
+                            f"Job {job_id}: TheDiscDB tagged MainMovie={main_indices}, "
+                            f"extras={extra_indices}"
                         )
 
                 # Broadcast titles discovered with full metadata
