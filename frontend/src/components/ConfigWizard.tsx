@@ -18,6 +18,10 @@ interface ConfigData {
     maxConcurrentMatches: number;
     ffmpegPath: string;
     conflictResolutionDefault: string;
+    extrasPolicy: string;
+    namingSeasonFormat: string;
+    namingEpisodeFormat: string;
+    namingMovieFormat: string;
 }
 
 interface ToolDetectionResult {
@@ -47,6 +51,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         maxConcurrentMatches: 2,
         ffmpegPath: '',
         conflictResolutionDefault: 'ask',
+        extrasPolicy: 'keep',
+        namingSeasonFormat: 'Season {season:02d}',
+        namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
+        namingMovieFormat: '{title} ({year})',
     });
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
@@ -84,6 +92,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     maxConcurrentMatches: data.max_concurrent_matches ?? 2,
                     ffmpegPath: data.ffmpeg_path || '',
                     conflictResolutionDefault: data.conflict_resolution_default || 'ask',
+                    extrasPolicy: data.extras_policy || 'keep',
+                    namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
+                    namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
+                    namingMovieFormat: data.naming_movie_format || '{title} ({year})',
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -161,6 +173,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     max_concurrent_matches: config.maxConcurrentMatches,
                     ffmpeg_path: config.ffmpegPath,
                     conflict_resolution_default: config.conflictResolutionDefault,
+                    extras_policy: config.extrasPolicy,
+                    naming_season_format: config.namingSeasonFormat,
+                    naming_episode_format: config.namingEpisodeFormat,
+                    naming_movie_format: config.namingMovieFormat,
                     setup_complete: true,
                 }),
             });
@@ -469,6 +485,96 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 What should Engram do when a file already exists in your library?
                             </span>
                         </div>
+
+                        <div className="form-group">
+                            <label htmlFor="extrasPolicy">Extras Handling</label>
+                            <select
+                                id="extrasPolicy"
+                                value={config.extrasPolicy}
+                                onChange={(e) => handleInputChange('extrasPolicy', e.target.value)}
+                            >
+                                <option value="keep">Keep all extras (organize to Extras/ folder)</option>
+                                <option value="skip">Skip extras (discard after ripping)</option>
+                                <option value="ask">Ask me (show in Review Queue)</option>
+                            </select>
+                            <span className="form-hint">
+                                How to handle bonus content that doesn&apos;t match any episode runtime.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Naming Convention</label>
+                            <select
+                                value={
+                                    config.namingSeasonFormat === 'Season {season:02d}' &&
+                                    config.namingEpisodeFormat === '{show} - S{season:02d}E{episode:02d}'
+                                        ? 'plex'
+                                    : config.namingSeasonFormat === 'Season {season:d}' &&
+                                      config.namingEpisodeFormat === '{show} - S{season:02d}E{episode:02d}'
+                                        ? 'kodi'
+                                    : config.namingSeasonFormat === 'S{season:02d}' &&
+                                      config.namingEpisodeFormat === '{show} - S{season:02d}E{episode:02d}'
+                                        ? 'minimal'
+                                    : 'custom'
+                                }
+                                onChange={(e) => {
+                                    const preset = e.target.value;
+                                    if (preset === 'plex') {
+                                        handleInputChange('namingSeasonFormat', 'Season {season:02d}');
+                                        handleInputChange('namingEpisodeFormat', '{show} - S{season:02d}E{episode:02d}');
+                                    } else if (preset === 'kodi') {
+                                        handleInputChange('namingSeasonFormat', 'Season {season:d}');
+                                        handleInputChange('namingEpisodeFormat', '{show} - S{season:02d}E{episode:02d}');
+                                    } else if (preset === 'minimal') {
+                                        handleInputChange('namingSeasonFormat', 'S{season:02d}');
+                                        handleInputChange('namingEpisodeFormat', '{show} - S{season:02d}E{episode:02d}');
+                                    }
+                                }}
+                            >
+                                <option value="plex">Plex (Season 01 / Show - S01E01)</option>
+                                <option value="kodi">Kodi (Season 1 / Show - S01E01)</option>
+                                <option value="minimal">Minimal (S01 / Show - S01E01)</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <span className="form-hint">
+                                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
+                            </span>
+                        </div>
+
+                        {(
+                            config.namingSeasonFormat !== 'Season {season:02d}' &&
+                            config.namingSeasonFormat !== 'Season {season:d}' &&
+                            config.namingSeasonFormat !== 'S{season:02d}'
+                        ) && (
+                            <>
+                                <div className="form-group">
+                                    <label htmlFor="namingSeasonFormat">Season Folder Format</label>
+                                    <input
+                                        id="namingSeasonFormat"
+                                        type="text"
+                                        value={config.namingSeasonFormat}
+                                        onChange={(e) => handleInputChange('namingSeasonFormat', e.target.value)}
+                                        placeholder="Season {season:02d}"
+                                    />
+                                    <span className="form-hint">
+                                        Placeholders: {'{season}'} — e.g., &quot;Season {'{season:02d}'}&quot; → Season 01
+                                    </span>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="namingEpisodeFormat">Episode Filename Format</label>
+                                    <input
+                                        id="namingEpisodeFormat"
+                                        type="text"
+                                        value={config.namingEpisodeFormat}
+                                        onChange={(e) => handleInputChange('namingEpisodeFormat', e.target.value)}
+                                        placeholder="{show} - S{season:02d}E{episode:02d}"
+                                    />
+                                    <span className="form-hint">
+                                        Placeholders: {'{show}'}, {'{season}'}, {'{episode}'}
+                                    </span>
+                                </div>
+                            </>
+                        )}
 
                         <div className="config-summary">
                             <h4>Configuration Summary</h4>

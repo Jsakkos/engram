@@ -58,5 +58,13 @@ class AppConfig(SQLModel, table=True):
     # Sentinel Drive Monitoring
     sentinel_poll_interval: float = 2.0  # Seconds between drive polls
 
+    # Extras handling
+    extras_policy: str = "keep"  # "keep" | "skip" | "ask"
+
+    # Naming conventions (Python format strings)
+    naming_season_format: str = "Season {season:02d}"
+    naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
+    naming_movie_format: str = "{title} ({year})"
+
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

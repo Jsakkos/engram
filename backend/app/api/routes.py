@@ -67,6 +67,11 @@ class ConfigResponse(BaseModel):
     ripping_file_ready_timeout: float
     # Sentinel monitoring
     sentinel_poll_interval: float
+    # Extras & naming
+    extras_policy: str
+    naming_season_format: str
+    naming_episode_format: str
+    naming_movie_format: str
     # Onboarding
     setup_complete: bool
 
@@ -97,6 +102,11 @@ class ConfigUpdate(BaseModel):
     ripping_file_ready_timeout: float | None = None
     # Sentinel monitoring
     sentinel_poll_interval: float | None = None
+    # Extras & naming
+    extras_policy: str | None = None
+    naming_season_format: str | None = None
+    naming_episode_format: str | None = None
+    naming_movie_format: str | None = None
     # Onboarding
     setup_complete: bool | None = None
 
@@ -328,6 +338,11 @@ async def get_config() -> ConfigResponse:
         ripping_file_ready_timeout=config.ripping_file_ready_timeout,
         # Sentinel monitoring
         sentinel_poll_interval=config.sentinel_poll_interval,
+        # Extras & naming
+        extras_policy=config.extras_policy,
+        naming_season_format=config.naming_season_format,
+        naming_episode_format=config.naming_episode_format,
+        naming_movie_format=config.naming_movie_format,
         # Onboarding
         setup_complete=config.setup_complete,
     )
@@ -340,6 +355,32 @@ async def update_config(config: ConfigUpdate) -> dict:
 
     # Build kwargs from non-None fields
     update_data = {k: v for k, v in config.model_dump().items() if v is not None}
+
+    # Validate naming format strings before persisting
+    from app.core.organizer import (
+        ALLOWED_MOVIE_PLACEHOLDERS,
+        ALLOWED_TV_PLACEHOLDERS,
+        validate_naming_format,
+    )
+
+    format_checks = [
+        ("naming_season_format", ALLOWED_TV_PLACEHOLDERS),
+        ("naming_episode_format", ALLOWED_TV_PLACEHOLDERS),
+        ("naming_movie_format", ALLOWED_MOVIE_PLACEHOLDERS),
+    ]
+    for field, allowed in format_checks:
+        if field in update_data:
+            error = validate_naming_format(update_data[field], allowed)
+            if error:
+                raise HTTPException(status_code=400, detail=f"{field}: {error}")
+
+    # Validate extras_policy
+    if "extras_policy" in update_data:
+        if update_data["extras_policy"] not in ("keep", "skip", "ask"):
+            raise HTTPException(
+                status_code=400,
+                detail="extras_policy must be 'keep', 'skip', or 'ask'",
+            )
 
     if update_data:
         await update_db_config(**update_data)
