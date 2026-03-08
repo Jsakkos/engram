@@ -94,6 +94,7 @@ class JobManager:
         self._subtitle_ready: dict[int, asyncio.Event] = {}
         self._drive_locks: dict[str, asyncio.Lock] = {}  # Per-drive lock to prevent duplicate jobs
         self._episode_runtimes: dict[int, list[int]] = {}  # job_id → episode runtimes in minutes
+        self._discdb_mappings: dict[int, list] = {}  # job_id → DiscDbTitleMapping list
         self._loop: asyncio.AbstractEventLoop | None = None
         self._match_semaphore: asyncio.Semaphore | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
@@ -283,15 +284,49 @@ class JobManager:
                     )
                     return
 
+                # Attempt TheDiscDB lookup (highest priority signal)
+                discdb_signal = None
+                from app.services.config_service import get_config_sync
+
+                config = get_config_sync()
+                if config.discdb_enabled:
+                    try:
+                        from app.core.discdb_classifier import classify_from_discdb
+                        from app.core.extractor import compute_content_hash
+
+                        content_hash = await asyncio.to_thread(
+                            compute_content_hash, job.drive_id
+                        )
+                        if content_hash:
+                            job.content_hash = content_hash
+
+                        discdb_signal = classify_from_discdb(
+                            job.volume_label, titles, content_hash=content_hash
+                        )
+                        if discdb_signal:
+                            logger.info(
+                                f"Job {job_id}: TheDiscDB signal: "
+                                f"{discdb_signal.content_type.value} "
+                                f"({discdb_signal.confidence:.0%}) - "
+                                f"{discdb_signal.matched_title} "
+                                f"[{discdb_signal.source}]"
+                            )
+                            job.discdb_slug = (
+                                discdb_signal.matched_title.lower().replace(" ", "-")
+                            )
+                            job.discdb_disc_slug = discdb_signal.disc_slug
+                    except Exception as e:
+                        logger.warning(
+                            f"Job {job_id}: TheDiscDB lookup failed: {e}", exc_info=True
+                        )
+
                 # Attempt TMDB lookup for classification signal
                 tmdb_signal = None
                 detected_name, _, _ = DiscAnalyst._parse_volume_label(job.volume_label)
                 if detected_name:
                     try:
                         from app.core.tmdb_classifier import classify_from_tmdb
-                        from app.services.config_service import get_config_sync
 
-                        config = get_config_sync()
                         if config.tmdb_api_key:
                             tmdb_signal = classify_from_tmdb(detected_name, config.tmdb_api_key)
                             if tmdb_signal:
@@ -306,8 +341,37 @@ class JobManager:
                             f"Job {job_id}: TMDB lookup failed, using heuristics only: {e}"
                         )
 
-                # Analyze disc content
-                analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
+                # Analyze disc content (DiscDB signal overrides when high-confidence)
+                analysis = self._analyst.analyze(
+                    titles, job.volume_label, tmdb_signal=tmdb_signal
+                )
+
+                # If TheDiscDB returned a high-confidence match, override the analysis
+                if discdb_signal and discdb_signal.confidence >= 0.90:
+                    logger.info(
+                        f"Job {job_id}: TheDiscDB override — "
+                        f"{discdb_signal.content_type.value} "
+                        f"({discdb_signal.confidence:.0%})"
+                    )
+                    analysis.content_type = discdb_signal.content_type
+                    analysis.confidence = discdb_signal.confidence
+                    analysis.classification_source = f"discdb_{discdb_signal.source}"
+                    analysis.detected_name = discdb_signal.matched_title
+                    analysis.needs_review = False
+                    if discdb_signal.tmdb_id:
+                        analysis.tmdb_id = discdb_signal.tmdb_id
+                    # Store title mappings for use during matching phase
+                    if discdb_signal.title_mappings:
+                        self._discdb_mappings[job_id] = discdb_signal.title_mappings
+                elif discdb_signal:
+                    # Lower confidence — use as supporting signal but don't override
+                    logger.info(
+                        f"Job {job_id}: TheDiscDB low-confidence signal "
+                        f"({discdb_signal.confidence:.0%}), using as supplementary"
+                    )
+                    if not analysis.detected_name:
+                        analysis.detected_name = discdb_signal.matched_title
+
                 logger.info(f"Job {job_id} Analysis Result: {analysis}")
 
                 # Save snapshot for debugging and test fixture generation
@@ -1498,13 +1562,21 @@ class JobManager:
                 f"(Title {title.id}, Job {job_id}) — queuing for matching"
             )
 
-            # If TV, queue matching task (will wait for file to finish writing)
+            # If TV, try DiscDB pre-assignment first, otherwise queue matching
             job = await session.get(DiscJob, job_id)
             if job and job.content_type == ContentType.TV:
-                task = asyncio.create_task(self._match_single_file(job_id, title.id, path))
-                task.add_done_callback(
-                    lambda t, jid=job_id, tid=title.id: self._on_match_task_done(t, jid, tid)
+                discdb_applied = await self._try_discdb_assignment(
+                    job_id, title, session
                 )
+                if not discdb_applied:
+                    task = asyncio.create_task(
+                        self._match_single_file(job_id, title.id, path)
+                    )
+                    task.add_done_callback(
+                        lambda t, jid=job_id, tid=title.id: self._on_match_task_done(
+                            t, jid, tid
+                        )
+                    )
 
     async def _backfill_unmatched_titles(
         self, job_id: int, staging_dir: Path, sorted_titles: list[DiscTitle]
@@ -1730,6 +1802,55 @@ class JobManager:
                     match_details=title.match_details,
                 )
             await self._check_job_completion(session, job_id)
+
+    async def _try_discdb_assignment(
+        self, job_id: int, title: "DiscTitle", session
+    ) -> bool:
+        """Try to assign episode info from TheDiscDB mappings, skipping fingerprinting.
+
+        Returns True if assignment was made, False to fall back to audio matching.
+        """
+        mappings = self._discdb_mappings.get(job_id)
+        if not mappings:
+            return False
+
+        # Find the mapping for this title index
+        mapping = None
+        for m in mappings:
+            if m.index == title.title_index:
+                mapping = m
+                break
+
+        if not mapping or not mapping.season or not mapping.episode:
+            return False
+
+        if mapping.title_type not in ("Episode", "MainMovie"):
+            return False
+
+        episode_code = f"S{mapping.season:02d}E{mapping.episode:02d}"
+        logger.info(
+            f"Job {job_id}: TheDiscDB pre-assigned title {title.title_index} "
+            f"→ {episode_code} ({mapping.episode_title!r}) — skipping audio matching"
+        )
+
+        title.matched_episode = episode_code
+        title.match_confidence = 0.99
+        title.match_details = (
+            f'{{"source": "discdb", "episode_title": "{mapping.episode_title}"}}'
+        )
+        title.state = TitleState.MATCHED
+        session.add(title)
+        await session.commit()
+
+        await ws_manager.broadcast_title_update(
+            job_id,
+            title.id,
+            TitleState.MATCHED.value,
+            matched_episode=episode_code,
+            match_confidence=0.99,
+        )
+
+        return True
 
     async def _match_single_file(self, job_id: int, title_id: int, file_path: Path) -> None:
         """Run matching for a single ripped file."""

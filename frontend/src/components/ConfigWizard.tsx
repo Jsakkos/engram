@@ -24,6 +24,7 @@ interface ConfigData {
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
     namingMovieFormat: string;
+    discdbEnabled: boolean;
 }
 
 interface ToolDetectionResult {
@@ -59,6 +60,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
+        discdbEnabled: true,
     });
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
@@ -103,6 +105,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
+                    discdbEnabled: data.discdb_enabled ?? true,
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -186,6 +189,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
+                    discdb_enabled: config.discdbEnabled,
                     setup_complete: true,
                 }),
             });
@@ -502,6 +506,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     <strong>Enable Transcoding</strong>
                                     <span className="checkbox-hint">
                                         Compress files after ripping using HandBrake (slower, smaller files)
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.discdbEnabled}
+                                    onChange={(e) => handleInputChange('discdbEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Enable TheDiscDB Lookup</strong>
+                                    <span className="checkbox-hint">
+                                        Query TheDiscDB for known disc layouts. When matched, skips audio fingerprinting and instantly maps episodes. No API key required.
                                     </span>
                                 </span>
                             </label>
