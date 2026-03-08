@@ -294,9 +294,7 @@ class JobManager:
                         from app.core.discdb_classifier import classify_from_discdb
                         from app.core.extractor import compute_content_hash
 
-                        content_hash = await asyncio.to_thread(
-                            compute_content_hash, job.drive_id
-                        )
+                        content_hash = await asyncio.to_thread(compute_content_hash, job.drive_id)
                         if content_hash:
                             job.content_hash = content_hash
 
@@ -311,14 +309,10 @@ class JobManager:
                                 f"{discdb_signal.matched_title} "
                                 f"[{discdb_signal.source}]"
                             )
-                            job.discdb_slug = (
-                                discdb_signal.matched_title.lower().replace(" ", "-")
-                            )
+                            job.discdb_slug = discdb_signal.matched_title.lower().replace(" ", "-")
                             job.discdb_disc_slug = discdb_signal.disc_slug
                     except Exception as e:
-                        logger.warning(
-                            f"Job {job_id}: TheDiscDB lookup failed: {e}", exc_info=True
-                        )
+                        logger.warning(f"Job {job_id}: TheDiscDB lookup failed: {e}", exc_info=True)
 
                 # Attempt TMDB lookup for classification signal
                 tmdb_signal = None
@@ -341,10 +335,62 @@ class JobManager:
                             f"Job {job_id}: TMDB lookup failed, using heuristics only: {e}"
                         )
 
+                # AI-powered identification fallback
+                # Triggers when: TMDB failed AND DiscDB didn't produce a high-confidence match
+                ai_identified_name = None
+                if (
+                    not tmdb_signal
+                    and not (discdb_signal and discdb_signal.confidence >= 0.90)
+                    and config.ai_identification_enabled
+                    and config.ai_api_key
+                ):
+                    try:
+                        from app.core.ai_identifier import identify_from_label
+
+                        logger.info(
+                            f"Job {job_id}: TMDB lookup failed, trying AI identification "
+                            f"for '{job.volume_label}'"
+                        )
+                        ai_result = await identify_from_label(
+                            job.volume_label,
+                            config.ai_provider,
+                            config.ai_api_key,
+                        )
+                        if ai_result and ai_result.get("title"):
+                            ai_identified_name = ai_result["title"]
+                            logger.info(f"Job {job_id}: AI identified as '{ai_identified_name}'")
+                            # Re-query TMDB with the AI-corrected name
+                            if config.tmdb_api_key:
+                                try:
+                                    from app.core.tmdb_classifier import classify_from_tmdb
+
+                                    tmdb_signal = classify_from_tmdb(
+                                        ai_identified_name, config.tmdb_api_key
+                                    )
+                                    if tmdb_signal:
+                                        logger.info(
+                                            f"Job {job_id}: TMDB re-query with AI name: "
+                                            f"{tmdb_signal.content_type.value} "
+                                            f"({tmdb_signal.confidence:.0%}) - "
+                                            f"{tmdb_signal.tmdb_name}"
+                                        )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Job {job_id}: TMDB re-query after AI failed: {e}"
+                                    )
+                    except Exception as e:
+                        logger.warning(
+                            f"Job {job_id}: AI identification failed: {e}", exc_info=True
+                        )
+
                 # Analyze disc content (DiscDB signal overrides when high-confidence)
-                analysis = self._analyst.analyze(
-                    titles, job.volume_label, tmdb_signal=tmdb_signal
-                )
+                analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
+
+                # If AI identified a name but TMDB re-query also failed,
+                # use the AI name as the detected title
+                if ai_identified_name and not analysis.detected_name:
+                    analysis.detected_name = ai_identified_name
+                    analysis.classification_source = "ai"
 
                 # If TheDiscDB returned a high-confidence match, override the analysis
                 if discdb_signal and discdb_signal.confidence >= 0.90:
@@ -451,9 +497,7 @@ class JobManager:
                 # handle them according to extras policy (keep/skip/ask)
                 discdb_maps = self._discdb_mappings.get(job_id, [])
                 if analysis.content_type == ContentType.MOVIE and discdb_maps:
-                    main_indices = {
-                        m.index for m in discdb_maps if m.title_type == "MainMovie"
-                    }
+                    main_indices = {m.index for m in discdb_maps if m.title_type == "MainMovie"}
                     extra_indices = {
                         m.index
                         for m in discdb_maps
@@ -462,9 +506,7 @@ class JobManager:
                     if main_indices:
                         await session.flush()
                         stmt = select(DiscTitle).where(DiscTitle.job_id == job_id)
-                        db_titles_for_select = (
-                            await session.execute(stmt)
-                        ).scalars().all()
+                        db_titles_for_select = (await session.execute(stmt)).scalars().all()
                         for dt in db_titles_for_select:
                             if dt.title_index in extra_indices:
                                 dt.is_extra = True
@@ -1620,17 +1662,11 @@ class JobManager:
             # If TV, try DiscDB pre-assignment first, otherwise queue matching
             job = await session.get(DiscJob, job_id)
             if job and job.content_type == ContentType.TV:
-                discdb_applied = await self._try_discdb_assignment(
-                    job_id, title, session
-                )
+                discdb_applied = await self._try_discdb_assignment(job_id, title, session)
                 if not discdb_applied:
-                    task = asyncio.create_task(
-                        self._match_single_file(job_id, title.id, path)
-                    )
+                    task = asyncio.create_task(self._match_single_file(job_id, title.id, path))
                     task.add_done_callback(
-                        lambda t, jid=job_id, tid=title.id: self._on_match_task_done(
-                            t, jid, tid
-                        )
+                        lambda t, jid=job_id, tid=title.id: self._on_match_task_done(t, jid, tid)
                     )
 
     async def _backfill_unmatched_titles(
@@ -1858,9 +1894,7 @@ class JobManager:
                 )
             await self._check_job_completion(session, job_id)
 
-    async def _try_discdb_assignment(
-        self, job_id: int, title: "DiscTitle", session
-    ) -> bool:
+    async def _try_discdb_assignment(self, job_id: int, title: "DiscTitle", session) -> bool:
         """Try to assign episode info from TheDiscDB mappings, skipping fingerprinting.
 
         Returns True if assignment was made, False to fall back to audio matching.
@@ -1890,9 +1924,7 @@ class JobManager:
 
         title.matched_episode = episode_code
         title.match_confidence = 0.99
-        title.match_details = (
-            f'{{"source": "discdb", "episode_title": "{mapping.episode_title}"}}'
-        )
+        title.match_details = f'{{"source": "discdb", "episode_title": "{mapping.episode_title}"}}'
         title.state = TitleState.MATCHED
         session.add(title)
         await session.commit()

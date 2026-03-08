@@ -1,7 +1,6 @@
 """Tests for disc scan snapshot capture."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 from app.core.analyst import DiscAnalysisResult, TitleInfo
