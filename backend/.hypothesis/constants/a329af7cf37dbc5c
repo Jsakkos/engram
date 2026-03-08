@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\asr_provider.py
+# hypothesis_version: 6.151.9
+
+['device', 'faster-whisper', 'name', 'openai-whisper', 'parakeet', 'small', 'text', 'type', 'whisper']

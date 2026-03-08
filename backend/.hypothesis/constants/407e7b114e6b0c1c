@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\services\ripping_coordinator.py
+# hypothesis_version: 6.151.9
+
+[0.0, 100.0, '*.mkv', 'Cancelled by user', 'error', 'main_file', 'success', 't(\\d+)\\.mkv$', 'title[_]?(\\d+)\\.mkv$', 'waiting_for_file', '—']

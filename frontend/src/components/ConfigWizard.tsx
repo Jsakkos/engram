@@ -18,6 +18,8 @@ interface ConfigData {
     maxConcurrentMatches: number;
     ffmpegPath: string;
     conflictResolutionDefault: string;
+    stagingCleanupPolicy: string;
+    stagingCleanupDays: number;
     extrasPolicy: string;
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
@@ -51,6 +53,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         maxConcurrentMatches: 2,
         ffmpegPath: '',
         conflictResolutionDefault: 'ask',
+        stagingCleanupPolicy: 'on_success',
+        stagingCleanupDays: 7,
         extrasPolicy: 'keep',
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
@@ -62,6 +66,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
     const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean}>({makemkv: false, tmdb: false});
+    const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
 
     const totalSteps = 4;
 
@@ -92,6 +97,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     maxConcurrentMatches: data.max_concurrent_matches ?? 2,
                     ffmpegPath: data.ffmpeg_path || '',
                     conflictResolutionDefault: data.conflict_resolution_default || 'ask',
+                    stagingCleanupPolicy: data.staging_cleanup_policy || 'on_success',
+                    stagingCleanupDays: data.staging_cleanup_days ?? 7,
                     extrasPolicy: data.extras_policy || 'keep',
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
@@ -173,6 +180,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     max_concurrent_matches: config.maxConcurrentMatches,
                     ffmpeg_path: config.ffmpegPath,
                     conflict_resolution_default: config.conflictResolutionDefault,
+                    staging_cleanup_policy: config.stagingCleanupPolicy,
+                    staging_cleanup_days: config.stagingCleanupDays,
                     extras_policy: config.extrasPolicy,
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
@@ -194,6 +203,30 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
             alert(`Failed to save configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleTestTmdb = async () => {
+        const key = config.tmdbApiKey.trim();
+        if (!key) {
+            setTmdbValidation({status: 'invalid', error: 'Please enter a token first'});
+            return;
+        }
+        setTmdbValidation({status: 'testing'});
+        try {
+            const response = await fetch('/api/validate/tmdb', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ api_key: key }),
+            });
+            const result = await response.json();
+            if (result.valid) {
+                setTmdbValidation({status: 'valid'});
+            } else {
+                setTmdbValidation({status: 'invalid', error: result.error || 'Invalid token'});
+            }
+        } catch {
+            setTmdbValidation({status: 'invalid', error: 'Failed to reach validation endpoint'});
         }
     };
 
@@ -419,9 +452,29 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 id="tmdbApiKey"
                                 type="text"
                                 value={config.tmdbApiKey}
-                                onChange={(e) => handleInputChange('tmdbApiKey', e.target.value)}
+                                onChange={(e) => {
+                                    handleInputChange('tmdbApiKey', e.target.value);
+                                    setTmdbValidation({status: 'idle'});
+                                }}
                                 placeholder={savedKeys.tmdb ? "Enter new token to replace existing" : "eyJhbGciOiJIUzI1NiJ9..."}
                             />
+                            <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                <button
+                                    type="button"
+                                    onClick={handleTestTmdb}
+                                    disabled={tmdbValidation.status === 'testing' || (!config.tmdbApiKey && !savedKeys.tmdb)}
+                                    className="btn-secondary"
+                                    style={{padding: '0.25rem 0.75rem', fontSize: '0.85rem'}}
+                                >
+                                    {tmdbValidation.status === 'testing' ? 'Testing...' : 'Test Token'}
+                                </button>
+                                {tmdbValidation.status === 'valid' && (
+                                    <span style={{color: '#22c55e', fontSize: '0.85rem'}}>Valid token</span>
+                                )}
+                                {tmdbValidation.status === 'invalid' && (
+                                    <span style={{color: '#ef4444', fontSize: '0.85rem'}}>{tmdbValidation.error}</span>
+                                )}
+                            </div>
                             <span className="form-hint">
                                 The Read Access Token is a long JWT string starting with "eyJ...".
                                 Find it under API &rarr; Read Access Token in your TMDB account settings.
@@ -485,6 +538,40 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 What should Engram do when a file already exists in your library?
                             </span>
                         </div>
+
+                        <div className="form-group">
+                            <label htmlFor="stagingCleanup">Staging Cleanup Policy</label>
+                            <select
+                                id="stagingCleanup"
+                                value={config.stagingCleanupPolicy}
+                                onChange={(e) => handleInputChange('stagingCleanupPolicy', e.target.value)}
+                            >
+                                <option value="on_success">Clean on success (delete after organization)</option>
+                                <option value="on_completion">Clean on completion (delete after success or failure)</option>
+                                <option value="after_days">Clean after N days</option>
+                                <option value="manual">Manual only (never auto-delete)</option>
+                            </select>
+                            <span className="form-hint">
+                                When should staging files be automatically deleted? A single Blu-ray rip can be 30-50GB.
+                            </span>
+                        </div>
+
+                        {config.stagingCleanupPolicy === 'after_days' && (
+                            <div className="form-group">
+                                <label htmlFor="stagingCleanupDays">Cleanup After (days)</label>
+                                <input
+                                    id="stagingCleanupDays"
+                                    type="number"
+                                    min={1}
+                                    max={365}
+                                    value={config.stagingCleanupDays}
+                                    onChange={(e) => handleInputChange('stagingCleanupDays', Math.max(1, parseInt(e.target.value) || 7))}
+                                />
+                                <span className="form-hint">
+                                    Delete staging files older than this many days.
+                                </span>
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label htmlFor="extrasPolicy">Extras Handling</label>

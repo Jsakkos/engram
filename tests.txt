@@ -1,0 +1,9 @@
+Improve disc title recognition: Add AI search to resolve shows and movies from discs that aren't found on tmdb. First try to get the name resolved using AI search. If that is still not successful, rip the main track, then use whisper to transcribe the first 2 minutes, with a lower limit of 50 words. Then use AI to search for what content matches those words. Think about how best to include this, possibly as another API key?
+Let the user configure whether they want to keep extras
+Let the user configure how their seasons are numbered (e.g., 01 or 1) and how their episodes are labelled (e.g., S01E01, s01E01,etc.)
+Improve the automated testing
+Add staged file cleanup
+Add more detailed history/analytics so that I can better understand failures and edge cases. Think about a mechanism for users to send a bug report. Github or Discord?
+Improve the matching card by showing the scores and possibly coverage along with the votes.
+Improve the UI and UX. 
+The individual track ripping progress is broken for movies, though the main progress bar does work. The tracks seem to visually be stuck in the ripping state, even after the files are done ripping.

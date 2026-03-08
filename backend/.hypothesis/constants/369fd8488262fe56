@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\api\__init__.py
+# hypothesis_version: 6.151.9
+
+['ConnectionManager', 'manager', 'router', 'test_router']

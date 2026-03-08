@@ -54,6 +54,14 @@ class JobStateMachine:
 
     def __init__(self, event_broadcaster: EventBroadcaster):
         self._broadcaster = event_broadcaster
+        self._on_terminal_callbacks: list = []
+
+    def on_terminal_state(self, callback) -> None:
+        """Register a callback invoked when a job reaches a terminal state (COMPLETED/FAILED).
+
+        Callback signature: async def callback(job_id: int, state: JobState) -> None
+        """
+        self._on_terminal_callbacks.append(callback)
 
     def can_transition(self, from_state: JobState, to_state: JobState) -> bool:
         """Validate if state transition is allowed.
@@ -134,6 +142,16 @@ class JobStateMachine:
                     f"Job {job.id}: broadcast failed after committing {to_state.value}: {e}",
                     exc_info=True,
                 )
+
+        # Fire terminal-state callbacks (COMPLETED or FAILED)
+        if to_state in (JobState.COMPLETED, JobState.FAILED):
+            for cb in self._on_terminal_callbacks:
+                try:
+                    await cb(job.id, to_state)
+                except Exception as e:
+                    logger.error(
+                        f"Job {job.id}: terminal-state callback failed: {e}", exc_info=True
+                    )
 
         return True
 

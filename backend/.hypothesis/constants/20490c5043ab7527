@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\services\config_service.py
+# hypothesis_version: 6.151.9
+
+['+aiosqlite', 'Engram', 'Movies', 'Staging', 'TV', 'engram', 'library_movies_path', 'library_tv_path', 'makemkv_key', 'movies', 'staging', 'staging_path', 'tmdb_api_key', 'tv', 'win32']

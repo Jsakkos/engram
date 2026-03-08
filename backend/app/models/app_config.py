@@ -58,6 +58,10 @@ class AppConfig(SQLModel, table=True):
     # Sentinel Drive Monitoring
     sentinel_poll_interval: float = 2.0  # Seconds between drive polls
 
+    # Staging Cleanup
+    staging_cleanup_policy: str = "on_success"  # "on_success" | "on_completion" | "manual" | "after_days"
+    staging_cleanup_days: int = 7  # Only used when policy is "after_days"
+
     # Extras handling
     extras_policy: str = "keep"  # "keep" | "skip" | "ask"
 

@@ -10,6 +10,8 @@ const stateConfig: Record<DiscState, { label: string; color: string; glow: strin
   scanning: { label: "SCANNING", color: "text-cyan-400", glow: "rgba(6, 182, 212, 0.8)" },
   archiving_iso: { label: "ARCHIVING", color: "text-purple-400", glow: "rgba(139, 92, 246, 0.8)" },
   ripping: { label: "RIPPING", color: "text-magenta-400", glow: "rgba(236, 72, 153, 0.8)" },
+  matching: { label: "MATCHING", color: "text-amber-400", glow: "rgba(245, 158, 11, 0.8)" },
+  organizing: { label: "ORGANIZING", color: "text-violet-400", glow: "rgba(139, 92, 246, 0.8)" },
   processing: { label: "PROCESSING", color: "text-amber-400", glow: "rgba(245, 158, 11, 0.8)" },
   completed: { label: "COMPLETE", color: "text-green-400", glow: "rgba(16, 185, 129, 0.8)" },
   error: { label: "ERROR", color: "text-red-400", glow: "rgba(239, 68, 68, 0.8)" },

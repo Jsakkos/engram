@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\models.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.7, '.engram', '.mkv-episode-matcher', 'TMDB_API_KEY', 'asr_model_name', 'asr_provider', 'before', 'cache', 'config.json', 'en', 'local', 'opensubtitles', 'parakeet', 'show_dir', 'small', 'tmdb_api_key', 'w', 'whisper']

@@ -54,6 +54,16 @@ class DiscJob(SQLModel, table=True):
     detected_season: int | None = None
     is_transcoding_enabled: bool = False
 
+    # Classification metadata (persisted from DiscAnalysisResult)
+    classification_confidence: float = Field(default=0.0, sa_column_kwargs={"server_default": "0.0"})
+    classification_source: str = Field(
+        default="heuristic", sa_column_kwargs={"server_default": "'heuristic'"}
+    )
+    tmdb_id: int | None = Field(default=None)
+    tmdb_name: str | None = Field(default=None)
+    play_all_indices_json: str | None = Field(default=None)
+    is_ambiguous_movie: bool = Field(default=False, sa_column_kwargs={"server_default": "0"})
+
     # Paths
     staging_path: str | None = None
     final_path: str | None = None

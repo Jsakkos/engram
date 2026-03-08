@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\addic7ed_client.py
+# hypothesis_version: 6.151.9
+
+[0.0, 60.0, 404, ' - ', '(\\d+)\\s*Downloads?', ',', '/user/\\d+', '2HD', ': ', 'ASAP', 'AVS', 'Accept', 'Accept-Language', 'DIMENSION', 'Dexter New Blood', 'Dexter: New Blood', 'EXCELLENCE', 'English', 'FLEET', 'FoV', 'IMMERSE', 'KILLERS', 'LOL', 'NewsTitle', 'Original', 'PROPER', 'REPACK', 'Referer', 'Rings of Power', 'Star Trek: Picard', 'Star Trek: TNG', 'Stargate Atlantis', 'Stargate: Atlantis', 'TLA', 'The Office', 'The Office (US)', 'The Office US', 'The Rings of Power', 'Unknown', 'User-Agent', 'Version ', "[^\\w\\s\\-':]", '\\s*\\(\\d{4}\\)\\s*$', '_', "_-'", 'a', 'application', 'buttonDownload', 'class', 'content-type', 'data', 'en-US,en;q=0.5', 'face-button', 'href', 'html.parser', 'language', 'name', 'newsDate', 'tabel95', 'table', 'td', 'text', 'url_name', 'Â']
