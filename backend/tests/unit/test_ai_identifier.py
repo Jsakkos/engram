@@ -95,6 +95,26 @@ class TestIdentifyFromLabel:
         assert result["type"] == "tv"
 
     @pytest.mark.asyncio
+    async def test_openrouter_success(self):
+        mock_client = _make_mock_client(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"title": "The Office", "year": 2005, "type": "tv"}'
+                        }
+                    }
+                ]
+            }
+        )
+        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+            result = await identify_from_label("THE_OFFICE_S1D1", "openrouter", "sk-or-test")
+
+        assert result is not None
+        assert result["title"] == "The Office"
+        assert result["year"] == 2005
+
+    @pytest.mark.asyncio
     async def test_unknown_provider(self):
         result = await identify_from_label("TEST", "gemini", "key")
         assert result is None

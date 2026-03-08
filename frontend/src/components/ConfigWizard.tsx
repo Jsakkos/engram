@@ -566,21 +566,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     >
                                         <option value="anthropic">Anthropic (Claude)</option>
                                         <option value="openai">OpenAI</option>
+                                        <option value="openrouter">OpenRouter</option>
                                     </select>
                                 </div>
                                 <div className="form-group">
                                     <label htmlFor="aiApiKey">
-                                        {config.aiProvider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API Key
+                                        {{ anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter' }[config.aiProvider] || config.aiProvider} API Key
                                     </label>
                                     <input
                                         id="aiApiKey"
                                         type="password"
-                                        placeholder={config.aiProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...'}
+                                        placeholder={{ anthropic: 'sk-ant-...', openai: 'sk-...', openrouter: 'sk-or-...' }[config.aiProvider] || ''}
                                         value={config.aiApiKey}
                                         onChange={(e) => handleInputChange('aiApiKey', e.target.value)}
                                     />
                                     <span className="form-hint">
-                                        API key for {config.aiProvider === 'anthropic' ? 'Anthropic' : 'OpenAI'}. Used only when TMDB lookup fails.
+                                        API key for {{ anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter' }[config.aiProvider] || config.aiProvider}. Used only when TMDB lookup fails.
                                     </span>
                                 </div>
                             </>
