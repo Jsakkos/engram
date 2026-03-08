@@ -70,5 +70,8 @@ class AppConfig(SQLModel, table=True):
     naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
     naming_movie_format: str = "{title} ({year})"
 
+    # TheDiscDB
+    discdb_enabled: bool = True  # Enable TheDiscDB lookups for disc identification
+
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

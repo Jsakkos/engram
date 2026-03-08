@@ -94,6 +94,11 @@ class DiscJob(SQLModel, table=True):
     # Disc metadata for multi-disc sets
     disc_number: int = 1  # For multi-disc sets, default to 1
 
+    # TheDiscDB metadata
+    content_hash: str | None = Field(default=None)  # MakeMKV disc fingerprint (MD5)
+    discdb_slug: str | None = Field(default=None)  # e.g., "band-of-brothers-2001"
+    discdb_disc_slug: str | None = Field(default=None)  # e.g., "S01D01"
+
 
 class DiscTitle(SQLModel, table=True):
     """Individual title (track) on a disc."""

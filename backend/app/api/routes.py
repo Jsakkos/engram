@@ -75,6 +75,8 @@ class ConfigResponse(BaseModel):
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
+    # TheDiscDB
+    discdb_enabled: bool
     # Onboarding
     setup_complete: bool
 
@@ -113,6 +115,8 @@ class ConfigUpdate(BaseModel):
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
+    # TheDiscDB
+    discdb_enabled: bool | None = None
     # Onboarding
     setup_complete: bool | None = None
 
@@ -352,6 +356,8 @@ async def get_config() -> ConfigResponse:
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,
+        # TheDiscDB
+        discdb_enabled=config.discdb_enabled,
         # Onboarding
         setup_complete=config.setup_complete,
     )

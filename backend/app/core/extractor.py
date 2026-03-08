@@ -4,8 +4,10 @@ Handles disc scanning and extraction using makemkvcon.
 """
 
 import asyncio
+import hashlib
 import logging
 import re
+import struct
 import subprocess
 import time
 from collections.abc import Callable
@@ -42,6 +44,54 @@ class RipResult:
 
 class ScanTimeoutError(Exception):
     """MakeMKV disc scan exceeded time limit."""
+
+
+def compute_content_hash(drive_letter: str) -> str | None:
+    """Compute TheDiscDB-compatible ContentHash for a disc.
+
+    The hash is MD5 of concatenated Int64 file sizes from BDMV/STREAM/*.m2ts
+    (Blu-ray) or VIDEO_TS/* (DVD), sorted by filename. This matches the
+    algorithm used by TheDiscDB's ImportBuddy tool.
+
+    Args:
+        drive_letter: Drive letter (e.g., "E:" or "E")
+
+    Returns:
+        Uppercase hex MD5 hash string, or None if disc structure not found
+    """
+    drive = drive_letter.rstrip(":\\")
+    bdmv_path = Path(f"{drive}:\\BDMV\\STREAM")
+    dvd_path = Path(f"{drive}:\\VIDEO_TS")
+
+    target_path = None
+    pattern = "*"
+
+    if bdmv_path.is_dir():
+        target_path = bdmv_path
+        pattern = "*.m2ts"
+    elif dvd_path.is_dir():
+        target_path = dvd_path
+    else:
+        logger.debug(f"No BDMV/STREAM or VIDEO_TS found on drive {drive}")
+        return None
+
+    try:
+        files = sorted(target_path.glob(pattern), key=lambda f: f.name)
+        if not files:
+            return None
+
+        md5 = hashlib.md5()
+        for f in files:
+            size = f.stat().st_size
+            # Pack as Int64 little-endian (matches C# BitConverter.GetBytes(long))
+            md5.update(struct.pack("<q", size))
+
+        content_hash = md5.hexdigest().upper()
+        logger.info(f"Computed ContentHash for drive {drive}: {content_hash}")
+        return content_hash
+    except (OSError, PermissionError) as e:
+        logger.warning(f"Could not compute ContentHash for drive {drive}: {e}")
+        return None
 
 
 class MakeMKVExtractor:

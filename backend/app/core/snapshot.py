@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.analyst import DiscAnalysisResult
@@ -31,13 +31,13 @@ def save_snapshot(volume_label: str, analysis: DiscAnalysisResult) -> Path | Non
     try:
         SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         safe_label = _safe_filename(volume_label) or "unknown"
         filename = f"{safe_label}_{timestamp}.json"
 
         snapshot = {
             "volume_label": volume_label,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "classification": {
                 "content_type": analysis.content_type.value,
                 "confidence": analysis.confidence,
