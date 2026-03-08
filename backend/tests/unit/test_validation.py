@@ -4,6 +4,7 @@ Tests path validation, configuration validation, and input sanitization.
 """
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from pydantic import ValidationError
 
@@ -315,3 +316,65 @@ class TestConfigurationEdgeCases:
             assert len(config.staging_path) <= 4096
         except ValidationError:
             pass  # Validation error is acceptable
+
+
+class TestTmdbValidation:
+    """Test TMDB API key validation endpoint logic."""
+
+    @patch("app.api.validation.requests.get")
+    def test_valid_tmdb_key(self, mock_get):
+        """Valid TMDB key returns valid=True."""
+        from app.api.validation import validate_tmdb, TmdbValidationRequest
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_get.return_value = mock_response
+
+        import asyncio
+
+        req = TmdbValidationRequest(api_key="eyJhbGciOiJIUzI1NiJ9.test.sig")
+        result = asyncio.run(validate_tmdb(req))
+        assert result.valid is True
+
+    @patch("app.api.validation.requests.get")
+    def test_invalid_tmdb_key(self, mock_get):
+        """Invalid TMDB key returns valid=False with error."""
+        from app.api.validation import validate_tmdb, TmdbValidationRequest
+
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_get.return_value = mock_response
+
+        import asyncio
+
+        req = TmdbValidationRequest(api_key="bad_key")
+        result = asyncio.run(validate_tmdb(req))
+        assert result.valid is False
+        assert "Invalid" in result.error
+
+    def test_empty_tmdb_key(self):
+        """Empty TMDB key returns valid=False."""
+        from app.api.validation import validate_tmdb, TmdbValidationRequest
+
+        import asyncio
+
+        req = TmdbValidationRequest(api_key="")
+        result = asyncio.run(validate_tmdb(req))
+        assert result.valid is False
+        assert "empty" in result.error.lower()
+
+    @patch("app.api.validation.requests.get")
+    def test_tmdb_network_error(self, mock_get):
+        """Network error returns valid=False with connection error."""
+        import requests as req_lib
+
+        from app.api.validation import validate_tmdb, TmdbValidationRequest
+
+        mock_get.side_effect = req_lib.exceptions.ConnectionError("DNS failed")
+
+        import asyncio
+
+        req = TmdbValidationRequest(api_key="some_key")
+        result = asyncio.run(validate_tmdb(req))
+        assert result.valid is False
+        assert "connection" in result.error.lower()

@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import requests
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -18,6 +19,12 @@ class ValidationRequest(BaseModel):
     """Request model for validation endpoints."""
 
     path: str
+
+
+class TmdbValidationRequest(BaseModel):
+    """Request model for TMDB API key validation."""
+
+    api_key: str
 
 
 class ValidationResponse(BaseModel):
@@ -243,3 +250,37 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
         return ValidationResponse(valid=False, error="FFmpeg command timeout (10s)")
     except Exception as e:
         return ValidationResponse(valid=False, error=f"Execution failed: {str(e)}")
+
+
+@router.post("/validate/tmdb", response_model=ValidationResponse)
+async def validate_tmdb(request: TmdbValidationRequest) -> ValidationResponse:
+    """Validate a TMDB API key by making a lightweight configuration request."""
+    api_key = request.api_key.strip()
+    if not api_key:
+        return ValidationResponse(valid=False, error="API key is empty")
+
+    from app.core.tmdb_classifier import _build_auth
+
+    headers, params = _build_auth(api_key)
+
+    try:
+        response = requests.get(
+            "https://api.themoviedb.org/3/configuration",
+            headers=headers,
+            params=params,
+            timeout=5,
+        )
+        if response.status_code == 200:
+            return ValidationResponse(valid=True, version="TMDB API v3")
+        elif response.status_code in (401, 403):
+            return ValidationResponse(valid=False, error="Invalid API key or token")
+        else:
+            return ValidationResponse(
+                valid=False, error=f"TMDB returned status {response.status_code}"
+            )
+    except requests.exceptions.Timeout:
+        return ValidationResponse(valid=False, error="TMDB API timeout (5s)")
+    except requests.exceptions.ConnectionError:
+        return ValidationResponse(valid=False, error="Cannot reach TMDB API — check internet connection")
+    except Exception as e:
+        return ValidationResponse(valid=False, error=f"Validation failed: {str(e)}")
