@@ -113,9 +113,7 @@ class TestAnalystPropertyBased:
 
     @given(
         base=st.integers(min_value=20 * 60, max_value=65 * 60),
-        offsets=st.lists(
-            st.integers(min_value=-60, max_value=60), min_size=3, max_size=10
-        ),
+        offsets=st.lists(st.integers(min_value=-60, max_value=60), min_size=3, max_size=10),
     )
     @settings(max_examples=50)
     def test_uniform_tv_durations_classified_as_tv(self, base, offsets):
@@ -148,9 +146,7 @@ class TestAnalystPropertyBased:
 
     @given(
         base=st.integers(min_value=20 * 60, max_value=65 * 60),
-        offsets=st.lists(
-            st.integers(min_value=-60, max_value=60), min_size=3, max_size=6
-        ),
+        offsets=st.lists(st.integers(min_value=-60, max_value=60), min_size=3, max_size=6),
         extras=st.lists(short_duration, min_size=0, max_size=3),
     )
     @settings(max_examples=30)
@@ -171,7 +167,9 @@ class TestAnalystPropertyBased:
 class TestOrganizerPropertyBased:
     """Property-based tests for file naming and path construction."""
 
-    @given(name=st.text(min_size=1, max_size=50, alphabet=st.characters(categories=("L", "N", "Z"))))
+    @given(
+        name=st.text(min_size=1, max_size=50, alphabet=st.characters(categories=("L", "N", "Z")))
+    )
     @settings(max_examples=50)
     def test_sanitize_filename_never_contains_invalid_chars(self, name):
         """sanitize_filename output should never contain Windows-invalid characters."""
@@ -180,7 +178,9 @@ class TestOrganizerPropertyBased:
         for char in result:
             assert char not in invalid, f"Invalid char {char!r} in sanitized: {result!r}"
 
-    @given(name=st.text(min_size=1, max_size=50, alphabet=st.characters(categories=("L", "N", "Z"))))
+    @given(
+        name=st.text(min_size=1, max_size=50, alphabet=st.characters(categories=("L", "N", "Z")))
+    )
     @settings(max_examples=50)
     def test_clean_movie_name_returns_nonempty(self, name):
         """clean_movie_name should return a non-empty string for non-empty input."""

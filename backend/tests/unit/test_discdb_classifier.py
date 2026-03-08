@@ -268,7 +268,9 @@ class TestClassifyFromDiscdb:
             }
         }
 
-        titles = [TitleInfo(index=0, duration_seconds=8890, size_bytes=40000000000, chapter_count=20)]
+        titles = [
+            TitleInfo(index=0, duration_seconds=8890, size_bytes=40000000000, chapter_count=20)
+        ]
         signal = classify_from_discdb("INCEPTION_2010", titles, content_hash="AABBCCDD")
 
         assert signal is not None
