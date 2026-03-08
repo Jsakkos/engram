@@ -12,6 +12,60 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Allowed placeholders for naming format strings
+ALLOWED_TV_PLACEHOLDERS = {"show", "season", "episode"}
+ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year"}
+
+
+def format_season_folder(fmt: str, season: int) -> str:
+    """Format a season folder name from a config format string."""
+    try:
+        result = fmt.format(season=season)
+    except (KeyError, ValueError, IndexError):
+        result = f"Season {season:02d}"
+    return sanitize_filename(result)
+
+
+def format_episode_filename(fmt: str, show: str, season: int, episode: int) -> str:
+    """Format an episode filename from a config format string."""
+    try:
+        result = fmt.format(show=show, season=season, episode=episode)
+    except (KeyError, ValueError, IndexError):
+        result = f"{show} - S{season:02d}E{episode:02d}"
+    return sanitize_filename(result)
+
+
+def format_movie_folder(fmt: str, title: str, year: int | None) -> str:
+    """Format a movie folder name from a config format string."""
+    try:
+        result = fmt.format(title=title, year=year or "")
+    except (KeyError, ValueError, IndexError):
+        result = f"{title} ({year})" if year else title
+    # Clean up trailing empty parens if year is None
+    result = re.sub(r"\s*\(\s*\)\s*$", "", result).strip()
+    return sanitize_filename(result)
+
+
+def validate_naming_format(fmt: str, allowed: set[str]) -> str | None:
+    """Validate a naming format string. Returns error message or None if valid."""
+    import string
+
+    try:
+        formatter = string.Formatter()
+        fields = [name for _, name, _, _ in formatter.parse(fmt) if name is not None]
+    except (ValueError, IndexError) as e:
+        return f"Invalid format string: {e}"
+
+    unknown = set(fields) - allowed
+    if unknown:
+        return f"Unknown placeholders: {unknown}. Allowed: {allowed}"
+
+    # Check for path traversal
+    if ".." in fmt or fmt.startswith("/") or fmt.startswith("\\"):
+        return "Format must not contain path traversal characters"
+
+    return None
+
 
 def clean_movie_name(raw_name: str) -> str:
     """Clean up a movie name from volume label or filename.
@@ -155,14 +209,11 @@ def organize_movie(
     # Clean and sanitize the movie name
     clean_name = clean_movie_name(movie_name)
 
-    # Create folder name (with year if available)
-    if year:
-        folder_name = f"{clean_name} ({year})"
-    else:
-        folder_name = clean_name
+    # Load naming format from config
+    from app.services.config_service import get_config_sync
 
-    # Sanitize for filesystem
-    folder_name = sanitize_filename(folder_name)
+    cfg = get_config_sync()
+    folder_name = format_movie_folder(cfg.naming_movie_format, clean_name, year)
     file_name = f"{folder_name}.mkv"
 
     # Create destination directory
@@ -307,23 +358,30 @@ def organize_tv_episode(
             "error": "Library path not configured. Please set TV Library path in Settings.",
         }
 
-    # Parse episode code to extract season
-    match = re.match(r"S(\d+)E\d+", episode_code, re.IGNORECASE)
-    if not match:
+    # Parse episode code to extract season and episode numbers
+    ep_match = re.match(r"S(\d+)E(\d+)", episode_code, re.IGNORECASE)
+    if not ep_match:
         return {
             "success": False,
             "final_path": None,
             "error": f"Invalid episode code format: {episode_code}",
         }
 
-    season_num = int(match.group(1))
+    season_num = int(ep_match.group(1))
+    episode_num = int(ep_match.group(2))
+
+    # Load naming format from config
+    from app.services.config_service import get_config_sync
+
+    cfg = get_config_sync()
 
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
-    season_folder = f"Season {season_num:02d}"
-    filename = f"{clean_show} - {episode_code.upper()}.mkv"
+    season_folder = format_season_folder(cfg.naming_season_format, season_num)
+    ep_stem = format_episode_filename(cfg.naming_episode_format, clean_show, season_num, episode_num)
+    filename = f"{ep_stem}.mkv"
 
-    # Build destination path: Library/TV/Show Name/Season XX/Show Name - SXXEXX.mkv
+    # Build destination path
     library_path = Path(library_path)
     dest_dir = library_path / clean_show / season_folder
     dest_file = dest_dir / filename
@@ -409,14 +467,18 @@ def organize_tv_extras(
             "error": "Library path not configured. Please set TV Library path in Settings.",
         }
 
+    # Load naming format from config
+    from app.services.config_service import get_config_sync
+
+    cfg = get_config_sync()
+
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
-    season_folder = f"Season {season:02d}"
+    season_folder = format_season_folder(cfg.naming_season_format, season)
 
-    # New naming: "Show Name Disc X Extras Y.mkv"
     extra_name = f"{clean_show} Disc {disc_number} Extras {extra_index}.mkv"
 
-    # Build destination path: Library/TV/Show Name/Season XX/Extras/Show Name Disc X Extras Y.mkv
+    # Build destination path
     library_path = Path(library_path)
     dest_dir = library_path / clean_show / season_folder / "Extras"
     dest_file = dest_dir / extra_name

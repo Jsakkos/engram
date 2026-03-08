@@ -62,5 +62,13 @@ class AppConfig(SQLModel, table=True):
     staging_cleanup_policy: str = "on_success"  # "on_success" | "on_completion" | "manual" | "after_days"
     staging_cleanup_days: int = 7  # Only used when policy is "after_days"
 
+    # Extras handling
+    extras_policy: str = "keep"  # "keep" | "skip" | "ask"
+
+    # Naming conventions (Python format strings)
+    naming_season_format: str = "Season {season:02d}"
+    naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
+    naming_movie_format: str = "{title} ({year})"
+
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

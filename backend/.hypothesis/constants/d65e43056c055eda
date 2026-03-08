@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\opensubtitles_scraper.py
+# hypothesis_version: 6.151.9
+
+[b'PK', 0.0, 60.0, '(\\d+)', '(\\d+)x?\\s*downloads?', '.srt', '/', '/en/subtitles/', '/subtitles/\\d+', 'Accept', 'Accept-Language', 'Referer', 'S(\\d+)E(\\d+)', 'User-Agent', 'a', 'content-type', 'data', 'download', 'en-US,en;q=0.5', 'eng', 'href', 'html.parser', 'results', 'search_results', 'table', 'td', 'th', 'title', 'tr', 'zip']

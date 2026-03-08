@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\services\event_broadcaster.py
+# hypothesis_version: 6.151.9
+
+['completed', 'downloading', 'failed', 'inserted', 'removed']

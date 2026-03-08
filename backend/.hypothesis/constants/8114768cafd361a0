@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\config.py
+# hypothesis_version: 6.151.9
+
+[8000, '.engram', '.env', '127.0.0.1', 'engram.db', 'frozen', 'utf-8']

@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\subtitle_utils.py
+# hypothesis_version: 6.151.9
+
+[' -', '-', '/', ':', '[<>:"/\\\\|?*]', '\\']

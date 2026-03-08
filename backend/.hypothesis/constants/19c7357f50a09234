@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\utils.py
+# hypothesis_version: 6.151.9
+
+[0.1, '"', "'", '(\\d+)x(\\d+)', '.*S\\d+E\\d+', '.mkv', '.srt', '/', ':', 'CUDA is available.', 'GPU Support', 'S(\\d+)E(\\d+)', 'YEAR_PLACEHOLDER', '\\', '\\((\\d{4})\\)', '\\([^)]*\\)', '\\[.*?\\]|\\<.*?\\>', '\\[.*?\\]|\\{.*?\\}', '\\s+', 'data', 'magenta', 'name', 'nt', 'red']

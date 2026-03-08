@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\core\extractor.py
+# hypothesis_version: 6.151.9
+
+[0.1, 3.0, 100, 480, 570, 576, 600, 700, 1000, 1200, 1900, 2100, 3600, 3800, '(\\d+)x(\\d+)', '*.mkv', '--progress=-same', '-r', '.mkv', '1080p', '480p', '4K', '576p', '720p', ':', 'B', 'Error during ripping', 'GB', 'KB', 'MB', 'PRGC:', 'PRGC:(\\d+),(\\d+),', 'PRGV:', 'Ripping ALL titles', 'TINFO:', 'Unknown', '\\', 'all', 'created', 'dev:', 'disc:', 'info', 'mkv']

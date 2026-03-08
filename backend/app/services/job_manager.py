@@ -1864,8 +1864,68 @@ class JobManager:
                             logger.info(
                                 f"[MATCH] Title {title_id} (Job {job_id}): duration {title_minutes:.0f}min "
                                 f"doesn't match any episode runtime {runtimes} (±{tolerance}min). "
-                                f"Moving to extras folder."
+                                f"Detected as extra."
                             )
+
+                            # Check extras policy
+                            from app.services.config_service import (
+                                get_config as get_db_config,
+                            )
+
+                            db_config = await get_db_config()
+                            extras_policy = db_config.extras_policy
+
+                            if extras_policy == "skip":
+                                logger.info(
+                                    f"[MATCH] Title {title_id}: extras policy is 'skip', discarding."
+                                )
+                                title.state = TitleState.COMPLETED
+                                title.is_extra = True
+                                title.match_details = json.dumps(
+                                    {
+                                        "auto_sorted": "extras",
+                                        "action": "skipped",
+                                        "reason": f"Duration {title_minutes:.0f}min doesn't match episode runtimes",
+                                    }
+                                )
+                                session.add(title)
+                                await session.commit()
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    title.id,
+                                    title.state.value,
+                                    is_extra=title.is_extra,
+                                    match_details=title.match_details,
+                                )
+                                await self._check_job_completion(session, job_id)
+                                return
+
+                            if extras_policy == "ask":
+                                logger.info(
+                                    f"[MATCH] Title {title_id}: extras policy is 'ask', sending to review."
+                                )
+                                title.state = TitleState.REVIEW
+                                title.is_extra = True
+                                title.match_details = json.dumps(
+                                    {
+                                        "auto_sorted": "extras",
+                                        "action": "review",
+                                        "reason": f"Duration {title_minutes:.0f}min doesn't match episode runtimes",
+                                    }
+                                )
+                                session.add(title)
+                                await session.commit()
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    title.id,
+                                    title.state.value,
+                                    is_extra=title.is_extra,
+                                    match_details=title.match_details,
+                                )
+                                await self._check_job_completion(session, job_id)
+                                return
+
+                            # Default: "keep" — organize to extras folder
                             from app.core.organizer import organize_tv_extras
 
                             # Count existing extras for this job to determine index
@@ -1880,7 +1940,7 @@ class JobManager:
                                         if details.get("auto_sorted") == "extras":
                                             extras_count += 1
                                     except (json.JSONDecodeError, KeyError, TypeError):
-                                        pass  # No details available, skip
+                                        pass
 
                             extra_index = extras_count + 1
 
@@ -1895,7 +1955,6 @@ class JobManager:
                             )
                             if org_result["success"]:
                                 title.state = TitleState.COMPLETED
-                                # Store organization tracking info for extras
                                 title.organized_from = file_path.name
                                 title.organized_to = (
                                     str(org_result.get("final_path"))
@@ -1906,6 +1965,7 @@ class JobManager:
                                 title.match_details = json.dumps(
                                     {
                                         "auto_sorted": "extras",
+                                        "action": "kept",
                                         "reason": f"Duration {title_minutes:.0f}min doesn't match episode runtimes",
                                     }
                                 )
@@ -1914,6 +1974,7 @@ class JobManager:
                                 title.match_details = json.dumps(
                                     {
                                         "auto_sorted": "extras",
+                                        "action": "kept",
                                         "organize_error": org_result["error"],
                                     }
                                 )

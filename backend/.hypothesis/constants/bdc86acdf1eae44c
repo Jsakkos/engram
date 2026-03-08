@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\testing_service.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.5, 500, '-->', '<!doctype', '<body', '<div', '<head', '<html', 'File not found', 'addic7ed', 'cache', 'cache_dir', 'cached', 'candidates', 'chunk_start', 'cleaned_text', 'code', 'confidence', 'data', 'downloaded', 'duration', 'en', 'engram_test_chunks', 'episodes', 'error', 'ignore', 'language', 'matched_episode', 'name', 'not_found', 'opensubtitles', 'path', 'raw_text', 'season', 'segments', 'series_name', 'show_name', 'source', 'status', 'subtitles_used', 'text', 'total_episodes', 'utf-8', 'video_duration', 'video_path']

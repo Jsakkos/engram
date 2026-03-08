@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\models\disc_job.py
+# hypothesis_version: 6.151.9
+
+[0.0, "'heuristic'", '0', '0.0', '0.0x', 'completed', 'disc_jobs', 'disc_jobs.id', 'disc_titles', 'failed', 'heuristic', 'identifying', 'idle', 'matched', 'matching', 'movie', 'organizing', 'pending', 'review', 'review_needed', 'ripping', 'server_default', 'tv', 'unknown']

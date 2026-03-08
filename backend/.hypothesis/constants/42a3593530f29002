@@ -1,0 +1,4 @@
+# file: C:\Github\engram\backend\app\matcher\srt_utils.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1024, 3600, ' --> ', '([A-Za-z])-\\1+', ',', '-->', '-ac', '-acodec', '-ar', '-dn', '-i', '-of', '-show_entries', '-sn', '-ss', '-t', '-v', '-vn', '-y', '.', '1', '16000', ':', '\\1', '\\[.*?\\]|\\<.*?\\>', 'cp1252', 'encoding', 'error', 'ffmpeg', 'ffprobe', 'format=duration', 'iso-8859-1', 'latin-1', 'pcm_s16le', 'rb', 'utf-8']
