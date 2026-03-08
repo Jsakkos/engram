@@ -59,7 +59,9 @@ class AppConfig(SQLModel, table=True):
     sentinel_poll_interval: float = 2.0  # Seconds between drive polls
 
     # Staging Cleanup
-    staging_cleanup_policy: str = "on_success"  # "on_success" | "on_completion" | "manual" | "after_days"
+    staging_cleanup_policy: str = (
+        "on_success"  # "on_success" | "on_completion" | "manual" | "after_days"
+    )
     staging_cleanup_days: int = 7  # Only used when policy is "after_days"
 
     # Extras handling
@@ -69,6 +71,11 @@ class AppConfig(SQLModel, table=True):
     naming_season_format: str = "Season {season:02d}"
     naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
     naming_movie_format: str = "{title} ({year})"
+
+    # AI-powered disc identification
+    ai_identification_enabled: bool = False  # Enable AI-powered title resolution
+    ai_provider: str = "anthropic"  # "anthropic" or "openai"
+    ai_api_key: str = ""  # API key for the selected provider
 
     # TheDiscDB
     discdb_enabled: bool = True  # Enable TheDiscDB lookups for disc identification

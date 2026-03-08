@@ -25,6 +25,9 @@ interface ConfigData {
     namingEpisodeFormat: string;
     namingMovieFormat: string;
     discdbEnabled: boolean;
+    aiIdentificationEnabled: boolean;
+    aiProvider: string;
+    aiApiKey: string;
 }
 
 interface ToolDetectionResult {
@@ -61,6 +64,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
         discdbEnabled: true,
+        aiIdentificationEnabled: false,
+        aiProvider: 'anthropic',
+        aiApiKey: '',
     });
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
@@ -106,6 +112,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
                     discdbEnabled: data.discdb_enabled ?? true,
+                    aiIdentificationEnabled: data.ai_identification_enabled ?? false,
+                    aiProvider: data.ai_provider || 'anthropic',
+                    aiApiKey: data.ai_api_key === '***' ? '' : (data.ai_api_key || ''),
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -190,6 +199,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
                     discdb_enabled: config.discdbEnabled,
+                    ai_identification_enabled: config.aiIdentificationEnabled,
+                    ai_provider: config.aiProvider,
+                    ...(config.aiApiKey ? { ai_api_key: config.aiApiKey } : {}),
                     setup_complete: true,
                 }),
             });
@@ -526,6 +538,53 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 </span>
                             </label>
                         </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.aiIdentificationEnabled}
+                                    onChange={(e) => handleInputChange('aiIdentificationEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>AI-Powered Title Resolution</strong>
+                                    <span className="checkbox-hint">
+                                        When TMDB lookup fails (obscure titles, abbreviations), use an LLM to identify the disc. Requires an API key below.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {config.aiIdentificationEnabled && (
+                            <>
+                                <div className="form-group">
+                                    <label htmlFor="aiProvider">AI Provider</label>
+                                    <select
+                                        id="aiProvider"
+                                        value={config.aiProvider}
+                                        onChange={(e) => handleInputChange('aiProvider', e.target.value)}
+                                    >
+                                        <option value="anthropic">Anthropic (Claude)</option>
+                                        <option value="openai">OpenAI</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="aiApiKey">
+                                        {config.aiProvider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API Key
+                                    </label>
+                                    <input
+                                        id="aiApiKey"
+                                        type="password"
+                                        placeholder={config.aiProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...'}
+                                        value={config.aiApiKey}
+                                        onChange={(e) => handleInputChange('aiApiKey', e.target.value)}
+                                    />
+                                    <span className="form-hint">
+                                        API key for {config.aiProvider === 'anthropic' ? 'Anthropic' : 'OpenAI'}. Used only when TMDB lookup fails.
+                                    </span>
+                                </div>
+                            </>
+                        )}
 
                         <div className="form-group">
                             <label htmlFor="maxConcurrentMatches">Max Concurrent Matches</label>
