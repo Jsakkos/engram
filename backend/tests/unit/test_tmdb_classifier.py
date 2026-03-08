@@ -148,7 +148,6 @@ class TestClassifyFromTmdb:
         call_kwargs = mock_get.call_args_list[0]
         assert "api_key" in call_kwargs.kwargs.get("params", {})
 
-
     @patch("app.core.tmdb_classifier.requests.get")
     def test_both_match_name_similarity_wins_over_popularity(self, mock_get):
         """When both TV and movie match but one has a much closer name, prefer it.
@@ -161,9 +160,7 @@ class TestClassifyFromTmdb:
             }
         )
         movie_response = _mock_response(
-            json_data={
-                "results": [{"id": 600, "title": "The Grandmaster", "popularity": 30.0}]
-            }
+            json_data={"results": [{"id": 600, "title": "The Grandmaster", "popularity": 30.0}]}
         )
         mock_get.side_effect = [tv_response, movie_response]
 

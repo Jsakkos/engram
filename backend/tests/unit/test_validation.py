@@ -324,7 +324,7 @@ class TestTmdbValidation:
     @patch("app.api.validation.requests.get")
     def test_valid_tmdb_key(self, mock_get):
         """Valid TMDB key returns valid=True."""
-        from app.api.validation import validate_tmdb, TmdbValidationRequest
+        from app.api.validation import TmdbValidationRequest, validate_tmdb
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -339,7 +339,7 @@ class TestTmdbValidation:
     @patch("app.api.validation.requests.get")
     def test_invalid_tmdb_key(self, mock_get):
         """Invalid TMDB key returns valid=False with error."""
-        from app.api.validation import validate_tmdb, TmdbValidationRequest
+        from app.api.validation import TmdbValidationRequest, validate_tmdb
 
         mock_response = MagicMock()
         mock_response.status_code = 401
@@ -354,9 +354,9 @@ class TestTmdbValidation:
 
     def test_empty_tmdb_key(self):
         """Empty TMDB key returns valid=False."""
-        from app.api.validation import validate_tmdb, TmdbValidationRequest
-
         import asyncio
+
+        from app.api.validation import TmdbValidationRequest, validate_tmdb
 
         req = TmdbValidationRequest(api_key="")
         result = asyncio.run(validate_tmdb(req))
@@ -368,7 +368,7 @@ class TestTmdbValidation:
         """Network error returns valid=False with connection error."""
         import requests as req_lib
 
-        from app.api.validation import validate_tmdb, TmdbValidationRequest
+        from app.api.validation import TmdbValidationRequest, validate_tmdb
 
         mock_get.side_effect = req_lib.exceptions.ConnectionError("DNS failed")
 

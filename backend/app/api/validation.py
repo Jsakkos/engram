@@ -281,6 +281,8 @@ async def validate_tmdb(request: TmdbValidationRequest) -> ValidationResponse:
     except requests.exceptions.Timeout:
         return ValidationResponse(valid=False, error="TMDB API timeout (5s)")
     except requests.exceptions.ConnectionError:
-        return ValidationResponse(valid=False, error="Cannot reach TMDB API — check internet connection")
+        return ValidationResponse(
+            valid=False, error="Cannot reach TMDB API — check internet connection"
+        )
     except Exception as e:
         return ValidationResponse(valid=False, error=f"Validation failed: {str(e)}")

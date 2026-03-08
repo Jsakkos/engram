@@ -52,9 +52,7 @@ class TestTerminalCallback:
 
         session = AsyncMock()
 
-        await state_machine.transition(
-            job, JobState.FAILED, session, error_message="test error"
-        )
+        await state_machine.transition(job, JobState.FAILED, session, error_message="test error")
         callback.assert_awaited_once_with(2, JobState.FAILED)
 
     @pytest.mark.asyncio
@@ -96,10 +94,13 @@ class TestCleanupPolicy:
 
     def _make_job_manager(self):
         """Create a minimal JobManager with mocked dependencies."""
-        with patch("app.services.job_manager.DriveMonitor"), \
-             patch("app.services.job_manager.MakeMKVExtractor"), \
-             patch("app.services.job_manager.DiscAnalyst"):
+        with (
+            patch("app.services.job_manager.DriveMonitor"),
+            patch("app.services.job_manager.MakeMKVExtractor"),
+            patch("app.services.job_manager.DiscAnalyst"),
+        ):
             from app.services.job_manager import JobManager
+
             jm = JobManager()
             jm._delete_staging = AsyncMock()
             return jm
@@ -178,10 +179,13 @@ class TestTimedCleanup:
         new_dir.mkdir()
         (new_dir / "title_0.mkv").write_text("fake")
 
-        with patch("app.services.job_manager.DriveMonitor"), \
-             patch("app.services.job_manager.MakeMKVExtractor"), \
-             patch("app.services.job_manager.DiscAnalyst"):
+        with (
+            patch("app.services.job_manager.DriveMonitor"),
+            patch("app.services.job_manager.MakeMKVExtractor"),
+            patch("app.services.job_manager.DiscAnalyst"),
+        ):
             from app.services.job_manager import JobManager
+
             jm = JobManager()
 
         # Monkey-patch sleep: first call returns immediately (lets cleanup run),
@@ -212,10 +216,13 @@ class TestTimedCleanup:
         old_time = time.time() - (30 * 86400)
         os.utime(other_dir, (old_time, old_time))
 
-        with patch("app.services.job_manager.DriveMonitor"), \
-             patch("app.services.job_manager.MakeMKVExtractor"), \
-             patch("app.services.job_manager.DiscAnalyst"):
+        with (
+            patch("app.services.job_manager.DriveMonitor"),
+            patch("app.services.job_manager.MakeMKVExtractor"),
+            patch("app.services.job_manager.DiscAnalyst"),
+        ):
             from app.services.job_manager import JobManager
+
             jm = JobManager()
 
         call_count = 0
