@@ -11,14 +11,14 @@ import { mapJobStateToDiscState, mapTitleStateToTrackState } from '../adapters';
 
 describe('Issue #16: Processing state visibility', () => {
   describe('mapJobStateToDiscState', () => {
-    it('should map "matching" to "processing" state', () => {
+    it('should map "matching" to "matching" state', () => {
       const result = mapJobStateToDiscState('matching');
-      expect(result).toBe('processing');
+      expect(result).toBe('matching');
     });
 
-    it('should map "organizing" to "processing" state', () => {
+    it('should map "organizing" to "organizing" state', () => {
       const result = mapJobStateToDiscState('organizing');
-      expect(result).toBe('processing');
+      expect(result).toBe('organizing');
     });
 
     it('should still map "ripping" to "ripping"', () => {

@@ -225,11 +225,18 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                       <span className="text-green-400 font-mono border-l-2 border-green-400 pl-2 flex-1">
                         → {track.finalMatch}
                       </span>
-                      {track.finalMatchVotes !== undefined && (
-                        <span className="text-green-300 font-mono font-bold shrink-0">
-                          {Math.min(track.finalMatchVotes, track.finalMatchTargetVotes || 4)}/{track.finalMatchTargetVotes || 4}
-                        </span>
-                      )}
+                      <span className="flex items-center gap-2 shrink-0">
+                        {track.finalMatchConfidence !== undefined && (
+                          <span className={`font-mono font-bold ${track.finalMatchConfidence >= 0.7 ? 'text-green-300' : track.finalMatchConfidence >= 0.4 ? 'text-yellow-300' : 'text-red-300'}`}>
+                            {(track.finalMatchConfidence * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        {track.finalMatchVotes !== undefined && (
+                          <span className="text-green-300 font-mono font-bold">
+                            {Math.min(track.finalMatchVotes, track.finalMatchTargetVotes || 4)}/{track.finalMatchTargetVotes || 4}
+                          </span>
+                        )}
+                      </span>
                     </div>
 
                     {/* Runner-ups */}
