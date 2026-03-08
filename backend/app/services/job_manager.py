@@ -447,6 +447,26 @@ class JobManager:
                     if deselected:
                         logger.info(f"Job {job_id}: Deselected {deselected} 'Play All' title(s)")
 
+                # For movies with DiscDB mappings, only select the MainMovie title
+                discdb_maps = self._discdb_mappings.get(job_id, [])
+                if analysis.content_type == ContentType.MOVIE and discdb_maps:
+                    main_indices = {
+                        m.index for m in discdb_maps if m.title_type == "MainMovie"
+                    }
+                    if main_indices:
+                        await session.flush()
+                        stmt = select(DiscTitle).where(DiscTitle.job_id == job_id)
+                        db_titles_for_select = (
+                            await session.execute(stmt)
+                        ).scalars().all()
+                        for dt in db_titles_for_select:
+                            dt.is_selected = dt.title_index in main_indices
+                            session.add(dt)
+                        logger.info(
+                            f"Job {job_id}: TheDiscDB selected MainMovie title(s) "
+                            f"{main_indices}, deselected extras"
+                        )
+
                 # Broadcast titles discovered with full metadata
                 titles_result = await session.execute(
                     select(DiscTitle).where(DiscTitle.job_id == job_id)
@@ -1387,25 +1407,50 @@ class JobManager:
                     # We can check how many titles were selected for ripping
                     ripped_titles = [t for t in disc_titles if t.is_selected]
 
-                    # If multiple titles were ripped, we need user to select the correct one
-                    # CAUTION: If user manually selected multiple titles in Pre-Rip flow (if we supported that),
-                    # this would also trigger.
+                    # If multiple titles were ripped, check if DiscDB can resolve it
                     if len(ripped_titles) > 1:
-                        await state_machine.transition_to_review(
-                            job,
-                            session,
-                            reason="Multiple versions ripped. Please select the correct one.",
-                            broadcast=False,
-                        )
-                        await ws_manager.broadcast_job_update(
-                            job_id,
-                            JobState.REVIEW_NEEDED.value,
-                            error="Multiple versions ripped. Please select the correct one.",
-                        )
-                        logger.info(
-                            f"Job {job_id}: Multiple movie versions ripped. Waiting for user selection."
-                        )
-                        return
+                        # Check DiscDB mappings for a MainMovie designation
+                        discdb_maps = self._discdb_mappings.get(job_id, [])
+                        main_movie_idx = None
+                        for m in discdb_maps:
+                            if m.title_type == "MainMovie":
+                                main_movie_idx = m.index
+                                break
+
+                        if main_movie_idx is not None:
+                            # Auto-select the MainMovie title, deselect others
+                            for dt in ripped_titles:
+                                if dt.title_index == main_movie_idx:
+                                    dt.is_selected = True
+                                else:
+                                    dt.is_selected = False
+                                session.add(dt)
+                            await session.commit()
+                            ripped_titles = [
+                                t for t in ripped_titles if t.title_index == main_movie_idx
+                            ]
+                            logger.info(
+                                f"Job {job_id}: TheDiscDB auto-selected MainMovie "
+                                f"title index {main_movie_idx}, skipping review"
+                            )
+                        else:
+                            # No DiscDB info — ask user to pick
+                            await state_machine.transition_to_review(
+                                job,
+                                session,
+                                reason="Multiple versions ripped. Please select the correct one.",
+                                broadcast=False,
+                            )
+                            await ws_manager.broadcast_job_update(
+                                job_id,
+                                JobState.REVIEW_NEEDED.value,
+                                error="Multiple versions ripped. Please select the correct one.",
+                            )
+                            logger.info(
+                                f"Job {job_id}: Multiple movie versions ripped. "
+                                f"Waiting for user selection."
+                            )
+                            return
 
                     # Single title flow (Standard Movie)
                     job.state = JobState.ORGANIZING
