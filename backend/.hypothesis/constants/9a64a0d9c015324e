@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\main.py
-# hypothesis_version: 6.151.9
-
-[1.5, '*', '/', '/api', '/assets', '/health', '/ws', '/{full_path:path}', '0.1.0', 'Database initialized', 'Engram', 'Engram API', 'Job manager started', 'Shutdown complete', '_MEIPASS', '__main__', 'app', 'assets', 'frozen', 'healthy', 'index.html', 'name', 'running', 'static', 'status', 'validation', 'version']

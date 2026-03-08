@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\core\analyst.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.1, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 0.95, 1.2, 100, ', ', 'BD', 'BDMV', 'BDROM', 'BLURAY', 'BLURAYDISC', 'D(\\d+)', 'DISC', 'DISC\\s*(\\d+)', 'DISK\\s*(\\d+)', 'DVD', 'DVDDISC', 'DVDVIDEO', 'DVDVOLUME', 'LOGICALVOLUMEID', 'NEWVOLUME', 'NOLABEL', 'S(\\d+)', 'S(\\d+)\\s*D(\\d+)', 'SEASON\\s*(\\d+)', 'SERIES\\s*(\\d+)', 'S\\d+\\s*D\\d+', 'UNTITLED', 'VIDEOTS', 'VOLUME', '[^\\w\\s]', '[_\\s]', '^([a-zA-Z\\s]+)(\\d+)$', '_', 'ambiguous', 'confidence', 'episode_count', 'episode_indices', 'heuristic', 'main_title', 'reason', 'tmdb', 'tmdb+heuristic']

@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\api\websocket.py
-# hypothesis_version: 6.151.9
-
-[0.0, 'actual_size_bytes', 'content_type', 'current_speed', 'current_title', 'detected_season', 'detected_title', 'downloaded', 'drive_event', 'drive_id', 'duration_seconds', 'error_message', 'eta_seconds', 'event', 'expected_size_bytes', 'failed_count', 'file_size_bytes', 'is_extra', 'job_id', 'job_update', 'match_confidence', 'match_details', 'match_progress', 'match_stage', 'matched_episode', 'matches_found', 'matches_rejected', 'organized_from', 'organized_to', 'output_filename', 'progress_percent', 'review_reason', 'state', 'status', 'subtitle_event', 'title_id', 'title_update', 'titles', 'titles_discovered', 'total', 'total_titles', 'type', 'unknown', 'volume_label']

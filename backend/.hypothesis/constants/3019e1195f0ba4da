@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\matcher\config_manager.py
-# hypothesis_version: 6.151.9
-
-[0.7, '.engram', '.mkv-episode-matcher', 'Config', 'asr_model_name', 'asr_provider', 'cache', 'cache_dir', 'config.json', 'min_confidence', 'opensubtitles', 'show_dir', 'small', 'sub_provider', 'tmdb_api_key', 'utf-8', 'whisper']

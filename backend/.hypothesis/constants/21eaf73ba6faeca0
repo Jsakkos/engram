@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\matcher\asr_models.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.3, 0.7, 100.0, 16000, '([A-Za-z])-\\1+', '1550M', '244M', '39M', '74M', '769M', 'Library', 'PATH', '\\1', '\\[.*?\\]|\\<.*?\\>', '__file__', 'available', 'base', 'base.en', 'bin', 'cpu', 'cuda', 'default', 'description', 'device', 'en', 'end', 'error', 'fast', 'faster-whisper', 'fastest', 'float16', 'int8', 'language', 'large-v3', 'medium', 'medium.en', 'models', 'name', 'nt', 'openai-whisper', 'openai/whisper-', 'parakeet', 'params', 'raw_text', 'segments', 'slow', 'slowest', 'small', 'small.en', 'speed', 'start', 'text', 'tiny', 'tiny.en', 'type', 'unload', 'verification failed', 'vram', 'whisper', 'whisper_preprocessed', '~10GB', '~1GB', '~2GB', '~5GB']
