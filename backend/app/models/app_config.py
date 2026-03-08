@@ -74,7 +74,7 @@ class AppConfig(SQLModel, table=True):
 
     # AI-powered disc identification
     ai_identification_enabled: bool = False  # Enable AI-powered title resolution
-    ai_provider: str = "anthropic"  # "anthropic" or "openai"
+    ai_provider: str = "anthropic"  # "anthropic" | "openai" | "openrouter"
     ai_api_key: str = ""  # API key for the selected provider
 
     # TheDiscDB

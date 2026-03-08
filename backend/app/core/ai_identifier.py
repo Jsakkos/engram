@@ -4,7 +4,7 @@ When TMDB lookup fails (obscure titles, non-English discs, abbreviations),
 this module sends the volume label to an LLM API to identify the title,
 then re-queries TMDB with the corrected name.
 
-Supports Anthropic (Claude) and OpenAI as providers.
+Supports Anthropic (Claude), OpenAI, and OpenRouter as providers.
 """
 
 import json
@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 # Provider API endpoints
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Models to use per provider
 ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 OPENAI_MODEL = "gpt-4o-mini"
+OPENROUTER_MODEL = "anthropic/claude-haiku-4-5-20251001"
 
 IDENTIFICATION_PROMPT = """You are a media identification assistant. Given a disc volume label from a Blu-ray or DVD, identify the movie or TV show it contains.
 
@@ -52,7 +54,11 @@ async def identify_from_label(
         if provider == "anthropic":
             result = await _call_anthropic(prompt, api_key)
         elif provider == "openai":
-            result = await _call_openai(prompt, api_key)
+            result = await _call_openai_compatible(prompt, api_key, OPENAI_API_URL, OPENAI_MODEL)
+        elif provider == "openrouter":
+            result = await _call_openai_compatible(
+                prompt, api_key, OPENROUTER_API_URL, OPENROUTER_MODEL
+            )
         else:
             logger.warning(f"Unknown AI provider: {provider}")
             return None
@@ -97,17 +103,19 @@ async def _call_anthropic(prompt: str, api_key: str) -> str | None:
         return None
 
 
-async def _call_openai(prompt: str, api_key: str) -> str | None:
-    """Call the OpenAI Chat Completions API."""
+async def _call_openai_compatible(
+    prompt: str, api_key: str, api_url: str, model: str
+) -> str | None:
+    """Call an OpenAI-compatible Chat Completions API (OpenAI, OpenRouter, etc.)."""
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.post(
-            OPENAI_API_URL,
+            api_url,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": OPENAI_MODEL,
+                "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 200,
                 "temperature": 0,
