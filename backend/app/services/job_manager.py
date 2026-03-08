@@ -96,6 +96,10 @@ class JobManager:
         self._episode_runtimes: dict[int, list[int]] = {}  # job_id → episode runtimes in minutes
         self._loop: asyncio.AbstractEventLoop | None = None
         self._match_semaphore: asyncio.Semaphore | None = None
+        self._timed_cleanup_task: asyncio.Task | None = None
+
+        # Register staging cleanup on terminal job states
+        state_machine.on_terminal_state(self._on_job_terminal)
 
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
@@ -127,6 +131,13 @@ class JobManager:
                 f"in config, using {concurrency}"
             )
         self._match_semaphore = asyncio.Semaphore(concurrency)
+
+        # Start timed staging cleanup if policy is "after_days"
+        if config.staging_cleanup_policy == "after_days":
+            self._timed_cleanup_task = asyncio.create_task(
+                self._run_timed_cleanup(config.staging_path, config.staging_cleanup_days)
+            )
+
         logger.info(f"Job manager started (max_concurrent_matches={concurrency})")
 
     async def _cleanup_stale_jobs(self) -> None:
@@ -894,9 +905,7 @@ class JobManager:
                 job.progress_percent = 100.0
                 await state_machine.transition_to_completed(job, session)
 
-            # Clean up staging directory if job completed successfully
-            if job.state == JobState.COMPLETED:
-                await self._cleanup_staging(job_id)
+            # Staging cleanup is now handled by the state machine's terminal-state callback
 
     def _on_task_done(self, task: asyncio.Task, job_id: int) -> None:
         """Callback for background tasks to log any unhandled exceptions."""
@@ -905,8 +914,25 @@ class JobManager:
         elif exc := task.exception():
             logger.error(f"Job {job_id} task failed with exception: {exc}", exc_info=exc)
 
-    async def _cleanup_staging(self, job_id: int) -> None:
-        """Clean up staging directory after successful job completion."""
+    async def _on_job_terminal(self, job_id: int, state: JobState) -> None:
+        """Called by state machine when a job reaches COMPLETED or FAILED."""
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        policy = config.staging_cleanup_policy
+
+        if policy == "manual":
+            return
+        if policy == "after_days":
+            # Timed cleanup handled by background task, not here
+            return
+        if policy == "on_success" and state == JobState.COMPLETED:
+            await self._delete_staging(job_id)
+        elif policy == "on_completion":
+            await self._delete_staging(job_id)
+
+    async def _delete_staging(self, job_id: int) -> None:
+        """Delete the staging directory for a job."""
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job or not job.staging_path:
@@ -917,13 +943,45 @@ class JobManager:
                 return
 
             try:
-                # Remove all files and directory
                 import shutil
 
                 shutil.rmtree(staging_path)
                 logger.info(f"Cleaned up staging directory: {staging_path}")
             except Exception as e:
                 logger.warning(f"Failed to clean staging for job {job_id}: {e}")
+
+    async def _run_timed_cleanup(self, staging_root: str, max_age_days: int) -> None:
+        """Background task: periodically delete staging dirs older than max_age_days."""
+        import shutil
+
+        interval = 3600  # Check every hour
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                root = Path(staging_root)
+                if not root.exists():
+                    continue
+
+                now = time.time()
+                cutoff = now - (max_age_days * 86400)
+
+                for d in root.iterdir():
+                    if not d.is_dir() or not d.name.startswith("job_"):
+                        continue
+                    try:
+                        mtime = d.stat().st_mtime
+                        if mtime < cutoff:
+                            shutil.rmtree(d)
+                            logger.info(
+                                f"Timed cleanup: deleted staging dir {d.name} "
+                                f"(age: {(now - mtime) / 86400:.1f} days)"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Timed cleanup: failed to delete {d}: {e}")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Timed cleanup error: {e}", exc_info=True)
 
     async def _run_ripping(self, job_id: int) -> None:
         """Execute the ripping process."""

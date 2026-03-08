@@ -18,6 +18,8 @@ interface ConfigData {
     maxConcurrentMatches: number;
     ffmpegPath: string;
     conflictResolutionDefault: string;
+    stagingCleanupPolicy: string;
+    stagingCleanupDays: number;
 }
 
 interface ToolDetectionResult {
@@ -47,6 +49,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         maxConcurrentMatches: 2,
         ffmpegPath: '',
         conflictResolutionDefault: 'ask',
+        stagingCleanupPolicy: 'on_success',
+        stagingCleanupDays: 7,
     });
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
@@ -85,6 +89,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     maxConcurrentMatches: data.max_concurrent_matches ?? 2,
                     ffmpegPath: data.ffmpeg_path || '',
                     conflictResolutionDefault: data.conflict_resolution_default || 'ask',
+                    stagingCleanupPolicy: data.staging_cleanup_policy || 'on_success',
+                    stagingCleanupDays: data.staging_cleanup_days ?? 7,
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -162,6 +168,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     max_concurrent_matches: config.maxConcurrentMatches,
                     ffmpeg_path: config.ffmpegPath,
                     conflict_resolution_default: config.conflictResolutionDefault,
+                    staging_cleanup_policy: config.stagingCleanupPolicy,
+                    staging_cleanup_days: config.stagingCleanupDays,
                     setup_complete: true,
                 }),
             });
@@ -514,6 +522,40 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 What should Engram do when a file already exists in your library?
                             </span>
                         </div>
+
+                        <div className="form-group">
+                            <label htmlFor="stagingCleanup">Staging Cleanup Policy</label>
+                            <select
+                                id="stagingCleanup"
+                                value={config.stagingCleanupPolicy}
+                                onChange={(e) => handleInputChange('stagingCleanupPolicy', e.target.value)}
+                            >
+                                <option value="on_success">Clean on success (delete after organization)</option>
+                                <option value="on_completion">Clean on completion (delete after success or failure)</option>
+                                <option value="after_days">Clean after N days</option>
+                                <option value="manual">Manual only (never auto-delete)</option>
+                            </select>
+                            <span className="form-hint">
+                                When should staging files be automatically deleted? A single Blu-ray rip can be 30-50GB.
+                            </span>
+                        </div>
+
+                        {config.stagingCleanupPolicy === 'after_days' && (
+                            <div className="form-group">
+                                <label htmlFor="stagingCleanupDays">Cleanup After (days)</label>
+                                <input
+                                    id="stagingCleanupDays"
+                                    type="number"
+                                    min={1}
+                                    max={365}
+                                    value={config.stagingCleanupDays}
+                                    onChange={(e) => handleInputChange('stagingCleanupDays', Math.max(1, parseInt(e.target.value) || 7))}
+                                />
+                                <span className="form-hint">
+                                    Delete staging files older than this many days.
+                                </span>
+                            </div>
+                        )}
 
                         <div className="config-summary">
                             <h4>Configuration Summary</h4>
