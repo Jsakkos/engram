@@ -67,6 +67,9 @@ class ConfigResponse(BaseModel):
     ripping_file_ready_timeout: float
     # Sentinel monitoring
     sentinel_poll_interval: float
+    # Staging cleanup
+    staging_cleanup_policy: str
+    staging_cleanup_days: int
     # Onboarding
     setup_complete: bool
 
@@ -97,6 +100,9 @@ class ConfigUpdate(BaseModel):
     ripping_file_ready_timeout: float | None = None
     # Sentinel monitoring
     sentinel_poll_interval: float | None = None
+    # Staging cleanup
+    staging_cleanup_policy: str | None = None
+    staging_cleanup_days: int | None = None
     # Onboarding
     setup_complete: bool | None = None
 
@@ -328,6 +334,9 @@ async def get_config() -> ConfigResponse:
         ripping_file_ready_timeout=config.ripping_file_ready_timeout,
         # Sentinel monitoring
         sentinel_poll_interval=config.sentinel_poll_interval,
+        # Staging cleanup
+        staging_cleanup_policy=config.staging_cleanup_policy,
+        staging_cleanup_days=config.staging_cleanup_days,
         # Onboarding
         setup_complete=config.setup_complete,
     )
@@ -685,3 +694,71 @@ async def cleanup_orphaned_staging(session: AsyncSession = Depends(get_session))
             logger.error(f"Failed to delete {item['path']}: {e}")
 
     return {"deleted_count": deleted_count, "reclaimed_bytes": orphaned_info["total_size"]}
+
+
+@router.get("/staging/size")
+async def get_staging_size(session: AsyncSession = Depends(get_session)) -> dict:
+    """Get total staging directory size and per-job breakdown."""
+    from pathlib import Path
+
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    staging_root = Path(config.staging_path)
+
+    if not staging_root.exists():
+        return {"total_size": 0, "jobs": [], "policy": config.staging_cleanup_policy}
+
+    jobs = []
+    total_size = 0
+
+    for d in staging_root.iterdir():
+        if not d.is_dir():
+            continue
+        size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+        jobs.append({"path": str(d), "name": d.name, "size_bytes": size})
+        total_size += size
+
+    return {
+        "total_size": total_size,
+        "jobs": jobs,
+        "policy": config.staging_cleanup_policy,
+        "cleanup_days": config.staging_cleanup_days,
+    }
+
+
+@router.delete("/staging/job/{job_id}")
+async def cleanup_job_staging(
+    job_id: int, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Delete staging files for a specific job."""
+    import shutil
+
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Safety: only allow cleanup for terminal jobs
+    if job.state not in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot clean staging for active job (state: {job.state.value})",
+        )
+
+    if not job.staging_path:
+        return {"deleted": False, "reason": "No staging path set"}
+
+    from pathlib import Path
+
+    staging_path = Path(job.staging_path)
+    if not staging_path.exists():
+        return {"deleted": False, "reason": "Staging directory already removed"}
+
+    size = sum(f.stat().st_size for f in staging_path.rglob("*") if f.is_file())
+
+    try:
+        shutil.rmtree(staging_path)
+        logger.info(f"Manually cleaned staging for job {job_id}: {staging_path}")
+        return {"deleted": True, "reclaimed_bytes": size}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete staging: {e}") from e
