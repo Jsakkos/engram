@@ -776,9 +776,7 @@ async def get_staging_size(session: AsyncSession = Depends(get_session)) -> dict
 
 
 @router.delete("/staging/job/{job_id}")
-async def cleanup_job_staging(
-    job_id: int, session: AsyncSession = Depends(get_session)
-) -> dict:
+async def cleanup_job_staging(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """Delete staging files for a specific job."""
     import shutil
 
