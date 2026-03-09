@@ -39,6 +39,7 @@ class JobResponse(BaseModel):
     subtitles_total: int | None = None
     subtitles_failed: int | None = None
     review_reason: str | None = None
+    created_at: str | None = None
 
 
 class ConfigResponse(BaseModel):

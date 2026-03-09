@@ -61,6 +61,7 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     currentSpeed: job.current_speed,
     etaSeconds: job.eta_seconds,
     subtitleStatus: job.subtitle_status || undefined,
+    startedAt: job.created_at,
     tracks: titles.map(title => transformDiscTitleToTrack(title, job))
   };
 }

@@ -35,6 +35,7 @@ export interface Job {
     subtitles_total?: number;
     subtitles_failed?: number;
     review_reason?: string | null;
+    created_at?: string;
 }
 
 export interface DiscTitle {
