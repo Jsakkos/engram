@@ -177,6 +177,10 @@ class TestJobCleanup:
         response = await client.delete(f"/api/jobs/{job_id}")
         assert response.status_code == 200
 
-        # Verify it's gone
+        # Verify it's soft-deleted (still accessible but hidden from list)
         response = await client.get(f"/api/jobs/{job_id}")
-        assert response.status_code == 404
+        assert response.status_code == 200
+        # But hidden from active jobs list
+        response = await client.get("/api/jobs")
+        job_ids = [j["id"] for j in response.json()]
+        assert job_id not in job_ids

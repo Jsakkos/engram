@@ -87,6 +87,8 @@ class DiscJob(SQLModel, table=True):
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: datetime | None = Field(default=None)  # When job reached terminal state
+    cleared_at: datetime | None = Field(default=None)  # Soft-delete: hidden from dashboard
     error_message: str | None = None
     review_reason: str | None = None  # Human-readable reason why review is needed
 

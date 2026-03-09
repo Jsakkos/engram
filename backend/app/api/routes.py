@@ -3,15 +3,16 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.config import settings
 from app.database import get_session
 from app.models import DiscJob, JobState
-from app.models.disc_job import DiscTitle
+from app.models.disc_job import ContentType, DiscTitle
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,39 @@ class JobResponse(BaseModel):
     subtitles_failed: int | None = None
     review_reason: str | None = None
     created_at: datetime | str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class HistoryJobResponse(BaseModel):
+    """Response model for a job in history view."""
+
+    id: int
+    volume_label: str
+    content_type: str
+    state: str
+    detected_title: str | None = None
+    detected_season: int | None = None
+    error_message: str | None = None
+    classification_source: str = "heuristic"
+    total_titles: int = 0
+    created_at: str | None = None
+    completed_at: str | None = None
+    cleared_at: str | None = None
+
+
+class StatsResponse(BaseModel):
+    """Response model for job analytics."""
+
+    total_jobs: int = 0
+    completed_jobs: int = 0
+    failed_jobs: int = 0
+    tv_count: int = 0
+    movie_count: int = 0
+    total_titles_ripped: int = 0
+    avg_processing_seconds: float | None = None
+    common_errors: list[dict] = []
+    recent_jobs: list[HistoryJobResponse] = []
 
 
 class ConfigResponse(BaseModel):
@@ -158,9 +192,126 @@ class TitleResponse(BaseModel):
 # Routes
 @router.get("/jobs", response_model=list[JobResponse])
 async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJob]:
-    """List disc jobs (limited to 10 most recent)."""
-    result = await session.execute(select(DiscJob).order_by(DiscJob.created_at.desc()).limit(10))
+    """List active disc jobs (excludes cleared/archived jobs)."""
+    result = await session.execute(
+        select(DiscJob)
+        .where(DiscJob.cleared_at.is_(None))
+        .order_by(DiscJob.created_at.desc())
+        .limit(10)
+    )
     return list(result.scalars().all())
+
+
+@router.get("/jobs/history", response_model=list[HistoryJobResponse])
+async def get_job_history(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    content_type: str | None = None,
+    state: str | None = None,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """Get cleared/archived job history with pagination and filtering."""
+    query = select(DiscJob).where(DiscJob.cleared_at.is_not(None))
+
+    if content_type:
+        query = query.where(DiscJob.content_type == content_type)
+    if state:
+        query = query.where(DiscJob.state == state)
+
+    query = query.order_by(DiscJob.cleared_at.desc()).offset((page - 1) * per_page).limit(per_page)
+    result = await session.execute(query)
+    jobs = result.scalars().all()
+
+    return [
+        {
+            "id": j.id,
+            "volume_label": j.volume_label,
+            "content_type": j.content_type,
+            "state": j.state,
+            "detected_title": j.detected_title,
+            "detected_season": j.detected_season,
+            "error_message": j.error_message,
+            "classification_source": j.classification_source,
+            "total_titles": j.total_titles,
+            "created_at": j.created_at.isoformat() if j.created_at else None,
+            "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+            "cleared_at": j.cleared_at.isoformat() if j.cleared_at else None,
+        }
+        for j in jobs
+    ]
+
+
+@router.get("/jobs/stats", response_model=StatsResponse)
+async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
+    """Get job analytics and statistics."""
+    all_jobs = await session.execute(select(DiscJob))
+    jobs = list(all_jobs.scalars().all())
+
+    completed = [j for j in jobs if j.state == JobState.COMPLETED]
+    failed = [j for j in jobs if j.state == JobState.FAILED]
+    tv_jobs = [j for j in jobs if j.content_type == ContentType.TV]
+    movie_jobs = [j for j in jobs if j.content_type == ContentType.MOVIE]
+
+    # Total titles ripped
+    title_count_result = await session.execute(select(func.count(DiscTitle.id)))
+    total_titles = title_count_result.scalar() or 0
+
+    # Avg processing time (for completed jobs with both timestamps)
+    processing_times = []
+    for j in completed:
+        if j.completed_at and j.created_at:
+            delta = (j.completed_at - j.created_at).total_seconds()
+            if delta > 0:
+                processing_times.append(delta)
+
+    avg_processing = sum(processing_times) / len(processing_times) if processing_times else None
+
+    # Common errors
+    error_counts: dict[str, int] = {}
+    for j in failed:
+        msg = j.error_message or "Unknown error"
+        key = msg[:100]
+        error_counts[key] = error_counts.get(key, 0) + 1
+
+    common_errors = sorted(
+        [{"message": k, "count": v} for k, v in error_counts.items()],
+        key=lambda x: x["count"],
+        reverse=True,
+    )[:5]
+
+    # Recent 10 jobs
+    recent_result = await session.execute(
+        select(DiscJob).order_by(DiscJob.created_at.desc()).limit(10)
+    )
+    recent = recent_result.scalars().all()
+
+    return {
+        "total_jobs": len(jobs),
+        "completed_jobs": len(completed),
+        "failed_jobs": len(failed),
+        "tv_count": len(tv_jobs),
+        "movie_count": len(movie_jobs),
+        "total_titles_ripped": total_titles,
+        "avg_processing_seconds": avg_processing,
+        "common_errors": common_errors,
+        "recent_jobs": [
+            {
+                "id": j.id,
+                "volume_label": j.volume_label,
+                "content_type": j.content_type,
+                "state": j.state,
+                "detected_title": j.detected_title,
+                "detected_season": j.detected_season,
+                "error_message": j.error_message,
+                "classification_source": j.classification_source,
+                "total_titles": j.total_titles,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+                "cleared_at": j.cleared_at.isoformat() if j.cleared_at else None,
+            }
+            for j in recent
+        ],
+    }
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
@@ -467,33 +618,29 @@ async def list_drives() -> list[dict]:
 
 @router.delete("/jobs/completed")
 async def clear_completed_jobs(session: AsyncSession = Depends(get_session)) -> dict:
-    """Clear all completed and failed jobs and their titles from the database."""
-    from sqlalchemy import delete
-
-    # 1. Find job IDs to delete
-    terminal_jobs = await session.execute(
-        select(DiscJob.id).where(DiscJob.state.in_([JobState.COMPLETED, JobState.FAILED]))
+    """Soft-delete all completed and failed jobs (moves to history)."""
+    now = datetime.utcnow()
+    result = await session.execute(
+        select(DiscJob).where(
+            DiscJob.state.in_([JobState.COMPLETED, JobState.FAILED]),
+            DiscJob.cleared_at.is_(None),
+        )
     )
-    job_ids = [row[0] for row in terminal_jobs.all()]
+    jobs = list(result.scalars().all())
 
-    if not job_ids:
-        return {"status": "cleared", "deleted_count": 0}
+    if not jobs:
+        return {"status": "cleared", "cleared_count": 0}
 
-    # 2. Delete child DiscTitle rows first (prevents orphans)
-    await session.execute(delete(DiscTitle).where(DiscTitle.job_id.in_(job_ids)))
+    for job in jobs:
+        job.cleared_at = now
 
-    # 3. Delete the jobs themselves
-    result = await session.execute(delete(DiscJob).where(DiscJob.id.in_(job_ids)))
     await session.commit()
-
-    return {"status": "cleared", "deleted_count": result.rowcount}
+    return {"status": "cleared", "cleared_count": len(jobs)}
 
 
 @router.delete("/jobs/{job_id}")
 async def delete_job(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
-    """Delete a single completed or failed job and its titles."""
-    from sqlalchemy import delete
-
+    """Soft-delete a single completed or failed job (moves to history)."""
     job = await session.get(DiscJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -501,15 +648,13 @@ async def delete_job(job_id: int, session: AsyncSession = Depends(get_session)) 
     if job.state not in (JobState.COMPLETED, JobState.FAILED):
         raise HTTPException(
             status_code=400,
-            detail=f"Can only delete completed or failed jobs (current state: {job.state})",
+            detail=f"Can only clear completed or failed jobs (current state: {job.state})",
         )
 
-    # Delete child titles first
-    await session.execute(delete(DiscTitle).where(DiscTitle.job_id == job_id))
-    await session.delete(job)
+    job.cleared_at = datetime.utcnow()
     await session.commit()
 
-    return {"status": "deleted", "job_id": job_id}
+    return {"status": "cleared", "job_id": job_id}
 
 
 # --- Simulation Endpoints (debug mode only) ---

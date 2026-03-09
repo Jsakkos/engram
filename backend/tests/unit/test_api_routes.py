@@ -244,8 +244,16 @@ class TestErrorHandling:
         assert response.status_code == 422
 
     async def test_delete_single_job(self, client):
+        """Clearing a job soft-deletes it (sets cleared_at), hiding from list."""
         job = await _seed_job(state=JobState.COMPLETED)
         response = await client.delete(f"/api/jobs/{job.id}")
         assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "cleared"
+        # Job still accessible directly (soft-deleted)
         verify = await client.get(f"/api/jobs/{job.id}")
-        assert verify.status_code == 404
+        assert verify.status_code == 200
+        # But hidden from the active list
+        list_resp = await client.get("/api/jobs")
+        job_ids = [j["id"] for j in list_resp.json()]
+        assert job.id not in job_ids
