@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\core\snapshot.py
-# hypothesis_version: 6.151.9
-
-['%Y%m%d_%H%M%S', '.engram', '[^\\w]', '_', 'chapter_count', 'classification', 'confidence', 'content_type', 'detected_name', 'detected_season', 'duration_seconds', 'id', 'index', 'is_ambiguous_movie', 'name', 'needs_review', 'play_all_indices', 'review_reason', 'size_bytes', 'snapshots', 'source', 'timestamp', 'tmdb', 'tracks', 'unknown', 'utf-8', 'video_resolution', 'volume_label']

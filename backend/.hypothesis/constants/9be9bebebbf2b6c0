@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\matcher\tmdb_client.py
-# hypothesis_version: 6.151.9
-
-[0.8, 1.0, 200, ' -', ' - ', ' and ', '&', '.', ':', ': ', 'Authorization', 'Collection', 'Complete', 'F', 'Season', 'Series', '\\band\\b', '\\s*\\([^)]+\\)', '\\s*\\(\\d{4}\\)', '\\s+D\\d+', '\\s+Disc\\s+\\d+', '\\s+S\\d+', '\\s+S\\d+D\\d+', '\\s+Season\\s+\\d+', '\\s+UK$', '\\s+US$', '\\s+\\(UK\\)$', '\\s+\\(US\\)$', '^(.+?)(\\d+)$', '_', 'and', 'api_key', 'en-US', 'episodes', 'id', 'language', 'name', 'number_of_seasons', 'page', 'query', 'results', 'runtime', 'the ']

@@ -378,7 +378,9 @@ def organize_tv_episode(
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
     season_folder = format_season_folder(cfg.naming_season_format, season_num)
-    ep_stem = format_episode_filename(cfg.naming_episode_format, clean_show, season_num, episode_num)
+    ep_stem = format_episode_filename(
+        cfg.naming_episode_format, clean_show, season_num, episode_num
+    )
     filename = f"{ep_stem}.mkv"
 
     # Build destination path

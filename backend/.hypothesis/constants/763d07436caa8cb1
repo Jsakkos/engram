@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\core\tmdb_classifier.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.2, 0.6, 0.7, 0.85, 5.0, 200, 'Authorization', '[^\\w\\s]', 'api_key', 'confidence', 'content_type', 'id', 'name', 'original_name', 'original_title', 'popularity', 'query', 'results', 'title', 'tmdb_id', 'tmdb_name']

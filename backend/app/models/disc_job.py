@@ -55,7 +55,9 @@ class DiscJob(SQLModel, table=True):
     is_transcoding_enabled: bool = False
 
     # Classification metadata (persisted from DiscAnalysisResult)
-    classification_confidence: float = Field(default=0.0, sa_column_kwargs={"server_default": "0.0"})
+    classification_confidence: float = Field(
+        default=0.0, sa_column_kwargs={"server_default": "0.0"}
+    )
     classification_source: str = Field(
         default="heuristic", sa_column_kwargs={"server_default": "'heuristic'"}
     )

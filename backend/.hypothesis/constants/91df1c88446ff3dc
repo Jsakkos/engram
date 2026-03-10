@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\matcher\subtitle_provider.py
-# hypothesis_version: 6.151.9
-
-[1.0, 2.0, 3.0, 60.0, '(\\d{1,2})x(\\d{1,2})', '*.SRT', '*.srt', 'F', 'Oz 1.0.0', 'S(\\d+)E(\\d+)', 'SIGALRM', 'data', 'en', 'episode', 'episode_number', 'file_name', 'name', 'season_number']

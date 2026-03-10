@@ -1,6 +1,5 @@
 """Tests for configurable naming conventions (#26) and extras policy (#25)."""
 
-
 from app.core.organizer import (
     ALLOWED_MOVIE_PLACEHOLDERS,
     ALLOWED_TV_PLACEHOLDERS,
@@ -49,9 +48,7 @@ class TestFormatEpisodeFilename:
         assert result == "Breaking Bad - S01E05"
 
     def test_custom_format(self):
-        result = format_episode_filename(
-            "{show} {season:d}x{episode:02d}", "The Office", 3, 7
-        )
+        result = format_episode_filename("{show} {season:d}x{episode:02d}", "The Office", 3, 7)
         assert result == "The Office 3x07"
 
     def test_invalid_format_falls_back(self):
@@ -89,7 +86,10 @@ class TestFormatMovieFolder:
 
 class TestValidateNamingFormat:
     def test_valid_tv_format(self):
-        assert validate_naming_format("{show} - S{season:02d}E{episode:02d}", ALLOWED_TV_PLACEHOLDERS) is None
+        assert (
+            validate_naming_format("{show} - S{season:02d}E{episode:02d}", ALLOWED_TV_PLACEHOLDERS)
+            is None
+        )
 
     def test_valid_movie_format(self):
         assert validate_naming_format("{title} ({year})", ALLOWED_MOVIE_PLACEHOLDERS) is None

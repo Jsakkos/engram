@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\models\__init__.py
-# hypothesis_version: 6.151.9
-
-['AppConfig', 'ContentType', 'DiscJob', 'DiscTitle', 'JobState', 'TitleState']

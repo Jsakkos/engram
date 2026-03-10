@@ -1,4 +1,0 @@
-# file: C:\Github\engram\backend\app\core\organizer.py
-# hypothesis_version: 6.151.9
-
-['*.mkv', '-', '.', '. ', './library/movies', './library/tv', '<>:"/\\|?*', 'Extras', 'FILE_EXISTS', 'S(\\d+)E\\d+', '\\s*4k', '\\s*bd\\s*\\d*', '\\s*blu-ray', '\\s*bluray', '\\s*cd\\s*\\d+', '\\s*d\\d+', '\\s*disc\\s*\\d+', '\\s*dolby\\s*vision', '\\s*dvd\\s*\\d+', '\\s*hdr', '\\s*uhd', '\\s+', '_', 'a', 'an', 'and', 'ask', 'at', 'but', 'by', 'error', 'error_code', 'existing_path', 'extras', 'final_path', 'for', 'in', 'main_file', 'nor', 'of', 'on', 'or', 'overwrite', 'rename', 'skip', 'skipped', 'success', 'the', 'to']
