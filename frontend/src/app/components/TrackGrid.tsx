@@ -17,7 +17,7 @@ function formatBytes(bytes: number): string {
 const stateConfig = {
   pending: {
     label: "PENDING",
-    color: "border-slate-700/50 bg-slate-900/30",
+    color: "border-navy-600/50 bg-navy-800/40",
     textColor: "text-slate-500",
     icon: null,
   },
@@ -75,17 +75,14 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                 boxShadow: 'glow' in config ? `0 0 10px ${config.glow}` : "none",
               }}
             >
-              {/* Scanlines */}
-              <div 
-                className="absolute inset-0 opacity-10 pointer-events-none"
-                style={{
-                  backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px)",
-                }}
-              />
-              
-              {/* Corner accents */}
-              <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/30" />
-              <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white/30" />
+              {/* Left accent bar showing state color */}
+              <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${
+                track.state === "matched" ? "bg-green-400" :
+                track.state === "ripping" ? "bg-cyan-400" :
+                track.state === "matching" ? "bg-yellow-400" :
+                track.state === "failed" ? "bg-red-400" :
+                "bg-slate-700"
+              }`} />
               
               <div className="relative">
                 {/* Header */}
@@ -143,7 +140,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                 {/* Progress bar for ripping - with byte-level progress */}
                 {track.state === "ripping" && (
                   <div className="mb-2">
-                    <div className="h-1.5 bg-black border border-white/20 overflow-hidden">
+                    <div className="h-1.5 bg-navy-800 border border-white/20 overflow-hidden">
                       <motion.div
                         className="h-full bg-gradient-to-r from-cyan-600 to-yellow-400"
                         initial={{ width: 0 }}
@@ -186,7 +183,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                 {/* Progress bar for matching */}
                 {track.state === "matching" && (
                   <div className="mb-2">
-                    <div className="h-1.5 bg-black border border-white/20 overflow-hidden">
+                    <div className="h-1.5 bg-navy-800 border border-white/20 overflow-hidden">
                       <motion.div
                         className="h-full bg-gradient-to-r from-cyan-500 via-magenta-500 to-yellow-400"
                         initial={{ width: 0 }}

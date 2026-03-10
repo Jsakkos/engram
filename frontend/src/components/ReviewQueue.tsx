@@ -222,7 +222,7 @@ function ReviewQueue() {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
+            <div className="min-h-screen bg-navy-900 circuit-bg flex flex-col items-center justify-center gap-4">
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
                     <Disc3 className="w-12 h-12 text-cyan-400" style={{ filter: 'drop-shadow(0 0 10px rgba(6, 182, 212, 0.8))' }} />
                 </motion.div>
@@ -233,11 +233,11 @@ function ReviewQueue() {
 
     if (!job) {
         return (
-            <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-6">
+            <div className="min-h-screen bg-navy-900 circuit-bg flex flex-col items-center justify-center gap-6">
                 <h2 className="text-2xl font-bold text-red-400 font-mono uppercase tracking-wider">JOB NOT FOUND</h2>
                 <button
                     onClick={() => navigate('/')}
-                    className="px-4 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-black text-cyan-400 border-cyan-500/50 hover:border-cyan-400 transition-all"
+                    className="px-4 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-cyan-400 border-cyan-500/50 hover:border-cyan-400 transition-all"
                 >
                     RETURN TO DASHBOARD
                 </button>
@@ -248,22 +248,16 @@ function ReviewQueue() {
     // ==================== MOVIE REVIEW ====================
     if (job.content_type === 'movie') {
         return (
-            <div className="min-h-screen bg-black relative overflow-hidden">
-                {/* Grid background */}
-                <div className="fixed inset-0 opacity-10 pointer-events-none">
-                    <div className="h-full w-full" style={{
-                        backgroundImage: 'linear-gradient(rgba(6, 182, 212, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.3) 1px, transparent 1px)',
-                        backgroundSize: '50px 50px',
-                    }} />
-                </div>
+            <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
+                {/* Circuit board background inherited from circuit-bg class */}
 
                 {/* Header */}
-                <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-black/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
+                <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
                     <div className="max-w-5xl mx-auto px-6 py-5">
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => navigate('/')}
-                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-black text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
+                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
                             >
                                 <ArrowLeft className="w-4 h-4" />
                             </button>
@@ -297,7 +291,7 @@ function ReviewQueue() {
                                 key={title.id}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="border-2 border-cyan-500/20 bg-black/80 overflow-hidden"
+                                className="border-2 border-cyan-500/20 bg-navy-800/80 overflow-hidden"
                                 style={{ boxShadow: '0 0 10px rgba(6, 182, 212, 0.1)' }}
                             >
                                 <div className="p-5 flex items-center gap-6">
@@ -329,7 +323,7 @@ function ReviewQueue() {
                                             list="edition-suggestions"
                                             value={selectedEditions[title.id] || ''}
                                             onChange={(e) => handleEditionChange(title.id, e.target.value)}
-                                            className="w-full px-3 py-1.5 text-sm font-mono bg-black border border-slate-700 text-slate-300 placeholder-slate-600 focus:border-cyan-500/50 focus:outline-none"
+                                            className="w-full px-3 py-1.5 text-sm font-mono bg-navy-800 border border-slate-700 text-slate-300 placeholder-slate-600 focus:border-cyan-500/50 focus:outline-none"
                                         />
                                     </div>
 
@@ -338,14 +332,14 @@ function ReviewQueue() {
                                         <button
                                             onClick={() => handleSaveMovie(title.id, 'save')}
                                             disabled={isSaving}
-                                            className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-black text-green-400 border-green-500/50 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all disabled:opacity-50"
+                                            className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-green-400 border-green-500/50 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all disabled:opacity-50"
                                         >
                                             SELECT
                                         </button>
                                         <button
                                             onClick={() => handleSaveMovie(title.id, 'skip')}
                                             disabled={isSaving}
-                                            className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-black text-red-400 border-red-500/50 hover:border-red-400 transition-all disabled:opacity-50"
+                                            className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-red-400 border-red-500/50 hover:border-red-400 transition-all disabled:opacity-50"
                                         >
                                             DISCARD
                                         </button>
@@ -369,7 +363,7 @@ function ReviewQueue() {
 
     // ==================== TV REVIEW ====================
     return (
-        <div className="min-h-screen bg-black relative overflow-hidden">
+        <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
             {/* Grid background */}
             <div className="fixed inset-0 opacity-10 pointer-events-none">
                 <div className="h-full w-full" style={{
@@ -379,13 +373,13 @@ function ReviewQueue() {
             </div>
 
             {/* Header */}
-            <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-black/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
+            <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
                 <div className="max-w-6xl mx-auto px-6 py-5">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => navigate('/')}
-                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-black text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
+                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
                             >
                                 <ArrowLeft className="w-4 h-4" />
                             </button>
@@ -405,7 +399,7 @@ function ReviewQueue() {
                             <button
                                 onClick={handleStartRip}
                                 disabled={isSaving || isProcessing}
-                                className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-black text-cyan-400 border-cyan-500/50 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                                className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-cyan-400 border-cyan-500/50 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
                             >
                                 <Play className="w-3 h-3" />
                                 START RIP
@@ -414,7 +408,7 @@ function ReviewQueue() {
                                 <button
                                     onClick={handleSaveAll}
                                     disabled={isSaving || isProcessing}
-                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-black text-yellow-400 border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_15px_rgba(250,204,21,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-yellow-400 border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_15px_rgba(250,204,21,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
                                 >
                                     <Save className="w-3 h-3" />
                                     {isSaving ? 'SAVING...' : `SAVE ${assignedCount} ASSIGNMENTS`}
@@ -424,7 +418,7 @@ function ReviewQueue() {
                                 <button
                                     onClick={handleProcessMatched}
                                     disabled={isSaving || isProcessing}
-                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-black text-green-400 border-green-500/50 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-green-400 border-green-500/50 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
                                 >
                                     <Package className="w-3 h-3" />
                                     {isProcessing ? 'PROCESSING...' : `PROCESS ${assignedCount} MATCHED`}
@@ -522,7 +516,7 @@ function ReviewQueue() {
                         </div>
                         <div className="space-y-2 opacity-50">
                             {completedTitles.map(title => (
-                                <div key={title.id} className="border border-slate-800 bg-black/50 p-4 flex items-center gap-6 font-mono text-xs text-slate-600">
+                                <div key={title.id} className="border border-slate-800 bg-navy-800/50 p-4 flex items-center gap-6 font-mono text-xs text-slate-600">
                                     <span className="bg-slate-900 px-2 py-0.5">#{title.title_index}</span>
                                     <span className="flex-1 truncate">{title.output_filename?.split(/[/\\]/).pop() || `Title ${title.title_index}`}</span>
                                     <span>{formatDuration(title.duration_seconds)}</span>
@@ -578,7 +572,7 @@ function TVTitleRow({
         <motion.div
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`border-2 ${borderColor} bg-black/80 overflow-hidden`}
+            className={`border-2 ${borderColor} bg-navy-800/80 overflow-hidden`}
         >
             <div className="p-4">
                 <div className="flex items-center gap-4">
@@ -646,7 +640,7 @@ function TVTitleRow({
                         <select
                             value={selectedEpisode}
                             onChange={(e) => onEpisodeChange(title.id, e.target.value)}
-                            className="w-full px-2 py-1.5 text-xs font-mono bg-black border border-slate-700 text-slate-300 focus:border-cyan-500/50 focus:outline-none"
+                            className="w-full px-2 py-1.5 text-xs font-mono bg-navy-800 border border-slate-700 text-slate-300 focus:border-cyan-500/50 focus:outline-none"
                         >
                             <option value="">Select episode...</option>
                             {title.matched_episode && (
@@ -709,7 +703,7 @@ function TVTitleRow({
 
             {/* Expanded details */}
             {isExpanded && (
-                <div className="border-t border-slate-800 bg-slate-900/50 px-4 py-3">
+                <div className="border-t border-slate-800 bg-navy-800/50 px-4 py-3">
                     <h4 className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-3">&gt; COMPETING MATCHES</h4>
 
                     {/* Match stats */}

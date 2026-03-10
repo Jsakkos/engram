@@ -124,10 +124,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
         exit={{ opacity: 0, y: -20 }}
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
-        className="relative overflow-hidden rounded-none bg-black border-2 border-transparent shadow-2xl"
+        className="relative overflow-hidden rounded-lg bg-navy-800/80 border border-cyan-500/20 shadow-2xl"
         style={{
-          borderImage: "linear-gradient(135deg, rgba(6, 182, 212, 0.5), rgba(236, 72, 153, 0.3)) 1",
-          boxShadow: "0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(236, 72, 153, 0.1), inset 0 0 20px rgba(6, 182, 212, 0.1)",
+          boxShadow: `0 0 15px rgba(6, 182, 212, 0.15), 0 0 30px rgba(236, 72, 153, 0.05), inset 0 0 20px rgba(6, 182, 212, 0.05)`,
         }}
       >
         {/* Scanline effect */}
@@ -189,7 +188,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               {/* Neon border glow */}
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 via-magenta-500 to-yellow-400 opacity-50 blur-sm" />
 
-              <div className="absolute inset-0.5 overflow-hidden bg-black">
+              <div className="absolute inset-0.5 overflow-hidden bg-navy-900 holo-sweep">
                 {posterUrl ? (
                   <img
                     src={posterUrl}
@@ -201,7 +200,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     }}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-black">
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-navy-700 to-navy-900">
                     <Disc className="w-8 h-8 sm:w-16 sm:h-16 text-cyan-400/30" />
                   </div>
                 )}

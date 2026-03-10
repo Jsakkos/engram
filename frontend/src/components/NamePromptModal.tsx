@@ -43,7 +43,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptM
         >
             {/* Backdrop */}
             <motion.div
-                className="absolute inset-0 bg-black/85 backdrop-blur-sm"
+                className="absolute inset-0 bg-navy-900/85 backdrop-blur-sm"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={onCancel}
@@ -60,7 +60,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptM
 
             {/* Card */}
             <motion.div
-                className="relative w-full max-w-md bg-black border-2 border-cyan-500/50 overflow-hidden"
+                className="relative w-full max-w-md bg-navy-900 border-2 border-cyan-500/50 overflow-hidden rounded-lg"
                 style={{
                     boxShadow:
                         '0 0 40px rgba(6, 182, 212, 0.3), 0 0 80px rgba(6, 182, 212, 0.1), inset 0 0 30px rgba(6, 182, 212, 0.05)',
@@ -169,7 +169,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptM
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="e.g. The Italian Job"
-                            className="w-full bg-black border-2 border-cyan-500/30 text-cyan-300 font-mono text-sm px-3 py-2.5 placeholder:text-cyan-800 focus:outline-none focus:border-cyan-500 transition-colors"
+                            className="w-full bg-navy-800 border-2 border-cyan-500/30 text-cyan-300 font-mono text-sm px-3 py-2.5 placeholder:text-cyan-800 focus:outline-none focus:border-cyan-500 transition-colors"
                             style={{
                                 boxShadow: title
                                     ? '0 0 12px rgba(6,182,212,0.2), inset 0 0 8px rgba(6,182,212,0.05)'

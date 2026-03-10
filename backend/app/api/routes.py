@@ -1,6 +1,7 @@
 """REST API routes for Engram."""
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -39,7 +40,7 @@ class JobResponse(BaseModel):
     subtitles_total: int | None = None
     subtitles_failed: int | None = None
     review_reason: str | None = None
-    created_at: str | None = None
+    created_at: datetime | str | None = None
 
 
 class ConfigResponse(BaseModel):

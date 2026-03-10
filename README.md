@@ -2,6 +2,17 @@
 
 Engram is a Windows disc ripping and media organization tool. It monitors your optical drive, rips discs with MakeMKV, identifies episodes via audio fingerprinting, and files everything into your media library. A web dashboard shows progress in real time and lets you intervene when matches are ambiguous.
 
+## Features
+
+- **Automatic disc detection** — monitors optical drives and starts processing on insertion
+- **Smart classification** — distinguishes TV shows from movies using duration analysis, TMDB lookup, and TheDiscDB
+- **Audio fingerprint matching** — identifies TV episodes via ASR transcription matched against subtitles
+- **AI-powered identification** — optional Anthropic/OpenAI/OpenRouter integration for ambiguous disc labels
+- **Real-time dashboard** — cyberpunk-themed web UI with WebSocket live updates, progress tracking, and notifications
+- **Human-in-the-loop** — review queue for low-confidence matches with competing candidate display
+- **Job history** — searchable archive of completed jobs with analytics
+- **Responsive design** — works on desktop and mobile with compact/expanded view modes
+
 ## Prerequisites
 
 - **Windows** (drive monitoring uses kernel32/pywin32)
@@ -81,7 +92,7 @@ Hub-and-spoke design. The Job Manager orchestrates five modules through a state 
 
 ```
                         React Dashboard
-          (Dashboard, Review Queue, Config Wizard)
+          (Dashboard, Review Queue, History, Config Wizard)
                              |
                           WebSocket
                              |
@@ -95,6 +106,17 @@ Hub-and-spoke design. The Job Manager orchestrates five modules through a state 
      (drive    (TV vs    (MakeMKV    (episode   (file
      monitor)  movie)    wrapper)    matching)  organization)
 ```
+
+### Frontend
+
+React 18 + TypeScript + Vite SPA with a cyberpunk dual-tone (cyan/magenta) theme on a deep navy background with circuit board traces.
+
+- **Dashboard** — filterable job cards (Active/Done/All) with expanded and compact view modes, real-time progress, speed/ETA, cover art with holographic effects, and browser notifications
+- **Review Queue** — human-in-the-loop UI for resolving ambiguous episode matches and movie edition selection
+- **History** — searchable archive of completed/failed jobs with duration and size analytics
+- **Config Wizard** — first-run setup and settings modal for library paths, API keys, and preferences
+
+Key libraries: React Router v7, Framer Motion, Recharts, Tailwind CSS v4 (with `@theme inline`), shadcn/ui.
 
 ## Development
 
@@ -141,8 +163,10 @@ engram/
     .env.example
   frontend/
     src/
-      components/   # React components
-      hooks/        # WebSocket hook
+      app/          # Dashboard, DiscCard, TrackGrid, StateIndicator
+      components/   # ReviewQueue, ConfigWizard, NamePromptModal
+      hooks/        # WebSocket, job management, notifications
+      styles/       # Tailwind theme with navy palette + glow tokens
       types/        # TypeScript definitions
     e2e/            # Playwright E2E tests
     vite.config.ts
@@ -157,3 +181,5 @@ AGPL-3.0. See [LICENSE](LICENSE).
 
 - [MakeMKV](https://www.makemkv.com/) for disc decryption
 - [mkv-episode-matcher](https://github.com/Jsakkos/mkv-episode-matcher) for audio fingerprinting
+- [TheDiscDB](https://thediscdb.com/) for disc content hash lookups
+- [TMDB](https://www.themoviedb.org/) for media metadata and poster art
