@@ -11,6 +11,7 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  Bug,
 } from "lucide-react";
 
 interface HistoryJob {
@@ -49,7 +50,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "\u2014";
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, {
     month: "short",
@@ -75,9 +76,8 @@ function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="border-2 border-transparent bg-black/80 p-4"
+      className="rounded-lg border border-cyan-500/20 bg-navy-800/80 p-4"
       style={{
-        borderImage: `linear-gradient(135deg, ${color}66, ${color}33) 1`,
         boxShadow: `0 0 15px ${color}22`,
       }}
     >
@@ -109,6 +109,7 @@ export default function HistoryPage() {
   const [filterType, setFilterType] = useState<string>("");
   const [filterState, setFilterState] = useState<string>("");
   const [hasMore, setHasMore] = useState(true);
+  const [reportLoading, setReportLoading] = useState(false);
   const perPage = 20;
 
   useEffect(() => {
@@ -139,55 +140,67 @@ export default function HistoryPage() {
     fetchHistory();
   }, [fetchHistory]);
 
-  return (
-    <div className="min-h-screen bg-black">
-      {/* Grid background */}
-      <div className="fixed inset-0 opacity-10 pointer-events-none">
-        <div
-          className="h-full w-full"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(6, 182, 212, 0.3) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(6, 182, 212, 0.3) 1px, transparent 1px)
-            `,
-            backgroundSize: "50px 50px",
-          }}
-        />
-      </div>
+  const handleReportBug = async () => {
+    setReportLoading(true);
+    try {
+      const resp = await fetch("/api/diagnostics/report");
+      if (!resp.ok) throw new Error("Failed to generate report");
+      const data = await resp.json();
+      window.open(data.github_url, "_blank");
+    } catch {
+      alert("Could not generate bug report. Is the backend running?");
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
+  return (
+    <div className="min-h-screen bg-navy-900 circuit-bg">
       {/* Header */}
       <div
-        className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-black/80 sticky top-0 z-10"
+        className="border-b border-cyan-500/20 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10"
         style={{
           boxShadow:
             "0 0 20px rgba(6, 182, 212, 0.2), 0 0 40px rgba(236, 72, 153, 0.1)",
         }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/")}
-              className="text-cyan-400 hover:text-cyan-300 transition-colors"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <div className="flex items-center gap-3">
-              <BarChart3
-                className="w-6 h-6 text-cyan-400"
-                style={{
-                  filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.8))",
-                }}
-              />
-              <h1
-                className="text-xl sm:text-2xl font-bold text-cyan-400 tracking-wider font-mono uppercase"
-                style={{
-                  textShadow:
-                    "0 0 10px rgba(6, 182, 212, 1), 0 0 30px rgba(6, 182, 212, 0.6)",
-                }}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate("/")}
+                className="text-cyan-400 hover:text-cyan-300 transition-colors"
               >
-                Job History & Analytics
-              </h1>
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <div className="flex items-center gap-3">
+                <BarChart3
+                  className="w-6 h-6 text-cyan-400"
+                  style={{
+                    filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.8))",
+                  }}
+                />
+                <h1
+                  className="text-xl sm:text-2xl font-bold text-cyan-400 tracking-wider font-mono uppercase"
+                  style={{
+                    textShadow:
+                      "0 0 10px rgba(6, 182, 212, 1), 0 0 30px rgba(6, 182, 212, 0.6)",
+                  }}
+                >
+                  Job History & Analytics
+                </h1>
+              </div>
             </div>
+            <button
+              onClick={handleReportBug}
+              disabled={reportLoading}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:border-red-500/60 hover:bg-red-500/10 transition-all font-mono text-xs uppercase tracking-wider disabled:opacity-50"
+            >
+              <Bug className="w-4 h-4" />
+              <span className="hidden sm:inline">
+                {reportLoading ? "Generating..." : "Report Bug"}
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -231,7 +244,7 @@ export default function HistoryPage() {
               value={
                 stats.avg_processing_seconds
                   ? formatDuration(stats.avg_processing_seconds)
-                  : "—"
+                  : "\u2014"
               }
               icon={<Clock className="w-5 h-5" />}
               color="#8b5cf6"
@@ -241,7 +254,7 @@ export default function HistoryPage() {
 
         {/* Common Errors */}
         {stats && stats.common_errors.length > 0 && (
-          <div className="border-2 border-red-500/30 bg-black/80 p-4">
+          <div className="rounded-lg border border-red-500/30 bg-navy-800/80 p-4">
             <h2 className="text-sm font-mono font-bold text-red-400 uppercase tracking-wider mb-3">
               &gt; Common Errors
             </h2>
@@ -274,7 +287,7 @@ export default function HistoryPage() {
               setFilterType(e.target.value);
               setPage(1);
             }}
-            className="bg-black border-2 border-slate-700 text-slate-300 font-mono text-xs px-3 py-1.5 focus:border-cyan-500/50 outline-none"
+            className="bg-navy-800 border border-cyan-500/20 rounded-md text-slate-300 font-mono text-xs px-3 py-1.5 focus:border-cyan-500/50 outline-none"
           >
             <option value="">All Types</option>
             <option value="tv">TV</option>
@@ -286,7 +299,7 @@ export default function HistoryPage() {
               setFilterState(e.target.value);
               setPage(1);
             }}
-            className="bg-black border-2 border-slate-700 text-slate-300 font-mono text-xs px-3 py-1.5 focus:border-cyan-500/50 outline-none"
+            className="bg-navy-800 border border-cyan-500/20 rounded-md text-slate-300 font-mono text-xs px-3 py-1.5 focus:border-cyan-500/50 outline-none"
           >
             <option value="">All States</option>
             <option value="completed">Completed</option>
@@ -295,10 +308,10 @@ export default function HistoryPage() {
         </div>
 
         {/* History Table */}
-        <div className="border-2 border-cyan-500/20 bg-black/80 overflow-x-auto">
+        <div className="rounded-lg border border-cyan-500/20 bg-navy-800/80 overflow-x-auto">
           <table className="w-full text-xs sm:text-sm font-mono">
             <thead>
-              <tr className="border-b-2 border-cyan-500/20 text-left">
+              <tr className="border-b border-cyan-500/20 text-left">
                 <th className="px-4 py-3 text-cyan-400 uppercase tracking-wider font-bold">
                   Title
                 </th>
@@ -333,7 +346,7 @@ export default function HistoryPage() {
                 history.map((job) => (
                   <tr
                     key={job.id}
-                    className="border-b border-slate-800 hover:bg-cyan-500/5 transition-colors"
+                    className="border-b border-navy-700/50 hover:bg-cyan-500/5 transition-colors"
                   >
                     <td className="px-4 py-3">
                       <div className="text-slate-200">
@@ -390,7 +403,7 @@ export default function HistoryPage() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="flex items-center gap-1 px-3 py-2 font-mono text-xs uppercase tracking-wider border-2 border-slate-700 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1 px-3 py-2 rounded-md font-mono text-xs uppercase tracking-wider border border-cyan-500/20 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronLeft className="w-4 h-4" /> Prev
           </button>
@@ -400,7 +413,7 @@ export default function HistoryPage() {
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={!hasMore}
-            className="flex items-center gap-1 px-3 py-2 font-mono text-xs uppercase tracking-wider border-2 border-slate-700 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1 px-3 py-2 rounded-md font-mono text-xs uppercase tracking-wider border border-cyan-500/20 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             Next <ChevronRight className="w-4 h-4" />
           </button>

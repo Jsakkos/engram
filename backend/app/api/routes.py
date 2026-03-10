@@ -1,7 +1,12 @@
 """REST API routes for Engram."""
 
 import logging
+import platform
+import re
+import sys
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -954,3 +959,154 @@ async def cleanup_job_staging(job_id: int, session: AsyncSession = Depends(get_s
         return {"deleted": True, "reclaimed_bytes": size}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete staging: {e}") from e
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics
+# ---------------------------------------------------------------------------
+
+_HOME_PATH = str(Path.home())
+_SENSITIVE_RE = re.compile(
+    r"(eyJ[A-Za-z0-9_-]{20,})"  # JWT tokens
+    r"|(?<=key=)[^\s,;'\"]{8,}"  # key=VALUE
+    r"|(?<=token=)[^\s,;'\"]{8,}",  # token=VALUE
+    re.IGNORECASE,
+)
+
+
+def _sanitize_line(line: str) -> str:
+    """Redact sensitive data from a single log line."""
+    line = line.replace(_HOME_PATH, "~")
+    return _SENSITIVE_RE.sub("***REDACTED***", line)
+
+
+@router.get("/diagnostics/logs")
+async def get_recent_logs(
+    lines: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    """Return the last N lines from the engram log file, sanitized."""
+    log_path = Path.home() / ".engram" / "engram.log"
+    if not log_path.exists():
+        return {"lines": [], "log_path": str(log_path).replace(_HOME_PATH, "~")}
+
+    try:
+        raw = log_path.read_text(encoding="utf-8", errors="replace")
+        tail = raw.splitlines()[-lines:]
+        sanitized = [_sanitize_line(line) for line in tail]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read log: {e}") from e
+
+    return {
+        "lines": sanitized,
+        "log_path": str(log_path).replace(_HOME_PATH, "~"),
+    }
+
+
+@router.get("/diagnostics/report")
+async def generate_bug_report(
+    job_id: int | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Generate a sanitized bug report with optional job context."""
+    from app import __version__
+    from app.services.config_service import get_config
+
+    config = await get_config()
+
+    # --- Job summary (optional) ---
+    job_summary = None
+    if job_id is not None:
+        job = await session.get(DiscJob, job_id)
+        if job:
+            job_summary = {
+                "id": job.id,
+                "volume_label": job.volume_label,
+                "content_type": job.content_type.value if job.content_type else "unknown",
+                "state": job.state.value if job.state else "unknown",
+                "error": job.error_message,
+                "created_at": str(job.created_at) if job.created_at else None,
+                "completed_at": str(job.completed_at) if job.completed_at else None,
+            }
+
+    # --- Recent error lines from log ---
+    log_path = Path.home() / ".engram" / "engram.log"
+    recent_errors: list[str] = []
+    if log_path.exists():
+        try:
+            raw = log_path.read_text(encoding="utf-8", errors="replace")
+            all_lines = raw.splitlines()
+            error_lines = [ln for ln in all_lines if "ERROR" in ln or "CRITICAL" in ln]
+            recent_errors = [_sanitize_line(line) for line in error_lines[-20:]]
+        except Exception:
+            recent_errors = ["(could not read log file)"]
+
+    # --- Redacted config ---
+    redacted_config = {
+        "staging_path": str(config.staging_path).replace(_HOME_PATH, "~"),
+        "library_movies_path": str(config.library_movies_path).replace(_HOME_PATH, "~"),
+        "library_tv_path": str(config.library_tv_path).replace(_HOME_PATH, "~"),
+        "transcoding_enabled": config.transcoding_enabled,
+        "max_concurrent_matches": config.max_concurrent_matches,
+        "conflict_resolution_default": config.conflict_resolution_default,
+        "extras_policy": config.extras_policy,
+        "discdb_enabled": config.discdb_enabled,
+    }
+
+    # --- Build report ---
+    report = {
+        "app_version": __version__,
+        "python_version": sys.version.split()[0],
+        "os": f"{platform.system()} {platform.release()}",
+        "job": job_summary,
+        "recent_errors": recent_errors,
+        "config": redacted_config,
+    }
+
+    # --- Build GitHub issue body ---
+    body_parts = [
+        "## Bug Report",
+        "",
+        f"**Engram version**: {__version__}",
+        f"**OS**: {report['os']}",
+        f"**Python**: {report['python_version']}",
+        "",
+    ]
+    if job_summary:
+        body_parts += [
+            "### Job Context",
+            f"- **ID**: {job_summary['id']}",
+            f"- **Label**: {job_summary['volume_label']}",
+            f"- **Type**: {job_summary['content_type']}",
+            f"- **State**: {job_summary['state']}",
+        ]
+        if job_summary["error"]:
+            body_parts.append(f"- **Error**: {job_summary['error']}")
+        body_parts.append("")
+
+    if recent_errors:
+        body_parts += ["### Recent Errors", "```"]
+        body_parts += recent_errors[-10:]
+        body_parts += ["```", ""]
+
+    body_parts += [
+        "### Steps to Reproduce",
+        "1. ",
+        "",
+        "### Expected Behavior",
+        "",
+        "",
+        "### Actual Behavior",
+        "",
+    ]
+
+    issue_body = "\n".join(body_parts)
+    title = "[Bug] " + (
+        f"Job {job_id} failed in {job_summary['state']}" if job_summary else "Describe the issue"
+    )
+    github_url = (
+        f"https://github.com/Jsakkos/engram/issues/new"
+        f"?title={quote(title)}&body={quote(issue_body)}"
+    )
+
+    report["github_url"] = github_url
+    return report
