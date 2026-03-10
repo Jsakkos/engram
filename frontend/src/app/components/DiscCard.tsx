@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
-import { CheckCircle2, Database, Disc } from "lucide-react";
+import { CheckCircle2, Clock, Database, Disc } from "lucide-react";
 import { CyberpunkProgressBar } from "./CyberpunkProgressBar";
 import { StateIndicator } from "./StateIndicator";
 import { TrackGrid } from "./TrackGrid";
@@ -8,6 +8,7 @@ import { usePosterImage } from "./DiscCard/hooks/usePosterImage";
 import { MediaTypeBadge } from "./DiscCard/MediaTypeBadge";
 import { DiscMetadata } from "./DiscCard/DiscMetadata";
 import { ActionButtons } from "./DiscCard/ActionButtons";
+import { useElapsedTime } from "../hooks/useElapsedTime";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
@@ -74,6 +75,9 @@ export interface DiscData {
   // Subtitle status for warning display
   subtitleStatus?: string;
 
+  // Timing
+  startedAt?: string;
+
   // Review flag
   needsReview?: boolean;
 }
@@ -108,6 +112,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     const colors = stateColors[disc.state];
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
+    const isActive = !['completed', 'error', 'idle'].includes(disc.state);
+    const elapsed = useElapsedTime(isActive ? disc.startedAt : undefined);
 
     return (
       <motion.div
@@ -118,10 +124,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
         exit={{ opacity: 0, y: -20 }}
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
-        className="relative overflow-hidden rounded-none bg-black border-2 border-transparent shadow-2xl"
+        className="relative overflow-hidden rounded-lg bg-navy-800/80 border border-cyan-500/20 shadow-2xl"
         style={{
-          borderImage: "linear-gradient(135deg, rgba(6, 182, 212, 0.5), rgba(236, 72, 153, 0.3)) 1",
-          boxShadow: "0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(236, 72, 153, 0.1), inset 0 0 20px rgba(6, 182, 212, 0.1)",
+          boxShadow: `0 0 15px rgba(6, 182, 212, 0.15), 0 0 30px rgba(236, 72, 153, 0.05), inset 0 0 20px rgba(6, 182, 212, 0.05)`,
         }}
       >
         {/* Scanline effect */}
@@ -169,11 +174,11 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
           transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
         />
 
-        <div className="relative p-6">
-          <div className="flex gap-6">
+        <div className="relative p-4 sm:p-6">
+          <div className="flex gap-4 sm:gap-6">
             {/* Cover Art with holographic effect */}
             <motion.div
-              className="relative flex-shrink-0 w-40 h-40 overflow-hidden"
+              className="relative flex-shrink-0 w-24 h-24 sm:w-40 sm:h-40 overflow-hidden"
               style={{
                 clipPath: "polygon(0% 0%, 90% 0%, 100% 10%, 100% 100%, 10% 100%, 0% 90%)",
               }}
@@ -183,7 +188,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               {/* Neon border glow */}
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 via-magenta-500 to-yellow-400 opacity-50 blur-sm" />
 
-              <div className="absolute inset-0.5 overflow-hidden bg-black">
+              <div className="absolute inset-0.5 overflow-hidden bg-navy-900 holo-sweep">
                 {posterUrl ? (
                   <img
                     src={posterUrl}
@@ -195,8 +200,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     }}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-black">
-                    <Disc className="w-16 h-16 text-cyan-400/30" />
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-navy-700 to-navy-900">
+                    <Disc className="w-8 h-8 sm:w-16 sm:h-16 text-cyan-400/30" />
                   </div>
                 )}
 
@@ -216,14 +221,14 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       animate={{ rotate: 360 }}
                       transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                     >
-                      <Disc className="w-12 h-12 text-cyan-400" style={{ filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.8))" }} />
+                      <Disc className="w-8 h-8 sm:w-12 sm:h-12 text-cyan-400" style={{ filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.8))" }} />
                     </motion.div>
                   </div>
                 )}
 
                 {disc.state === "completed" && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <CheckCircle2 className="w-12 h-12 text-green-400" style={{ filter: "drop-shadow(0 0 8px rgba(16, 185, 129, 0.8))" }} />
+                    <CheckCircle2 className="w-8 h-8 sm:w-12 sm:h-12 text-green-400" style={{ filter: "drop-shadow(0 0 8px rgba(16, 185, 129, 0.8))" }} />
                   </div>
                 )}
               </div>
@@ -247,6 +252,12 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   {disc.subtitleStatus === 'failed' && (
                     <div className="text-yellow-500 text-lg" title="Subtitle download failed">
                       ⚠️
+                    </div>
+                  )}
+                  {elapsed && (
+                    <div className="flex items-center gap-1 text-xs font-mono text-slate-400" title="Elapsed time">
+                      <Clock className="w-3 h-3" />
+                      <span>{elapsed}</span>
                     </div>
                   )}
                   <StateIndicator state={disc.state} />
@@ -287,7 +298,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 <>
                   <CyberpunkProgressBar progress={disc.progress} color="cyan" label="OVERALL PROGRESS" />
 
-                  <div className="grid grid-cols-3 gap-4 mt-4 font-mono">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4 font-mono">
                     {disc.currentSpeed && (
                       <div className="flex flex-col">
                         <span className="text-xs text-slate-400 uppercase tracking-wider mb-1 font-bold" style={{ textShadow: "0 0 4px rgba(148, 163, 184, 0.5)" }}>
@@ -340,7 +351,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 font-mono">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4 font-mono">
                     <div className="flex flex-col">
                       <span className="text-xs text-slate-400 uppercase tracking-wider mb-1 font-bold" style={{ textShadow: "0 0 4px rgba(148, 163, 184, 0.5)" }}>
                         &gt; MATCHED
