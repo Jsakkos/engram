@@ -35,6 +35,24 @@ export const MOVIE_DISC = {
     ],
 };
 
+/** Multi-track movie disc (Blade Runner) — main feature, alternate cut, and extras */
+export const MOVIE_DISC_MULTI_TRACK = {
+    drive_id: 'E:',
+    volume_label: 'BLADE_RUNNER_2049',
+    content_type: 'movie',
+    detected_title: 'Blade Runner 2049',
+    detected_season: null,
+    simulate_ripping: true,
+    rip_speed_multiplier: 2,
+    titles: [
+        { duration_seconds: 9864, file_size_bytes: 38000000000, chapter_count: 30 }, // Main feature
+        { duration_seconds: 9600, file_size_bytes: 36000000000, chapter_count: 28 }, // Alternate cut
+        { duration_seconds: 1800, file_size_bytes: 3500000000, chapter_count: 5 },   // Behind the scenes
+        { duration_seconds: 900, file_size_bytes: 1800000000, chapter_count: 3 },    // Deleted scenes
+        { duration_seconds: 600, file_size_bytes: 1200000000, chapter_count: 2 },    // Trailers
+    ],
+};
+
 export const TV_DISC_ARRESTED_DEVELOPMENT_REAL = {
     staging_path: 'C:/Video/ARRESTED_Development_S1D1',
     volume_label: 'ARRESTED_DEVELOPMENT_S1D1',
