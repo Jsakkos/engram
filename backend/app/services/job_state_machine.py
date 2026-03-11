@@ -123,6 +123,10 @@ class JobStateMachine:
         if to_state == JobState.FAILED and error_message:
             job.error_message = error_message
 
+        # Set completed_at timestamp for terminal states
+        if to_state in (JobState.COMPLETED, JobState.FAILED):
+            job.completed_at = datetime.utcnow()
+
         # Persist to database
         await session.commit()
 

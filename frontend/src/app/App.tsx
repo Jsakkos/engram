@@ -9,6 +9,7 @@ import { useNotifications } from "./hooks/useNotifications";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
+import HistoryPage from "../components/HistoryPage";
 import type { Job } from "../types";
 
 type ViewMode = "expanded" | "compact";
@@ -427,6 +428,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<MainDashboard />} />
+      <Route path="/history" element={<HistoryPage />} />
       <Route path="/review/:jobId" element={<ReviewQueue />} />
     </Routes>
   );
