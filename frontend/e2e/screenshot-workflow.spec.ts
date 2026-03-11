@@ -102,8 +102,8 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await expect(card).toBeVisible({ timeout: 10000 });
         await page.screenshot({ path: `${SCREENSHOT_DIR}/10-movie-card.png`, fullPage: true });
 
-        // 11: PROCESSING state (ripping)
-        await expect(card.getByText('PROCESSING')).toBeVisible({ timeout: 15000 });
+        // 11: RIPPING state (use .first() since both StateIndicator and track labels say RIPPING)
+        await expect(card.getByText('RIPPING').first()).toBeVisible({ timeout: 15000 });
         await page.waitForTimeout(1000);
         await page.screenshot({ path: `${SCREENSHOT_DIR}/11-movie-processing.png`, fullPage: true });
 

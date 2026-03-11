@@ -63,7 +63,7 @@ test.describe('Progress Display - Engram UI', () => {
         const card = page.locator(SELECTORS.discCard).first();
 
         // Should have border styling
-        await expect(card).toHaveCSS('border-width', '2px');
+        await expect(card).toHaveCSS('border-width', '1px');
     });
 
     test('track grid displays for TV disc', async ({ page }) => {
@@ -148,7 +148,7 @@ test.describe('Progress Display - Engram UI', () => {
         const footer = page.locator(SELECTORS.footer);
         await expect(footer).toBeVisible();
 
-        // Check for active operations count
-        await expect(footer.getByText(/OPERATIONS ACTIVE/i)).toBeVisible();
+        // Check for active count in footer
+        await expect(footer.getByText(/\d+ Active/i)).toBeVisible();
     });
 });
