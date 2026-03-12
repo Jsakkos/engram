@@ -68,10 +68,12 @@ def get_config_sync() -> AppConfig:
         config = session.exec(statement).first()
 
         if config is None:
-            config = AppConfig()
+            defaults = _platform_default_paths()
+            config = AppConfig(**defaults)
             session.add(config)
             session.commit()
             session.refresh(config)
+            logger.info(f"Created default configuration (sync) with platform paths: {defaults}")
 
         return config
 

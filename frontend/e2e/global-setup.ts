@@ -20,11 +20,22 @@ async function globalSetup() {
         await new Promise((r) => setTimeout(r, 1000));
     }
 
-    // Mark setup as complete to dismiss ConfigWizard
+    // Mark setup as complete and configure temp paths for CI.
+    // Without valid paths, the organizer fails with "Permission denied"
+    // when it resolves empty strings to Path(".") on Linux.
+    const os = await import('os');
+    const path = await import('path');
+    const tmpBase = path.join(os.tmpdir(), 'engram-e2e');
+
     const res = await fetch(`${API_BASE}/api/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ setup_complete: true }),
+        body: JSON.stringify({
+            setup_complete: true,
+            staging_path: path.join(tmpBase, 'staging'),
+            library_movies_path: path.join(tmpBase, 'movies'),
+            library_tv_path: path.join(tmpBase, 'tv'),
+        }),
     });
 
     if (!res.ok) {

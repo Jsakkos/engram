@@ -67,7 +67,7 @@ test.describe('Movie Track Progress - Multi-track disc', () => {
     test('overall progress advances during multi-track rip', async ({ page }) => {
         await simulateInsertDisc({
             ...MOVIE_DISC_MULTI_TRACK,
-            rip_speed_multiplier: 2,
+            rip_speed_multiplier: 1, // Slow enough to sample progress twice (5 tracks × 20 steps × 0.1s = 10s)
         });
 
         // Wait for progress bar
@@ -76,7 +76,7 @@ test.describe('Movie Track Progress - Multi-track disc', () => {
 
         // Sample progress at two points
         const firstText = await page.locator(SELECTORS.progressPercentage).first().textContent();
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(2000);
         const secondText = await page.locator(SELECTORS.progressPercentage).first().textContent();
 
         // Parse percentages

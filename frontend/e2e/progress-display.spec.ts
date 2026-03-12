@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { simulateInsertDisc, resetAllJobs } from './fixtures/api-helpers';
-import { TV_DISC_ARRESTED_DEVELOPMENT, MOVIE_DISC } from './fixtures/disc-scenarios';
+import { TV_DISC_ARRESTED_DEVELOPMENT, MOVIE_DISC, MOVIE_DISC_MULTI_TRACK } from './fixtures/disc-scenarios';
 import { SELECTORS } from './fixtures/selectors';
 
 test.beforeEach(async ({ page }) => {
@@ -11,9 +11,10 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('Progress Display - Engram UI', () => {
     test('ripping progress percentage updates', async ({ page }) => {
+        // Use multi-track disc for longer ripping time (5 tracks × 20 steps × 0.1s = 10s)
         await simulateInsertDisc({
-            ...MOVIE_DISC,
-            rip_speed_multiplier: 1, // Slow enough to observe progress
+            ...MOVIE_DISC_MULTI_TRACK,
+            rip_speed_multiplier: 1,
         });
 
         // Wait for progress bar to appear
@@ -35,9 +36,10 @@ test.describe('Progress Display - Engram UI', () => {
     });
 
     test('speed and ETA display during ripping', async ({ page }) => {
+        // Use multi-track disc for longer ripping time
         await simulateInsertDisc({
-            ...MOVIE_DISC,
-            rip_speed_multiplier: 1, // Slow enough to observe speed/ETA
+            ...MOVIE_DISC_MULTI_TRACK,
+            rip_speed_multiplier: 1,
         });
 
         // Wait for ripping state
