@@ -60,8 +60,8 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
     // Click ACTIVE filter
     await page.locator(SELECTORS.filterActive).click();
 
-    // Should show empty state heading
-    await expect(page.getByRole('heading', { name: /NO DISCS DETECTED/i })).toBeVisible();
+    // Should show empty state heading (ACTIVE filter shows "NO ACTIVE OPERATIONS")
+    await expect(page.getByRole('heading', { name: /NO ACTIVE OPERATIONS/i })).toBeVisible();
 
     // Screenshot empty state
     await page.screenshot({
@@ -71,21 +71,21 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
   });
 
   test('Page uses cyberpunk color scheme', async ({ page }) => {
-    // Check for black background
-    const body = page.locator('div.min-h-screen.bg-black');
+    // Check for navy background
+    const body = page.locator(SELECTORS.appContainer);
     await expect(body).toBeVisible();
 
-    // Check for grid background
-    const grid = page.locator('div.fixed.inset-0.opacity-10');
-    await expect(grid.first()).toBeVisible();
+    // Check for animated gradient overlay
+    const overlay = page.locator('div.fixed.inset-0.opacity-20');
+    await expect(overlay.first()).toBeVisible();
   });
 
   test('Footer displays operation counts', async ({ page }) => {
-    // Should show "OPERATIONS ACTIVE" text
-    await expect(page.locator(SELECTORS.footer)).toContainText(/OPERATIONS ACTIVE/i);
+    // Should show "Active" count
+    await expect(page.locator(SELECTORS.footer)).toContainText(/\d+ Active/i);
 
-    // Should show "ARCHIVED" text
-    await expect(page.locator(SELECTORS.footer)).toContainText(/ARCHIVED/i);
+    // Should show "Archived" count
+    await expect(page.locator(SELECTORS.footer)).toContainText(/\d+ Archived/i);
   });
 
   test('Settings button is present', async ({ page }) => {

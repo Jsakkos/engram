@@ -100,7 +100,7 @@ test.describe('Disc Flow - Engram UI', () => {
     test('Empty state displays correctly', async ({ page }) => {
         // Should show empty state on active filter (reset already ran in beforeEach)
         await page.locator(SELECTORS.filterActive).click();
-        await expect(page.getByRole('heading', { name: /NO DISCS DETECTED/i })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('heading', { name: /NO ACTIVE OPERATIONS/i })).toBeVisible({ timeout: 5000 });
 
         // Should show appropriate empty state on done filter
         await page.locator(SELECTORS.filterDone).click();

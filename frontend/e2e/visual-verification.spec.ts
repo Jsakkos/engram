@@ -27,8 +27,8 @@ test.describe('Visual Verification - UI Correctness', () => {
     await expect(discCard).toBeVisible();
 
     // Check for border styling (cyberpunk aesthetic)
-    await expect(discCard).toHaveClass(/border-2/);
-    await expect(discCard).toHaveClass(/bg-black/);
+    await expect(discCard).toHaveClass(/border/);
+    await expect(discCard).toHaveClass(/bg-navy/);
   });
 
   test('Progress bar displays with percentage', async ({ page }) => {
@@ -98,7 +98,7 @@ test.describe('Visual Verification - UI Correctness', () => {
   test('Empty state displays correctly', async ({ page }) => {
     // Should show empty state on active filter (no discs since reset ran in beforeEach)
     await page.locator(SELECTORS.filterActive).click();
-    await expect(page.getByRole('heading', { name: /NO DISCS DETECTED/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /NO ACTIVE OPERATIONS/i })).toBeVisible({ timeout: 5000 });
   });
 
   test('State indicators use correct colors', async ({ page }) => {
@@ -157,11 +157,11 @@ test.describe('Visual Verification - UI Correctness', () => {
     // Wait for card
     await page.waitForSelector(SELECTORS.discCard, { timeout: 5000 });
 
-    // Footer should show active operations count
-    await expect(page.locator(SELECTORS.footer)).toContainText(/\d+ OPERATIONS ACTIVE/i);
+    // Footer should show active count
+    await expect(page.locator(SELECTORS.footer)).toContainText(/\d+ Active/i);
 
     // Should show archived count
-    await expect(page.locator(SELECTORS.footer)).toContainText(/\d+ ARCHIVED/i);
+    await expect(page.locator(SELECTORS.footer)).toContainText(/\d+ Archived/i);
   });
 });
 
