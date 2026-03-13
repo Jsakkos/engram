@@ -329,8 +329,7 @@ class TestProgressCallbackRaceCondition:
             ripping = await _count_ripping(sorted_titles)
 
             assert len(ripping) == 1, (
-                f"After title {title_num}: expected 1 RIPPING, "
-                f"got {len(ripping)}: {ripping}"
+                f"After title {title_num}: expected 1 RIPPING, got {len(ripping)}: {ripping}"
             )
             assert ripping[0] == title_num - 1, (
                 f"Expected title_index {title_num - 1} to be RIPPING, got {ripping[0]}"

@@ -25,7 +25,7 @@ class TestCreatedMessageDoesNotFireCallback:
         callback = MagicMock()
 
         # Simulate a "created" line from MakeMKV
-        line = 'MSG:5011,0,0,"File \'/output/title00.mkv\' created successfully."'
+        line = "MSG:5011,0,0,\"File '/output/title00.mkv' created successfully.\""
         output_dir = Path("/output")
 
         if ".mkv" in line and "created" in line:
@@ -48,7 +48,7 @@ class TestCreatedMessageDoesNotFireCallback:
         known_files: dict[str, int] = {"title00.mkv": 500000}
         _fs_lock = threading.Lock()
 
-        line = 'MSG:5011,0,0,"File \'/output/title00.mkv\' created successfully."'
+        line = "MSG:5011,0,0,\"File '/output/title00.mkv' created successfully.\""
         output_dir = Path("/output")
 
         if ".mkv" in line and "created" in line:

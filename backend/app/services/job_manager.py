@@ -1213,7 +1213,9 @@ class JobManager:
                                     active_title.id,
                                     TitleState.RIPPING.value,
                                     expected_size_bytes=active_title.file_size_bytes,
-                                    actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
+                                    actual_size_bytes=min(
+                                        actual_bytes, active_title.file_size_bytes
+                                    ),
                                 )
 
                 # Define granular callback — called from extractor thread
@@ -1358,7 +1360,10 @@ class JobManager:
                                         try:
                                             async with async_session() as sess:
                                                 title_db = await sess.get(DiscTitle, t.id)
-                                                if title_db and title_db.state == TitleState.RIPPING:
+                                                if (
+                                                    title_db
+                                                    and title_db.state == TitleState.RIPPING
+                                                ):
                                                     title_db.state = new_state
                                                     await sess.commit()
                                                     await ws_manager.broadcast_title_update(

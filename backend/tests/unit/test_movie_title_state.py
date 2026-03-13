@@ -151,9 +151,6 @@ class TestTitlesDiscoveredState:
 
     def test_all_titles_start_as_pending(self):
         """All titles in a broadcast should have state='pending'."""
-        titles = [
-            {"id": i, "title_index": i, "state": "pending"}
-            for i in range(5)
-        ]
+        titles = [{"id": i, "title_index": i, "state": "pending"} for i in range(5)]
         for t in titles:
             assert t["state"] == "pending"

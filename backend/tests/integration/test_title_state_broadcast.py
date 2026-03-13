@@ -85,8 +85,16 @@ class TestTitleStateBroadcast:
                     "rip_speed_multiplier": 50,
                     "titles": [
                         {"duration_seconds": 170, "file_size_bytes": 100000000, "chapter_count": 1},
-                        {"duration_seconds": 1101, "file_size_bytes": 800000000, "chapter_count": 5},
-                        {"duration_seconds": 1269, "file_size_bytes": 900000000, "chapter_count": 6},
+                        {
+                            "duration_seconds": 1101,
+                            "file_size_bytes": 800000000,
+                            "chapter_count": 5,
+                        },
+                        {
+                            "duration_seconds": 1269,
+                            "file_size_bytes": 900000000,
+                            "chapter_count": 6,
+                        },
                     ],
                 },
             )
@@ -153,9 +161,7 @@ class TestTitleStateBroadcast:
                     title_states[msg["title_id"]] = msg["state"]
 
                     # Count how many titles are currently in "ripping" state
-                    ripping_count = sum(
-                        1 for s in title_states.values() if s == "ripping"
-                    )
+                    ripping_count = sum(1 for s in title_states.values() if s == "ripping")
                     assert ripping_count <= 1, (
                         f"Found {ripping_count} titles simultaneously in 'ripping' state: "
                         f"{title_states}"
