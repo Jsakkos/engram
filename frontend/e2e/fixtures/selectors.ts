@@ -55,6 +55,7 @@ export const SELECTORS = {
   trackStateRipping: 'text=/RIPPING|EXTRACTING/i',
   trackStateMatching: 'text=/MATCHING/i',
   trackStateMatched: 'text=/MATCHED/i',
+  trackStateQueued: 'text=/QUEUED/i',
 
   // Track byte progress (e.g., "245.3 MB / 520.1 MB")
   trackByteProgress: 'text=/\\d+(\\.\\d+)?\\s*(MB|GB)\\s*\\/\\s*\\d+(\\.\\d+)?\\s*(MB|GB)/i',

@@ -210,22 +210,23 @@ async def test_on_title_ripped_transitions_to_ripping(client):
         fake_path = Path("/staging/B1_t01.mkv")
         await job_manager._on_title_ripped(job_id, 1, fake_path, sorted_titles)
 
-        # 4. Verify DB was updated — title should be RIPPING (file detected,
-        # but not yet verified as fully written, so matching hasn't started)
+        # 4. Verify DB was updated — _on_title_ripped only sets output_filename,
+        # it does NOT promote state to RIPPING (that's progress_callback's job,
+        # to prevent the multi-RIPPING race condition).
         async with db_session() as session:
             title = await session.get(DiscTitle, sorted_titles[1].id)
             assert title is not None
-            assert title.state == TitleState.RIPPING, f"Expected RIPPING, got {title.state}"
+            assert title.state == TitleState.PENDING, f"Expected PENDING, got {title.state}"
             assert title.output_filename == str(fake_path), (
                 f"Expected {fake_path}, got {title.output_filename}"
             )
 
-        # 5. Verify WebSocket broadcast was called
+        # 5. Verify WebSocket broadcast was called with current state (pending)
         mock_broadcast.assert_called_once()
         call_args = mock_broadcast.call_args
         assert call_args[0][0] == job_id  # job_id
         assert call_args[0][1] == sorted_titles[1].id  # title_id
-        assert call_args[0][2] == "ripping"  # state
+        assert call_args[0][2] == "pending"  # state (not ripping — see above)
 
         # 6. Verify matching was started (for TV content)
         mock_match.assert_called_once_with(job_id, sorted_titles[1].id, fake_path)
@@ -277,9 +278,10 @@ async def test_on_title_ripped_maps_by_filename_index(client):
         await job_manager._on_title_ripped(job_id, 99, fake_path, sorted_titles)
 
         # Verify title_index=3 was updated (not rip_index 99)
+        # State stays PENDING — progress_callback is the authority on RIPPING
         async with db_session() as session:
             title_3 = await session.get(DiscTitle, sorted_titles[3].id)
-            assert title_3.state == TitleState.RIPPING
+            assert title_3.state == TitleState.PENDING
             assert title_3.output_filename == str(fake_path)
 
             # Other titles should still be pending

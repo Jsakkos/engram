@@ -12,7 +12,7 @@ import { useElapsedTime } from "../hooks/useElapsedTime";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
-export type TrackState = "pending" | "ripping" | "matching" | "matched" | "failed";
+export type TrackState = "pending" | "ripping" | "matching" | "matched" | "failed" | "completed";
 
 export interface MatchCandidate {
   episode: string;
@@ -326,7 +326,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                         &gt; TRACKS
                       </span>
                       <span className="text-sm font-bold text-yellow-400" style={{ textShadow: "0 0 8px rgba(250, 204, 21, 0.8)" }}>
-                        {disc.tracks.filter(t => t.state === "matched").length}/{disc.tracks.length}
+                        {disc.tracks.filter(t => ["matched", "completed"].includes(t.state)).length}/{disc.tracks.length}
                       </span>
                     </div>
                   </div>
@@ -357,7 +357,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                         &gt; MATCHED
                       </span>
                       <span className="text-sm font-bold text-green-400" style={{ textShadow: "0 0 8px rgba(16, 185, 129, 0.8)" }}>
-                        {disc.tracks.filter(t => t.state === "matched").length}/{disc.tracks.length}
+                        {disc.tracks.filter(t => ["matched", "completed"].includes(t.state)).length}/{disc.tracks.length}
                       </span>
                     </div>
                     <div className="flex flex-col">

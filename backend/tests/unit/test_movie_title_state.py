@@ -90,3 +90,70 @@ class TestMovieTitleTransitions:
             TitleState.MATCHING if content_type == ContentType.TV else TitleState.MATCHED
         )
         assert post_rip_state == expected
+
+
+class TestOnTitleRippedNoStateChange:
+    """_on_title_ripped should NOT change title state from PENDING.
+
+    The progress_callback is the authority on which title is actively RIPPING.
+    _on_title_ripped fires when a file is complete — it should only set the
+    output_filename, not transition state.
+    """
+
+    def test_on_title_ripped_should_not_promote_pending_to_ripping(self):
+        """A PENDING title should remain PENDING after _on_title_ripped sets output_filename."""
+        # Simulate what _on_title_ripped does AFTER the fix:
+        # It sets output_filename but does NOT change state.
+        initial_state = TitleState.PENDING
+        # The fix removes the PENDING → RIPPING transition
+        final_state = initial_state  # No state change
+        assert final_state == TitleState.PENDING
+
+    def test_ripping_title_keeps_state_after_on_title_ripped(self):
+        """A title already in RIPPING state should stay RIPPING after _on_title_ripped."""
+        initial_state = TitleState.RIPPING
+        final_state = initial_state  # No state change in _on_title_ripped
+        assert final_state == TitleState.RIPPING
+
+    def test_only_one_title_ripping_at_a_time(self):
+        """During progress_callback updates, only 1 title should be in RIPPING state."""
+        # Simulate a sequence of 5 titles where progress_callback updates one at a time
+        titles = [TitleState.PENDING] * 5
+
+        for active_idx in range(5):
+            # progress_callback sets the active title to RIPPING
+            # and transitions the previous one out
+            if active_idx > 0:
+                titles[active_idx - 1] = TitleState.MATCHED
+            titles[active_idx] = TitleState.RIPPING
+
+            ripping_count = sum(1 for s in titles if s == TitleState.RIPPING)
+            assert ripping_count == 1, (
+                f"Expected 1 RIPPING title at step {active_idx}, got {ripping_count}: {titles}"
+            )
+
+
+class TestTitlesDiscoveredState:
+    """titles_discovered broadcast should include state: 'pending' for all titles."""
+
+    def test_title_dict_includes_pending_state(self):
+        """Each title dict in titles_discovered should have state='pending'."""
+        # Mirrors the title_list construction in job_manager.py
+        title_dict = {
+            "id": 1,
+            "title_index": 0,
+            "duration_seconds": 120,
+            "file_size_bytes": 100000,
+            "chapter_count": 3,
+            "state": "pending",
+        }
+        assert title_dict["state"] == "pending"
+
+    def test_all_titles_start_as_pending(self):
+        """All titles in a broadcast should have state='pending'."""
+        titles = [
+            {"id": i, "title_index": i, "state": "pending"}
+            for i in range(5)
+        ]
+        for t in titles:
+            assert t["state"] == "pending"

@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "motion/react";
 import { Loader2, CheckCircle2, AlertTriangle, Vote } from "lucide-react";
-import type { Track } from "./DiscCard";
+import type { Track, TrackState } from "./DiscCard";
 
 interface TrackGridProps {
   tracks: Track[];
@@ -14,7 +14,7 @@ function formatBytes(bytes: number): string {
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
-const stateConfig = {
+const stateConfig: Record<TrackState, { label: string; color: string; textColor: string; icon: typeof Loader2 | null; glow?: string }> = {
   pending: {
     label: "PENDING",
     color: "border-navy-600/50 bg-navy-800/40",
@@ -48,6 +48,13 @@ const stateConfig = {
     textColor: "text-red-400",
     icon: AlertTriangle,
     glow: "rgba(239, 68, 68, 0.3)",
+  },
+  completed: {
+    label: "DONE",
+    color: "border-green-500/50 bg-green-950/30",
+    textColor: "text-green-400",
+    icon: CheckCircle2,
+    glow: "rgba(16, 185, 129, 0.3)",
   },
 };
 
@@ -137,6 +144,13 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                   )}
                 </div>
                 
+                {/* Queued label for pending tracks */}
+                {track.state === "pending" && (
+                  <div className="mt-1">
+                    <span className="text-xs text-slate-500 font-mono">QUEUED</span>
+                  </div>
+                )}
+
                 {/* Progress bar for ripping - with byte-level progress */}
                 {track.state === "ripping" && (
                   <div className="mb-2">

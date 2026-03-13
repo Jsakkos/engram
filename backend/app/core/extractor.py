@@ -450,14 +450,14 @@ class MakeMKVExtractor:
                             match = re.search(r'["\']([^"\']+\.mkv)["\']', line)
                             if match:
                                 filepath = output_dir / Path(match.group(1)).name
-                                if filepath.name not in completed_files:
-                                    completed_files.add(filepath.name)
-                                    output_files.append(filepath)
-                                    if title_complete_callback:
-                                        try:
-                                            title_complete_callback(len(completed_files), filepath)
-                                        except Exception:
-                                            logger.exception("Error in title complete callback")
+                                # Track the file for stable-size detection but do NOT
+                                # fire title_complete_callback — the file was just created,
+                                # not finished writing. Let _check_for_completed_files
+                                # detect true completion via stable file size.
+                                with _fs_lock:
+                                    if filepath.name not in known_files:
+                                        known_files[filepath.name] = 0
+                                        logger.info(f"MakeMKV created output file: {filepath.name}")
 
                         # Also check filesystem periodically from the thread
                         now = _time.monotonic()

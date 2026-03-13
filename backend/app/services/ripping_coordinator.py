@@ -23,35 +23,9 @@ from app.models import DiscJob, DiscTitle
 from app.models.disc_job import ContentType, JobState, TitleState
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.job_state_machine import JobStateMachine
+from app.services.ripping_helpers import SpeedCalculator, resolve_title_from_filename
 
 logger = logging.getLogger(__name__)
-
-
-class SpeedCalculator:
-    """Calculates ripping speed and ETA."""
-
-    def __init__(self, total_bytes: int):
-        self.total_bytes = total_bytes
-        self.speed_str = "—"
-        self.eta_seconds: int | None = None
-        self._start_time = time.monotonic()
-        self._last_bytes = 0
-        self._last_update = self._start_time
-
-    def update(self, bytes_done: int):
-        """Update speed calculation with current progress."""
-        now = time.monotonic()
-        elapsed = now - self._start_time
-
-        if elapsed > 0:
-            bytes_per_sec = bytes_done / elapsed
-            if bytes_per_sec > 0:
-                self.speed_str = f"{bytes_per_sec / 1024 / 1024:.1f} MB/s"
-                remaining = self.total_bytes - bytes_done
-                self.eta_seconds = int(remaining / bytes_per_sec) if bytes_per_sec > 0 else None
-
-        self._last_bytes = bytes_done
-        self._last_update = now
 
 
 class RippingCoordinator:
@@ -119,119 +93,131 @@ class RippingCoordinator:
             _titles_marked_ripping: set[int] = set()
             _last_title_idx: int | None = None
             _title_file_cache: dict[int, Path] = {}  # title_index → resolved Path
+            _progress_lock = asyncio.Lock()
 
             # Create progress callback
             async def progress_callback(progress: RipProgress) -> None:
                 nonlocal _last_title_idx
-                current_idx = progress.current_title
-                active_title_size = 0
-                cumulative_previous = 0
-                active_title = None
 
-                if 0 <= (current_idx - 1) < len(sorted_titles):
-                    active_title = sorted_titles[current_idx - 1]
-                    active_title_size = active_title.file_size_bytes
-                    for i in range(current_idx - 1):
-                        cumulative_previous += sorted_titles[i].file_size_bytes
+                # Serialize all progress handling to prevent race conditions.
+                # MakeMKV emits PRGC/PRGV messages rapidly and each spawns a
+                # concurrent asyncio task.  Without the lock, interleaved DB
+                # reads/writes corrupt _last_title_idx and _titles_marked_ripping,
+                # causing multiple titles to enter RIPPING state simultaneously.
+                async with _progress_lock:
+                    current_idx = progress.current_title
+                    active_title_size = 0
+                    cumulative_previous = 0
+                    active_title = None
 
-                current_title_bytes = int((progress.percent / 100.0) * active_title_size)
-                total_bytes_done = cumulative_previous + current_title_bytes
+                    if 0 <= (current_idx - 1) < len(sorted_titles):
+                        active_title = sorted_titles[current_idx - 1]
+                        active_title_size = active_title.file_size_bytes
+                        for i in range(current_idx - 1):
+                            cumulative_previous += sorted_titles[i].file_size_bytes
 
-                speed_calc.update(total_bytes_done)
+                    current_title_bytes = int((progress.percent / 100.0) * active_title_size)
+                    total_bytes_done = cumulative_previous + current_title_bytes
 
-                global_percent = 0
-                if total_job_bytes > 0:
-                    global_percent = (total_bytes_done / total_job_bytes) * 100.0
+                    speed_calc.update(total_bytes_done)
 
-                # When active title changes, transition previous title out of RIPPING.
-                if _last_title_idx is not None and current_idx != _last_title_idx:
-                    prev_list_idx = _last_title_idx - 1
-                    if 0 <= prev_list_idx < len(sorted_titles):
-                        prev_title = sorted_titles[prev_list_idx]
-                        try:
-                            async with async_session() as sess:
-                                prev_db = await sess.get(DiscTitle, prev_title.id)
-                                if prev_db and prev_db.state == TitleState.RIPPING:
-                                    # Movies skip matching — go straight to MATCHED
-                                    new_state = (
-                                        TitleState.MATCHING
-                                        if job.content_type == ContentType.TV
-                                        else TitleState.MATCHED
-                                    )
-                                    prev_db.state = new_state
-                                    sess.add(prev_db)
-                                    await sess.commit()
-                                    await self._ws.broadcast_title_update(
-                                        job_id,
-                                        prev_db.id,
-                                        new_state.value,
-                                        expected_size_bytes=prev_title.file_size_bytes,
-                                        actual_size_bytes=prev_title.file_size_bytes,
-                                    )
-                        except Exception:
-                            logger.warning(
-                                f"Failed to transition title {prev_title.id} "
-                                f"out of RIPPING state (Job {job_id})",
-                                exc_info=True,
-                            )
-                _last_title_idx = current_idx
+                    global_percent = 0
+                    if total_job_bytes > 0:
+                        global_percent = (total_bytes_done / total_job_bytes) * 100.0
 
-                # Set active title to RIPPING state if not already
-                if active_title and active_title.id not in _titles_marked_ripping:
-                    async with async_session() as sess:
-                        title_db = await sess.get(DiscTitle, active_title.id)
-                        if title_db and title_db.state == TitleState.PENDING:
-                            title_db.state = TitleState.RIPPING
-                            sess.add(title_db)
-                            await sess.commit()
+                    # When active title changes, transition previous title out of RIPPING.
+                    if _last_title_idx is not None and current_idx != _last_title_idx:
+                        prev_list_idx = _last_title_idx - 1
+                        if 0 <= prev_list_idx < len(sorted_titles):
+                            prev_title = sorted_titles[prev_list_idx]
+                            try:
+                                async with async_session() as sess:
+                                    prev_db = await sess.get(DiscTitle, prev_title.id)
+                                    if prev_db and prev_db.state == TitleState.RIPPING:
+                                        # Movies skip matching — go straight to MATCHED
+                                        new_state = (
+                                            TitleState.MATCHING
+                                            if job.content_type == ContentType.TV
+                                            else TitleState.MATCHED
+                                        )
+                                        prev_db.state = new_state
+                                        sess.add(prev_db)
+                                        await sess.commit()
+                                        await self._ws.broadcast_title_update(
+                                            job_id,
+                                            prev_db.id,
+                                            new_state.value,
+                                            expected_size_bytes=prev_title.file_size_bytes,
+                                            actual_size_bytes=prev_title.file_size_bytes,
+                                        )
+                            except Exception:
+                                logger.warning(
+                                    f"Failed to transition title {prev_title.id} "
+                                    f"out of RIPPING state (Job {job_id})",
+                                    exc_info=True,
+                                )
+                    _last_title_idx = current_idx
+
+                    # Set active title to RIPPING state if not already
+                    if active_title and active_title.id not in _titles_marked_ripping:
+                        async with async_session() as sess:
+                            title_db = await sess.get(DiscTitle, active_title.id)
+                            if title_db and title_db.state == TitleState.PENDING:
+                                title_db.state = TitleState.RIPPING
+                                sess.add(title_db)
+                                await sess.commit()
+                                await self._ws.broadcast_title_update(
+                                    job_id,
+                                    title_db.id,
+                                    TitleState.RIPPING.value,
+                                    duration_seconds=title_db.duration_seconds,
+                                    file_size_bytes=title_db.file_size_bytes,
+                                    expected_size_bytes=title_db.file_size_bytes,
+                                    actual_size_bytes=0,
+                                )
+                        _titles_marked_ripping.add(active_title.id)
+
+                    # Broadcast per-title byte progress using actual file size on disk.
+                    # Only broadcast RIPPING if this title is actually the current one
+                    # being ripped — don't re-broadcast RIPPING for titles that have
+                    # already transitioned to MATCHED/MATCHING.
+                    if active_title and active_title.file_size_bytes:
+                        if active_title.id in _titles_marked_ripping:
+                            actual_bytes = current_title_bytes  # Fallback
+                            tidx = active_title.title_index
+                            try:
+                                if tidx in _title_file_cache:
+                                    actual_bytes = _title_file_cache[tidx].stat().st_size
+                                else:
+                                    matches = list(output_dir.glob(f"*_t{tidx:02d}.mkv"))
+                                    if matches:
+                                        _title_file_cache[tidx] = matches[0]
+                                        actual_bytes = matches[0].stat().st_size
+                            except OSError:
+                                pass  # Use calculated fallback
                             await self._ws.broadcast_title_update(
                                 job_id,
-                                title_db.id,
+                                active_title.id,
                                 TitleState.RIPPING.value,
-                                duration_seconds=title_db.duration_seconds,
-                                file_size_bytes=title_db.file_size_bytes,
-                                expected_size_bytes=title_db.file_size_bytes,
-                                actual_size_bytes=0,
+                                expected_size_bytes=active_title.file_size_bytes,
+                                actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
                             )
-                    _titles_marked_ripping.add(active_title.id)
 
-                # Broadcast per-title byte progress using actual file size on disk.
-                if active_title and active_title.file_size_bytes:
-                    actual_bytes = current_title_bytes  # Fallback
-                    tidx = active_title.title_index
-                    try:
-                        if tidx in _title_file_cache:
-                            actual_bytes = _title_file_cache[tidx].stat().st_size
-                        else:
-                            matches = list(output_dir.glob(f"*_t{tidx:02d}.mkv"))
-                            if matches:
-                                _title_file_cache[tidx] = matches[0]
-                                actual_bytes = matches[0].stat().st_size
-                    except OSError:
-                        pass  # Use calculated fallback
-                    await self._ws.broadcast_title_update(
+                    await self._ws.broadcast_job_update(
                         job_id,
-                        active_title.id,
-                        TitleState.RIPPING.value,
-                        expected_size_bytes=active_title.file_size_bytes,
-                        actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
+                        JobState.RIPPING.value,
+                        progress=global_percent,
+                        speed=speed_calc.speed_str,
+                        eta=speed_calc.eta_seconds,
+                        current_title=progress.current_title,
+                        total_titles=len(sorted_titles),
                     )
-
-                await self._ws.broadcast_job_update(
-                    job_id,
-                    JobState.RIPPING.value,
-                    progress=global_percent,
-                    speed=speed_calc.speed_str,
-                    eta=speed_calc.eta_seconds,
-                    current_title=progress.current_title,
-                    total_titles=len(sorted_titles),
-                )
 
             # Create title completion callback
             def on_title_complete(idx: int, path: Path):
                 logger.info(f"[CALLBACK] Title complete: idx={idx} path={path.name} (Job {job_id})")
                 future = asyncio.run_coroutine_threadsafe(
-                    self._on_title_ripped(job_id, idx, path, sorted_titles, session),
+                    self._on_title_ripped(job_id, idx, path, sorted_titles),
                     self._loop,
                 )
 
@@ -378,54 +364,16 @@ class RippingCoordinator:
         rip_index: int,
         path: Path,
         sorted_titles: list[DiscTitle],
-        parent_session: AsyncSession,
     ) -> None:
-        """Handle completion of a single title rip.
-
-        Matches the ripped file to a DiscTitle using:
-        1. Title index extracted from filename (e.g. B1_t03.mkv → index 3)
-        2. Fallback: sequential rip_index mapped to sorted titles
-        """
-        # Use a new session since this is called from a thread
+        """Handle completion of a single title rip."""
         async with async_session() as session:
-            title = None
-
-            # Try to extract title index from MakeMKV filename pattern
-            idx_match = re.search(r"t(\d+)\.mkv$", path.name, re.IGNORECASE)
-            if not idx_match:
-                idx_match = re.search(r"title[_]?(\d+)\.mkv$", path.name, re.IGNORECASE)
-
-            if idx_match:
-                title_index = int(idx_match.group(1))
-                # Find the DiscTitle with this title_index
-                for st in sorted_titles:
-                    if st.title_index == title_index:
-                        title = await session.get(DiscTitle, st.id)
-                        break
-                if title:
-                    logger.debug(
-                        f"Mapped {path.name} to title_index={title_index} "
-                        f"(Title DB id={title.id}, Job {job_id})"
-                    )
-
-            # Fallback: map by sequential rip order
-            if not title and 0 <= (rip_index - 1) < len(sorted_titles):
-                st = sorted_titles[rip_index - 1]
-                title = await session.get(DiscTitle, st.id)
-                logger.debug(
-                    f"Fallback mapping: rip_index={rip_index} → "
-                    f"title_index={st.title_index} (Title DB id={st.id}, Job {job_id})"
-                )
-
+            title = await resolve_title_from_filename(
+                path, sorted_titles, rip_index, job_id, session
+            )
             if not title:
-                logger.warning(f"Could not map ripped file {path.name} to any title (Job {job_id})")
                 return
 
             title.output_filename = str(path)
-            # Only advance from PENDING → RIPPING; don't regress a title that
-            # progress_callback already transitioned to MATCHING.
-            if title.state == TitleState.PENDING:
-                title.state = TitleState.RIPPING
             session.add(title)
             await session.commit()
             await self._ws.broadcast_title_update(
@@ -434,6 +382,7 @@ class RippingCoordinator:
                 title.state.value,
                 duration_seconds=title.duration_seconds,
                 file_size_bytes=title.file_size_bytes,
+                output_filename=str(path),
             )
 
             logger.info(
@@ -476,7 +425,7 @@ class RippingCoordinator:
                 f"Backfill: found unmatched file {mkv.name} "
                 f"(title_index={title_index}, Job {job_id})"
             )
-            await self._on_title_ripped(job_id, 0, mkv, sorted_titles, session)
+            await self._on_title_ripped(job_id, 0, mkv, sorted_titles)
 
     async def wait_for_file_ready(
         self,
