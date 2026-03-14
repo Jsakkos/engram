@@ -2,7 +2,7 @@
  * Job management hook with WebSocket integration
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { Job, DiscTitle, WebSocketMessage } from '../../types';
 
@@ -14,31 +14,71 @@ export function useJobManagement(devMode: boolean = false) {
     // When running on localhost:5173, connects to ws://localhost:5173/ws (proxied to backend)
     // In production, uses the same host as the frontend
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
-    const { lastMessage, isConnected } = useWebSocket(wsUrl);
+    const { isConnected, addMessageListener } = useWebSocket(wsUrl);
+
+    // Stable ref to fetchJobsAndTitles so the listener closure doesn't go stale
+    const fetchRef = useRef<() => Promise<void>>();
+
+    const fetchJobsAndTitles = useCallback(async () => {
+        try {
+            console.log('🔄 fetchJobsAndTitles called');
+            const jobsRes = await fetch('/api/jobs');
+            const jobsData: Job[] = await jobsRes.json();
+            setJobs(jobsData);
+
+            // Fetch titles for each job, merging with existing WebSocket state
+            for (const job of jobsData) {
+                const titlesRes = await fetch(`/api/jobs/${job.id}/titles`);
+                const titlesData: DiscTitle[] = await titlesRes.json();
+                setTitlesMap(prev => {
+                    const existing = prev[job.id];
+                    console.log('🔄 fetchJobsAndTitles merge:', {
+                        job_id: job.id,
+                        restTitleStates: titlesData.map(t => `${t.id}:${t.state}`),
+                        existingTitleStates: existing?.map(t => `${t.id}:${t.state}`) ?? 'NONE',
+                    });
+                    if (!existing) {
+                        return { ...prev, [job.id]: titlesData };
+                    }
+                    // Merge: for each title, keep the more-recent state.
+                    // WebSocket-derived state (e.g. "ripping") is more current
+                    // than the REST snapshot if the REST state is "pending".
+                    const STATE_PRIORITY: Record<string, number> = {
+                        pending: 0,
+                        ripping: 1,
+                        matching: 2,
+                        matched: 3,
+                        review: 3,
+                        completed: 4,
+                        failed: 4,
+                    };
+                    const merged = titlesData.map(restTitle => {
+                        const wsTitle = existing.find(t => t.id === restTitle.id);
+                        if (!wsTitle) return restTitle;
+                        const restPriority = STATE_PRIORITY[restTitle.state] ?? 0;
+                        const wsPriority = STATE_PRIORITY[wsTitle.state] ?? 0;
+                        // Keep whichever has the more advanced state
+                        if (wsPriority > restPriority) {
+                            return { ...restTitle, ...wsTitle };
+                        }
+                        return restTitle;
+                    });
+                    return { ...prev, [job.id]: merged };
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fetch jobs:', error);
+        }
+    }, []);
+
+    fetchRef.current = fetchJobsAndTitles;
 
     // Initial data fetch
     useEffect(() => {
         if (!devMode) {
             fetchJobsAndTitles();
         }
-    }, [devMode]);
-
-    async function fetchJobsAndTitles() {
-        try {
-            const jobsRes = await fetch('/api/jobs');
-            const jobsData: Job[] = await jobsRes.json();
-            setJobs(jobsData);
-
-            // Fetch titles for each job
-            for (const job of jobsData) {
-                const titlesRes = await fetch(`/api/jobs/${job.id}/titles`);
-                const titlesData: DiscTitle[] = await titlesRes.json();
-                setTitlesMap(prev => ({ ...prev, [job.id]: titlesData }));
-            }
-        } catch (error) {
-            console.error('Failed to fetch jobs:', error);
-        }
-    }
+    }, [devMode, fetchJobsAndTitles]);
 
     async function cancelJob(jobId: string) {
         try {
@@ -80,108 +120,118 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
-    // Handle WebSocket messages
+    // Handle WebSocket messages via callback — processes EVERY message, no batching loss
     useEffect(() => {
-        if (!lastMessage || devMode) return;
+        if (devMode) return;
 
-        const message = lastMessage as WebSocketMessage;
+        const unsubscribe = addMessageListener((message: WebSocketMessage) => {
+            switch (message.type) {
+                case 'job_update':
+                    setJobs(prev => {
+                        const exists = prev.some(j => j.id === message.job_id);
+                        if (exists) {
+                            return prev.map(job =>
+                                job.id === message.job_id ? { ...job, ...message } : job
+                            );
+                        }
+                        // Unknown job — trigger a fetch
+                        fetchRef.current?.();
+                        return prev;
+                    });
+                    break;
 
-        switch (message.type) {
-            case 'job_update':
-                setJobs(prev => {
-                    const exists = prev.some(j => j.id === message.job_id);
-                    if (exists) {
-                        return prev.map(job =>
-                            job.id === message.job_id ? { ...job, ...message } : job
-                        );
-                    }
-                    return prev.map(job =>
-                        job.id === message.job_id ? { ...job, ...message } : job
-                    );
-                });
+                case 'title_update':
+                    console.log('📡 WebSocket title_update:', {
+                        title_id: message.title_id,
+                        state: message.state,
+                        match_stage: message.match_stage,
+                    });
+                    setTitlesMap(prev => {
+                        const existingTitles = prev[message.job_id];
+                        const found = existingTitles?.some(t => t.id === message.title_id);
+                        if (!found) {
+                            console.warn('⚠️ title_update for unknown title_id:', message.title_id,
+                                'existing ids:', existingTitles?.map(t => t.id) ?? 'NO_TITLES_FOR_JOB');
+                        }
+                        const updated = {
+                            ...prev,
+                            [message.job_id]: existingTitles?.map(title =>
+                                title.id === message.title_id ? { ...title, ...message } : title
+                            ) || []
+                        };
 
-                // If we receive an update for a job we don't know about, fetch immediately
-                setJobs(prev => {
-                    if (!prev.find(j => j.id === message.job_id)) {
-                        fetchJobsAndTitles();
-                    }
-                    return prev;
-                });
-                break;
+                        // Check if all titles are terminal but job might still be active
+                        const updatedTitles = updated[message.job_id];
+                        if (updatedTitles && updatedTitles.length > 0) {
+                            const terminalStates = ['matched', 'completed', 'review', 'failed'];
+                            const allDone = updatedTitles.every(t => terminalStates.includes(t.state));
+                            if (allDone) {
+                                // Schedule a refresh to catch missed job_update messages
+                                setTimeout(() => fetchRef.current?.(), 3000);
+                            }
+                        }
 
-            case 'title_update':
-                console.log('📡 WebSocket title_update:', {
-                    title_id: message.title_id,
-                    state: message.state,
-                    match_stage: message.match_stage,
-                    full_message: message
-                });
-                setTitlesMap(prev => {
-                    const updated = {
+                        return updated;
+                    });
+                    break;
+
+                case 'titles_discovered':
+                    console.log('📡 titles_discovered:', {
+                        job_id: message.job_id,
+                        title_count: message.titles?.length,
+                        title_ids: message.titles?.map((t: { id: number }) => t.id),
+                    });
+                    setTitlesMap(prev => ({
                         ...prev,
-                        [message.job_id]: prev[message.job_id]?.map(title =>
-                            title.id === message.title_id ? { ...title, ...message } : title
-                        ) || []
-                    };
+                        [message.job_id]: (message.titles as DiscTitle[]).map(t => ({
+                            ...t,
+                            state: t.state || 'pending' as const,
+                        })),
+                    }));
 
-                    // Check if all titles are terminal but job might still be active
-                    const updatedTitles = updated[message.job_id];
-                    if (updatedTitles && updatedTitles.length > 0) {
-                        const terminalStates = ['matched', 'completed', 'review', 'failed'];
-                        const allDone = updatedTitles.every(t => terminalStates.includes(t.state));
-                        if (allDone) {
-                            // Schedule a refresh to catch missed job_update messages
-                            setTimeout(() => fetchJobsAndTitles(), 3000);
-                        }
-                    }
+                    // Update job with discovered metadata
+                    setJobs(prev => prev.map(job =>
+                        job.id === message.job_id
+                            ? {
+                                ...job,
+                                content_type: message.content_type,
+                                detected_title: message.detected_title,
+                                detected_season: message.detected_season
+                            }
+                            : job
+                    ));
+                    break;
 
-                    return updated;
-                });
-                break;
+                case 'drive_event':
+                    console.log('🔵 Drive event received:', {
+                        event: message.event,
+                        drive_id: message.drive_id,
+                        volume_label: message.volume_label
+                    });
+                    fetchRef.current?.();
+                    break;
 
-            case 'titles_discovered':
-                setTitlesMap(prev => ({ ...prev, [message.job_id]: message.titles as DiscTitle[] }));
+                case 'subtitle_event':
+                    setJobs(prev => prev.map(job =>
+                        job.id === message.job_id
+                            ? {
+                                ...job,
+                                subtitle_status: message.status,
+                                subtitles_downloaded: message.downloaded,
+                                subtitles_total: message.total,
+                                subtitles_failed: message.failed_count
+                            }
+                            : job
+                    ));
+                    break;
 
-                // Update job with discovered metadata
-                setJobs(prev => prev.map(job =>
-                    job.id === message.job_id
-                        ? {
-                            ...job,
-                            content_type: message.content_type,
-                            detected_title: message.detected_title,
-                            detected_season: message.detected_season
-                        }
-                        : job
-                ));
-                break;
+                default:
+                    break;
+            }
+        });
 
-            case 'drive_event':
-                console.log('🔵 Drive event received:', {
-                    event: message.event,
-                    drive_id: message.drive_id,
-                    volume_label: message.volume_label
-                });
-                fetchJobsAndTitles();
-                break;
-
-            case 'subtitle_event':
-                setJobs(prev => prev.map(job =>
-                    job.id === message.job_id
-                        ? {
-                            ...job,
-                            subtitle_status: message.status,
-                            subtitles_downloaded: message.downloaded,
-                            subtitles_total: message.total,
-                            subtitles_failed: message.failed_count
-                        }
-                        : job
-                ));
-                break;
-
-            default:
-                break;
-        }
-    }, [lastMessage, devMode]);
+        return unsubscribe;
+    }, [addMessageListener, devMode]);
 
     return {
         jobs,

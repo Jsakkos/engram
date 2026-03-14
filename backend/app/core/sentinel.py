@@ -143,6 +143,9 @@ class DriveMonitor:
         self._drive_states: dict[str, bool] = {}  # drive -> has_disc
         self._config = config
         self._poll_interval: float | None = None
+        # Debounce: require 2 consecutive polls with the new state before firing.
+        # Prevents spurious events from disc spinup flickering.
+        self._pending_changes: dict[str, int] = {}  # drive -> consecutive polls with new state
 
     def set_async_callback(
         self,
@@ -217,21 +220,34 @@ class DriveMonitor:
                 await asyncio.sleep(self._poll_interval)
 
     async def _check_drives(self) -> None:
-        """Check all optical drives for state changes."""
+        """Check all optical drives for state changes.
+
+        Uses debounce: a state change must be seen on 2 consecutive polls
+        before firing an event. This prevents spurious events from disc
+        spinup flickering (GetVolumeInformationW can fail temporarily
+        while the drive spins up, causing false "removed" events).
+        """
         for drive in get_optical_drives():
             current_state = is_disc_present(drive)
             previous_state = self._drive_states.get(drive, False)
 
             if current_state != previous_state:
-                self._drive_states[drive] = current_state
+                # State differs — increment debounce counter
+                self._pending_changes[drive] = self._pending_changes.get(drive, 0) + 1
 
-                if current_state:
-                    # Disc inserted
-                    label = get_volume_label(drive)
-                    await self._notify("inserted", drive, label)
-                else:
-                    # Disc removed
-                    await self._notify("removed", drive, "")
+                if self._pending_changes[drive] >= 2:
+                    # Confirmed state change after 2 consecutive polls
+                    self._drive_states[drive] = current_state
+                    self._pending_changes.pop(drive, None)
+
+                    if current_state:
+                        label = get_volume_label(drive)
+                        await self._notify("inserted", drive, label)
+                    else:
+                        await self._notify("removed", drive, "")
+            else:
+                # State matches — reset debounce counter
+                self._pending_changes.pop(drive, None)
 
     async def _notify(self, event: str, drive: str, label: str) -> None:
         """Notify callbacks of a drive event."""

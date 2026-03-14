@@ -2,10 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { WebSocketMessage } from '../types';
 import { UI_CONFIG } from '../config/constants';
 
+type MessageListener = (msg: WebSocketMessage) => void;
+
 interface UseWebSocketReturn {
+    /** @deprecated Use addMessageListener instead — lastMessage loses rapid messages due to React batching */
     lastMessage: WebSocketMessage | null;
     isConnected: boolean;
     sendMessage: (message: string) => void;
+    addMessageListener: (listener: MessageListener) => () => void;
 }
 
 export function useWebSocket(url: string): UseWebSocketReturn {
@@ -13,6 +17,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     const [isConnected, setIsConnected] = useState(false);
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<number | null>(null);
+    const listenersRef = useRef<Set<MessageListener>>(new Set());
 
     const connect = useCallback(() => {
         try {
@@ -41,7 +46,10 @@ export function useWebSocket(url: string): UseWebSocketReturn {
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data) as WebSocketMessage;
+                    // Set lastMessage for backward compat (still lossy under batching)
                     setLastMessage(data);
+                    // Invoke all registered listeners synchronously — zero message loss
+                    listenersRef.current.forEach(listener => listener(data));
                 } catch (error) {
                     console.error('Failed to parse WebSocket message:', error);
                 }
@@ -72,5 +80,10 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         }
     }, []);
 
-    return { lastMessage, isConnected, sendMessage };
+    const addMessageListener = useCallback((listener: MessageListener) => {
+        listenersRef.current.add(listener);
+        return () => { listenersRef.current.delete(listener); };
+    }, []);
+
+    return { lastMessage, isConnected, sendMessage, addMessageListener };
 }
