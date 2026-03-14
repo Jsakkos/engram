@@ -155,12 +155,11 @@ async def test_clear_completed_jobs(client):
 
 @pytest.mark.asyncio
 async def test_on_title_ripped_transitions_to_ripping(client):
-    """Test that _on_title_ripped correctly transitions a title to RIPPING state.
+    """Test that _on_title_ripped correctly transitions a title to MATCHING state.
 
-    The title stays RIPPING (file detected but may still be written) until
-    _match_single_file verifies the file is ready and transitions to MATCHING.
-    This exercises the core callback chain used by the real disc ripping flow:
-    extractor callback → _on_title_ripped → DB update + WebSocket broadcast.
+    When a title's rip is detected as complete, _on_title_ripped transitions it
+    from PENDING/RIPPING to MATCHING (TV) so the UI no longer shows "RIPPING 0.0%"
+    for completed tracks. The matcher then waits for file readiness independently.
     """
     from pathlib import Path
     from unittest.mock import patch
@@ -210,23 +209,22 @@ async def test_on_title_ripped_transitions_to_ripping(client):
         fake_path = Path("/staging/B1_t01.mkv")
         await job_manager._on_title_ripped(job_id, 1, fake_path, sorted_titles)
 
-        # 4. Verify DB was updated — _on_title_ripped only sets output_filename,
-        # it does NOT promote state to RIPPING (that's progress_callback's job,
-        # to prevent the multi-RIPPING race condition).
+        # 4. Verify DB was updated — _on_title_ripped transitions PENDING/RIPPING
+        # to MATCHING (for TV) so the UI shows the correct state immediately.
         async with db_session() as session:
             title = await session.get(DiscTitle, sorted_titles[1].id)
             assert title is not None
-            assert title.state == TitleState.PENDING, f"Expected PENDING, got {title.state}"
+            assert title.state == TitleState.MATCHING, f"Expected MATCHING, got {title.state}"
             assert title.output_filename == str(fake_path), (
                 f"Expected {fake_path}, got {title.output_filename}"
             )
 
-        # 5. Verify WebSocket broadcast was called with current state (pending)
+        # 5. Verify WebSocket broadcast was called with matching state
         mock_broadcast.assert_called_once()
         call_args = mock_broadcast.call_args
         assert call_args[0][0] == job_id  # job_id
         assert call_args[0][1] == sorted_titles[1].id  # title_id
-        assert call_args[0][2] == "pending"  # state (not ripping — see above)
+        assert call_args[0][2] == "matching"  # state (transitioned from pending)
 
         # 6. Verify matching was started (for TV content)
         mock_match.assert_called_once_with(job_id, sorted_titles[1].id, fake_path)
@@ -278,10 +276,10 @@ async def test_on_title_ripped_maps_by_filename_index(client):
         await job_manager._on_title_ripped(job_id, 99, fake_path, sorted_titles)
 
         # Verify title_index=3 was updated (not rip_index 99)
-        # State stays PENDING — progress_callback is the authority on RIPPING
+        # State transitions to MATCHING (TV content) on rip completion
         async with db_session() as session:
             title_3 = await session.get(DiscTitle, sorted_titles[3].id)
-            assert title_3.state == TitleState.PENDING
+            assert title_3.state == TitleState.MATCHING
             assert title_3.output_filename == str(fake_path)
 
             # Other titles should still be pending

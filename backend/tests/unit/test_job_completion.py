@@ -49,6 +49,47 @@ async def _create_job_with_titles(
         return job, titles
 
 
+class TestDeselectedTitlesDontBlockCompletion:
+    """Regression test: deselected Play All titles must not block job completion."""
+
+    async def test_deselected_pending_title_is_not_active(self):
+        """A deselected PENDING title that's been transitioned to COMPLETED
+        should not appear in active_states, allowing job completion."""
+        # Simulate: 3 episodes in REVIEW + 1 Play All deselected → COMPLETED
+        job, titles = await _create_job_with_titles(
+            [TitleState.REVIEW, TitleState.REVIEW, TitleState.REVIEW, TitleState.COMPLETED]
+        )
+
+        async with _unit_session_factory() as session:
+            from sqlmodel import select
+
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
+            all_titles = result.scalars().all()
+
+            active_states = [TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING]
+            active = [t for t in all_titles if t.state in active_states]
+            assert len(active) == 0, "Deselected Play All (COMPLETED) should not block completion"
+
+            has_review = any(t.state == TitleState.REVIEW for t in all_titles)
+            assert has_review is True
+
+    async def test_pending_title_blocks_completion(self):
+        """A PENDING title (not deselected/transitioned) should still block completion."""
+        job, _ = await _create_job_with_titles(
+            [TitleState.REVIEW, TitleState.REVIEW, TitleState.REVIEW, TitleState.PENDING]
+        )
+
+        async with _unit_session_factory() as session:
+            from sqlmodel import select
+
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
+            all_titles = result.scalars().all()
+
+            active_states = [TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING]
+            active = [t for t in all_titles if t.state in active_states]
+            assert len(active) == 1, "Untransitioned PENDING title should block completion"
+
+
 class TestCheckJobCompletion:
     """Test the _check_job_completion logic."""
 

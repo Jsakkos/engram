@@ -401,10 +401,15 @@ class JobManager:
                     for dt in db_titles_for_filter:
                         if dt.title_index in play_all_set:
                             dt.is_selected = False
+                            dt.state = TitleState.COMPLETED
+                            dt.is_extra = True
+                            dt.match_details = json.dumps(
+                                {"reason": "Play All concatenation title"}
+                            )
                             deselected += 1
                             logger.info(
                                 f"Job {job_id}: Deselected 'Play All' title {dt.title_index} "
-                                f"({dt.duration_seconds // 60}min)"
+                                f"({dt.duration_seconds // 60}min) → COMPLETED/extra"
                             )
 
                     if deselected:
@@ -1082,6 +1087,30 @@ class JobManager:
                 if has_selection:
                     titles_to_rip = [dt for dt in disc_titles if dt.is_selected]
 
+                # Safety net: transition any deselected PENDING titles to terminal
+                # state so they don't block _check_job_completion().
+                deselected_ids = [
+                    dt.id
+                    for dt in disc_titles
+                    if not dt.is_selected and dt.state == TitleState.PENDING
+                ]
+                if deselected_ids:
+                    async with async_session() as cleanup_session:
+                        for tid in deselected_ids:
+                            dt = await cleanup_session.get(DiscTitle, tid)
+                            if dt and dt.state == TitleState.PENDING:
+                                dt.state = TitleState.COMPLETED
+                                dt.is_extra = True
+                                if not dt.match_details:
+                                    dt.match_details = json.dumps(
+                                        {"reason": "Deselected from ripping"}
+                                    )
+                                logger.info(
+                                    f"Job {job_id}: Safety net — title {dt.title_index} "
+                                    f"deselected+PENDING → COMPLETED/extra"
+                                )
+                        await cleanup_session.commit()
+
                 # Sort titles by index for mapping rip order to title records
                 sorted_titles = sorted(titles_to_rip, key=lambda t: t.title_index)
 
@@ -1634,6 +1663,18 @@ class JobManager:
                 return
 
             title.output_filename = str(path)
+
+            # Transition out of RIPPING/PENDING — ripping is done for this track,
+            # matcher will handle the rest. Without this, the UI shows "RIPPING 0.0%"
+            # indefinitely because progress updates stop when MakeMKV moves to the
+            # next title.
+            job = await session.get(DiscJob, job_id)
+            if title.state in (TitleState.PENDING, TitleState.RIPPING):
+                if job and job.content_type == ContentType.TV:
+                    title.state = TitleState.MATCHING
+                else:
+                    title.state = TitleState.MATCHED
+
             session.add(title)
             await session.commit()
             await ws_manager.broadcast_title_update(
