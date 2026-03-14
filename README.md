@@ -7,7 +7,6 @@ Engram is a Windows disc ripping and media organization tool. It monitors your o
 - **Automatic disc detection** — monitors optical drives and starts processing on insertion
 - **Smart classification** — distinguishes TV shows from movies using duration analysis, TMDB lookup, and TheDiscDB
 - **Audio fingerprint matching** — identifies TV episodes via ASR transcription matched against subtitles
-- **AI-powered identification** — optional Anthropic/OpenAI/OpenRouter integration for ambiguous disc labels
 - **Real-time dashboard** — cyberpunk-themed web UI with WebSocket live updates, progress tracking, and notifications
 - **Human-in-the-loop** — review queue for low-confidence matches with competing candidate display
 - **Job history** — searchable archive of completed jobs with analytics
@@ -75,8 +74,6 @@ On first launch the Config Wizard walks you through setup: MakeMKV path, library
 
 **TMDB**: The wizard asks for a **Read Access Token** (v4 auth) from your [TMDB API Settings](https://www.themoviedb.org/settings/api). This is the long JWT string starting with `eyJ...`, not the shorter v3 API Key.
 
-**OpenSubtitles** (optional): If you want subtitle-based episode matching, enter your OpenSubtitles username, password, and API key in the Settings page.
-
 An optional `backend/.env` file can override server-level defaults:
 
 | Variable | Description | Default |
@@ -116,7 +113,7 @@ React 18 + TypeScript + Vite SPA with a cyberpunk dual-tone (cyan/magenta) theme
 - **History** — searchable archive of completed/failed jobs with duration and size analytics
 - **Config Wizard** — first-run setup and settings modal for library paths, API keys, and preferences
 
-Key libraries: React Router v7, Framer Motion, Recharts, Tailwind CSS v4 (with `@theme inline`), shadcn/ui.
+Key libraries: React Router v7, Framer Motion, Tailwind CSS v4 (with `@theme inline`), shadcn/ui, Lucide React, Sonner.
 
 ## Development
 
@@ -129,10 +126,14 @@ uv run ruff format .
 # Backend tests
 uv run pytest
 
-# Frontend E2E tests (requires backend running with DEBUG=true)
+# Frontend unit tests
 cd frontend
+npm run test:unit
+
+# Frontend E2E tests (requires backend running with DEBUG=true)
 npx playwright install   # first time only
 npm run test:e2e
+npm run test:e2e:headed  # with visible browser
 ```
 
 ### Simulation
@@ -151,24 +152,31 @@ curl -X POST localhost:8000/api/simulate/insert-disc \
 engram/
   backend/
     app/
-      api/          # REST + WebSocket endpoints
-      core/         # Sentinel, Analyst, Extractor, Curator, Organizer
-      matcher/      # Episode identification (ASR + subtitle matching)
-      models/       # SQLModel database models
-      services/     # Job orchestration
-      config.py     # Settings
-      database.py   # SQLite setup
-      main.py       # FastAPI entry point
+      api/            # REST + WebSocket endpoints
+      core/           # Sentinel, Analyst, Extractor, Curator, Organizer,
+                      #   DiscDB Classifier, TMDB Classifier, Snapshot
+      matcher/        # Episode identification (ASR + subtitle matching)
+      models/         # SQLModel database models (DiscJob, DiscTitle, AppConfig)
+      services/       # Job Manager, State Machine, Ripping Coordinator,
+                      #   Event Broadcaster, Config Service
+      config.py       # Server-level settings (host, port, debug)
+      database.py     # Async SQLite setup + schema migration
+      main.py         # FastAPI entry point with lifespan management
     pyproject.toml
     .env.example
   frontend/
     src/
-      app/          # Dashboard, DiscCard, TrackGrid, StateIndicator
-      components/   # ReviewQueue, ConfigWizard, NamePromptModal
-      hooks/        # WebSocket, job management, notifications
-      styles/       # Tailwind theme with navy palette + glow tokens
-      types/        # TypeScript definitions
-    e2e/            # Playwright E2E tests
+      app/
+        components/   # DiscCard, TrackGrid, StateIndicator, ProgressBar,
+                      #   MatchingVisualizer, shadcn/ui primitives
+        hooks/        # useJobManagement, useDiscFilters, useElapsedTime,
+                      #   useNotifications
+      components/     # HistoryPage, ReviewQueue, ConfigWizard, NamePromptModal
+      config/         # UI constants and thresholds
+      hooks/          # useWebSocket
+      styles/         # Tailwind theme (navy palette, glow tokens, circuit board)
+      types/          # TypeScript definitions + adapters
+    e2e/              # Playwright E2E tests (10 spec files)
     vite.config.ts
   README.md
 ```
