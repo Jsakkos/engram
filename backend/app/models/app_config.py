@@ -54,7 +54,9 @@ class AppConfig(SQLModel, table=True):
     ripping_file_poll_interval: float = 5.0  # Seconds between file readiness checks
     ripping_stability_checks: int = 3  # Consecutive checks before file is ready
     ripping_file_ready_timeout: float = 600.0  # 10 minutes max wait for file
-    ripping_stall_timeout: float = 120.0  # Seconds of no file growth before skipping track (0=disabled)
+    ripping_stall_timeout: float = (
+        120.0  # Seconds of no file growth before skipping track (0=disabled)
+    )
 
     # Sentinel Drive Monitoring
     sentinel_poll_interval: float = 2.0  # Seconds between drive polls

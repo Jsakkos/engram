@@ -1276,8 +1276,7 @@ class JobManager:
                 # Define error callback — called from extractor thread on stall
                 def on_title_error(cmd_idx: int, reason: str):
                     logger.warning(
-                        f"[CALLBACK] Title error: cmd_idx={cmd_idx} reason={reason} "
-                        f"(Job {job_id})"
+                        f"[CALLBACK] Title error: cmd_idx={cmd_idx} reason={reason} (Job {job_id})"
                     )
                     asyncio.run_coroutine_threadsafe(
                         self._on_title_error(job_id, cmd_idx, reason, sorted_titles),
@@ -1505,9 +1504,7 @@ class JobManager:
                             list_idx = cmd_idx - 1
                             if 0 <= list_idx < len(sorted_titles):
                                 stalled_title = sorted_titles[list_idx]
-                                db_title = await stall_session.get(
-                                    DiscTitle, stalled_title.id
-                                )
+                                db_title = await stall_session.get(DiscTitle, stalled_title.id)
                                 if db_title and db_title.state not in (
                                     TitleState.COMPLETED,
                                     TitleState.MATCHED,
@@ -1785,9 +1782,7 @@ class JobManager:
             db_title.match_details = json.dumps({"reason": reason})
             await session.commit()
 
-            logger.warning(
-                f"Job {job_id}: title {db_title.title_index} marked FAILED ({reason})"
-            )
+            logger.warning(f"Job {job_id}: title {db_title.title_index} marked FAILED ({reason})")
             await ws_manager.broadcast_title_update(
                 job_id,
                 db_title.id,

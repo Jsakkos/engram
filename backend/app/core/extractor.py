@@ -438,9 +438,7 @@ class MakeMKVExtractor:
                                         "Ripping stalled — possible disc damage",
                                     )
                                 except Exception as cb_err:
-                                    logger.exception(
-                                        f"Error in title_error_callback: {cb_err}"
-                                    )
+                                    logger.exception(f"Error in title_error_callback: {cb_err}")
                             try:
                                 proc.terminate()
                             except (ProcessLookupError, PermissionError):
@@ -585,8 +583,7 @@ class MakeMKVExtractor:
                                         )
                                     except OSError as e:
                                         logger.warning(
-                                            f"Failed to delete incomplete file "
-                                            f"{mkv.name}: {e}"
+                                            f"Failed to delete incomplete file {mkv.name}: {e}"
                                         )
                             # Don't break — continue to next command
                             continue
@@ -692,9 +689,7 @@ class MakeMKVExtractor:
                 output_files = list(output_dir.glob("*.mkv"))
 
             if stalled:
-                logger.warning(
-                    f"Ripping complete with {len(stalled)} stalled title(s) skipped"
-                )
+                logger.warning(f"Ripping complete with {len(stalled)} stalled title(s) skipped")
 
             logger.info(f"Ripping complete: {len(output_files)} files created")
             return RipResult(
