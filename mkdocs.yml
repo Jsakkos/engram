@@ -1,0 +1,70 @@
+site_name: Engram
+site_description: Disc ripping and media organization with a reactive web dashboard
+site_url: https://jsakkos.github.io/engram/
+repo_url: https://github.com/Jsakkos/engram
+repo_name: Jsakkos/engram
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: cyan
+    accent: pink
+  logo: engram.svg
+  favicon: engram.svg
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [backend]
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 3
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+    - Simulation: getting-started/simulation.md
+  - User Guide:
+    - Dashboard: guide/dashboard.md
+    - Review Queue: guide/review-queue.md
+    - Job History: guide/history.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - State Machine: architecture/state-machine.md
+    - WebSocket Protocol: architecture/websocket.md
+  - API Reference:
+    - REST Endpoints: api/rest.md
+    - Data Models: api/models.md
+  - Development:
+    - Testing: development/testing.md
+    - Contributing: development/contributing.md
+  - Changelog: changelog.md

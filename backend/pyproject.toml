@@ -37,6 +37,10 @@ dev = [
     "pandas>=3.0.0",
     "ipykernel>=7.2.0",
 ]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.27",
+]
 
 [dependency-groups]
 dev = [

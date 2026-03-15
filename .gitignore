@@ -25,6 +25,9 @@ node_modules/
 # Vite
 frontend/dist/
 
+# MkDocs
+site/
+
 # Playwright
 test-results/
 playwright-report/
