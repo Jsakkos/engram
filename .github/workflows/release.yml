@@ -12,7 +12,7 @@ jobs:
     name: Build Windows Executable
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Build frontend
       - uses: actions/setup-node@v4
@@ -59,7 +59,7 @@ jobs:
     name: Build Linux Executable
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Build frontend
       - uses: actions/setup-node@v4
