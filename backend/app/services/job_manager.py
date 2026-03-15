@@ -149,12 +149,8 @@ class JobManager:
             )
             for job in result.scalars():
                 mappings_data = json.loads(job.discdb_mappings_json)
-                self._discdb_mappings[job.id] = [
-                    DiscDbTitleMapping(**m) for m in mappings_data
-                ]
-                logger.info(
-                    f"Restored {len(mappings_data)} DiscDB mappings for job {job.id}"
-                )
+                self._discdb_mappings[job.id] = [DiscDbTitleMapping(**m) for m in mappings_data]
+                logger.info(f"Restored {len(mappings_data)} DiscDB mappings for job {job.id}")
 
     async def stop(self) -> None:
         """Stop the job manager and clean up."""

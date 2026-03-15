@@ -262,9 +262,7 @@ async def get_job_history(
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
     """Get all completed/failed job history with pagination and filtering."""
-    query = select(DiscJob).where(
-        DiscJob.state.in_([JobState.COMPLETED, JobState.FAILED])
-    )
+    query = select(DiscJob).where(DiscJob.state.in_([JobState.COMPLETED, JobState.FAILED]))
 
     if content_type:
         query = query.where(DiscJob.content_type == content_type)
@@ -406,9 +404,7 @@ async def get_job_titles(
 
 
 @router.get("/jobs/{job_id}/detail", response_model=JobDetailResponse)
-async def get_job_detail(
-    job_id: int, session: AsyncSession = Depends(get_session)
-) -> dict:
+async def get_job_detail(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """Get full job detail with titles for history drill-down."""
     job = await session.get(DiscJob, job_id)
     if not job:
