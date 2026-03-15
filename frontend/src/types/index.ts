@@ -64,6 +64,7 @@ export interface DiscTitle {
     organized_from?: string | null;
     organized_to?: string | null;
     is_extra?: boolean;
+    error_message?: string | null;
 }
 
 export interface DriveEvent {
@@ -111,6 +112,7 @@ export interface TitleUpdate {
     organized_to?: string | null;
     output_filename?: string | null;
     is_extra?: boolean;
+    error?: string | null;
 }
 
 export interface SubtitleEvent {

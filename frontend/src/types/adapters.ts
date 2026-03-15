@@ -141,6 +141,9 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
     expectedSizeBytes: title.expected_size_bytes || undefined,
     actualSizeBytes: title.actual_size_bytes || undefined,
     chapterCount: title.chapter_count || undefined,
+
+    // Error info (from WebSocket error_message or match_details.reason for FAILED titles)
+    errorMessage: title.error_message || extractErrorReason(title) || undefined,
   };
 }
 
@@ -170,6 +173,18 @@ interface MatchDetails {
   target_votes?: number;
   total_chunks?: number;
   episode?: string;
+}
+
+function extractErrorReason(title: DiscTitle): string | null {
+  if (title.state !== 'failed' || !title.match_details) return null;
+  try {
+    const details = typeof title.match_details === 'string'
+      ? JSON.parse(title.match_details)
+      : title.match_details;
+    return details.reason || null;
+  } catch {
+    return null;
+  }
 }
 
 function extractMatchCandidates(title: DiscTitle): MatchCandidate[] | undefined {

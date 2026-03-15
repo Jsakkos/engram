@@ -1273,11 +1273,32 @@ class JobManager:
 
                     future.add_done_callback(_check_result)
 
+                # Define error callback — called from extractor thread on stall
+                def on_title_error(cmd_idx: int, reason: str):
+                    logger.warning(
+                        f"[CALLBACK] Title error: cmd_idx={cmd_idx} reason={reason} (Job {job_id})"
+                    )
+                    asyncio.run_coroutine_threadsafe(
+                        self._on_title_error(job_id, cmd_idx, reason, sorted_titles),
+                        self._loop,
+                    )
+
+                # Load config for stall detection settings
+                from app.services.config_service import get_config
+
+                rip_config = await get_config()
+
                 # Determine indices to pass to extractor
                 # If we are ripping ALL detected titles, pass None to use "all" mode (faster/supported)
                 # If we are ripping a SUBSET, pass the list (extractor will loop)
                 rip_indices = [t.title_index for t in sorted_titles]
-                if len(rip_indices) == len(disc_titles):
+                stall_timeout = rip_config.ripping_stall_timeout if rip_config else 120.0
+
+                # Force multi-command mode when stall detection is enabled
+                # so individual tracks can be skipped on stall
+                if stall_timeout and stall_timeout > 0:
+                    pass  # Always keep rip_indices as a list
+                elif len(rip_indices) == len(disc_titles):
                     rip_indices = None
 
                 # Store task refs to prevent GC of fire-and-forget tasks
@@ -1459,6 +1480,8 @@ class JobManager:
                         title_indices=rip_indices,
                         progress_callback=_fire_progress,
                         title_complete_callback=on_title_complete,
+                        stall_timeout=stall_timeout,
+                        title_error_callback=on_title_error,
                     )
                 finally:
                     monitor_task.cancel()
@@ -1467,11 +1490,41 @@ class JobManager:
                     except asyncio.CancelledError:
                         pass
 
-                if not result.success:
+                if not result.success and not result.stalled_titles:
                     await state_machine.transition_to_failed(
                         job, session, error_message=result.error_message
                     )
                     return
+
+                # Fallback: mark stalled titles as FAILED if the real-time callback
+                # didn't already handle them (e.g. callback failed or timed out)
+                if result.stalled_titles:
+                    async with async_session() as stall_session:
+                        for cmd_idx in result.stalled_titles:
+                            list_idx = cmd_idx - 1
+                            if 0 <= list_idx < len(sorted_titles):
+                                stalled_title = sorted_titles[list_idx]
+                                db_title = await stall_session.get(DiscTitle, stalled_title.id)
+                                if db_title and db_title.state not in (
+                                    TitleState.COMPLETED,
+                                    TitleState.MATCHED,
+                                    TitleState.FAILED,
+                                ):
+                                    db_title.state = TitleState.FAILED
+                                    db_title.match_details = json.dumps(
+                                        {"reason": "Ripping stalled — possible disc damage"}
+                                    )
+                                    logger.warning(
+                                        f"Job {job_id}: title {db_title.title_index} "
+                                        f"marked FAILED (ripping stall, fallback)"
+                                    )
+                                    await ws_manager.broadcast_title_update(
+                                        job_id,
+                                        db_title.id,
+                                        TitleState.FAILED.value,
+                                        error="Ripping stalled — possible disc damage",
+                                    )
+                        await stall_session.commit()
 
                 # Eject disc now that ripping is complete — disc is no longer needed
                 try:
@@ -1700,6 +1753,42 @@ class JobManager:
                     task.add_done_callback(
                         lambda t, jid=job_id, tid=title.id: self._on_match_task_done(t, jid, tid)
                     )
+
+    async def _on_title_error(
+        self,
+        job_id: int,
+        cmd_idx: int,
+        reason: str,
+        sorted_titles: list[DiscTitle],
+    ) -> None:
+        """Handle a title error (e.g., ripping stall) — mark FAILED immediately."""
+        list_idx = cmd_idx - 1  # cmd_idx is 1-based
+        if not (0 <= list_idx < len(sorted_titles)):
+            logger.error(
+                f"Job {job_id}: title error cmd_idx={cmd_idx} out of range "
+                f"(sorted_titles has {len(sorted_titles)} entries)"
+            )
+            return
+
+        stalled_title = sorted_titles[list_idx]
+        async with async_session() as session:
+            db_title = await session.get(DiscTitle, stalled_title.id)
+            if not db_title:
+                return
+            if db_title.state in (TitleState.COMPLETED, TitleState.MATCHED):
+                return  # Already finished successfully, don't overwrite
+
+            db_title.state = TitleState.FAILED
+            db_title.match_details = json.dumps({"reason": reason})
+            await session.commit()
+
+            logger.warning(f"Job {job_id}: title {db_title.title_index} marked FAILED ({reason})")
+            await ws_manager.broadcast_title_update(
+                job_id,
+                db_title.id,
+                TitleState.FAILED.value,
+                error=reason,
+            )
 
     async def _backfill_unmatched_titles(
         self, job_id: int, staging_dir: Path, sorted_titles: list[DiscTitle]

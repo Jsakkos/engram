@@ -135,6 +135,7 @@ class ConnectionManager:
         organized_to: str | None = None,
         output_filename: str | None = None,
         is_extra: bool | None = None,
+        error: str | None = None,
     ) -> None:
         """Broadcast a title status update.
 
@@ -179,6 +180,8 @@ class ConnectionManager:
             data["output_filename"] = output_filename
         if is_extra is not None:
             data["is_extra"] = is_extra
+        if error is not None:
+            data["error"] = error
         await self.broadcast(data)
 
     async def broadcast_subtitle_event(

@@ -50,6 +50,9 @@ export interface Track {
   expectedSizeBytes?: number;      // Expected size (for rip progress)
   actualSizeBytes?: number;        // Current size during rip
   chapterCount?: number;           // Number of chapters
+
+  // Error info
+  errorMessage?: string;           // Error reason for failed tracks
 }
 
 export interface DiscData {
@@ -249,6 +252,11 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   discLabel={disc.discLabel}
                 />
                 <div className="flex items-center gap-2">
+                  {disc.tracks && disc.tracks.filter(t => t.state === 'failed').length > 0 && (
+                    <span className="text-red-400 text-xs font-mono" title="Some tracks failed during ripping">
+                      {disc.tracks.filter(t => t.state === 'failed').length} FAILED
+                    </span>
+                  )}
                   {disc.subtitleStatus === 'failed' && (
                     <div className="text-yellow-500 text-lg" title="Subtitle download failed">
                       ⚠️
