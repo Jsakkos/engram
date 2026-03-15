@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Engram is a disc ripping and media organization tool with a reactive web dashboard. It automates the workflow from optical disc insertion to organized media library, with Human-in-the-Loop intervention for ambiguous content. Windows-native, requires MakeMKV with a valid license.
+Engram is a disc ripping and media organization tool with a reactive web dashboard. It automates the workflow from optical disc insertion to organized media library, with Human-in-the-Loop intervention for ambiguous content. Cross-platform backend (Python/FastAPI), with automatic drive detection on Windows. Linux/macOS can run the backend and dashboard but require manual job submission. Requires MakeMKV with a valid license.
 
 ## Important Rules
 
@@ -68,7 +68,7 @@ curl -X POST localhost:8000/api/simulate/insert-disc-from-staging
 
 - **Entry point**: `main.py` — FastAPI app with lifespan management, CORS for Vite dev server, WebSocket endpoint at `/ws`
 - **Config**: `config.py` — Pydantic Settings for server-level overrides (host, port, debug). No `.env` file required — all fields have defaults
-- **Database**: `database.py` — Async SQLite via SQLModel + aiosqlite. Tables auto-created on startup
+- **Database**: `database.py` — Async SQLite via SQLModel + aiosqlite. Tables auto-created on startup. Schema migration uses `ALTER TABLE ADD COLUMN` for additive changes (preserves job history) and drop/recreate only when columns are removed
 
 ### Core Modules (`backend/app/core/`)
 
@@ -93,7 +93,7 @@ Each module maps to a stage in the disc processing pipeline:
 
 ### Data Models (`backend/app/models/`)
 
-- **DiscJob** — Central state machine with `JobState` enum (idle, identifying, review_needed, ripping, matching, organizing, completed, failed) and `ContentType` enum (tv, movie, unknown)
+- **DiscJob** — Central state machine with `JobState` enum (idle, identifying, review_needed, ripping, matching, organizing, completed, failed) and `ContentType` enum (tv, movie, unknown). Key fields: `cleared_at` (soft-delete from dashboard, does NOT affect history visibility), `completed_at` (auto-set on terminal state), `content_hash` (TheDiscDB fingerprint), `discdb_mappings_json` (persisted title mappings)
 - **DiscTitle** — Individual title/track on a disc, linked to a job. Stores match results (episode code, confidence) and `TitleState`
 - **AppConfig** — Persisted application configuration. Subtitle cache defaults to `~/.engram/cache`
 
@@ -108,7 +108,7 @@ Integrated from standalone `mkv-episode-matcher` project. Flattened directory st
 
 ### API (`backend/app/api/`)
 
-- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation, staging management)
+- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation, staging management, job history with `GET /api/jobs/history`, job detail with `GET /api/jobs/{job_id}/detail`, stats with `GET /api/jobs/stats`, diagnostics with `GET /api/diagnostics/report`)
 - `validation.py` — Tool validation endpoints (`POST /api/validate/makemkv`, `POST /api/validate/ffmpeg`, `GET /api/detect-tools`)
 - `test_routes.py` — Standalone testing endpoints for subtitle download, transcription, matching
 - `websocket.py` — `ConnectionManager` singleton for broadcasting real-time updates to all connected clients
@@ -124,12 +124,13 @@ React 18 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at lo
 - **Supporting components**: `StateIndicator`, `CyberpunkProgressBar`, `TrackGrid`, `MatchingVisualizer`
 - **ReviewQueue** (`components/ReviewQueue.tsx`) — Human-in-the-Loop UI with subcomponents: `TVTitleCard`, `MovieTitleCard`, `EpisodeSelector`, `EditionInput`, `hooks/useReviewState`
 - **ConfigWizard** (`components/ConfigWizard.tsx`) — First-run setup and settings modal for library paths, MakeMKV license, TMDB Read Access Token, preferences
+- **HistoryPage** (`components/HistoryPage.tsx`) — All completed/failed jobs with stats dashboard, filterable table, and slide-out detail panel showing error messages, processing timeline, classification details, TheDiscDB metadata, and per-track breakdown. Deep-linkable via `/history/:jobId`
 - **NamePromptModal** (`components/NamePromptModal.tsx`) — Modal for unreadable disc labels
 - **Hooks**: `useDiscFilters` (job filtering/transformation), `useJobManagement` (job lifecycle + WebSocket), `useWebSocket` (connection management)
 
 ### E2E Tests (`frontend/e2e/`)
 
-Playwright-based E2E tests (9 spec files) that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include disc flow, progress display, review flow, error recovery, visual verification, realistic disc scenarios, and screenshot capture.
+Playwright-based E2E tests (10 spec files) that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include disc flow, progress display, review flow, error recovery, visual verification, realistic disc scenarios, and screenshot capture.
 
 ## Key Patterns
 
@@ -141,6 +142,9 @@ Playwright-based E2E tests (9 spec files) that use simulation endpoints to test 
 - **Custom error hierarchy**: All domain errors extend `EngramError` with typed subclasses. Use `@handle_errors` decorator for standardized error handling in services.
 - **Ruff config**: Line length 100, target Python 3.11, rules E/F/I/UP/B, double quotes
 - **Tailwind v4**: Uses `@theme inline` blocks in CSS for custom colors (including custom `magenta` palette), not `tailwind.config.js`. No PostCSS config — uses `@tailwindcss/vite` plugin directly.
+- **Database migration**: `_migrate_schema()` uses `ALTER TABLE ADD COLUMN` for additive-only column changes to `disc_jobs`/`disc_titles` (preserves job history across upgrades). Only drops/recreates when columns are removed. `app_config` always preserves data via backup/restore.
+- **DiscDB mapping persistence**: `discdb_mappings_json` column on `DiscJob` stores serialized `DiscDbTitleMapping` list. Persisted during identification, restored from DB on server startup via `_restore_discdb_mappings()`.
+- **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
 
 ## TMDB Configuration
 
@@ -346,7 +350,7 @@ uv run pytest --cov=app          # With coverage
 ### Frontend Testing
 
 **E2E tests** (`frontend/e2e/`):
-- Full UI workflow testing using Playwright (9 spec files)
+- Full UI workflow testing using Playwright (10 spec files)
 - Requires backend running with `DEBUG=true`
 - Uses simulation endpoints to fake disc insertion/ripping
 - Tests user interactions (clicking, form submission, WebSocket updates)

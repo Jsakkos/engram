@@ -1,6 +1,41 @@
-# Engram
+<p align="center">
+  <img src="docs/engram.svg" alt="Engram" width="120" height="120" />
+</p>
 
-Engram is a Windows disc ripping and media organization tool. It monitors your optical drive, rips discs with MakeMKV, identifies episodes via audio fingerprinting, and files everything into your media library. A web dashboard shows progress in real time and lets you intervene when matches are ambiguous.
+<h1 align="center">Engram</h1>
+
+<p align="center">
+  Disc ripping and media organization with a reactive web dashboard.
+  <br />
+  Monitors optical drives, rips with MakeMKV, identifies episodes via audio fingerprinting,
+  <br />
+  and files everything into your media library — automatically.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/github/v/release/Jsakkos/engram?style=flat-square&color=06b6d4" alt="Release" /></a>
+  <a href="https://github.com/Jsakkos/engram/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Jsakkos/engram/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Jsakkos/engram?style=flat-square&color=ec4899" alt="License" /></a>
+</p>
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/03-ripping-state.png" alt="Ripping in progress" /><br /><sub>Ripping a TV disc with real-time progress</sub></td>
+    <td><img src="docs/screenshots/05-per-track-ripping.png" alt="Per-track progress" /><br /><sub>Track grid showing per-episode byte progress</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/08-match-candidates.png" alt="Episode matching" /><br /><sub>Audio fingerprint matching with confidence scores</sub></td>
+    <td><img src="docs/screenshots/09-completed.png" alt="Completed" /><br /><sub>Completed job with poster art</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/10-movie-card.png" alt="Movie disc" /><br /><sub>Movie disc detection</sub></td>
+    <td><img src="docs/screenshots/12-movie-completed.png" alt="Movie completed" /><br /><sub>Movie ripped and organized</sub></td>
+  </tr>
+</table>
 
 ## Features
 
@@ -9,24 +44,36 @@ Engram is a Windows disc ripping and media organization tool. It monitors your o
 - **Audio fingerprint matching** — identifies TV episodes via ASR transcription matched against subtitles
 - **Real-time dashboard** — cyberpunk-themed web UI with WebSocket live updates, progress tracking, and notifications
 - **Human-in-the-loop** — review queue for low-confidence matches with competing candidate display
-- **Job history** — searchable archive of completed jobs with analytics
+- **Job history & analytics** — searchable archive of all completed/failed jobs with drill-down detail panel, processing timeline, and TheDiscDB metadata
+- **TheDiscDB integration** — automatic disc identification via content hash fingerprinting with persisted title mappings
 - **Responsive design** — works on desktop and mobile with compact/expanded view modes
+
+## Platform Support
+
+| Feature | Windows | Linux | macOS |
+|---------|---------|-------|-------|
+| Automatic drive detection | Yes | No | No |
+| MakeMKV ripping | Yes | Yes | Yes |
+| Episode matching (ASR) | Yes | Yes | Yes |
+| Web dashboard & API | Yes | Yes | Yes |
+| Tool auto-detection | Yes | Yes | Yes |
+| TheDiscDB / TMDB lookup | Yes | Yes | Yes |
+
+**Windows** is the primary platform with full automatic disc detection via kernel32 APIs. On **Linux** and **macOS**, the backend and dashboard run fully, but disc insertion must be triggered manually via the simulation API or by pointing Engram at a staging directory with pre-ripped files. MakeMKV must be installed on all platforms.
 
 ## Prerequisites
 
-- **Windows** (drive monitoring uses kernel32/pywin32)
 - [MakeMKV](https://www.makemkv.com/) with a valid license
-- TMDB API Read Access Token (v4) [TMDB](https://www.themoviedb.org/settings/api)
-- If running from source, Python 3.11+ and [uv](https://docs.astral.sh/uv/)
-- If running from source, Node.js 18+
+- TMDB API Read Access Token (v4) from [TMDB](https://www.themoviedb.org/settings/api)
+- If running from source: Python 3.11+ and [uv](https://docs.astral.sh/uv/), Node.js 18+
 
 ## Install
 
-### Option A: Standalone executable
+### Option A: Standalone executable (Windows)
 
 Download `engram-windows-x64.zip` from the [Releases](https://github.com/Jsakkos/engram/releases) page, extract it, and run `engram.exe`. No Python or Node.js required.
 
-### Option B: From source
+### Option B: From source (all platforms)
 
 ```bash
 git clone https://github.com/Jsakkos/engram.git
@@ -110,10 +157,10 @@ React 18 + TypeScript + Vite SPA with a cyberpunk dual-tone (cyan/magenta) theme
 
 - **Dashboard** — filterable job cards (Active/Done/All) with expanded and compact view modes, real-time progress, speed/ETA, cover art with holographic effects, and browser notifications
 - **Review Queue** — human-in-the-loop UI for resolving ambiguous episode matches and movie edition selection
-- **History** — searchable archive of completed/failed jobs with duration and size analytics
+- **History** — all completed/failed jobs with drill-down detail panel showing error messages, processing timeline, classification info, TheDiscDB metadata, and per-track breakdown. Deep-linkable via `/history/:jobId`
 - **Config Wizard** — first-run setup and settings modal for library paths, API keys, and preferences
 
-Key libraries: React Router v7, Framer Motion, Tailwind CSS v4 (with `@theme inline`), shadcn/ui, Lucide React, Sonner.
+Key libraries: React Router v7, Framer Motion, Tailwind CSS v4 (with `@theme inline`), Lucide React, Sonner.
 
 ## Development
 
@@ -126,14 +173,11 @@ uv run ruff format .
 # Backend tests
 uv run pytest
 
-# Frontend unit tests
-cd frontend
-npm run test:unit
-
 # Frontend E2E tests (requires backend running with DEBUG=true)
+cd frontend
 npx playwright install   # first time only
 npm run test:e2e
-npm run test:e2e:headed  # with visible browser
+npm run test:e2e:ui      # with interactive UI
 ```
 
 ### Simulation
@@ -141,9 +185,15 @@ npm run test:e2e:headed  # with visible browser
 With `DEBUG=true`, you can test the full workflow without a physical disc:
 
 ```bash
+# TV disc
 curl -X POST localhost:8000/api/simulate/insert-disc \
   -H "Content-Type: application/json" \
   -d '{"volume_label":"ARRESTED_DEVELOPMENT_S1D1","content_type":"tv","simulate_ripping":true}'
+
+# Movie disc
+curl -X POST localhost:8000/api/simulate/insert-disc \
+  -H "Content-Type: application/json" \
+  -d '{"volume_label":"INCEPTION_2010","content_type":"movie","simulate_ripping":true}'
 ```
 
 ## Project Structure
@@ -154,7 +204,7 @@ engram/
     app/
       api/            # REST + WebSocket endpoints
       core/           # Sentinel, Analyst, Extractor, Curator, Organizer,
-                      #   DiscDB Classifier, TMDB Classifier, Snapshot
+                      #   DiscDB Classifier, TMDB Classifier
       matcher/        # Episode identification (ASR + subtitle matching)
       models/         # SQLModel database models (DiscJob, DiscTitle, AppConfig)
       services/       # Job Manager, State Machine, Ripping Coordinator,
@@ -163,22 +213,24 @@ engram/
       database.py     # Async SQLite setup + schema migration
       main.py         # FastAPI entry point with lifespan management
     pyproject.toml
-    .env.example
   frontend/
     src/
       app/
         components/   # DiscCard, TrackGrid, StateIndicator, ProgressBar,
-                      #   MatchingVisualizer, shadcn/ui primitives
+                      #   MatchingVisualizer
         hooks/        # useJobManagement, useDiscFilters, useElapsedTime,
                       #   useNotifications
       components/     # HistoryPage, ReviewQueue, ConfigWizard, NamePromptModal
-      config/         # UI constants and thresholds
       hooks/          # useWebSocket
       styles/         # Tailwind theme (navy palette, glow tokens, circuit board)
       types/          # TypeScript definitions + adapters
     e2e/              # Playwright E2E tests (10 spec files)
     vite.config.ts
+  docs/
+    screenshots/      # UI workflow screenshots
   README.md
+  CLAUDE.md
+  TESTING.md
 ```
 
 ## License
