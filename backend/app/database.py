@@ -135,7 +135,9 @@ async def _migrate_schema(target_engine: AsyncEngine | None = None) -> None:
                         )
                         logger.info(f"Restored app_config row with {len(insert_data)} fields")
 
-        # --- disc_jobs / disc_titles migration (drop and recreate) ---
+        # --- disc_jobs / disc_titles migration ---
+        # Use ALTER TABLE ADD COLUMN for additive-only changes to preserve job history.
+        # Only drop/recreate when columns have been removed (incompatible schema change).
         transient_tables = ["disc_titles", "disc_jobs"]  # titles first (FK dependency)
         for table_name in transient_tables:
             if table_name in existing_tables:
@@ -143,12 +145,35 @@ async def _migrate_schema(target_engine: AsyncEngine | None = None) -> None:
                 expected_cols = _get_expected_columns(table_name)
 
                 if actual_cols != expected_cols:
-                    logger.info(f"Schema mismatch in {table_name} — dropping and recreating")
-                    await conn.execute(sa_text(f"DROP TABLE {table_name}"))
-                    table_obj = SQLModel.metadata.tables[table_name]
-                    await conn.run_sync(
-                        lambda sync_conn, t=table_obj: t.create(sync_conn, checkfirst=True)
-                    )
+                    missing = expected_cols - actual_cols
+                    extra = actual_cols - expected_cols
+
+                    if extra:
+                        # Columns removed — incompatible change, must recreate
+                        logger.info(
+                            f"Schema mismatch in {table_name} — "
+                            f"removed columns {extra}, dropping and recreating"
+                        )
+                        await conn.execute(sa_text(f"DROP TABLE {table_name}"))
+                        table_obj = SQLModel.metadata.tables[table_name]
+                        await conn.run_sync(
+                            lambda sync_conn, t=table_obj: t.create(sync_conn, checkfirst=True)
+                        )
+                    elif missing:
+                        # Only new columns — use ALTER TABLE to preserve existing data
+                        table_obj = SQLModel.metadata.tables[table_name]
+                        for col_name in missing:
+                            col = table_obj.columns[col_name]
+                            col_type = col.type.compile(
+                                dialect=conn.dialect  # type: ignore[arg-type]
+                            )
+                            logger.info(f"Adding column {col_name} to {table_name}")
+                            await conn.execute(
+                                sa_text(
+                                    f"ALTER TABLE {table_name} "
+                                    f"ADD COLUMN {col_name} {col_type} NULL"
+                                )
+                            )
 
 
 async def reset_db() -> None:

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion } from "motion/react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -12,6 +12,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Bug,
+  X,
+  Copy,
+  Database,
+  AlertTriangle,
+  Disc3,
+  ArrowRight,
+  Loader2,
 } from "lucide-react";
 
 interface HistoryJob {
@@ -23,10 +30,74 @@ interface HistoryJob {
   detected_season: number | null;
   error_message: string | null;
   classification_source: string;
+  classification_confidence: number;
   total_titles: number;
+  content_hash: string | null;
+  discdb_slug: string | null;
+  disc_number: number;
+  tmdb_id: number | null;
   created_at: string | null;
   completed_at: string | null;
   cleared_at: string | null;
+}
+
+interface JobDetailTitle {
+  id: number;
+  job_id: number;
+  title_index: number;
+  duration_seconds: number;
+  file_size_bytes: number;
+  chapter_count: number;
+  is_selected: boolean;
+  output_filename: string | null;
+  matched_episode: string | null;
+  match_confidence: number;
+  state: string;
+  video_resolution: string | null;
+  edition: string | null;
+  organized_from: string | null;
+  organized_to: string | null;
+  is_extra: boolean;
+}
+
+interface JobDetail {
+  id: number;
+  volume_label: string;
+  drive_id: string;
+  content_type: string;
+  state: string;
+  detected_title: string | null;
+  detected_season: number | null;
+  disc_number: number;
+  error_message: string | null;
+  review_reason: string | null;
+  classification_source: string;
+  classification_confidence: number;
+  tmdb_id: number | null;
+  tmdb_name: string | null;
+  is_ambiguous_movie: boolean;
+  content_hash: string | null;
+  discdb_slug: string | null;
+  discdb_disc_slug: string | null;
+  discdb_mappings: Array<{
+    index: number;
+    title_type: string;
+    episode_title: string;
+    season: number | null;
+    episode: number | null;
+    duration_seconds: number;
+    size_bytes: number;
+  }> | null;
+  created_at: string | null;
+  completed_at: string | null;
+  cleared_at: string | null;
+  subtitle_status: string | null;
+  subtitles_downloaded: number;
+  subtitles_total: number;
+  subtitles_failed: number;
+  staging_path: string | null;
+  final_path: string | null;
+  titles: JobDetailTitle[];
 }
 
 interface Stats {
@@ -49,6 +120,19 @@ function formatDuration(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
+function formatTitleDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return "\u2014";
   const d = new Date(iso);
@@ -58,6 +142,18 @@ function formatDate(iso: string | null): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatDateShort(iso: string | null): string {
+  if (!iso) return "\u2014";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 }
 
@@ -101,8 +197,447 @@ function StatCard({
   );
 }
 
+function ConfidenceBar({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const color =
+    pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-navy-700 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="text-xs font-mono" style={{ color }}>
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
+function TitleStateBadge({ state }: { state: string }) {
+  const config: Record<string, { color: string; label: string }> = {
+    completed: { color: "text-green-400", label: "OK" },
+    failed: { color: "text-red-400", label: "FAIL" },
+    matched: { color: "text-cyan-400", label: "MATCHED" },
+    review: { color: "text-amber-400", label: "REVIEW" },
+    pending: { color: "text-slate-500", label: "PENDING" },
+    ripping: { color: "text-magenta-400", label: "RIPPING" },
+    matching: { color: "text-violet-400", label: "MATCHING" },
+  };
+  const c = config[state] || { color: "text-slate-500", label: state.toUpperCase() };
+  return <span className={`text-[10px] font-mono uppercase ${c.color}`}>{c.label}</span>;
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="text-slate-500 hover:text-cyan-400 transition-colors"
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <CheckCircle2 className="w-3 h-3 text-green-400" />
+      ) : (
+        <Copy className="w-3 h-3" />
+      )}
+    </button>
+  );
+}
+
+function JobDetailPanel({
+  detail,
+  loading,
+  onClose,
+}: {
+  detail: JobDetail | null;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [onClose]);
+
+  // Close on Escape key
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <motion.div
+      ref={panelRef}
+      initial={{ x: "100%" }}
+      animate={{ x: 0 }}
+      exit={{ x: "100%" }}
+      transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      className="fixed top-0 right-0 h-full w-full sm:w-[560px] bg-navy-900 border-l border-cyan-500/20 z-50 overflow-y-auto"
+      style={{
+        boxShadow: "-4px 0 30px rgba(6, 182, 212, 0.1)",
+      }}
+    >
+      {/* Panel Header */}
+      <div className="sticky top-0 z-10 bg-navy-900/95 backdrop-blur-sm border-b border-cyan-500/20 px-5 py-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-mono font-bold text-cyan-400 uppercase tracking-wider">
+            &gt; Job Detail
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-cyan-400 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+        </div>
+      ) : detail ? (
+        <div className="px-5 py-4 space-y-5">
+          {/* Title & Status */}
+          <div>
+            <h3 className="text-lg font-bold text-slate-100">
+              {detail.detected_title || detail.volume_label}
+            </h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span
+                className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
+                  detail.content_type === "tv"
+                    ? "text-amber-400 border-amber-400/30"
+                    : detail.content_type === "movie"
+                      ? "text-magenta-400 border-magenta-400/30"
+                      : "text-slate-500 border-slate-500/30"
+                }`}
+              >
+                {detail.content_type}
+              </span>
+              <span
+                className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
+                  detail.state === "completed"
+                    ? "text-green-400 border-green-400/30"
+                    : "text-red-400 border-red-400/30"
+                }`}
+              >
+                {detail.state}
+              </span>
+              {detail.detected_season && (
+                <span className="text-[10px] font-mono text-slate-400">
+                  Season {detail.detected_season}
+                </span>
+              )}
+              {detail.disc_number > 1 && (
+                <span className="text-[10px] font-mono text-slate-400">
+                  Disc {detail.disc_number}
+                </span>
+              )}
+            </div>
+            {detail.detected_title && (
+              <div className="text-[10px] font-mono text-slate-500 mt-1">
+                {detail.volume_label} on {detail.drive_id}
+              </div>
+            )}
+          </div>
+
+          {/* Error Details */}
+          {detail.error_message && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+              <div className="text-[10px] font-mono font-bold text-red-400 uppercase tracking-wider mb-2">
+                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                Error
+              </div>
+              <pre className="text-xs font-mono text-red-300 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+                {detail.error_message}
+              </pre>
+            </div>
+          )}
+
+          {/* Processing Timeline */}
+          <div>
+            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
+              &gt; Timeline
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <span className="text-slate-500 w-20">Created</span>
+                <ArrowRight className="w-3 h-3 text-cyan-500/40" />
+                <span className="text-slate-300">{formatDateShort(detail.created_at)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <span className="text-slate-500 w-20">
+                  {detail.state === "completed" ? "Completed" : "Failed"}
+                </span>
+                <ArrowRight className="w-3 h-3 text-cyan-500/40" />
+                <span className="text-slate-300">{formatDateShort(detail.completed_at)}</span>
+              </div>
+              {detail.created_at && detail.completed_at && (
+                <div className="flex items-center gap-2 text-xs font-mono">
+                  <span className="text-slate-500 w-20">Duration</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-500/40" />
+                  <span className="text-cyan-400">
+                    {formatDuration(
+                      (new Date(detail.completed_at).getTime() -
+                        new Date(detail.created_at).getTime()) /
+                        1000
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Classification */}
+          <div>
+            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
+              &gt; Classification
+            </div>
+            <div className="space-y-2 rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3">
+              <div className="flex justify-between items-center text-xs font-mono">
+                <span className="text-slate-400">Source</span>
+                <span className="text-slate-200">{detail.classification_source}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-mono text-slate-400">Confidence</span>
+                <ConfidenceBar value={detail.classification_confidence} />
+              </div>
+              {detail.tmdb_id && (
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-slate-400">TMDB</span>
+                  <span className="text-slate-200">
+                    {detail.tmdb_name || `ID ${detail.tmdb_id}`}
+                  </span>
+                </div>
+              )}
+              {detail.is_ambiguous_movie && (
+                <div className="text-[10px] font-mono text-amber-400">
+                  Ambiguous movie (multiple possible main features)
+                </div>
+              )}
+              {detail.review_reason && (
+                <div className="flex justify-between items-start text-xs font-mono">
+                  <span className="text-slate-400">Review Reason</span>
+                  <span className="text-amber-400 text-right max-w-[60%]">
+                    {detail.review_reason}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* TheDiscDB */}
+          <div>
+            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
+              <Database className="w-3 h-3 inline mr-1" />
+              TheDiscDB
+            </div>
+            <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 space-y-2">
+              {detail.content_hash ? (
+                <>
+                  <div className="flex justify-between items-center text-xs font-mono">
+                    <span className="text-slate-400">Content Hash</span>
+                    <div className="flex items-center gap-1.5">
+                      <code className="text-cyan-300 text-[10px]">
+                        {detail.content_hash.slice(0, 16)}...
+                      </code>
+                      <CopyButton text={detail.content_hash} />
+                    </div>
+                  </div>
+                  {detail.discdb_slug && (
+                    <div className="flex justify-between items-center text-xs font-mono">
+                      <span className="text-slate-400">Title</span>
+                      <span className="text-slate-200">{detail.discdb_slug}</span>
+                    </div>
+                  )}
+                  {detail.discdb_disc_slug && (
+                    <div className="flex justify-between items-center text-xs font-mono">
+                      <span className="text-slate-400">Disc</span>
+                      <span className="text-slate-200">{detail.discdb_disc_slug}</span>
+                    </div>
+                  )}
+                  {!detail.discdb_slug && (
+                    <div className="text-[10px] font-mono text-amber-400">
+                      Disc fingerprint computed but not found in TheDiscDB
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-[10px] font-mono text-slate-500">
+                  No disc fingerprint available (scan may have failed before computation)
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Subtitle Info */}
+          {detail.subtitle_status && (
+            <div>
+              <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
+                &gt; Subtitles
+              </div>
+              <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 text-xs font-mono space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Status</span>
+                  <span className="text-slate-200">{detail.subtitle_status}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Downloaded</span>
+                  <span className="text-slate-200">
+                    {detail.subtitles_downloaded}/{detail.subtitles_total}
+                    {detail.subtitles_failed > 0 && (
+                      <span className="text-red-400 ml-1">({detail.subtitles_failed} failed)</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Track Breakdown */}
+          <div>
+            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
+              <Disc3 className="w-3 h-3 inline mr-1" />
+              Tracks ({detail.titles.length})
+            </div>
+            {detail.titles.length > 0 ? (
+              <div className="space-y-1.5">
+                {detail.titles.map((t) => (
+                  <div
+                    key={t.id}
+                    className="rounded border border-cyan-500/10 bg-navy-800/60 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-500">
+                          #{t.title_index}
+                        </span>
+                        <span className="text-xs font-mono text-slate-300">
+                          {formatTitleDuration(t.duration_seconds)}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {formatBytes(t.file_size_bytes)}
+                        </span>
+                        {t.video_resolution && (
+                          <span className="text-[10px] font-mono text-violet-400">
+                            {t.video_resolution}
+                          </span>
+                        )}
+                      </div>
+                      <TitleStateBadge state={t.state} />
+                    </div>
+                    {(t.matched_episode || t.edition || t.is_extra) && (
+                      <div className="flex items-center gap-2 mt-1">
+                        {t.matched_episode && (
+                          <span className="text-[10px] font-mono text-cyan-400">
+                            {t.matched_episode}
+                          </span>
+                        )}
+                        {t.edition && (
+                          <span className="text-[10px] font-mono text-amber-400">
+                            {t.edition}
+                          </span>
+                        )}
+                        {t.is_extra && (
+                          <span className="text-[10px] font-mono text-slate-500">extra</span>
+                        )}
+                        {t.match_confidence > 0 && (
+                          <span className="text-[10px] font-mono text-slate-500">
+                            ({Math.round(t.match_confidence * 100)}% match)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {t.organized_to && (
+                      <div className="text-[10px] font-mono text-slate-500 mt-1 truncate">
+                        {t.organized_to}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs font-mono text-slate-500 rounded border border-cyan-500/10 bg-navy-800/60 px-3 py-4 text-center">
+                No tracks found (scan may have failed before disc analysis)
+              </div>
+            )}
+          </div>
+
+          {/* Paths */}
+          {(detail.staging_path || detail.final_path) && (
+            <div>
+              <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
+                &gt; Paths
+              </div>
+              <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 text-xs font-mono space-y-1">
+                {detail.staging_path && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Staging</span>
+                    <span className="text-slate-500 truncate">{detail.staging_path}</span>
+                  </div>
+                )}
+                {detail.final_path && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Library</span>
+                    <span className="text-slate-500 truncate">{detail.final_path}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bug Report for this specific job */}
+          <div className="pt-2 border-t border-cyan-500/10">
+            <a
+              href={`/api/diagnostics/report?job_id=${detail.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-red-400 transition-colors"
+              onClick={async (e) => {
+                e.preventDefault();
+                try {
+                  const resp = await fetch(`/api/diagnostics/report?job_id=${detail.id}`);
+                  if (resp.ok) {
+                    const data = await resp.json();
+                    window.open(data.github_url, "_blank");
+                  }
+                } catch {
+                  // silently fail
+                }
+              }}
+            >
+              <Bug className="w-3 h-3" />
+              Report bug for this job
+            </a>
+          </div>
+        </div>
+      ) : null}
+    </motion.div>
+  );
+}
+
 export default function HistoryPage() {
   const navigate = useNavigate();
+  const { jobId: urlJobId } = useParams<{ jobId: string }>();
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<HistoryJob[]>([]);
   const [page, setPage] = useState(1);
@@ -110,6 +645,11 @@ export default function HistoryPage() {
   const [filterState, setFilterState] = useState<string>("");
   const [hasMore, setHasMore] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(
+    urlJobId ? parseInt(urlJobId, 10) : null
+  );
+  const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const perPage = 20;
 
   useEffect(() => {
@@ -139,6 +679,44 @@ export default function HistoryPage() {
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  // Fetch job detail when a job is selected
+  useEffect(() => {
+    if (!selectedJobId) {
+      setJobDetail(null);
+      return;
+    }
+    setDetailLoading(true);
+    fetch(`/api/jobs/${selectedJobId}/detail`)
+      .then((r) => {
+        if (!r.ok) throw new Error("Not found");
+        return r.json();
+      })
+      .then((data: JobDetail) => {
+        setJobDetail(data);
+      })
+      .catch(() => {
+        setJobDetail(null);
+      })
+      .finally(() => {
+        setDetailLoading(false);
+      });
+  }, [selectedJobId]);
+
+  const handleRowClick = (jobId: number) => {
+    if (jobId === selectedJobId) {
+      setSelectedJobId(null);
+      navigate("/history", { replace: true });
+    } else {
+      setSelectedJobId(jobId);
+      navigate(`/history/${jobId}`, { replace: true });
+    }
+  };
+
+  const handleCloseDetail = useCallback(() => {
+    setSelectedJobId(null);
+    navigate("/history", { replace: true });
+  }, [navigate]);
 
   const handleReportBug = async () => {
     setReportLoading(true);
@@ -339,14 +917,17 @@ export default function HistoryPage() {
                     colSpan={6}
                     className="px-4 py-8 text-center text-slate-500"
                   >
-                    No archived jobs found
+                    No completed or failed jobs yet
                   </td>
                 </tr>
               ) : (
                 history.map((job) => (
                   <tr
                     key={job.id}
-                    className="border-b border-navy-700/50 hover:bg-cyan-500/5 transition-colors"
+                    onClick={() => handleRowClick(job.id)}
+                    className={`border-b border-navy-700/50 hover:bg-cyan-500/5 transition-colors cursor-pointer ${
+                      selectedJobId === job.id ? "bg-cyan-500/10" : ""
+                    }`}
                   >
                     <td className="px-4 py-3">
                       <div className="text-slate-200">
@@ -419,6 +1000,26 @@ export default function HistoryPage() {
           </button>
         </div>
       </div>
+
+      {/* Detail Panel Overlay */}
+      <AnimatePresence>
+        {selectedJobId && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-40"
+            />
+            <JobDetailPanel
+              detail={jobDetail}
+              loading={detailLoading}
+              onClose={handleCloseDetail}
+            />
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

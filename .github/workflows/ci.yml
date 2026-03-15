@@ -18,6 +18,8 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -36,11 +38,16 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsndfile1 ffmpeg
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libsndfile1 ffmpeg
+          version: 1.0
       - run: uv sync --no-install-project
       - name: Run tests
         run: uv run pytest tests/ -v --tb=long 2>&1 | tee pytest-output.txt
@@ -66,10 +73,6 @@ jobs:
           node-version: "24"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
-      - name: Show versions
-        run: |
-          node --version
-          npm --version
       - run: npm ci
       - run: npm run lint
       - run: npm run build
@@ -91,18 +94,35 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsndfile1 ffmpeg
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libsndfile1 ffmpeg
+          version: 1.0
       - name: Install backend dependencies
         run: uv sync --no-install-project
         working-directory: backend
       - name: Install frontend dependencies
         run: npm ci
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright-version.outputs.version }}-chromium
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+      - name: Install Playwright system deps
+        run: npx playwright install-deps chromium
       - name: Run E2E tests
         run: npx playwright test
         env:

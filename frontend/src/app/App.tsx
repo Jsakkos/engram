@@ -429,6 +429,7 @@ function App() {
     <Routes>
       <Route path="/" element={<MainDashboard />} />
       <Route path="/history" element={<HistoryPage />} />
+      <Route path="/history/:jobId" element={<HistoryPage />} />
       <Route path="/review/:jobId" element={<ReviewQueue />} />
     </Routes>
   );
