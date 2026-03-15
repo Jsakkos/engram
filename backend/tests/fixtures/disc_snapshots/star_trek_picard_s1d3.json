@@ -9,7 +9,7 @@
       "size_bytes": 11659264873,
       "chapter_count": 6,
       "video_resolution": "1080p",
-      "expected_episode": "S01E07"
+      "expected_episode": null
     },
     {
       "index": 1,
@@ -18,7 +18,7 @@
       "size_bytes": 9242778731,
       "chapter_count": 6,
       "video_resolution": "1080p",
-      "expected_episode": "S01E08"
+      "expected_episode": null
     },
     {
       "index": 2,
@@ -27,7 +27,7 @@
       "size_bytes": 11375319742,
       "chapter_count": 6,
       "video_resolution": "1080p",
-      "expected_episode": "S01E09"
+      "expected_episode": null
     },
     {
       "index": 3,
@@ -48,12 +48,12 @@
       "expected_episode": null
     }
   ],
-  "expected_content_type": "tv",
-  "expected_detected_name": "Star Trek Picard",
-  "expected_season": 1,
-  "expected_play_all_indices": [3],
+  "expected_content_type": "",
+  "expected_detected_name": null,
+  "expected_season": null,
+  "expected_play_all_indices": [],
   "expected_needs_review": false,
   "expected_review_reason": null,
   "tmdb_signal": null,
-  "notes": "Season 1 Disc 3. 3 episodes (tracks 0-2, S01E07-E09), 1 play-all (track 3, 9416s = 3 episodes x 6 chapters), 1 extra (track 4, 5.1min)."
+  "notes": "AUTO-GENERATED \u2014 fill in expected_* fields manually"
 }

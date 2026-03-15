@@ -145,6 +145,7 @@ export function useJobManagement(devMode: boolean = false) {
                         title_id: message.title_id,
                         state: message.state,
                         match_stage: message.match_stage,
+                        error: message.error,
                     });
                     setTitlesMap(prev => {
                         const existingTitles = prev[message.job_id];
@@ -156,7 +157,14 @@ export function useJobManagement(devMode: boolean = false) {
                         const updated = {
                             ...prev,
                             [message.job_id]: existingTitles?.map(title =>
-                                title.id === message.title_id ? { ...title, ...message } : title
+                                title.id === message.title_id
+                                    ? {
+                                        ...title,
+                                        ...message,
+                                        // Map WebSocket 'error' field to title's error_message
+                                        error_message: message.error ?? title.error_message,
+                                    }
+                                    : title
                             ) || []
                         };
 

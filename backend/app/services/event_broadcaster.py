@@ -126,6 +126,7 @@ class EventBroadcaster:
             title.job_id,
             title.id,
             state=TitleState.FAILED.value,
+            error=error,
         )
 
     # --- Subtitle Events ---

@@ -265,6 +265,7 @@ class TestTitleStateEvents:
             sample_title.job_id,
             sample_title.id,
             state=TitleState.FAILED.value,
+            error="Matching error",
         )
 
 

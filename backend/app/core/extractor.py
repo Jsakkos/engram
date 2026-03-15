@@ -31,6 +31,7 @@ class RipProgress:
 # Progress callback type
 ProgressCallback = Callable[[RipProgress], None]
 TitleCompleteCallback = Callable[[int, Path], None]
+TitleErrorCallback = Callable[[int, str], None]  # (command_idx, error_reason)
 
 
 @dataclass
@@ -40,6 +41,7 @@ class RipResult:
     success: bool
     output_files: list[Path]
     error_message: str | None = None
+    stalled_titles: list[int] | None = None  # Command indices that were skipped due to stall
 
 
 class ScanTimeoutError(Exception):
@@ -215,6 +217,8 @@ class MakeMKVExtractor:
         title_indices: list[int] | None = None,
         progress_callback: ProgressCallback | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
+        stall_timeout: float | None = None,
+        title_error_callback: TitleErrorCallback | None = None,
     ) -> RipResult:
         """Rip selected titles from a disc.
 
@@ -224,6 +228,10 @@ class MakeMKVExtractor:
             title_indices: List of title indices to rip, or None for all
             progress_callback: Optional callback for progress updates
             title_complete_callback: Optional callback when a title finishes ripping
+            stall_timeout: Seconds of no file growth before killing the process
+                and skipping to the next title. None or 0 disables detection.
+            title_error_callback: Optional callback when a title fails (e.g., stall
+                detected). Called with (command_idx, error_reason).
 
         Returns:
             RipResult with success status and output files
@@ -242,6 +250,8 @@ class MakeMKVExtractor:
                 title_indices,
                 progress_callback,
                 title_complete_callback,
+                stall_timeout=stall_timeout,
+                title_error_callback=title_error_callback,
             )
 
     async def _rip_titles_unlocked(
@@ -251,6 +261,8 @@ class MakeMKVExtractor:
         title_indices: list[int] | None = None,
         progress_callback: ProgressCallback | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
+        stall_timeout: float | None = None,
+        title_error_callback: TitleErrorCallback | None = None,
     ) -> RipResult:
         """Internal rip implementation (caller must hold drive lock)."""
         self._cancelled = False
@@ -371,6 +383,73 @@ class MakeMKVExtractor:
             # In "all" mode, MakeMKV emits PRGC:current,total,"name" where
             # `current` is the 0-based index of the title being processed.
             prgc_current_title: int = 1
+            # Tracks which commands were terminated due to stall detection
+            stalled_commands: set[int] = set()
+
+            def _stall_watchdog(proc, watch_dir, timeout, poll_interval=5.0):
+                """Kill MakeMKV if no file growth for timeout seconds.
+
+                Runs in a daemon thread alongside each MakeMKV subprocess.
+                Monitors .mkv file sizes in the output directory. If no file
+                grows for `timeout` seconds, terminates the process so the
+                command loop can skip to the next title.
+                """
+                prev_sizes: dict[str, int] = {}
+                stall_start = None
+
+                while proc.poll() is None:
+                    _time.sleep(poll_interval)
+                    if proc.poll() is not None:
+                        break
+
+                    current_sizes: dict[str, int] = {}
+                    try:
+                        for mkv in watch_dir.glob("*.mkv"):
+                            try:
+                                current_sizes[mkv.name] = mkv.stat().st_size
+                            except OSError:
+                                pass
+                    except OSError:
+                        continue
+
+                    # Check if any file grew since last poll
+                    any_growth = False
+                    for name, size in current_sizes.items():
+                        if size > prev_sizes.get(name, 0):
+                            any_growth = True
+                            break
+
+                    if current_sizes and not any_growth:
+                        if stall_start is None:
+                            stall_start = _time.monotonic()
+                        elif _time.monotonic() - stall_start >= timeout:
+                            logger.warning(
+                                f"Ripping stall detected: no file growth for "
+                                f"{timeout}s. Terminating MakeMKV process "
+                                f"(command {current_title_idx}/{len(commands)})"
+                            )
+                            stalled_commands.add(current_title_idx)
+                            # Fire error callback immediately so the UI
+                            # shows the title as FAILED right away
+                            if title_error_callback:
+                                try:
+                                    title_error_callback(
+                                        current_title_idx,
+                                        "Ripping stalled — possible disc damage",
+                                    )
+                                except Exception as cb_err:
+                                    logger.exception(
+                                        f"Error in title_error_callback: {cb_err}"
+                                    )
+                            try:
+                                proc.terminate()
+                            except (ProcessLookupError, PermissionError):
+                                pass
+                            return
+                    else:
+                        stall_start = None
+
+                    prev_sizes = current_sizes
 
             try:
                 self._cancelled = False
@@ -393,6 +472,18 @@ class MakeMKVExtractor:
                         bufsize=1,  # Line buffered
                     )
                     self._current_process = process
+
+                    # Start stall watchdog thread if timeout is configured
+                    watchdog_thread = None
+                    if stall_timeout and stall_timeout > 0:
+                        import threading
+
+                        watchdog_thread = threading.Thread(
+                            target=_stall_watchdog,
+                            args=(process, output_dir, stall_timeout),
+                            daemon=True,
+                        )
+                        watchdog_thread.start()
 
                     # Read stdout line by line
                     for line in iter(process.stdout.readline, ""):
@@ -467,8 +558,39 @@ class MakeMKVExtractor:
 
                     # End of process loop
                     process.wait()
+
+                    # Join watchdog thread if it was started
+                    if watchdog_thread is not None:
+                        watchdog_thread.join(timeout=2.0)
+
                     if process.returncode != 0:
+                        was_stall = current_title_idx in stalled_commands
                         stderr = process.stderr.read() if process.stderr else ""
+
+                        if was_stall:
+                            # Stall detected — delete incomplete file, continue
+                            logger.warning(
+                                f"Command {current_title_idx}/{len(commands)} "
+                                f"terminated due to stall. Skipping to next title."
+                            )
+                            # Delete incomplete .mkv files created by this command
+                            for mkv in output_dir.glob("*.mkv"):
+                                if mkv.name not in completed_files:
+                                    try:
+                                        size_mb = mkv.stat().st_size / 1024 / 1024
+                                        mkv.unlink()
+                                        logger.info(
+                                            f"Deleted incomplete file: {mkv.name} "
+                                            f"({size_mb:.0f} MB)"
+                                        )
+                                    except OSError as e:
+                                        logger.warning(
+                                            f"Failed to delete incomplete file "
+                                            f"{mkv.name}: {e}"
+                                        )
+                            # Don't break — continue to next command
+                            continue
+
                         combined_stderr += f"\nCommand failed ({cmd}): {stderr}"
                         final_returncode = process.returncode
                         # If one fails in a loop, should we stop? Yes, probably.
@@ -479,7 +601,7 @@ class MakeMKVExtractor:
                     _check_for_completed_files()
 
                 # End of all commands
-                return (final_returncode, combined_stderr)
+                return (final_returncode, combined_stderr, stalled_commands)
 
             except Exception as e:
                 logger.exception("Error in rip subprocess")
@@ -489,7 +611,7 @@ class MakeMKVExtractor:
                 except (ProcessLookupError, PermissionError) as e:
                     logger.debug(f"Could not terminate MakeMKV process: {e}")
                     pass
-                return (-1, str(e))
+                return (-1, str(e), set())
             finally:
                 self._current_process = None
 
@@ -536,7 +658,7 @@ class MakeMKVExtractor:
                     except queue.Empty:
                         break
 
-                returncode, stderr = future.result()
+                returncode, stderr, stalled = future.result()
 
             logger.debug(f"Rip completed with return code {returncode}")
 
@@ -555,19 +677,31 @@ class MakeMKVExtractor:
                         if match:
                             output_files.append(output_dir / Path(match.group(1)).name)
 
-            if returncode != 0:
+            stalled_list = sorted(stalled) if stalled else None
+
+            if returncode != 0 and not stalled:
                 return RipResult(
                     success=False,
                     output_files=output_files,
                     error_message=stderr or "Unknown error during ripping",
+                    stalled_titles=stalled_list,
                 )
 
             # Find all MKV files in output directory if none tracked
             if not output_files:
                 output_files = list(output_dir.glob("*.mkv"))
 
+            if stalled:
+                logger.warning(
+                    f"Ripping complete with {len(stalled)} stalled title(s) skipped"
+                )
+
             logger.info(f"Ripping complete: {len(output_files)} files created")
-            return RipResult(success=True, output_files=output_files)
+            return RipResult(
+                success=True,
+                output_files=output_files,
+                stalled_titles=stalled_list,
+            )
 
         except Exception as e:
             logger.exception("Error during ripping")

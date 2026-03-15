@@ -144,6 +144,13 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                   )}
                 </div>
                 
+                {/* Error message for failed tracks */}
+                {track.state === "failed" && track.errorMessage && (
+                  <div className="mt-1 text-xs text-red-400/80 font-mono truncate" title={track.errorMessage}>
+                    {track.errorMessage}
+                  </div>
+                )}
+
                 {/* Queued label for pending tracks */}
                 {track.state === "pending" && (
                   <div className="mt-1">
