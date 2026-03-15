@@ -1,5 +1,6 @@
 """REST API routes for Engram."""
 
+import json
 import logging
 import platform
 import re
@@ -51,6 +52,30 @@ class JobResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TitleResponse(BaseModel):
+    """Response model for a disc title with match results."""
+
+    id: int
+    job_id: int
+    title_index: int
+    duration_seconds: int
+    file_size_bytes: int
+    chapter_count: int
+    is_selected: bool
+    output_filename: str | None
+    matched_episode: str | None
+    match_confidence: float
+    match_details: str | None = None
+    state: str = "pending"
+    video_resolution: str | None = None
+    edition: str | None = None
+    conflict_resolution: str | None = None
+    existing_file_path: str | None = None
+    organized_from: str | None = None
+    organized_to: str | None = None
+    is_extra: bool = False
+
+
 class HistoryJobResponse(BaseModel):
     """Response model for a job in history view."""
 
@@ -62,10 +87,55 @@ class HistoryJobResponse(BaseModel):
     detected_season: int | None = None
     error_message: str | None = None
     classification_source: str = "heuristic"
+    classification_confidence: float = 0.0
     total_titles: int = 0
+    content_hash: str | None = None
+    discdb_slug: str | None = None
+    disc_number: int = 1
+    tmdb_id: int | None = None
     created_at: str | None = None
     completed_at: str | None = None
     cleared_at: str | None = None
+
+
+class JobDetailResponse(BaseModel):
+    """Full job detail for history drill-down."""
+
+    id: int
+    volume_label: str
+    drive_id: str
+    content_type: str
+    state: str
+    detected_title: str | None = None
+    detected_season: int | None = None
+    disc_number: int = 1
+    error_message: str | None = None
+    review_reason: str | None = None
+    # Classification
+    classification_source: str = "heuristic"
+    classification_confidence: float = 0.0
+    tmdb_id: int | None = None
+    tmdb_name: str | None = None
+    is_ambiguous_movie: bool = False
+    # TheDiscDB
+    content_hash: str | None = None
+    discdb_slug: str | None = None
+    discdb_disc_slug: str | None = None
+    discdb_mappings: list[dict] | None = None
+    # Timestamps
+    created_at: str | None = None
+    completed_at: str | None = None
+    cleared_at: str | None = None
+    # Subtitles
+    subtitle_status: str | None = None
+    subtitles_downloaded: int = 0
+    subtitles_total: int = 0
+    subtitles_failed: int = 0
+    # Paths
+    staging_path: str | None = None
+    final_path: str | None = None
+    # Tracks
+    titles: list[TitleResponse] = []
 
 
 class StatsResponse(BaseModel):
@@ -170,30 +240,6 @@ class ReviewRequest(BaseModel):
     edition: str | None = None  # e.g., "Extended", "Theatrical"
 
 
-class TitleResponse(BaseModel):
-    """Response model for a disc title with match results."""
-
-    id: int
-    job_id: int
-    title_index: int
-    duration_seconds: int
-    file_size_bytes: int
-    chapter_count: int
-    is_selected: bool
-    output_filename: str | None
-    matched_episode: str | None
-    match_confidence: float
-    match_details: str | None = None
-    state: str = "pending"
-    video_resolution: str | None = None
-    edition: str | None = None
-    conflict_resolution: str | None = None
-    existing_file_path: str | None = None
-    organized_from: str | None = None
-    organized_to: str | None = None
-    is_extra: bool = False
-
-
 # Routes
 @router.get("/jobs", response_model=list[JobResponse])
 async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJob]:
@@ -215,15 +261,21 @@ async def get_job_history(
     state: str | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
-    """Get cleared/archived job history with pagination and filtering."""
-    query = select(DiscJob).where(DiscJob.cleared_at.is_not(None))
+    """Get all completed/failed job history with pagination and filtering."""
+    query = select(DiscJob).where(
+        DiscJob.state.in_([JobState.COMPLETED, JobState.FAILED])
+    )
 
     if content_type:
         query = query.where(DiscJob.content_type == content_type)
     if state:
         query = query.where(DiscJob.state == state)
 
-    query = query.order_by(DiscJob.cleared_at.desc()).offset((page - 1) * per_page).limit(per_page)
+    query = (
+        query.order_by(DiscJob.completed_at.desc().nulls_last(), DiscJob.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
     result = await session.execute(query)
     jobs = result.scalars().all()
 
@@ -237,7 +289,12 @@ async def get_job_history(
             "detected_season": j.detected_season,
             "error_message": j.error_message,
             "classification_source": j.classification_source,
+            "classification_confidence": j.classification_confidence,
             "total_titles": j.total_titles,
+            "content_hash": j.content_hash,
+            "discdb_slug": j.discdb_slug,
+            "disc_number": j.disc_number,
+            "tmdb_id": j.tmdb_id,
             "created_at": j.created_at.isoformat() if j.created_at else None,
             "completed_at": j.completed_at.isoformat() if j.completed_at else None,
             "cleared_at": j.cleared_at.isoformat() if j.cleared_at else None,
@@ -309,7 +366,12 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
                 "detected_season": j.detected_season,
                 "error_message": j.error_message,
                 "classification_source": j.classification_source,
+                "classification_confidence": j.classification_confidence,
                 "total_titles": j.total_titles,
+                "content_hash": j.content_hash,
+                "discdb_slug": j.discdb_slug,
+                "disc_number": j.disc_number,
+                "tmdb_id": j.tmdb_id,
                 "created_at": j.created_at.isoformat() if j.created_at else None,
                 "completed_at": j.completed_at.isoformat() if j.completed_at else None,
                 "cleared_at": j.cleared_at.isoformat() if j.cleared_at else None,
@@ -341,6 +403,85 @@ async def get_job_titles(
         select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
     )
     return list(result.scalars().all())
+
+
+@router.get("/jobs/{job_id}/detail", response_model=JobDetailResponse)
+async def get_job_detail(
+    job_id: int, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Get full job detail with titles for history drill-down."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Fetch associated titles
+    titles_result = await session.execute(
+        select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+    )
+    titles = list(titles_result.scalars().all())
+
+    # Parse persisted DiscDB mappings if available
+    discdb_mappings = None
+    if job.discdb_mappings_json:
+        try:
+            discdb_mappings = json.loads(job.discdb_mappings_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return {
+        "id": job.id,
+        "volume_label": job.volume_label,
+        "drive_id": job.drive_id,
+        "content_type": job.content_type,
+        "state": job.state,
+        "detected_title": job.detected_title,
+        "detected_season": job.detected_season,
+        "disc_number": job.disc_number,
+        "error_message": job.error_message,
+        "review_reason": job.review_reason,
+        "classification_source": job.classification_source,
+        "classification_confidence": job.classification_confidence,
+        "tmdb_id": job.tmdb_id,
+        "tmdb_name": job.tmdb_name,
+        "is_ambiguous_movie": job.is_ambiguous_movie,
+        "content_hash": job.content_hash,
+        "discdb_slug": job.discdb_slug,
+        "discdb_disc_slug": job.discdb_disc_slug,
+        "discdb_mappings": discdb_mappings,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "cleared_at": job.cleared_at.isoformat() if job.cleared_at else None,
+        "subtitle_status": job.subtitle_status,
+        "subtitles_downloaded": job.subtitles_downloaded,
+        "subtitles_total": job.subtitles_total,
+        "subtitles_failed": job.subtitles_failed,
+        "staging_path": job.staging_path,
+        "final_path": job.final_path,
+        "titles": [
+            {
+                "id": t.id,
+                "job_id": t.job_id,
+                "title_index": t.title_index,
+                "duration_seconds": t.duration_seconds,
+                "file_size_bytes": t.file_size_bytes,
+                "chapter_count": t.chapter_count,
+                "is_selected": t.is_selected,
+                "output_filename": t.output_filename,
+                "matched_episode": t.matched_episode,
+                "match_confidence": t.match_confidence,
+                "match_details": t.match_details,
+                "state": t.state,
+                "video_resolution": t.video_resolution,
+                "edition": t.edition,
+                "conflict_resolution": t.conflict_resolution,
+                "existing_file_path": t.existing_file_path,
+                "organized_from": t.organized_from,
+                "organized_to": t.organized_to,
+                "is_extra": t.is_extra,
+            }
+            for t in titles
+        ],
+    }
 
 
 @router.post("/jobs/{job_id}/start")

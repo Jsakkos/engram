@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import time
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -70,6 +71,9 @@ class JobManager:
         # MakeMKV subprocess is gone. Mark them FAILED so a fresh job can start.
         await self._cleanup_stale_jobs()
 
+        # Restore persisted DiscDB mappings for any active (non-terminal) jobs
+        await self._restore_discdb_mappings()
+
         # Set up drive monitor callback
         self._drive_monitor.set_async_callback(
             self._on_drive_event,
@@ -130,6 +134,27 @@ class JobManager:
 
             await session.commit()
             logger.info(f"Cleaned up {len(stale_jobs)} stale job(s) from previous run")
+
+    async def _restore_discdb_mappings(self) -> None:
+        """Restore in-memory DiscDB mappings from database for active jobs."""
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        active_states = [JobState.REVIEW_NEEDED, JobState.RIPPING, JobState.MATCHING]
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob).where(
+                    DiscJob.discdb_mappings_json.is_not(None),
+                    DiscJob.state.in_(active_states),
+                )
+            )
+            for job in result.scalars():
+                mappings_data = json.loads(job.discdb_mappings_json)
+                self._discdb_mappings[job.id] = [
+                    DiscDbTitleMapping(**m) for m in mappings_data
+                ]
+                logger.info(
+                    f"Restored {len(mappings_data)} DiscDB mappings for job {job.id}"
+                )
 
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
@@ -326,6 +351,10 @@ class JobManager:
                     # Store title mappings for use during matching phase
                     if discdb_signal.title_mappings:
                         self._discdb_mappings[job_id] = discdb_signal.title_mappings
+                        # Persist to DB so mappings survive server restarts
+                        job.discdb_mappings_json = json.dumps(
+                            [asdict(m) for m in discdb_signal.title_mappings]
+                        )
                 elif discdb_signal:
                     # Lower confidence — use as supporting signal but don't override
                     logger.info(
@@ -356,8 +385,6 @@ class JobManager:
                 job.tmdb_name = analysis.tmdb_name
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
-                    import json
-
                     job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
 
                 # Extract disc number from volume label (e.g., "SHOW_S01D2" -> 2)

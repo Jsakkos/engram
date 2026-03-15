@@ -102,6 +102,7 @@ class DiscJob(SQLModel, table=True):
     content_hash: str | None = Field(default=None)  # MakeMKV disc fingerprint (MD5)
     discdb_slug: str | None = Field(default=None)  # e.g., "band-of-brothers-2001"
     discdb_disc_slug: str | None = Field(default=None)  # e.g., "S01D01"
+    discdb_mappings_json: str | None = Field(default=None)  # JSON-serialized DiscDbTitleMapping list
 
 
 class DiscTitle(SQLModel, table=True):
