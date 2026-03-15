@@ -50,7 +50,7 @@ jobs:
       - name: Package
         run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-windows-x64.zip
         shell: pwsh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: engram-windows-x64
           path: engram-windows-x64.zip
@@ -96,7 +96,7 @@ jobs:
         run: uv run pyinstaller engram.spec
       - name: Package
         run: tar -czf engram-linux-x64.tar.gz -C backend/dist engram
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: engram-linux-x64
           path: engram-linux-x64.tar.gz
