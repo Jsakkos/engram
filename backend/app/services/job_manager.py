@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -129,7 +129,7 @@ class JobManager:
                 old_state = job.state
                 job.state = JobState.FAILED
                 job.error_message = f"Server restarted while job was in {old_state.value} state"
-                job.updated_at = datetime.utcnow()
+                job.updated_at = datetime.now(UTC)
                 logger.info(f"Cleaned up stale job {job.id} (was {old_state.value}, now FAILED)")
 
             await session.commit()
@@ -261,7 +261,7 @@ class JobManager:
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.IDENTIFYING)
 
                 try:
-                    titles = await self._extractor.scan_disc(job.drive_id)
+                    titles = await self._extractor.scan_disc(job.drive_id, job_id=job_id)
                 except ScanTimeoutError:
                     await state_machine.transition_to_failed(
                         job,
@@ -372,7 +372,23 @@ class JobManager:
                 job.detected_title = analysis.detected_name
                 job.detected_season = analysis.detected_season
                 job.total_titles = len(titles)
-                job.updated_at = datetime.utcnow()
+                job.updated_at = datetime.now(UTC)
+
+                # If TMDB and DiscDB both failed and label looks like a catalog
+                # number (e.g. BBCDVD1550), the parsed name is garbage —
+                # clear it so the NamePromptModal triggers.
+                if (
+                    not tmdb_signal
+                    and not discdb_signal
+                    and job.detected_title
+                    and DiscAnalyst._looks_like_catalog_number(job.volume_label)
+                ):
+                    logger.info(
+                        f"Job {job_id}: Label '{job.volume_label}' looks like a catalog "
+                        f"number and no external match found — clearing detected_title "
+                        f"to trigger name prompt"
+                    )
+                    job.detected_title = None
 
                 # Persist classification metadata
                 job.classification_confidence = analysis.confidence
@@ -638,7 +654,7 @@ class JobManager:
             if season is not None:
                 job.detected_season = season
             job.state = JobState.RIPPING
-            job.updated_at = datetime.utcnow()
+            job.updated_at = datetime.now(UTC)
             await session.commit()
 
             await ws_manager.broadcast_job_update(
@@ -668,7 +684,7 @@ class JobManager:
                 raise ValueError(f"Cannot start job in state: {job.state}")
 
             job.state = JobState.RIPPING
-            job.updated_at = datetime.utcnow()
+            job.updated_at = datetime.now(UTC)
             await session.commit()
 
             # Start ripping in background
@@ -1505,6 +1521,7 @@ class JobManager:
                         title_complete_callback=on_title_complete,
                         stall_timeout=stall_timeout,
                         title_error_callback=on_title_error,
+                        job_id=job_id,
                     )
                 finally:
                     monitor_task.cancel()
@@ -2653,7 +2670,7 @@ class JobManager:
             self._active_jobs[job_id].cancel()
             del self._active_jobs[job_id]
 
-        self._extractor.cancel()
+        self._extractor.cancel(job_id)
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -2736,7 +2753,7 @@ class JobManager:
 
                         # Option: Update state to RIPPING here, then spawn the task.
                         job.state = JobState.RIPPING
-                        job.updated_at = datetime.utcnow()
+                        job.updated_at = datetime.now(UTC)
                         session.add(job)
                         await session.commit()
                         await event_broadcaster.broadcast_job_state_changed(job_id, job.state)
@@ -3791,7 +3808,7 @@ class JobManager:
                 raise ValueError(f"Cannot advance from state: {job.state}")
 
             job.state = next_state
-            job.updated_at = datetime.utcnow()
+            job.updated_at = datetime.now(UTC)
             if next_state == JobState.COMPLETED:
                 job.progress_percent = 100.0
             await session.commit()

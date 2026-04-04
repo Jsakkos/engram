@@ -1,6 +1,6 @@
 """DiscJob model - the core state machine for disc processing."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from sqlmodel import Field, SQLModel
@@ -85,8 +85,8 @@ class DiscJob(SQLModel, table=True):
     subtitles_failed: int = 0
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = Field(default=None)  # When job reached terminal state
     cleared_at: datetime | None = Field(default=None)  # Soft-delete: hidden from dashboard
     error_message: str | None = None

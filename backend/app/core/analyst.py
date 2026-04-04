@@ -637,6 +637,20 @@ class DiscAnalyst:
 
         return name, season, disc
 
+    # Pattern for catalog-number-style labels like BBCDVD1550, MGMHV1234, FHED3456
+    _CATALOG_PATTERN = re.compile(r"^[A-Z]{2,6}\d{3,}$")
+
+    @staticmethod
+    def _looks_like_catalog_number(label: str) -> bool:
+        """Detect catalog-number labels (e.g. BBCDVD1550, FHED3456).
+
+        These are publisher catalog codes, not human-readable titles.
+        The parsed 'name' from such labels is garbage and should not be
+        used as detected_title.
+        """
+        normalized = re.sub(r"[_\s]", "", label).upper()
+        return bool(DiscAnalyst._CATALOG_PATTERN.match(normalized))
+
     def _get_ambiguity_reason(self, titles: list[TitleInfo]) -> str:
         """Generate a human-readable reason for ambiguity."""
         long_titles = [
