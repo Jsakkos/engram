@@ -1106,6 +1106,8 @@ class JobManager:
 
     async def _auto_export_for_discdb(self, job_id: int, config) -> None:
         """Auto-export disc data for TheDiscDB contribution."""
+        # Brief delay to let MakeMKV log files flush to disk
+        await asyncio.sleep(2)
         try:
             from app.core.discdb_exporter import generate_export, mark_exported
 
