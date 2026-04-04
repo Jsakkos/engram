@@ -1880,7 +1880,10 @@ class JobManager:
             job = await session.get(DiscJob, job_id)
             if job and job.content_type == ContentType.TV:
                 discdb_applied = await self._try_discdb_assignment(job_id, title, session)
-                if not discdb_applied:
+                if discdb_applied:
+                    # DiscDB pre-assigned — check if all titles are now done
+                    await self._check_job_completion(session, job_id)
+                else:
                     task = asyncio.create_task(self._match_single_file(job_id, title.id, path))
                     task.add_done_callback(
                         lambda t, jid=job_id, tid=title.id: self._on_match_task_done(t, jid, tid)
