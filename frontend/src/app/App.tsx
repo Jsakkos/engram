@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { Zap, ZapOff, Settings, Trash2, LayoutGrid, List } from "lucide-react";
+import { Zap, ZapOff, Settings, Trash2, LayoutGrid, List, Info, X } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
 import { useJobManagement } from "./hooks/useJobManagement";
 import { useDiscFilters } from "./hooks/useDiscFilters";
@@ -21,6 +21,8 @@ function MainDashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [namePromptJob, setNamePromptJob] = useState<Job | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("expanded");
+  const [platform, setPlatform] = useState<string | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Check for development mock mode
   const DEV_MODE = window.location.search.includes('mock=true');
@@ -40,6 +42,23 @@ function MainDashboard() {
       }
     };
     checkSetup();
+  }, []);
+
+  // Detect platform for non-Windows guidance banner
+  useEffect(() => {
+    const detectPlatform = async () => {
+      try {
+        const response = await fetch('/api/detect-tools');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.platform) {
+          setPlatform(data.platform);
+        }
+      } catch {
+        // Backend not reachable — don't show banner
+      }
+    };
+    detectPlatform();
   }, []);
 
   // Job management with WebSocket
@@ -207,6 +226,39 @@ function MainDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Platform guidance banner for Linux/macOS users */}
+      <AnimatePresence>
+        {platform && platform !== "win32" && jobs.length === 0 && !bannerDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="max-w-7xl mx-auto px-4 sm:px-6 mt-4"
+          >
+            <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+              <Info className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 text-cyan-300 font-mono text-sm">
+                <span>No optical drives detected. Drop MKV folders into your staging directory or </span>
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="underline underline-offset-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+                >
+                  configure staging import
+                </button>
+                <span>.</span>
+              </div>
+              <button
+                onClick={() => setBannerDismissed(true)}
+                className="text-cyan-500/60 hover:text-cyan-400 transition-colors flex-shrink-0"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-20 sm:pb-24 relative z-0">
