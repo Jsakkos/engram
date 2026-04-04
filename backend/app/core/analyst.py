@@ -65,6 +65,9 @@ class TitleInfo:
     chapter_count: int
     name: str = ""
     video_resolution: str = ""
+    source_filename: str = ""  # e.g., "00001.m2ts" (MakeMKV TINFO attr 16)
+    segment_count: int = 0  # MakeMKV TINFO attr 25
+    segment_map: str = ""  # e.g., "1,2,3" (MakeMKV TINFO attr 26)
 
 
 @dataclass

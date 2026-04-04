@@ -106,6 +106,10 @@ class DiscJob(SQLModel, table=True):
         default=None
     )  # JSON-serialized DiscDbTitleMapping list
 
+    # TheDiscDB contribution tracking
+    exported_at: datetime | None = Field(default=None)  # When disc data was exported
+    upc_code: str | None = Field(default=None)  # UPC barcode for full contributions
+
 
 class DiscTitle(SQLModel, table=True):
     """Individual title (track) on a disc."""
@@ -138,6 +142,11 @@ class DiscTitle(SQLModel, table=True):
     # Conflict resolution for organization
     conflict_resolution: str | None = None  # User's choice for specific conflict
     existing_file_path: str | None = None  # Path to existing file causing conflict
+
+    # MakeMKV track metadata (for TheDiscDB contributions)
+    source_filename: str | None = None  # e.g., "00001.m2ts"
+    segment_count: int = 0
+    segment_map: str | None = None  # e.g., "1,2,3"
 
     # Organization tracking
     organized_from: str | None = None  # Source filename

@@ -28,6 +28,9 @@ interface ConfigData {
     aiIdentificationEnabled: boolean;
     aiProvider: string;
     aiApiKey: string;
+    discdbContributionsEnabled: boolean;
+    discdbContributionTier: number;
+    discdbExportPath: string;
 }
 
 interface ToolDetectionResult {
@@ -67,6 +70,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         aiIdentificationEnabled: false,
         aiProvider: 'anthropic',
         aiApiKey: '',
+        discdbContributionsEnabled: false,
+        discdbContributionTier: 2,
+        discdbExportPath: '',
     });
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
@@ -115,6 +121,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     aiIdentificationEnabled: data.ai_identification_enabled ?? false,
                     aiProvider: data.ai_provider || 'anthropic',
                     aiApiKey: data.ai_api_key === '***' ? '' : (data.ai_api_key || ''),
+                    discdbContributionsEnabled: data.discdb_contributions_enabled ?? false,
+                    discdbContributionTier: data.discdb_contribution_tier ?? 2,
+                    discdbExportPath: data.discdb_export_path || '',
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -202,6 +211,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     ai_identification_enabled: config.aiIdentificationEnabled,
                     ai_provider: config.aiProvider,
                     ...(config.aiApiKey ? { ai_api_key: config.aiApiKey } : {}),
+                    discdb_contributions_enabled: config.discdbContributionsEnabled,
+                    discdb_contribution_tier: config.discdbContributionTier,
+                    discdb_export_path: config.discdbExportPath,
                     setup_complete: true,
                 }),
             });
@@ -583,6 +595,50 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     <span className="form-hint">
                                         API key for {{ anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter' }[config.aiProvider] || config.aiProvider}. Used only when TMDB lookup fails.
                                     </span>
+                                </div>
+                            </>
+                        )}
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.discdbContributionsEnabled}
+                                    onChange={(e) => handleInputChange('discdbContributionsEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Enable TheDiscDB Contributions</strong>
+                                    <span className="checkbox-hint">
+                                        Share disc metadata (track info, episode mappings) with TheDiscDB after each rip. Helps others identify their discs automatically. No personal data is shared.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {config.discdbContributionsEnabled && (
+                            <>
+                                <div className="form-group">
+                                    <label htmlFor="discdbContributionTier">Contribution Level</label>
+                                    <select
+                                        id="discdbContributionTier"
+                                        value={config.discdbContributionTier}
+                                        onChange={(e) => handleInputChange('discdbContributionTier', parseInt(e.target.value))}
+                                    >
+                                        <option value={2}>Automatic — share auto-collected data</option>
+                                        <option value={3}>Full — prompt for UPC and images</option>
+                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label htmlFor="discdbExportPath">Export Directory (optional)</label>
+                                    <input
+                                        id="discdbExportPath"
+                                        type="text"
+                                        value={config.discdbExportPath}
+                                        onChange={(e) => handleInputChange('discdbExportPath', e.target.value)}
+                                        placeholder="~/.engram/discdb-exports"
+                                    />
+                                    <small>Leave empty for the default location</small>
                                 </div>
                             </>
                         )}

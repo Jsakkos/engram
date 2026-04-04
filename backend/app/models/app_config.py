@@ -83,5 +83,10 @@ class AppConfig(SQLModel, table=True):
     # TheDiscDB
     discdb_enabled: bool = True  # Enable TheDiscDB lookups for disc identification
 
+    # TheDiscDB Contributions
+    discdb_contributions_enabled: bool = False  # Opt-in to export disc data
+    discdb_contribution_tier: int = 2  # 1=don't share, 2=auto, 3=full (with UPC/images)
+    discdb_export_path: str = ""  # Override export directory (default: ~/.engram/discdb-exports)
+
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

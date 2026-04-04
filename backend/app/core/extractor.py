@@ -48,6 +48,16 @@ class ScanTimeoutError(Exception):
     """MakeMKV disc scan exceeded time limit."""
 
 
+def _save_makemkv_log(log_path: Path, content: str) -> None:
+    """Save MakeMKV output to a log file for TheDiscDB contributions."""
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(content, encoding="utf-8")
+        logger.debug(f"Saved MakeMKV log to {log_path}")
+    except OSError as e:
+        logger.warning(f"Failed to save MakeMKV log to {log_path}: {e}")
+
+
 def compute_content_hash(drive_letter: str) -> str | None:
     """Compute TheDiscDB-compatible ContentHash for a disc.
 
@@ -127,11 +137,14 @@ class MakeMKVExtractor:
             self._drive_locks[key] = asyncio.Lock()
         return self._drive_locks[key]
 
-    async def scan_disc(self, drive: str, *, job_id: int = 0) -> list[TitleInfo]:
+    async def scan_disc(
+        self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
+    ) -> list[TitleInfo]:
         """Scan a disc and return title information.
 
         Args:
             drive: Drive letter (e.g., "E:") or disc index (e.g., "disc:0")
+            log_dir: Optional directory for saving MakeMKV scan logs
 
         Returns:
             List of titles found on the disc
@@ -144,9 +157,11 @@ class MakeMKVExtractor:
             )
 
         async with lock:
-            return await self._scan_disc_unlocked(drive, job_id=job_id)
+            return await self._scan_disc_unlocked(drive, log_dir=log_dir, job_id=job_id)
 
-    async def _scan_disc_unlocked(self, drive: str, *, job_id: int = 0) -> list[TitleInfo]:
+    async def _scan_disc_unlocked(
+        self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
+    ) -> list[TitleInfo]:
         """Internal scan implementation (caller must hold drive lock)."""
         # Normalize drive specification
         if not drive.startswith("disc:"):
@@ -199,6 +214,11 @@ class MakeMKVExtractor:
 
             titles = self._parse_disc_info(result.stdout or "")
             logger.info(f"Scan completed in {elapsed:.1f}s, found {len(titles)} titles")
+
+            # Save scan log for TheDiscDB contributions
+            if log_dir and result.stdout:
+                _save_makemkv_log(log_dir / "scan.log", result.stdout)
+
             return titles
 
         except FileNotFoundError:
@@ -221,6 +241,7 @@ class MakeMKVExtractor:
         title_complete_callback: TitleCompleteCallback | None = None,
         stall_timeout: float | None = None,
         title_error_callback: TitleErrorCallback | None = None,
+        log_dir: Path | None = None,
         *,
         job_id: int = 0,
     ) -> RipResult:
@@ -236,6 +257,7 @@ class MakeMKVExtractor:
                 and skipping to the next title. None or 0 disables detection.
             title_error_callback: Optional callback when a title fails (e.g., stall
                 detected). Called with (command_idx, error_reason).
+            log_dir: Optional directory for saving MakeMKV rip logs
 
         Returns:
             RipResult with success status and output files
@@ -256,6 +278,7 @@ class MakeMKVExtractor:
                 title_complete_callback,
                 stall_timeout=stall_timeout,
                 title_error_callback=title_error_callback,
+                log_dir=log_dir,
                 job_id=job_id,
             )
 
@@ -268,6 +291,7 @@ class MakeMKVExtractor:
         title_complete_callback: TitleCompleteCallback | None = None,
         stall_timeout: float | None = None,
         title_error_callback: TitleErrorCallback | None = None,
+        log_dir: Path | None = None,
         *,
         job_id: int = 0,
     ) -> RipResult:
@@ -666,6 +690,10 @@ class MakeMKVExtractor:
 
             logger.debug(f"Rip completed with return code {returncode}")
 
+            # Save rip log for TheDiscDB contributions
+            if log_dir and output_lines:
+                _save_makemkv_log(log_dir / "rip.log", "\n".join(output_lines))
+
             if job_id in self._cancelled_jobs:
                 return RipResult(
                     success=False,
@@ -766,8 +794,17 @@ class MakeMKVExtractor:
                             title.chapter_count = int(value)
                         except ValueError:
                             pass
+                    elif attr_id == 16:  # Source filename (e.g., "00001.m2ts")
+                        title.source_filename = value
                     elif attr_id == 19:  # Video resolution name (e.g., "1920x1080")
                         title.video_resolution = self._parse_resolution(value)
+                    elif attr_id == 25:  # Segment count
+                        try:
+                            title.segment_count = int(value)
+                        except ValueError:
+                            pass
+                    elif attr_id == 26:  # Segment map (e.g., "1,2,3,4,5")
+                        title.segment_map = value
                     elif attr_id == 28:  # Language code - good for filtering later
                         pass
 
