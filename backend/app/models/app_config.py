@@ -79,6 +79,8 @@ class AppConfig(SQLModel, table=True):
     ai_identification_enabled: bool = False  # Enable AI-powered title resolution
     ai_provider: str = "anthropic"  # "anthropic" | "openai" | "openrouter"
     ai_api_key: str = ""  # API key for the selected provider
+    # Staging auto-import watcher
+    staging_watch_enabled: bool = False  # Auto-import MKV folders from staging directory
 
     # TheDiscDB
     discdb_enabled: bool = True  # Enable TheDiscDB lookups for disc identification
