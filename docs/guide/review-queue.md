@@ -10,6 +10,7 @@ A job enters the `REVIEW_NEEDED` state when any of the following occur:
 - **Ambiguous content type** -- the disc analysis could not confidently determine whether the disc is TV or movie content.
 - **Multiple feature-length titles** -- a movie disc has more than one title that could be the main feature (e.g., Theatrical, Extended, and Director's Cut versions on the same disc).
 - **Unreadable disc label** -- the volume label is generic or unreadable, triggering a name prompt modal on the dashboard before the review queue.
+- **Catalog-number label** -- the volume label looks like a publisher catalog code (e.g., `BBCDVD1550`, `FHED3456`) and TMDB/DiscDB lookups failed, triggering a name prompt.
 - **File conflicts** -- an output file already exists in the library at the expected path.
 - **TMDB classification override** -- the TMDB classifier disagrees with the heuristic classifier and the confidence gap is below the override threshold.
 
@@ -40,7 +41,8 @@ Each title row in the TV review shows:
 - **Duration and file size** -- for identifying the correct episode.
 - **Confidence badge** -- color-coded by confidence level (green for high, yellow for medium, red for low).
 - **Review reason tags** -- small badges explaining why review was triggered (e.g., "LOW CONFIDENCE", "FILE EXISTS").
-- **Episode selector dropdown** -- lists the best match first (with confidence percentage), followed by alternative candidates, then a divider, and finally the full episode list for the season (S01E01 through S01E26, etc.).
+- **Season selector** -- a compact numeric input (S01–S20) that controls which season's episodes appear in the dropdown. Defaults to the auto-detected season but can be changed per title.
+- **Episode selector dropdown** -- lists the best match first (with confidence percentage), followed by alternative candidates, then a divider, and finally the full episode list for the selected season (e.g., S02E01 through S02E26).
 
 You can expand each title row to see a **Competing Matches** table that shows:
 
