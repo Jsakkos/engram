@@ -21,6 +21,7 @@ from app.core.errors import MatchingError
 from app.core.extractor import MakeMKVExtractor, RipProgress, ScanTimeoutError
 from app.core.organizer import movie_organizer
 from app.core.sentinel import DriveMonitor
+from app.core.staging_watcher import StagingWatcher
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -58,6 +59,7 @@ class JobManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._match_semaphore: asyncio.Semaphore | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
+        self._staging_watcher: StagingWatcher | None = None
 
         # Register staging cleanup on terminal job states
         state_machine.on_terminal_state(self._on_job_terminal)
@@ -101,6 +103,12 @@ class JobManager:
             self._timed_cleanup_task = asyncio.create_task(
                 self._run_timed_cleanup(config.staging_path, config.staging_cleanup_days)
             )
+
+        # Start staging watcher if enabled (default on Linux/macOS)
+        if config.staging_watch_enabled and config.staging_path:
+            self._staging_watcher = StagingWatcher(config.staging_path, config=config)
+            self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
+            self._staging_watcher.start()
 
         logger.info(f"Job manager started (max_concurrent_matches={concurrency})")
 
@@ -155,6 +163,8 @@ class JobManager:
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
         self._drive_monitor.stop()
+        if self._staging_watcher:
+            self._staging_watcher.stop()
 
         # Cancel all active jobs
         for job_id, task in self._active_jobs.items():
@@ -185,6 +195,24 @@ class JobManager:
             await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
         else:
             await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
+
+    async def _on_staging_event(self, event: str, staging_dir: str, label: str) -> None:
+        """Handle new staging directory detection from StagingWatcher."""
+        logger.info(f"Staging event: {event} dir={staging_dir} label={label}")
+        if event == "staging_ready":
+            try:
+                await self.create_job_from_staging(
+                    staging_path=staging_dir,
+                    volume_label=label,
+                    content_type="unknown",
+                    detected_title=None,
+                    detected_season=None,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to create job from staging directory {staging_dir}: {e}",
+                    exc_info=True,
+                )
 
     async def _create_job_for_disc(self, drive_letter: str, volume_label: str) -> None:
         """Create a new job when a disc is inserted."""

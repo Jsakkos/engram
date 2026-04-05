@@ -30,6 +30,7 @@ def _platform_default_paths() -> dict[str, str]:
         "staging_path": str(base / "staging"),
         "library_movies_path": str(base / "movies"),
         "library_tv_path": str(base / "tv"),
+        "staging_watch_enabled": True,  # Enable by default on Linux/macOS
     }
 
 
