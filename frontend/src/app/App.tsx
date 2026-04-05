@@ -10,6 +10,7 @@ import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
 import HistoryPage from "../components/HistoryPage";
+import ContributePage from "../components/ContributePage";
 import type { Job } from "../types";
 
 type ViewMode = "expanded" | "compact";
@@ -23,11 +24,12 @@ function MainDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("expanded");
   const [platform, setPlatform] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [contributionPending, setContributionPending] = useState(0);
 
   // Check for development mock mode
   const DEV_MODE = window.location.search.includes('mock=true');
 
-  // Check if first-run setup is needed
+  // Check if first-run setup is needed + fetch contribution badge count
   useEffect(() => {
     const checkSetup = async () => {
       try {
@@ -36,6 +38,18 @@ function MainDashboard() {
         const data = await response.json();
         if (!data.setup_complete) {
           setShowOnboarding(true);
+        }
+        // Fetch contribution stats for nav badge
+        if (data.discdb_contributions_enabled) {
+          try {
+            const statsRes = await fetch('/api/contributions/stats');
+            if (statsRes.ok) {
+              const stats = await statsRes.json();
+              setContributionPending(stats.pending);
+            }
+          } catch {
+            // Non-critical
+          }
         }
       } catch {
         // Backend not reachable — don't block the UI
@@ -140,6 +154,21 @@ function MainDashboard() {
                   }`}
                 >
                   History
+                </Link>
+                <Link
+                  to="/contribute"
+                  className={`px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all border-b-2 flex items-center gap-1.5 ${
+                    location.pathname === "/contribute"
+                      ? "text-cyan-400 border-cyan-400"
+                      : "text-slate-500 border-transparent hover:text-slate-300"
+                  }`}
+                >
+                  Contribute
+                  {contributionPending > 0 && (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
+                      {contributionPending}
+                    </span>
+                  )}
                 </Link>
               </nav>
             </div>
@@ -482,6 +511,7 @@ function App() {
       <Route path="/" element={<MainDashboard />} />
       <Route path="/history" element={<HistoryPage />} />
       <Route path="/history/:jobId" element={<HistoryPage />} />
+      <Route path="/contribute" element={<ContributePage />} />
       <Route path="/review/:jobId" element={<ReviewQueue />} />
     </Routes>
   );

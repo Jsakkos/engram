@@ -192,6 +192,10 @@ class ConfigResponse(BaseModel):
     ai_api_key: str
     # TheDiscDB
     discdb_enabled: bool
+    # TheDiscDB Contributions
+    discdb_contributions_enabled: bool
+    discdb_contribution_tier: int
+    discdb_export_path: str
     # Onboarding
     setup_complete: bool
 
@@ -236,6 +240,10 @@ class ConfigUpdate(BaseModel):
     ai_api_key: str | None = None
     # TheDiscDB
     discdb_enabled: bool | None = None
+    # TheDiscDB Contributions
+    discdb_contributions_enabled: bool | None = None
+    discdb_contribution_tier: int | None = None
+    discdb_export_path: str | None = None
     # Onboarding
     setup_complete: bool | None = None
 
@@ -665,6 +673,10 @@ async def get_config() -> ConfigResponse:
         ai_api_key="***" if config.ai_api_key else "",  # Redacted
         # TheDiscDB
         discdb_enabled=config.discdb_enabled,
+        # TheDiscDB Contributions
+        discdb_contributions_enabled=config.discdb_contributions_enabled,
+        discdb_contribution_tier=config.discdb_contribution_tier,
+        discdb_export_path=config.discdb_export_path,
         # Onboarding
         setup_complete=config.setup_complete,
     )
@@ -1259,3 +1271,165 @@ async def generate_bug_report(
 
     report["github_url"] = github_url
     return report
+
+
+# ── TheDiscDB Contribution Endpoints ─────────────────────────────────────
+
+
+class ContributionJobResponse(BaseModel):
+    """Response model for a job in the contributions list."""
+
+    id: int
+    volume_label: str
+    content_type: str
+    detected_title: str | None
+    detected_season: int | None
+    content_hash: str | None
+    completed_at: datetime | None
+    export_status: str  # "pending", "exported", "skipped"
+
+
+class ContributionStatsResponse(BaseModel):
+    """Stats for the contribution nav badge."""
+
+    pending: int
+    exported: int
+    skipped: int
+
+
+class EnhanceRequest(BaseModel):
+    """Request model for tier-3 contribution enhancement."""
+
+    upc_code: str | None = None
+
+
+@router.get("/contributions", response_model=list[ContributionJobResponse])
+async def list_contributions(session: AsyncSession = Depends(get_session)):
+    """List completed jobs with their export status."""
+    result = await session.execute(
+        select(DiscJob)
+        .where(DiscJob.state == JobState.COMPLETED)
+        .order_by(DiscJob.completed_at.desc())
+    )
+    jobs = result.scalars().all()
+
+    responses = []
+    for job in jobs:
+        if job.exported_at is None:
+            status = "pending"
+        elif job.exported_at.year == 1970:
+            status = "skipped"
+        else:
+            status = "exported"
+
+        responses.append(
+            ContributionJobResponse(
+                id=job.id,
+                volume_label=job.volume_label,
+                content_type=job.content_type,
+                detected_title=job.detected_title,
+                detected_season=job.detected_season,
+                content_hash=job.content_hash,
+                completed_at=job.completed_at,
+                export_status=status,
+            )
+        )
+    return responses
+
+
+@router.get("/contributions/stats", response_model=ContributionStatsResponse)
+async def contribution_stats(session: AsyncSession = Depends(get_session)):
+    """Get contribution counts for nav badge."""
+    result = await session.execute(select(DiscJob).where(DiscJob.state == JobState.COMPLETED))
+    jobs = result.scalars().all()
+
+    pending = 0
+    exported = 0
+    skipped = 0
+    for job in jobs:
+        if job.exported_at is None:
+            pending += 1
+        elif job.exported_at.year == 1970:
+            skipped += 1
+        else:
+            exported += 1
+
+    return ContributionStatsResponse(pending=pending, exported=exported, skipped=skipped)
+
+
+@router.post("/contributions/{job_id}/export")
+async def export_contribution(job_id: int, session: AsyncSession = Depends(get_session)):
+    """Manually trigger export for a specific job."""
+    from app.core.discdb_exporter import generate_export, mark_exported
+    from app.services.config_service import get_config as get_db_config
+
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.state != JobState.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job is not completed")
+
+    config = await get_db_config()
+    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+    titles = list(titles_result.scalars().all())
+
+    from app import __version__
+
+    export_dir = generate_export(job, titles, config, app_version=__version__)
+    if not export_dir:
+        raise HTTPException(status_code=400, detail="Cannot export — no content hash")
+
+    await mark_exported(job_id, session)
+    return {"status": "exported", "export_path": str(export_dir)}
+
+
+@router.post("/contributions/{job_id}/skip")
+async def skip_contribution(job_id: int, session: AsyncSession = Depends(get_session)):
+    """Mark a job as skipped for contribution."""
+    from app.core.discdb_exporter import mark_skipped
+
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    await mark_skipped(job_id, session)
+    return {"status": "skipped"}
+
+
+@router.post("/contributions/{job_id}/enhance")
+async def enhance_contribution(
+    job_id: int,
+    request: EnhanceRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Add tier-3 data (UPC) and re-export."""
+    from app.core.discdb_exporter import generate_export, mark_exported
+    from app.services.config_service import get_config as get_db_config
+
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.state != JobState.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job is not completed")
+
+    # Update UPC
+    if request.upc_code:
+        job.upc_code = request.upc_code
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+
+    config = await get_db_config()
+    config.discdb_contribution_tier = 3  # Force tier 3 for this export
+
+    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+    titles = list(titles_result.scalars().all())
+
+    from app import __version__
+
+    export_dir = generate_export(job, titles, config, app_version=__version__)
+    if not export_dir:
+        raise HTTPException(status_code=400, detail="Cannot export — no content hash")
+
+    await mark_exported(job_id, session)
+    return {"status": "enhanced", "export_path": str(export_dir)}

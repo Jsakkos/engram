@@ -261,7 +261,11 @@ class JobManager:
                 await event_broadcaster.broadcast_job_state_changed(job_id, JobState.IDENTIFYING)
 
                 try:
-                    titles = await self._extractor.scan_disc(job.drive_id, job_id=job_id)
+                    from app.core.discdb_exporter import get_makemkv_log_dir
+
+                    titles = await self._extractor.scan_disc(
+                        job.drive_id, log_dir=get_makemkv_log_dir(job_id), job_id=job_id
+                    )
                 except ScanTimeoutError:
                     await state_machine.transition_to_failed(
                         job,
@@ -480,6 +484,9 @@ class JobManager:
                         file_size_bytes=title.size_bytes,
                         chapter_count=title.chapter_count,
                         video_resolution=title.video_resolution,
+                        source_filename=title.source_filename or None,
+                        segment_count=title.segment_count,
+                        segment_map=title.segment_map or None,
                     )
                     session.add(disc_title)
 
@@ -1065,14 +1072,18 @@ class JobManager:
         policy = config.staging_cleanup_policy
 
         if policy == "manual":
-            return
-        if policy == "after_days":
+            pass
+        elif policy == "after_days":
             # Timed cleanup handled by background task, not here
-            return
-        if policy == "on_success" and state == JobState.COMPLETED:
+            pass
+        elif policy == "on_success" and state == JobState.COMPLETED:
             await self._delete_staging(job_id)
         elif policy == "on_completion":
             await self._delete_staging(job_id)
+
+        # Auto-export for TheDiscDB contributions
+        if state == JobState.COMPLETED and config.discdb_contributions_enabled:
+            await self._auto_export_for_discdb(job_id, config)
 
     async def _delete_staging(self, job_id: int) -> None:
         """Delete the staging directory for a job."""
@@ -1092,6 +1103,30 @@ class JobManager:
                 logger.info(f"Cleaned up staging directory: {staging_path}")
             except Exception as e:
                 logger.warning(f"Failed to clean staging for job {job_id}: {e}")
+
+    async def _auto_export_for_discdb(self, job_id: int, config) -> None:
+        """Auto-export disc data for TheDiscDB contribution."""
+        # Brief delay to let MakeMKV log files flush to disk
+        await asyncio.sleep(2)
+        try:
+            from app.core.discdb_exporter import generate_export, mark_exported
+
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if not job or not job.content_hash:
+                    return
+
+                stmt = select(DiscTitle).where(DiscTitle.job_id == job_id)
+                titles = list((await session.execute(stmt)).scalars().all())
+
+                from app import __version__
+
+                export_dir = generate_export(job, titles, config, app_version=__version__)
+                if export_dir:
+                    await mark_exported(job_id, session)
+                    logger.info(f"Job {job_id}: Auto-exported disc data to {export_dir}")
+        except Exception as e:
+            logger.warning(f"Job {job_id}: Failed to auto-export disc data: {e}")
 
     async def _run_timed_cleanup(self, staging_root: str, max_age_days: int) -> None:
         """Background task: periodically delete staging dirs older than max_age_days."""
@@ -1567,6 +1602,8 @@ class JobManager:
 
                 # Run extraction
                 try:
+                    from app.core.discdb_exporter import get_makemkv_log_dir
+
                     result = await self._extractor.rip_titles(
                         job.drive_id,
                         output_dir,
@@ -1575,6 +1612,7 @@ class JobManager:
                         title_complete_callback=on_title_complete,
                         stall_timeout=stall_timeout,
                         title_error_callback=on_title_error,
+                        log_dir=get_makemkv_log_dir(job_id),
                         job_id=job_id,
                     )
                 finally:
@@ -1842,7 +1880,10 @@ class JobManager:
             job = await session.get(DiscJob, job_id)
             if job and job.content_type == ContentType.TV:
                 discdb_applied = await self._try_discdb_assignment(job_id, title, session)
-                if not discdb_applied:
+                if discdb_applied:
+                    # DiscDB pre-assigned — check if all titles are now done
+                    await self._check_job_completion(session, job_id)
+                else:
                     task = asyncio.create_task(self._match_single_file(job_id, title.id, path))
                     task.add_done_callback(
                         lambda t, jid=job_id, tid=title.id: self._on_match_task_done(t, jid, tid)

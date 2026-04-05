@@ -73,3 +73,6 @@ backend/~/
 # Claude Code (local settings only)
 .claude/settings.local.json
 .claude/*
+
+# Git worktrees
+.worktrees/
