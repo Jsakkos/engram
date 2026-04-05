@@ -1,9 +1,8 @@
 """Unit tests for TheDiscDB contribution exporter."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -338,7 +337,7 @@ class TestGetPendingExports:
                 volume_label="DISC2",
                 state=JobState.COMPLETED,
                 content_hash="HASH2",
-                exported_at=datetime.now(timezone.utc),
+                exported_at=datetime.now(UTC),
             )
             # Failed (not completed)
             j3 = DiscJob(

@@ -99,11 +99,7 @@ class TestIdentifyFromLabel:
         mock_client = _make_mock_client(
             {
                 "choices": [
-                    {
-                        "message": {
-                            "content": '{"title": "The Office", "year": 2005, "type": "tv"}'
-                        }
-                    }
+                    {"message": {"content": '{"title": "The Office", "year": 2005, "type": "tv"}'}}
                 ]
             }
         )
