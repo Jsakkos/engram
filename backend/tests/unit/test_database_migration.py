@@ -72,14 +72,14 @@ class TestSchemaMigration:
 
     async def test_migration_is_idempotent_on_correct_schema(self, migration_engine):
         """Running migration on a correct schema should be a no-op."""
-        from app.database import _migrate_schema
+        from app.database import _migrate_app_config
 
         # Create correct schema
         async with migration_engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
 
         # Running migration should not raise
-        await _migrate_schema(migration_engine)
+        await _migrate_app_config(migration_engine)
 
         # Tables should still exist and be correct
         async with migration_engine.connect() as conn:
@@ -91,7 +91,7 @@ class TestSchemaMigration:
 
     async def test_migration_preserves_app_config_data(self, migration_engine, migration_factory):
         """Migration should preserve existing app_config values when schema changes."""
-        from app.database import _migrate_schema
+        from app.database import _migrate_app_config
 
         # Create schema with an extra obsolete column to trigger migration
         async with migration_engine.begin() as conn:
@@ -112,7 +112,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run migration — should detect extra column and rebuild
-        await _migrate_schema(migration_engine)
+        await _migrate_app_config(migration_engine)
 
         # Verify config data is preserved
         async with migration_factory() as session:
@@ -125,16 +125,15 @@ class TestSchemaMigration:
             assert row[1] == "eyJtest"
             assert row[2] == "/custom/staging"
 
-    async def test_migration_drops_transient_tables(self, migration_engine, migration_factory):
-        """Migration should drop and recreate disc_jobs/disc_titles on schema mismatch."""
-        from app.database import _migrate_schema
+    async def test_app_config_migration_does_not_touch_disc_tables(
+        self, migration_engine, migration_factory
+    ):
+        """App config migration should not affect disc_jobs/disc_titles (Alembic handles those)."""
+        from app.database import _migrate_app_config
 
-        # Create schema and add extra column to disc_jobs to trigger mismatch
+        # Create schema and add extra column to disc_jobs
         async with migration_engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
-            await conn.execute(
-                text("ALTER TABLE disc_jobs ADD COLUMN obsolete_col VARCHAR DEFAULT ''")
-            )
 
         # Insert transient data
         async with migration_factory() as session:
@@ -150,18 +149,18 @@ class TestSchemaMigration:
             )
             await session.commit()
 
-        # Run migration
-        await _migrate_schema(migration_engine)
+        # Run app_config migration
+        await _migrate_app_config(migration_engine)
 
-        # Transient tables should be recreated (empty)
+        # Disc tables should be untouched (data preserved)
         async with migration_factory() as session:
             result = await session.execute(text("SELECT COUNT(*) FROM disc_jobs"))
             count = result.scalar()
-            assert count == 0
+            assert count == 1
 
     async def test_migration_handles_extra_columns(self, migration_engine, migration_factory):
         """Migration should handle tables with extra columns (e.g. obsolete opensubtitles)."""
-        from app.database import _migrate_schema
+        from app.database import _migrate_app_config
 
         # Create schema with extra columns
         async with migration_engine.begin() as conn:
@@ -186,7 +185,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run migration
-        await _migrate_schema(migration_engine)
+        await _migrate_app_config(migration_engine)
 
         # Config data should be preserved, obsolete columns removed
         async with migration_factory() as session:
@@ -209,7 +208,7 @@ class TestSchemaMigration:
 
     async def test_migration_handles_missing_columns(self, migration_engine, migration_factory):
         """Migration should handle tables missing columns that the model expects."""
-        from app.database import _migrate_schema
+        from app.database import _migrate_app_config
 
         # Create a minimal app_config table missing many columns
         async with migration_engine.begin() as conn:
@@ -248,7 +247,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run migration — should detect missing columns and rebuild
-        await _migrate_schema(migration_engine)
+        await _migrate_app_config(migration_engine)
 
         # Preserved values should survive, new columns should have defaults
         async with migration_factory() as session:
