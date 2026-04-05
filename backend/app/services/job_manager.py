@@ -471,15 +471,14 @@ class JobManager:
                 )
                 disc_titles = titles_result.scalars().all()
 
+                has_selection = any(dt.is_selected for dt in disc_titles)
                 for t in disc_titles:
-                    has_selection = any(dt.is_selected for dt in disc_titles if dt.is_selected)
                     if has_selection and not t.is_selected:
                         continue
 
                     total_job_bytes += t.file_size_bytes
                     title_sizes[t.title_index] = t.file_size_bytes
 
-                has_selection = any(dt.is_selected for dt in disc_titles)
                 if not has_selection and job.content_type == ContentType.MOVIE and disc_titles:
                     longest = max(disc_titles, key=lambda t: t.duration_seconds or 0)
                     longest.is_selected = True
