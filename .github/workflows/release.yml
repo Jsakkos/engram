@@ -106,10 +106,10 @@ jobs:
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: engram-windows-x64
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: engram-linux-x64
       - uses: softprops/action-gh-release@v2
