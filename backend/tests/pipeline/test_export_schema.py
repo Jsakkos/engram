@@ -8,7 +8,6 @@ from app.core.discdb_exporter import generate_export
 from app.models.app_config import AppConfig
 from app.models.disc_job import ContentType, DiscJob, DiscTitle
 
-
 REQUIRED_TOP_LEVEL_KEYS = {
     "engram_version",
     "export_version",
