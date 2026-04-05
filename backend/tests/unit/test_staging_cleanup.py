@@ -92,67 +92,66 @@ class TestTerminalCallback:
 class TestCleanupPolicy:
     """Test that _on_job_terminal respects the configured policy."""
 
-    def _make_job_manager(self):
-        """Create a minimal JobManager with mocked dependencies."""
-        with (
-            patch("app.services.job_manager.DriveMonitor"),
-            patch("app.services.job_manager.MakeMKVExtractor"),
-            patch("app.services.job_manager.DiscAnalyst"),
-        ):
-            from app.services.job_manager import JobManager
+    def _make_cleanup_service(self):
+        """Create a CleanupService with mocked delete_staging."""
+        from app.services.cleanup_service import CleanupService
 
-            jm = JobManager()
-            jm._delete_staging = AsyncMock()
-            return jm
+        svc = CleanupService()
+        svc.delete_staging = AsyncMock()
+        return svc
 
     @pytest.mark.asyncio
     async def test_on_success_cleans_completed(self):
-        jm = self._make_job_manager()
-        config = MagicMock(staging_cleanup_policy="on_success")
+        svc = self._make_cleanup_service()
+        config = MagicMock(staging_cleanup_policy="on_success", discdb_contributions_enabled=False)
         with patch("app.services.config_service.get_config", return_value=config):
-            await jm._on_job_terminal(1, JobState.COMPLETED)
-        jm._delete_staging.assert_awaited_once_with(1)
+            await svc.on_job_terminal(1, JobState.COMPLETED)
+        svc.delete_staging.assert_awaited_once_with(1)
 
     @pytest.mark.asyncio
     async def test_on_success_skips_failed(self):
-        jm = self._make_job_manager()
-        config = MagicMock(staging_cleanup_policy="on_success")
+        svc = self._make_cleanup_service()
+        config = MagicMock(staging_cleanup_policy="on_success", discdb_contributions_enabled=False)
         with patch("app.services.config_service.get_config", return_value=config):
-            await jm._on_job_terminal(2, JobState.FAILED)
-        jm._delete_staging.assert_not_awaited()
+            await svc.on_job_terminal(2, JobState.FAILED)
+        svc.delete_staging.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_on_completion_cleans_completed(self):
-        jm = self._make_job_manager()
-        config = MagicMock(staging_cleanup_policy="on_completion")
+        svc = self._make_cleanup_service()
+        config = MagicMock(
+            staging_cleanup_policy="on_completion", discdb_contributions_enabled=False
+        )
         with patch("app.services.config_service.get_config", return_value=config):
-            await jm._on_job_terminal(3, JobState.COMPLETED)
-        jm._delete_staging.assert_awaited_once_with(3)
+            await svc.on_job_terminal(3, JobState.COMPLETED)
+        svc.delete_staging.assert_awaited_once_with(3)
 
     @pytest.mark.asyncio
     async def test_on_completion_cleans_failed(self):
-        jm = self._make_job_manager()
-        config = MagicMock(staging_cleanup_policy="on_completion")
+        svc = self._make_cleanup_service()
+        config = MagicMock(
+            staging_cleanup_policy="on_completion", discdb_contributions_enabled=False
+        )
         with patch("app.services.config_service.get_config", return_value=config):
-            await jm._on_job_terminal(4, JobState.FAILED)
-        jm._delete_staging.assert_awaited_once_with(4)
+            await svc.on_job_terminal(4, JobState.FAILED)
+        svc.delete_staging.assert_awaited_once_with(4)
 
     @pytest.mark.asyncio
     async def test_manual_never_cleans(self):
-        jm = self._make_job_manager()
-        config = MagicMock(staging_cleanup_policy="manual")
+        svc = self._make_cleanup_service()
+        config = MagicMock(staging_cleanup_policy="manual", discdb_contributions_enabled=False)
         with patch("app.services.config_service.get_config", return_value=config):
-            await jm._on_job_terminal(5, JobState.COMPLETED)
-            await jm._on_job_terminal(6, JobState.FAILED)
-        jm._delete_staging.assert_not_awaited()
+            await svc.on_job_terminal(5, JobState.COMPLETED)
+            await svc.on_job_terminal(6, JobState.FAILED)
+        svc.delete_staging.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_after_days_defers_to_background(self):
-        jm = self._make_job_manager()
-        config = MagicMock(staging_cleanup_policy="after_days")
+        svc = self._make_cleanup_service()
+        config = MagicMock(staging_cleanup_policy="after_days", discdb_contributions_enabled=False)
         with patch("app.services.config_service.get_config", return_value=config):
-            await jm._on_job_terminal(7, JobState.COMPLETED)
-        jm._delete_staging.assert_not_awaited()
+            await svc.on_job_terminal(7, JobState.COMPLETED)
+        svc.delete_staging.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -179,14 +178,9 @@ class TestTimedCleanup:
         new_dir.mkdir()
         (new_dir / "title_0.mkv").write_text("fake")
 
-        with (
-            patch("app.services.job_manager.DriveMonitor"),
-            patch("app.services.job_manager.MakeMKVExtractor"),
-            patch("app.services.job_manager.DiscAnalyst"),
-        ):
-            from app.services.job_manager import JobManager
+        from app.services.cleanup_service import CleanupService
 
-            jm = JobManager()
+        svc = CleanupService()
 
         # Monkey-patch sleep: first call returns immediately (lets cleanup run),
         # second call cancels.
@@ -201,7 +195,7 @@ class TestTimedCleanup:
 
         with patch("asyncio.sleep", side_effect=mock_sleep):
             try:
-                await jm._run_timed_cleanup(str(tmp_path), max_age_days=7)
+                await svc.run_timed_cleanup(str(tmp_path), max_age_days=7)
             except asyncio.CancelledError:
                 pass
 
@@ -216,14 +210,9 @@ class TestTimedCleanup:
         old_time = time.time() - (30 * 86400)
         os.utime(other_dir, (old_time, old_time))
 
-        with (
-            patch("app.services.job_manager.DriveMonitor"),
-            patch("app.services.job_manager.MakeMKVExtractor"),
-            patch("app.services.job_manager.DiscAnalyst"),
-        ):
-            from app.services.job_manager import JobManager
+        from app.services.cleanup_service import CleanupService
 
-            jm = JobManager()
+        svc = CleanupService()
 
         call_count = 0
 
@@ -236,7 +225,7 @@ class TestTimedCleanup:
 
         with patch("asyncio.sleep", side_effect=mock_sleep):
             try:
-                await jm._run_timed_cleanup(str(tmp_path), max_age_days=7)
+                await svc.run_timed_cleanup(str(tmp_path), max_age_days=7)
             except asyncio.CancelledError:
                 pass
 

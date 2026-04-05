@@ -44,12 +44,14 @@ def mock_db_session_factory(session):
 
 
 @pytest.mark.asyncio
+@patch("app.services.finalization_coordinator.async_session")
 @patch("app.services.job_manager.async_session")
 async def test_movie_edition_review_workflow(
-    mock_async_session, session, mock_db_session_factory, tmp_path
+    mock_async_session, mock_fc_session, session, mock_db_session_factory, tmp_path
 ):
-    # Patch async_session in job_manager
+    # Patch async_session in job_manager and finalization_coordinator
     mock_async_session.side_effect = mock_db_session_factory
+    mock_fc_session.side_effect = mock_db_session_factory
 
     # Create dummy files
     staging_dir = tmp_path / "staging"
@@ -131,9 +133,13 @@ async def test_movie_edition_review_workflow(
 
 
 @pytest.mark.asyncio
+@patch("app.services.finalization_coordinator.async_session")
 @patch("app.services.job_manager.async_session")
-async def test_movie_edition_skip_workflow(mock_async_session, session, mock_db_session_factory):
+async def test_movie_edition_skip_workflow(
+    mock_async_session, mock_fc_session, session, mock_db_session_factory
+):
     mock_async_session.side_effect = mock_db_session_factory
+    mock_fc_session.side_effect = mock_db_session_factory
     # Setup similar job
     job = DiscJob(
         drive_id="TEST_DRIVE_2",
@@ -168,10 +174,14 @@ async def test_movie_edition_skip_workflow(mock_async_session, session, mock_db_
 
 
 @pytest.mark.asyncio
+@patch("app.services.finalization_coordinator.async_session")
 @patch("app.services.job_manager.async_session")
-async def test_movie_edition_prerip_workflow(mock_async_session, session, mock_db_session_factory):
+async def test_movie_edition_prerip_workflow(
+    mock_async_session, mock_fc_session, session, mock_db_session_factory
+):
     """Test selecting an edition BEFORE ripping (files do not exist)."""
     mock_async_session.side_effect = mock_db_session_factory
+    mock_fc_session.side_effect = mock_db_session_factory
 
     # 1. Setup Job (REVIEW_NEEDED)
     job = DiscJob(
@@ -233,13 +243,20 @@ async def test_movie_edition_prerip_workflow(mock_async_session, session, mock_d
 
 
 @pytest.mark.asyncio
+@patch("app.services.finalization_coordinator.async_session")
 @patch("app.services.job_manager.async_session")
 @patch("app.core.organizer.movie_organizer")
 async def test_movie_ambiguous_rip_first_workflow(
-    mock_movie_organizer, mock_async_session, session, mock_db_session_factory, tmp_path
+    mock_movie_organizer,
+    mock_async_session,
+    mock_fc_session,
+    session,
+    mock_db_session_factory,
+    tmp_path,
 ):
     """Test 'Rip First, Review Later' workflow for ambiguous movies."""
     mock_async_session.side_effect = mock_db_session_factory
+    mock_fc_session.side_effect = mock_db_session_factory
 
     # Setup Logic
     # 1. Create Job and Titles (Simulating Post-Rip state with multiple files)
