@@ -327,8 +327,62 @@ class JobManager:
                             f"Job {job_id}: TMDB lookup failed, using heuristics only: {e}"
                         )
 
+                # AI-powered identification fallback
+                # Triggers when: TMDB failed AND DiscDB didn't produce a high-confidence match
+                ai_identified_name = None
+                if (
+                    not tmdb_signal
+                    and not (discdb_signal and discdb_signal.confidence >= 0.90)
+                    and config.ai_identification_enabled
+                    and config.ai_api_key
+                ):
+                    try:
+                        from app.core.ai_identifier import identify_from_label
+
+                        logger.info(
+                            f"Job {job_id}: TMDB lookup failed, trying AI identification "
+                            f"for '{job.volume_label}'"
+                        )
+                        ai_result = await identify_from_label(
+                            job.volume_label,
+                            config.ai_provider,
+                            config.ai_api_key,
+                        )
+                        if ai_result and ai_result.get("title"):
+                            ai_identified_name = ai_result["title"]
+                            logger.info(f"Job {job_id}: AI identified as '{ai_identified_name}'")
+                            # Re-query TMDB with the AI-corrected name
+                            if config.tmdb_api_key:
+                                try:
+                                    from app.core.tmdb_classifier import classify_from_tmdb
+
+                                    tmdb_signal = classify_from_tmdb(
+                                        ai_identified_name, config.tmdb_api_key
+                                    )
+                                    if tmdb_signal:
+                                        logger.info(
+                                            f"Job {job_id}: TMDB re-query with AI name: "
+                                            f"{tmdb_signal.content_type.value} "
+                                            f"({tmdb_signal.confidence:.0%}) - "
+                                            f"{tmdb_signal.tmdb_name}"
+                                        )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Job {job_id}: TMDB re-query after AI failed: {e}"
+                                    )
+                    except Exception as e:
+                        logger.warning(
+                            f"Job {job_id}: AI identification failed: {e}", exc_info=True
+                        )
+
                 # Analyze disc content (DiscDB signal overrides when high-confidence)
                 analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
+
+                # If AI identified a name but TMDB re-query also failed,
+                # use the AI name as the detected title
+                if ai_identified_name and not analysis.detected_name:
+                    analysis.detected_name = ai_identified_name
+                    analysis.classification_source = "ai"
 
                 # If TheDiscDB returned a high-confidence match, override the analysis
                 if discdb_signal and discdb_signal.confidence >= 0.90:

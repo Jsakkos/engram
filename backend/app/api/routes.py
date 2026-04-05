@@ -186,6 +186,10 @@ class ConfigResponse(BaseModel):
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
+    # AI identification
+    ai_identification_enabled: bool
+    ai_provider: str
+    ai_api_key: str
     # TheDiscDB
     discdb_enabled: bool
     # Onboarding
@@ -226,6 +230,10 @@ class ConfigUpdate(BaseModel):
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
+    # AI identification
+    ai_identification_enabled: bool | None = None
+    ai_provider: str | None = None
+    ai_api_key: str | None = None
     # TheDiscDB
     discdb_enabled: bool | None = None
     # Onboarding
@@ -651,6 +659,10 @@ async def get_config() -> ConfigResponse:
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,
+        # AI identification
+        ai_identification_enabled=config.ai_identification_enabled,
+        ai_provider=config.ai_provider,
+        ai_api_key="***" if config.ai_api_key else "",  # Redacted
         # TheDiscDB
         discdb_enabled=config.discdb_enabled,
         # Onboarding

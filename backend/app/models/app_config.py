@@ -75,6 +75,11 @@ class AppConfig(SQLModel, table=True):
     naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
     naming_movie_format: str = "{title} ({year})"
 
+    # AI-powered disc identification
+    ai_identification_enabled: bool = False  # Enable AI-powered title resolution
+    ai_provider: str = "anthropic"  # "anthropic" | "openai" | "openrouter"
+    ai_api_key: str = ""  # API key for the selected provider
+
     # TheDiscDB
     discdb_enabled: bool = True  # Enable TheDiscDB lookups for disc identification
 
