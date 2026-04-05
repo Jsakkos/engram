@@ -523,8 +523,8 @@ class JobManager:
                                     self._match_single_file(job_id, dt.id, file_path)
                                 )
                                 task.add_done_callback(
-                                    lambda t, jid=job_id, tid=dt.id: (
-                                        self._on_match_task_done(t, jid, tid)
+                                    lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
+                                        t, jid, tid
                                     )
                                 )
                 else:

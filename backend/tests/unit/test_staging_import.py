@@ -4,13 +4,13 @@ Tests that the endpoint is accessible without DEBUG mode, validates paths,
 and creates jobs from directories containing MKV files.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, patch
 
 from app.database import get_session
 from app.main import app
-
 from tests.unit.conftest import _unit_session_factory
 
 
