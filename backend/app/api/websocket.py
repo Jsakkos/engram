@@ -41,7 +41,13 @@ class ConnectionManager:
         logger.info(f"Client disconnected. Total connections: {len(self.active_connections)}")
 
     async def _heartbeat_loop(self, websocket: WebSocket) -> None:
-        """Send periodic pings to detect stale connections."""
+        """Send periodic pings to detect stale connections.
+
+        On failure, closes the socket directly instead of calling disconnect()
+        to avoid deadlocking on self._lock (which broadcast() may hold).
+        The main receive loop in websocket_endpoint will catch the disconnect
+        and call disconnect() to clean up.
+        """
         try:
             while True:
                 await asyncio.sleep(HEARTBEAT_INTERVAL)
@@ -51,8 +57,7 @@ class ConnectionManager:
                         timeout=HEARTBEAT_TIMEOUT,
                     )
                 except Exception:
-                    logger.warning("Heartbeat failed, removing stale connection")
-                    await self.disconnect(websocket)
+                    logger.warning("Heartbeat failed, closing stale connection")
                     try:
                         await websocket.close()
                     except Exception:

@@ -43,5 +43,8 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
+    # CORS (comma-separated origins, or leave empty for dev defaults)
+    cors_origins: str = ""
+
 
 settings = Settings()

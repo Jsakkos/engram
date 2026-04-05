@@ -52,19 +52,27 @@ async def get_config() -> AppConfig:
         return config
 
 
+_sync_engine = None
+
+
+def _get_sync_engine():
+    """Get or create a cached synchronous engine for sync DB access."""
+    global _sync_engine
+    if _sync_engine is None:
+        from sqlmodel import create_engine
+
+        from app.config import settings
+
+        sync_db_url = settings.database_url.replace("+aiosqlite", "")
+        _sync_engine = create_engine(sync_db_url)
+    return _sync_engine
+
+
 def get_config_sync() -> AppConfig:
     """Get configuration synchronously for non-async contexts."""
-    from sqlmodel import Session, create_engine, select
+    from sqlmodel import Session, select
 
-    from app.config import settings
-
-    # Create a synchronous engine for this specific operation
-    # This is a bit expensive but safe for occasional use in background threads
-    # Transform 'sqlite+aiosqlite:///...' to 'sqlite:///...'
-    sync_db_url = settings.database_url.replace("+aiosqlite", "")
-    engine = create_engine(sync_db_url)
-
-    with Session(engine) as session:
+    with Session(_get_sync_engine()) as session:
         statement = select(AppConfig).limit(1)
         config = session.exec(statement).first()
 
