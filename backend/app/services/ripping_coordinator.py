@@ -249,6 +249,7 @@ class RippingCoordinator:
                 title_indices=rip_indices,
                 progress_callback=lambda p: asyncio.create_task(progress_callback(p)),
                 title_complete_callback=on_title_complete,
+                job_id=job_id,
             )
 
             if not result.success:

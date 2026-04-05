@@ -557,6 +557,7 @@ function TVTitleRow({
     onToggleExpand,
     variant,
 }: TVTitleRowProps) {
+    const [season, setSeason] = useState(job?.detected_season || 1);
     const details = parseMatchDetails(title);
     const isConflict = details.error === 'file_exists';
     const reasons = getReviewReasons(title);
@@ -635,12 +636,22 @@ function TVTitleRow({
                         </div>
                     )}
 
-                    {/* Episode selector */}
-                    <div className="w-44 flex-shrink-0">
+                    {/* Episode selector with season input */}
+                    <div className="w-52 flex-shrink-0 flex items-center gap-1">
+                        <label className="text-xs text-slate-400 font-mono" title="Season">S</label>
+                        <input
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={season}
+                            onChange={(e) => setSeason(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                            className="w-10 bg-slate-800 border border-slate-600 rounded px-1 py-1 text-xs text-center font-mono text-slate-200"
+                            title="Season number"
+                        />
                         <select
                             value={selectedEpisode}
                             onChange={(e) => onEpisodeChange(title.id, e.target.value)}
-                            className="w-full px-2 py-1.5 text-xs font-mono bg-navy-800 border border-slate-700 text-slate-300 focus:border-cyan-500/50 focus:outline-none"
+                            className="flex-1 px-2 py-1.5 text-xs font-mono bg-navy-800 border border-slate-700 text-slate-300 focus:border-cyan-500/50 focus:outline-none"
                         >
                             <option value="">Select episode...</option>
                             {title.matched_episode && (
@@ -656,7 +667,7 @@ function TVTitleRow({
                             {(title.matched_episode || alternatives.length > 0) && (
                                 <option disabled>{'─'.repeat(20)}</option>
                             )}
-                            {generateEpisodeOptions(job.detected_season || 1, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON).map(ep => (
+                            {generateEpisodeOptions(season, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON).map(ep => (
                                 <option key={ep} value={ep}>{ep}</option>
                             ))}
                         </select>

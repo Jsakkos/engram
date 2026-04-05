@@ -101,8 +101,11 @@ class MakeMKVExtractor:
 
     def __init__(self, makemkv_path: Path | None = None) -> None:
         self._makemkv_path_override = makemkv_path
-        self._current_process: asyncio.subprocess.Process | None = None
-        self._cancelled = False
+        # Per-job process tracking for multi-drive cancel isolation.
+        # Each running job registers its subprocess here so cancel() only
+        # terminates the correct process.
+        self._processes: dict[int, subprocess.Popen] = {}  # job_id -> process
+        self._cancelled_jobs: set[int] = set()
         # Per-drive locks prevent concurrent MakeMKV operations on the same drive.
         # Two makemkvcon processes fighting over one drive causes both to stall/fail.
         self._drive_locks: dict[str, asyncio.Lock] = {}
@@ -124,7 +127,7 @@ class MakeMKVExtractor:
             self._drive_locks[key] = asyncio.Lock()
         return self._drive_locks[key]
 
-    async def scan_disc(self, drive: str) -> list[TitleInfo]:
+    async def scan_disc(self, drive: str, *, job_id: int = 0) -> list[TitleInfo]:
         """Scan a disc and return title information.
 
         Args:
@@ -141,9 +144,9 @@ class MakeMKVExtractor:
             )
 
         async with lock:
-            return await self._scan_disc_unlocked(drive)
+            return await self._scan_disc_unlocked(drive, job_id=job_id)
 
-    async def _scan_disc_unlocked(self, drive: str) -> list[TitleInfo]:
+    async def _scan_disc_unlocked(self, drive: str, *, job_id: int = 0) -> list[TitleInfo]:
         """Internal scan implementation (caller must hold drive lock)."""
         # Normalize drive specification
         if not drive.startswith("disc:"):
@@ -162,12 +165,12 @@ class MakeMKVExtractor:
         start = time.monotonic()
         logger.info(f"Scanning disc: {' '.join(cmd)}")
 
-        self._cancelled = False
+        self._cancelled_jobs.discard(job_id)
 
         def run_makemkv() -> subprocess.CompletedProcess:
             """Run MakeMKV in a thread (Windows asyncio subprocess workaround)."""
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            self._current_process = proc
+            self._processes[job_id] = proc
             try:
                 stdout, stderr = proc.communicate(timeout=600)
                 return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
@@ -176,8 +179,7 @@ class MakeMKVExtractor:
                 proc.communicate()  # Clean up zombie process
                 raise
             finally:
-                if self._current_process is proc:
-                    self._current_process = None
+                self._processes.pop(job_id, None)
 
         try:
             # Run in thread to avoid blocking event loop
@@ -219,6 +221,8 @@ class MakeMKVExtractor:
         title_complete_callback: TitleCompleteCallback | None = None,
         stall_timeout: float | None = None,
         title_error_callback: TitleErrorCallback | None = None,
+        *,
+        job_id: int = 0,
     ) -> RipResult:
         """Rip selected titles from a disc.
 
@@ -252,6 +256,7 @@ class MakeMKVExtractor:
                 title_complete_callback,
                 stall_timeout=stall_timeout,
                 title_error_callback=title_error_callback,
+                job_id=job_id,
             )
 
     async def _rip_titles_unlocked(
@@ -263,9 +268,11 @@ class MakeMKVExtractor:
         title_complete_callback: TitleCompleteCallback | None = None,
         stall_timeout: float | None = None,
         title_error_callback: TitleErrorCallback | None = None,
+        *,
+        job_id: int = 0,
     ) -> RipResult:
         """Internal rip implementation (caller must hold drive lock)."""
-        self._cancelled = False
+        self._cancelled_jobs.discard(job_id)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Normalize drive specification
@@ -450,10 +457,10 @@ class MakeMKVExtractor:
                     prev_sizes = current_sizes
 
             try:
-                self._cancelled = False
+                self._cancelled_jobs.discard(job_id)
 
                 for cmd in commands:
-                    if self._cancelled:
+                    if job_id in self._cancelled_jobs:
                         break
 
                     current_title_idx += 1
@@ -469,7 +476,7 @@ class MakeMKVExtractor:
                         text=True,
                         bufsize=1,  # Line buffered
                     )
-                    self._current_process = process
+                    self._processes[job_id] = process
 
                     # Start stall watchdog thread if timeout is configured
                     watchdog_thread = None
@@ -485,7 +492,7 @@ class MakeMKVExtractor:
 
                     # Read stdout line by line
                     for line in iter(process.stdout.readline, ""):
-                        if self._cancelled:
+                        if job_id in self._cancelled_jobs:
                             process.terminate()
                             break
 
@@ -602,15 +609,15 @@ class MakeMKVExtractor:
 
             except Exception as e:
                 logger.exception("Error in rip subprocess")
-                try:
-                    if self._current_process:
-                        self._current_process.terminate()
-                except (ProcessLookupError, PermissionError) as e:
-                    logger.debug(f"Could not terminate MakeMKV process: {e}")
-                    pass
+                proc = self._processes.get(job_id)
+                if proc:
+                    try:
+                        proc.terminate()
+                    except (ProcessLookupError, PermissionError) as term_err:
+                        logger.debug(f"Could not terminate MakeMKV process: {term_err}")
                 return (-1, str(e), set())
             finally:
-                self._current_process = None
+                self._processes.pop(job_id, None)
 
         try:
             # Start ripping in thread
@@ -659,7 +666,7 @@ class MakeMKVExtractor:
 
             logger.debug(f"Rip completed with return code {returncode}")
 
-            if self._cancelled:
+            if job_id in self._cancelled_jobs:
                 return RipResult(
                     success=False,
                     output_files=[],
@@ -706,15 +713,15 @@ class MakeMKVExtractor:
                 error_message=str(e),
             )
 
-    def cancel(self) -> None:
-        """Cancel the current ripping operation."""
-        self._cancelled = True
-        if self._current_process:
+    def cancel(self, job_id: int) -> None:
+        """Cancel ripping for a specific job."""
+        self._cancelled_jobs.add(job_id)
+        proc = self._processes.get(job_id)
+        if proc:
             try:
-                self._current_process.terminate()
+                proc.terminate()
             except (ProcessLookupError, PermissionError) as e:
-                logger.debug(f"Could not terminate MakeMKV process during cancel: {e}")
-                pass
+                logger.debug(f"Could not terminate MakeMKV process for job {job_id}: {e}")
 
     def _parse_disc_info(self, output: str) -> list[TitleInfo]:
         """Parse MakeMKV robot-mode output to extract title information.

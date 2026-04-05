@@ -5,7 +5,7 @@ import logging
 import platform
 import re
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -761,7 +761,7 @@ async def list_drives() -> list[dict]:
 @router.delete("/jobs/completed")
 async def clear_completed_jobs(session: AsyncSession = Depends(get_session)) -> dict:
     """Soft-delete all completed and failed jobs (moves to history)."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     result = await session.execute(
         select(DiscJob).where(
             DiscJob.state.in_([JobState.COMPLETED, JobState.FAILED]),
@@ -793,7 +793,7 @@ async def delete_job(job_id: int, session: AsyncSession = Depends(get_session)) 
             detail=f"Can only clear completed or failed jobs (current state: {job.state})",
         )
 
-    job.cleared_at = datetime.utcnow()
+    job.cleared_at = datetime.now(UTC)
     await session.commit()
 
     return {"status": "cleared", "job_id": job_id}

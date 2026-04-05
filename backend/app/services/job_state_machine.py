@@ -4,7 +4,7 @@ Centralizes state transition logic, validation, and persistence.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,7 +117,7 @@ class JobStateMachine:
 
         # Update job state
         job.state = to_state
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(UTC)
 
         # Set error message if transitioning to failed state
         if to_state == JobState.FAILED and error_message:
@@ -125,7 +125,7 @@ class JobStateMachine:
 
         # Set completed_at timestamp for terminal states
         if to_state in (JobState.COMPLETED, JobState.FAILED):
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(UTC)
 
         # Persist to database
         await session.commit()

@@ -88,3 +88,42 @@ class TestGenericLabelNamePromptFlow:
         # Colon should be removed/replaced by sanitize_filename
         assert ":" not in folder
         assert "Italian" in folder
+
+
+@pytest.mark.pipeline
+class TestCatalogNumberDetection:
+    """Verify that catalog-number labels (e.g. BBCDVD1550) are detected."""
+
+    CATALOG_LABELS = [
+        "BBCDVD1550",
+        "MGMHV1234",
+        "FHED3456",
+        "PHEUK789",
+        "REV1234",
+    ]
+
+    NON_CATALOG_LABELS = [
+        "THE_OFFICE_S01D01",
+        "INCEPTION_2010",
+        "FIREFLY_DISC1",
+        "BREAKING_BAD",
+        "LOGICAL_VOLUME_ID",  # generic, not catalog
+    ]
+
+    @pytest.mark.parametrize("label", CATALOG_LABELS)
+    def test_catalog_label_detected(self, label):
+        assert DiscAnalyst._looks_like_catalog_number(label)
+
+    @pytest.mark.parametrize("label", NON_CATALOG_LABELS)
+    def test_non_catalog_label_not_detected(self, label):
+        assert not DiscAnalyst._looks_like_catalog_number(label)
+
+    def test_catalog_label_still_parses_a_name(self):
+        """Catalog labels DO parse into a garbage name — that's the problem we fix."""
+        name, season, disc = DiscAnalyst._parse_volume_label("BBCDVD1550")
+        # Parser extracts "Bbcdv" — not useful, but non-None
+        assert name is not None
+
+    def test_catalog_detection_with_underscores(self):
+        """Underscores in catalog labels should be normalized."""
+        assert DiscAnalyst._looks_like_catalog_number("BBC_DVD1550")
