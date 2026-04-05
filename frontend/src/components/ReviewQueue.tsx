@@ -258,6 +258,7 @@ function ReviewQueue() {
                             <button
                                 onClick={() => navigate('/')}
                                 className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
+                                aria-label="Back to dashboard"
                             >
                                 <ArrowLeft className="w-4 h-4" />
                             </button>
@@ -324,6 +325,7 @@ function ReviewQueue() {
                                             value={selectedEditions[title.id] || ''}
                                             onChange={(e) => handleEditionChange(title.id, e.target.value)}
                                             className="w-full px-3 py-1.5 text-sm font-mono bg-navy-800 border border-slate-700 text-slate-300 placeholder-slate-600 focus:border-cyan-500/50 focus:outline-none"
+                                            aria-label={`Edition tag for title ${title.title_index}`}
                                         />
                                     </div>
 
@@ -380,6 +382,7 @@ function ReviewQueue() {
                             <button
                                 onClick={() => navigate('/')}
                                 className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
+                                aria-label="Back to dashboard"
                             >
                                 <ArrowLeft className="w-4 h-4" />
                             </button>
@@ -581,6 +584,8 @@ function TVTitleRow({
                     <button
                         onClick={() => onToggleExpand(title.id)}
                         className="text-slate-600 hover:text-cyan-400 transition-colors"
+                        aria-expanded={isExpanded}
+                        aria-label={isExpanded ? `Collapse details for title ${title.title_index}` : `Expand details for title ${title.title_index}`}
                     >
                         {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </button>
@@ -647,11 +652,13 @@ function TVTitleRow({
                             onChange={(e) => setSeason(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
                             className="w-10 bg-slate-800 border border-slate-600 rounded px-1 py-1 text-xs text-center font-mono text-slate-200"
                             title="Season number"
+                            aria-label="Season number"
                         />
                         <select
                             value={selectedEpisode}
                             onChange={(e) => onEpisodeChange(title.id, e.target.value)}
                             className="flex-1 px-2 py-1.5 text-xs font-mono bg-navy-800 border border-slate-700 text-slate-300 focus:border-cyan-500/50 focus:outline-none"
+                            aria-label={`Episode assignment for title ${title.title_index}`}
                         >
                             <option value="">Select episode...</option>
                             {title.matched_episode && (
