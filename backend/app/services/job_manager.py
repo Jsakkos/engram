@@ -418,7 +418,11 @@ class JobManager:
                     except Exception as e:
                         logger.warning(f"Job {job_id}: TMDB lookup failed: {e}")
 
-                # Analyze disc content
+                # Analyze disc content (pre-load config to avoid blocking sync call)
+                from app.services.config_service import get_config
+
+                config = await get_config()
+                self._analyst.set_config(config)
                 analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
 
                 # Apply DiscDB override if high-confidence
@@ -735,6 +739,10 @@ class JobManager:
                         )
 
                 # Analyze disc content (DiscDB signal overrides when high-confidence)
+                from app.services.config_service import get_config
+
+                config = await get_config()
+                self._analyst.set_config(config)
                 analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
 
                 # If AI identified a name but TMDB re-query also failed,
@@ -1422,6 +1430,10 @@ class JobManager:
     async def _on_job_terminal(self, job_id: int, state: JobState) -> None:
         """Called by state machine when a job reaches COMPLETED or FAILED."""
         from app.services.config_service import get_config
+
+        # Clear per-job caches to prevent memory leaks
+        self._episode_runtimes.pop(job_id, None)
+        self._discdb_mappings.pop(job_id, None)
 
         config = await get_config()
         policy = config.staging_cleanup_policy
