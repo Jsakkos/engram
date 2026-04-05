@@ -249,6 +249,333 @@ class JobManager:
                 task = asyncio.create_task(self._identify_disc(job.id))
                 self._active_jobs[job.id] = task
 
+    async def create_job_from_staging(
+        self,
+        staging_path: str,
+        volume_label: str = "",
+        content_type: str = "unknown",
+        detected_title: str | None = None,
+        detected_season: int | None = None,
+    ) -> int:
+        """Create a job from pre-ripped MKV files in a staging directory.
+
+        Skips the ripping phase entirely — files are already on disk.
+        Runs identification (classification), then matching/organization.
+        """
+        staging_dir = Path(staging_path)
+
+        # Use directory name as volume label if none provided
+        if not volume_label:
+            volume_label = staging_dir.name.upper().replace(" ", "_")
+
+        # Create job record
+        async with async_session() as session:
+            job = DiscJob(
+                drive_id="staging",
+                volume_label=volume_label,
+                staging_path=str(staging_dir),
+                state=JobState.IDENTIFYING,
+            )
+
+            # Apply user-provided hints
+            if content_type in ("tv", "movie"):
+                job.content_type = ContentType(content_type)
+            if detected_title:
+                job.detected_title = detected_title
+            if detected_season is not None:
+                job.detected_season = detected_season
+
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+
+            job_id = job.id
+            logger.info(
+                f"Created staging import job {job_id} from {staging_path} (label: {volume_label})"
+            )
+
+        # Broadcast job creation
+        await event_broadcaster.broadcast_drive_inserted("staging", volume_label)
+
+        # Run identification pipeline in background
+        task = asyncio.create_task(self._identify_from_staging(job_id))
+        self._active_jobs[job_id] = task
+
+        return job_id
+
+    async def _identify_from_staging(self, job_id: int) -> None:
+        """Identify and process pre-ripped MKV files from staging.
+
+        Similar to _identify_disc() but skips the MakeMKV scan — constructs
+        TitleInfo objects from the existing MKV files via ffprobe instead.
+        """
+        from app.core.analyst import TitleInfo
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+
+            try:
+                await event_broadcaster.broadcast_job_state_changed(job_id, JobState.IDENTIFYING)
+
+                staging_dir = Path(job.staging_path)
+                mkv_files = sorted(staging_dir.glob("*.mkv"))
+
+                if not mkv_files:
+                    await state_machine.transition_to_failed(
+                        job, session, "No MKV files found in staging directory"
+                    )
+                    return
+
+                # Build TitleInfo objects from MKV files using ffprobe
+                titles: list[TitleInfo] = []
+                for idx, mkv_file in enumerate(mkv_files):
+                    duration = await self._probe_duration(mkv_file)
+                    file_size = mkv_file.stat().st_size
+
+                    titles.append(
+                        TitleInfo(
+                            index=idx,
+                            duration_seconds=int(duration),
+                            size_bytes=file_size,
+                            chapter_count=0,
+                            name=mkv_file.stem,
+                        )
+                    )
+
+                # Run classification pipeline (same as _identify_disc)
+                from app.services.config_service import get_config_sync
+
+                config = get_config_sync()
+
+                # Attempt TheDiscDB lookup
+                discdb_signal = None
+                if config.discdb_enabled:
+                    try:
+                        from app.core.discdb_classifier import classify_from_discdb
+
+                        discdb_signal = classify_from_discdb(
+                            job.volume_label, titles, content_hash=None
+                        )
+                        if discdb_signal:
+                            logger.info(
+                                f"Job {job_id}: TheDiscDB signal: "
+                                f"{discdb_signal.content_type.value} "
+                                f"({discdb_signal.confidence:.0%}) - "
+                                f"{discdb_signal.matched_title}"
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"Job {job_id}: TheDiscDB lookup failed: {e}",
+                            exc_info=True,
+                        )
+
+                # Attempt TMDB lookup
+                tmdb_signal = None
+                detected_name, _, _ = DiscAnalyst._parse_volume_label(job.volume_label)
+                if detected_name:
+                    try:
+                        from app.core.tmdb_classifier import classify_from_tmdb
+
+                        if config.tmdb_api_key:
+                            tmdb_signal = classify_from_tmdb(detected_name, config.tmdb_api_key)
+                            if tmdb_signal:
+                                logger.info(
+                                    f"Job {job_id}: TMDB signal: "
+                                    f"{tmdb_signal.content_type.value} "
+                                    f"({tmdb_signal.confidence:.0%}) - "
+                                    f"{tmdb_signal.tmdb_name}"
+                                )
+                    except Exception as e:
+                        logger.warning(f"Job {job_id}: TMDB lookup failed: {e}")
+
+                # Analyze disc content
+                analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
+
+                # Apply DiscDB override if high-confidence
+                if discdb_signal and discdb_signal.confidence >= 0.90:
+                    analysis.content_type = discdb_signal.content_type
+                    analysis.confidence = discdb_signal.confidence
+                    analysis.classification_source = f"discdb_{discdb_signal.source}"
+                    analysis.detected_name = discdb_signal.matched_title
+                    analysis.needs_review = False
+                    if discdb_signal.tmdb_id:
+                        analysis.tmdb_id = discdb_signal.tmdb_id
+                    if discdb_signal.title_mappings:
+                        self._discdb_mappings[job_id] = discdb_signal.title_mappings
+                        job.discdb_mappings_json = json.dumps(
+                            [asdict(m) for m in discdb_signal.title_mappings]
+                        )
+                elif discdb_signal and not analysis.detected_name:
+                    analysis.detected_name = discdb_signal.matched_title
+
+                # Apply user-provided hints (override classification if given)
+                if job.content_type and job.content_type != ContentType.UNKNOWN:
+                    analysis.content_type = job.content_type
+                if job.detected_title:
+                    analysis.detected_name = job.detected_title
+
+                # Update job with analysis results
+                job.content_type = analysis.content_type
+                job.detected_title = analysis.detected_name or job.detected_title
+                job.detected_season = analysis.detected_season or job.detected_season
+                job.total_titles = len(titles)
+                job.updated_at = datetime.utcnow()
+                job.classification_confidence = analysis.confidence
+                job.classification_source = analysis.classification_source or "staging_import"
+                job.tmdb_id = analysis.tmdb_id
+                job.tmdb_name = analysis.tmdb_name
+                job.is_ambiguous_movie = analysis.is_ambiguous_movie
+                if analysis.play_all_title_indices:
+                    job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
+
+                # Extract disc number from volume label
+                import re
+
+                disc_match = re.search(r"d(?:isc)?[_\s]*(\d+)", job.volume_label, re.IGNORECASE)
+                job.disc_number = int(disc_match.group(1)) if disc_match else 1
+
+                # Create DiscTitle records with output_filename already set
+                from sqlalchemy import delete
+
+                await session.execute(delete(DiscTitle).where(DiscTitle.job_id == job_id))
+
+                for title, mkv_file in zip(titles, mkv_files, strict=True):
+                    disc_title = DiscTitle(
+                        job_id=job_id,
+                        title_index=title.index,
+                        duration_seconds=title.duration_seconds,
+                        file_size_bytes=title.size_bytes,
+                        chapter_count=title.chapter_count,
+                        output_filename=str(mkv_file),
+                    )
+                    session.add(disc_title)
+
+                await session.commit()
+
+                # Broadcast titles discovered
+                titles_result = await session.execute(
+                    select(DiscTitle).where(DiscTitle.job_id == job_id)
+                )
+                title_list = build_title_list(titles_result.scalars().all())
+                await ws_manager.broadcast_titles_discovered(
+                    job_id,
+                    title_list,
+                    content_type=job.content_type.value,
+                    detected_title=job.detected_title,
+                    detected_season=job.detected_season,
+                )
+
+                # If no title detected, ask user
+                if not job.detected_title:
+                    await state_machine.transition_to_review(
+                        job,
+                        session,
+                        reason="Could not determine title. Please enter the title to continue.",
+                        broadcast=False,
+                    )
+                    await ws_manager.broadcast_job_update(
+                        job_id,
+                        JobState.REVIEW_NEEDED.value,
+                        content_type=(job.content_type.value if job.content_type else None),
+                        total_titles=job.total_titles,
+                        review_reason="Could not determine title. Please enter the title to continue.",
+                    )
+                    return
+
+                # Skip ripping — files already exist. Proceed to matching/organization.
+                if job.content_type == ContentType.TV:
+                    # Start subtitle download
+                    if job.detected_title and job.detected_season:
+                        self._subtitle_ready[job_id] = asyncio.Event()
+                        self._subtitle_tasks[job_id] = asyncio.create_task(
+                            self._download_subtitles(
+                                job_id, job.detected_title, job.detected_season
+                            )
+                        )
+
+                    # Transition to MATCHING and kick off per-title matching
+                    succeeded = await state_machine.transition(
+                        job, JobState.MATCHING, session, broadcast=False
+                    )
+                    if succeeded:
+                        await ws_manager.broadcast_job_update(job_id, JobState.MATCHING.value)
+
+                    # Queue matching for each title
+                    db_titles = (
+                        (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                        .scalars()
+                        .all()
+                    )
+
+                    for dt in db_titles:
+                        dt.state = TitleState.MATCHING
+                        session.add(dt)
+                    await session.commit()
+
+                    for dt in db_titles:
+                        if dt.output_filename:
+                            file_path = Path(dt.output_filename)
+                            discdb_applied = await self._try_discdb_assignment(job_id, dt, session)
+                            if not discdb_applied:
+                                task = asyncio.create_task(
+                                    self._match_single_file(job_id, dt.id, file_path)
+                                )
+                                task.add_done_callback(
+                                    lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
+                                        t, jid, tid
+                                    )
+                                )
+                else:
+                    # Movie: skip matching, go straight to organization
+                    job.state = JobState.ORGANIZING
+                    await session.commit()
+                    await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
+
+                    # Mark titles as MATCHED
+                    db_titles = (
+                        (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                        .scalars()
+                        .all()
+                    )
+
+                    for dt in db_titles:
+                        dt.state = TitleState.MATCHED
+                        session.add(dt)
+                    await session.commit()
+
+                    # Run organization
+                    await self._finalize_disc_job(job_id)
+
+            except Exception as e:
+                logger.exception(f"Error processing staging import for job {job_id}")
+                async with async_session() as err_session:
+                    err_job = await err_session.get(DiscJob, job_id)
+                    if err_job:
+                        await state_machine.transition_to_failed(err_job, err_session, str(e))
+
+    async def _probe_duration(self, mkv_file: Path) -> float:
+        """Get duration of an MKV file using ffprobe."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(mkv_file),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+            return float(stdout.decode().strip()) if stdout.decode().strip() else 1800
+        except (TimeoutError, OSError, ValueError) as e:
+            logger.debug(f"Could not determine MKV duration via ffprobe: {e}")
+            return 1800  # Default 30 minutes
+
     async def _identify_disc(self, job_id: int) -> None:
         """Identify the disc contents using MakeMKV and the Analyst."""
         async with async_session() as session:

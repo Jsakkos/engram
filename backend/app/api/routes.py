@@ -1005,6 +1005,47 @@ async def simulate_insert_disc_from_staging(
     return {"status": "simulated", "job_id": job_id, "titles_count": len(titles)}
 
 
+class StagingImportRequest(BaseModel):
+    """Request model for importing pre-ripped MKV files from a staging directory."""
+
+    staging_path: str
+    volume_label: str = ""
+    content_type: str = "unknown"
+    detected_title: str | None = None
+    detected_season: int | None = None
+
+
+@router.post("/staging/import")
+async def import_from_staging(request: StagingImportRequest) -> dict:
+    """Import pre-ripped MKV files from a staging directory.
+
+    Creates a real job that skips the ripping phase and proceeds
+    directly to identification, matching, and organization.
+    Available in all modes (no DEBUG required).
+    """
+    from app.services.job_manager import job_manager
+
+    staging_dir = Path(request.staging_path)
+    if not staging_dir.exists():
+        raise HTTPException(
+            status_code=404, detail=f"Staging directory not found: {request.staging_path}"
+        )
+
+    mkv_files = sorted(staging_dir.glob("*.mkv"))
+    if not mkv_files:
+        raise HTTPException(status_code=404, detail=f"No MKV files found in {request.staging_path}")
+
+    job_id = await job_manager.create_job_from_staging(
+        staging_path=str(staging_dir),
+        volume_label=request.volume_label,
+        content_type=request.content_type,
+        detected_title=request.detected_title,
+        detected_season=request.detected_season,
+    )
+
+    return {"status": "created", "job_id": job_id, "titles_count": len(mkv_files)}
+
+
 @router.get("/staging/orphaned")
 async def get_orphaned_staging(session: AsyncSession = Depends(get_session)) -> dict:
     """Find staging directories that don't belong to active jobs."""
