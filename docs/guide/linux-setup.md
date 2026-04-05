@@ -8,14 +8,23 @@ Engram runs fully on Linux and macOS. This guide covers installation, the two su
 
 === "Debian / Ubuntu / Mint"
 
+    MakeMKV is not in the standard repositories. Install via the official PPA:
+
     ```bash
+    sudo add-apt-repository ppa:heyarje/makemkv-beta
+    sudo apt update
     sudo apt install makemkv-bin makemkv-oss ffmpeg
     ```
 
+    Alternatively, download and build from source at [makemkv.com](https://www.makemkv.com/forum/viewtopic.php?f=3&t=224).
+
 === "Fedora / RHEL"
 
+    MakeMKV is available via RPM Fusion or can be built from source:
+
     ```bash
-    sudo dnf install makemkv ffmpeg
+    sudo dnf install ffmpeg
+    # Install MakeMKV from https://www.makemkv.com/
     ```
 
 === "macOS"
@@ -79,7 +88,7 @@ If your machine has an optical drive, Engram detects it automatically on Linux v
     If `blkid` or `eject` are not installed, those features degrade gracefully (empty labels, no auto-eject).
 
 !!! warning "macOS"
-    macOS does not have automatic drive detection yet. Use the staging folder workflow below.
+    macOS does not have automatic drive detection. The `/sys/block` and `blkid` interfaces described above are Linux-specific. On macOS, use the staging folder workflow below.
 
 ## Workflow 2: Staging Folder (All Platforms)
 
@@ -87,7 +96,7 @@ The staging folder workflow lets you use MakeMKV externally and have Engram hand
 
 ### Automatic (Staging Watcher)
 
-The staging watcher monitors your staging directory for new folders containing MKV files. It is **enabled by default on Linux and macOS**.
+The staging watcher monitors your staging directory for new folders containing MKV files. Enable it in Settings or via the API (see [Configuration](#configuration) below).
 
 1. Rip your disc with MakeMKV to a folder:
    ```
