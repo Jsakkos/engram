@@ -1,11 +1,15 @@
 """Sentinel - Drive Monitor (Hardware Abstraction Layer).
 
-Detects disc insertion/removal using polling on Windows.
-This is a more reliable approach than WM_DEVICECHANGE for cross-platform compatibility.
+Detects disc insertion/removal using platform-specific APIs:
+- Windows: kernel32 ctypes (GetDriveTypeW, GetVolumeInformationW)
+- Linux: /sys/block/sr* enumeration, blkid, eject
 """
 
 import asyncio
+import glob
 import logging
+import os
+import subprocess
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -23,11 +27,13 @@ DRIVE_CDROM = 5  # Optical drive type
 DriveCallback = Callable[[str, str, str], None]  # (drive_letter, event, volume_label)
 
 
-def get_optical_drives() -> list[str]:
-    """Get list of optical drive letters on the system."""
-    if sys.platform != "win32":
-        return []
+# ---------------------------------------------------------------------------
+# Windows implementations
+# ---------------------------------------------------------------------------
 
+
+def _get_optical_drives_windows() -> list[str]:
+    """Get optical drive letters on Windows via kernel32."""
     drives = []
     kernel32 = ctypes.windll.kernel32
     get_drive_type = kernel32.GetDriveTypeW
@@ -41,11 +47,8 @@ def get_optical_drives() -> list[str]:
     return drives
 
 
-def get_volume_label(drive_letter: str) -> str:
-    """Get the volume label for a drive."""
-    if sys.platform != "win32":
-        return ""
-
+def _get_volume_label_windows(drive_letter: str) -> str:
+    """Get the volume label for a drive on Windows."""
     kernel32 = ctypes.windll.kernel32
     volume_name = ctypes.create_unicode_buffer(261)
     fs_name = ctypes.create_unicode_buffer(261)
@@ -66,14 +69,9 @@ def get_volume_label(drive_letter: str) -> str:
     return ""
 
 
-def is_disc_present(drive_letter: str) -> bool:
-    """Check if a disc is present in the drive."""
-    if sys.platform != "win32":
-        return False
-
+def _is_disc_present_windows(drive_letter: str) -> bool:
+    """Check if a disc is present on Windows."""
     kernel32 = ctypes.windll.kernel32
-
-    # Try to get volume information - fails if no disc
     volume_name = ctypes.create_unicode_buffer(261)
     result = kernel32.GetVolumeInformationW(
         f"{drive_letter}\\",
@@ -85,29 +83,17 @@ def is_disc_present(drive_letter: str) -> bool:
         None,
         0,
     )
-
     return bool(result)
 
 
-def eject_disc(drive_letter: str) -> bool:
-    """Eject a disc from the specified drive on Windows.
-
-    Uses the Win32 mciSendString API for reliable disc ejection.
-    Returns True if eject was successful.
-    """
-    if sys.platform != "win32":
-        logger.warning("Disc eject only supported on Windows")
-        return False
-
+def _eject_disc_windows(drive_letter: str) -> bool:
+    """Eject a disc on Windows using mciSendString."""
     try:
         winmm = ctypes.windll.winmm
         mci_send = winmm.mciSendStringW
-
-        # Normalize drive letter (e.g., "F:" -> "F:")
         drive = drive_letter.rstrip("\\")
-
-        # Open the CD drive, send eject, then close
         buf = ctypes.create_unicode_buffer(256)
+
         err = mci_send(f"open {drive} type cdaudio alias disc_eject", buf, 256, 0)
         if err != 0:
             logger.warning(f"mciSendString open failed for {drive} (error {err})")
@@ -127,10 +113,117 @@ def eject_disc(drive_letter: str) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Linux implementations
+# ---------------------------------------------------------------------------
+
+
+def _get_optical_drives_linux() -> list[str]:
+    """Get optical drive device paths on Linux via /sys/block/sr*."""
+    drives = []
+    for block_dev in sorted(glob.glob("/sys/block/sr*")):
+        dev_name = os.path.basename(block_dev)
+        drives.append(f"/dev/{dev_name}")
+    return drives
+
+
+def _get_volume_label_linux(drive: str) -> str:
+    """Get the volume label for a drive on Linux using blkid."""
+    try:
+        result = subprocess.run(
+            ["blkid", "-s", "LABEL", "-o", "value", drive],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.debug(f"blkid failed for {drive}: {e}")
+        return ""
+
+
+def _is_disc_present_linux(drive: str) -> bool:
+    """Check if a disc is present on Linux by reading /sys/block size."""
+    try:
+        dev_name = os.path.basename(drive)  # "sr0" from "/dev/sr0"
+        size_path = f"/sys/block/{dev_name}/size"
+        with open(size_path) as f:
+            size = int(f.read().strip())
+        return size > 0
+    except (FileNotFoundError, ValueError, PermissionError, OSError):
+        return False
+
+
+def _eject_disc_linux(drive: str) -> bool:
+    """Eject a disc on Linux using the eject command."""
+    try:
+        result = subprocess.run(
+            ["eject", drive],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            logger.info(f"Disc ejected from {drive}")
+            return True
+        logger.warning(f"eject failed for {drive}: {result.stderr.strip()}")
+        return False
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.warning(f"eject command failed for {drive}: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Public API (dispatches by platform)
+# ---------------------------------------------------------------------------
+
+
+def get_optical_drives() -> list[str]:
+    """Get list of optical drives on the system."""
+    if sys.platform == "win32":
+        return _get_optical_drives_windows()
+    elif sys.platform == "linux":
+        return _get_optical_drives_linux()
+    return []
+
+
+def get_volume_label(drive: str) -> str:
+    """Get the volume label for a drive."""
+    if sys.platform == "win32":
+        return _get_volume_label_windows(drive)
+    elif sys.platform == "linux":
+        return _get_volume_label_linux(drive)
+    return ""
+
+
+def is_disc_present(drive: str) -> bool:
+    """Check if a disc is present in the drive."""
+    if sys.platform == "win32":
+        return _is_disc_present_windows(drive)
+    elif sys.platform == "linux":
+        return _is_disc_present_linux(drive)
+    return False
+
+
+def eject_disc(drive: str) -> bool:
+    """Eject a disc from the specified drive."""
+    if sys.platform == "win32":
+        return _eject_disc_windows(drive)
+    elif sys.platform == "linux":
+        return _eject_disc_linux(drive)
+    logger.warning(f"Disc eject not supported on {sys.platform}")
+    return False
+
+
+# ---------------------------------------------------------------------------
+# DriveMonitor class (platform-independent)
+# ---------------------------------------------------------------------------
+
+
 class DriveMonitor:
     """Monitors optical drives for disc insertion/removal.
 
-    Uses a polling approach for maximum reliability across Windows versions.
+    Uses a polling approach for maximum reliability across platforms.
     Poll interval is configurable via AppConfig.
     """
 
