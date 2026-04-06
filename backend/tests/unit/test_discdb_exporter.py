@@ -8,6 +8,7 @@ import pytest
 
 from app.core.discdb_exporter import (
     EXPORT_SCHEMA_VERSION,
+    _parse_episode_code,
     generate_export,
     get_export_directory,
     get_makemkv_log_dir,
@@ -79,7 +80,7 @@ def tv_titles():
             segment_map="1",
             matched_episode="S01E01",
             match_confidence=0.99,
-            match_details=json.dumps({"source": "discdb"}),
+            match_details=json.dumps({"source": "subtitle"}),
         ),
         DiscTitle(
             id=2,
@@ -129,7 +130,48 @@ def movie_titles():
     ]
 
 
+class TestParseEpisodeCode:
+    def test_standard_code(self):
+        assert _parse_episode_code("S01E01") == (1, 1)
+
+    def test_high_numbers(self):
+        assert _parse_episode_code("S12E24") == (12, 24)
+
+    def test_none_input(self):
+        assert _parse_episode_code(None) == (None, None)
+
+    def test_empty_string(self):
+        assert _parse_episode_code("") == (None, None)
+
+    def test_malformed(self):
+        assert _parse_episode_code("Episode 5") == (None, None)
+
+    def test_multi_episode_returns_first(self):
+        assert _parse_episode_code("S01E01E02") == (1, 1)
+
+    def test_case_insensitive(self):
+        assert _parse_episode_code("s03e07") == (3, 7)
+
+
 class TestGenerateExport:
+    def test_tv_export_has_season_episode_fields(self, tv_job, tv_titles, config, tmp_path):
+        config.discdb_export_path = str(tmp_path)
+        result = generate_export(tv_job, tv_titles, config, app_version="0.4.4")
+
+        assert result is not None
+        data = json.loads((result / "disc_data.json").read_text())
+
+        assert data["export_version"] == "1.1"
+
+        t0 = data["titles"][0]
+        assert t0["season"] == 1
+        assert t0["episode"] == 1
+        assert "matched_episode" not in t0
+
+        t1 = data["titles"][1]
+        assert t1["season"] == 1
+        assert t1["episode"] == 2
+
     def test_tv_export_structure(self, tv_job, tv_titles, config, tmp_path):
         config.discdb_export_path = str(tmp_path)
         result = generate_export(tv_job, tv_titles, config, app_version="0.4.4")
@@ -163,8 +205,7 @@ class TestGenerateExport:
         assert t0["size_bytes"] == 18405949440
         assert t0["segment_count"] == 1
         assert t0["segment_map"] == "1"
-        assert t0["matched_episode"] == "S01E01"
-        assert t0["match_source"] == "discdb"
+        assert t0["match_source"] == "subtitle"
 
     def test_movie_export_structure(self, movie_job, movie_titles, config, tmp_path):
         config.discdb_export_path = str(tmp_path)
@@ -176,10 +217,11 @@ class TestGenerateExport:
         assert data["disc"]["content_type"] == "movie"
         assert data["identification"]["detected_season"] is None
 
-        # Main movie title
+        # Main movie title — no episode info
         t0 = data["titles"][0]
         assert t0["title_type"] == "MainMovie"
-        assert t0["matched_episode"] is None
+        assert t0["season"] is None
+        assert t0["episode"] is None
 
         # Extra title
         t1 = data["titles"][1]
@@ -191,7 +233,7 @@ class TestGenerateExport:
         result = generate_export(tv_job, tv_titles, config)
         assert result is None
 
-    def test_export_includes_new_fields(self, tv_job, tv_titles, config, tmp_path):
+    def test_export_includes_track_metadata(self, tv_job, tv_titles, config, tmp_path):
         config.discdb_export_path = str(tmp_path)
         result = generate_export(tv_job, tv_titles, config)
 
@@ -243,6 +285,71 @@ class TestGenerateExport:
 
         assert data["upc"] == "883929123456"
         assert data["contribution_tier"] == 3
+
+    def test_scan_log_is_flat_string(self, tv_job, tv_titles, config, tmp_path):
+        config.discdb_export_path = str(tmp_path)
+        result = generate_export(tv_job, tv_titles, config)
+        data = json.loads((result / "disc_data.json").read_text())
+
+        # scan_log should be a string or None, not a nested dict
+        assert "scan_log" in data
+        assert "makemkv_logs" not in data
+        assert data["scan_log"] is None or isinstance(data["scan_log"], str)
+
+    def test_release_id_from_release_group(self, tv_job, tv_titles, config, tmp_path):
+        config.discdb_export_path = str(tmp_path)
+        tv_job.release_group_id = "550e8400-e29b-41d4-a716-446655440000"
+
+        result = generate_export(tv_job, tv_titles, config)
+        data = json.loads((result / "disc_data.json").read_text())
+
+        assert data["disc"]["release_id"] == "550e8400-e29b-41d4-a716-446655440000"
+
+    def test_release_id_none_when_no_group(self, tv_job, tv_titles, config, tmp_path):
+        config.discdb_export_path = str(tmp_path)
+        result = generate_export(tv_job, tv_titles, config)
+        data = json.loads((result / "disc_data.json").read_text())
+
+        assert data["disc"]["release_id"] is None
+
+    def test_skip_export_when_all_discdb_sourced(self, tv_job, config, tmp_path):
+        """If all matched titles came from discdb, export should be skipped."""
+        config.discdb_export_path = str(tmp_path)
+        titles = [
+            DiscTitle(
+                id=1,
+                job_id=1,
+                title_index=0,
+                duration_seconds=4394,
+                file_size_bytes=18405949440,
+                chapter_count=12,
+                matched_episode="S01E01",
+                match_details=json.dumps({"source": "discdb"}),
+            ),
+            DiscTitle(
+                id=2,
+                job_id=1,
+                title_index=1,
+                duration_seconds=3600,
+                file_size_bytes=12000000000,
+                chapter_count=10,
+                matched_episode="S01E02",
+                match_details=json.dumps({"source": "discdb"}),
+            ),
+        ]
+        result = generate_export(tv_job, titles, config)
+        assert result is None
+
+    def test_export_when_mixed_sources(self, tv_job, tv_titles, config, tmp_path):
+        """If some titles are discdb-sourced but not all, export should proceed."""
+        config.discdb_export_path = str(tmp_path)
+        # tv_titles fixture has source=discdb and source=subtitle (mixed)
+        # Override first title to discdb
+        tv_titles[0].match_details = json.dumps({"source": "discdb"})
+        tv_titles[1].match_details = json.dumps({"source": "subtitle"})
+
+        result = generate_export(tv_job, tv_titles, config)
+        assert result is not None
 
 
 class TestGetExportDirectory:

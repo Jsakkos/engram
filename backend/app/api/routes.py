@@ -198,6 +198,8 @@ class ConfigResponse(BaseModel):
     discdb_contributions_enabled: bool
     discdb_contribution_tier: int
     discdb_export_path: str
+    discdb_api_key_set: bool  # True if API key is configured (never expose the key)
+    discdb_api_url: str
     # Onboarding
     setup_complete: bool
 
@@ -248,6 +250,8 @@ class ConfigUpdate(BaseModel):
     discdb_contributions_enabled: bool | None = None
     discdb_contribution_tier: int | None = None
     discdb_export_path: str | None = None
+    discdb_api_key: str | None = None
+    discdb_api_url: str | None = None
     # Onboarding
     setup_complete: bool | None = None
 
@@ -683,6 +687,8 @@ async def get_config() -> ConfigResponse:
         discdb_contributions_enabled=config.discdb_contributions_enabled,
         discdb_contribution_tier=config.discdb_contribution_tier,
         discdb_export_path=config.discdb_export_path,
+        discdb_api_key_set=bool(config.discdb_api_key),
+        discdb_api_url=config.discdb_api_url,
         # Onboarding
         setup_complete=config.setup_complete,
     )
@@ -1333,7 +1339,10 @@ class ContributionJobResponse(BaseModel):
     detected_season: int | None
     content_hash: str | None
     completed_at: datetime | None
-    export_status: str  # "pending", "exported", "skipped"
+    export_status: str  # "pending", "exported", "skipped", "submitted"
+    submitted_at: datetime | None = None
+    contribute_url: str | None = None
+    release_group_id: str | None = None
 
 
 class ContributionStatsResponse(BaseModel):
@@ -1342,12 +1351,25 @@ class ContributionStatsResponse(BaseModel):
     pending: int
     exported: int
     skipped: int
+    submitted: int
 
 
 class EnhanceRequest(BaseModel):
     """Request model for tier-3 contribution enhancement."""
 
     upc_code: str | None = None
+
+
+class ReleaseGroupRequest(BaseModel):
+    """Request model for creating a release group."""
+
+    job_ids: list[int]
+
+
+class ReleaseGroupAssignRequest(BaseModel):
+    """Request model for assigning a job to a release group."""
+
+    release_group_id: str | None = None
 
 
 @router.get("/contributions", response_model=list[ContributionJobResponse])
@@ -1362,12 +1384,19 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
 
     responses = []
     for job in jobs:
-        if job.exported_at is None:
+        if job.submitted_at:
+            status = "submitted"
+        elif job.exported_at is None:
             status = "pending"
         elif job.exported_at.year == 1970:
             status = "skipped"
         else:
             status = "exported"
+
+        # Build contribute URL from submission ID if available
+        contribute_url = None
+        if job.discdb_submission_id:
+            contribute_url = f"https://thediscdb.com/contribute/engram/{job.discdb_submission_id}"
 
         responses.append(
             ContributionJobResponse(
@@ -1379,6 +1408,9 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
                 content_hash=job.content_hash,
                 completed_at=job.completed_at,
                 export_status=status,
+                submitted_at=job.submitted_at,
+                contribute_url=contribute_url,
+                release_group_id=job.release_group_id,
             )
         )
     return responses
@@ -1393,15 +1425,20 @@ async def contribution_stats(session: AsyncSession = Depends(get_session)):
     pending = 0
     exported = 0
     skipped = 0
+    submitted = 0
     for job in jobs:
-        if job.exported_at is None:
+        if job.submitted_at:
+            submitted += 1
+        elif job.exported_at is None:
             pending += 1
         elif job.exported_at.year == 1970:
             skipped += 1
         else:
             exported += 1
 
-    return ContributionStatsResponse(pending=pending, exported=exported, skipped=skipped)
+    return ContributionStatsResponse(
+        pending=pending, exported=exported, skipped=skipped, submitted=submitted
+    )
 
 
 @router.post("/contributions/{job_id}/export")
@@ -1480,3 +1517,97 @@ async def enhance_contribution(
 
     await mark_exported(job_id, session)
     return {"status": "enhanced", "export_path": str(export_dir)}
+
+
+@router.post("/contributions/{job_id}/submit")
+async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_session)):
+    """Submit a job's disc data to TheDiscDB API."""
+    from app.core.discdb_submitter import submit_job
+    from app.services.config_service import get_config as get_db_config
+
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.state != JobState.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job is not completed")
+
+    config = await get_db_config()
+    if not config.discdb_api_key:
+        raise HTTPException(status_code=400, detail="No TheDiscDB API key configured")
+
+    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+    titles = list(titles_result.scalars().all())
+
+    from app import __version__
+
+    result = await submit_job(job, titles, config, app_version=__version__)
+
+    if result.success:
+        job.submitted_at = datetime.now(UTC)
+        job.discdb_submission_id = result.submission_id
+        session.add(job)
+        await session.commit()
+
+    return {
+        "success": result.success,
+        "submission_id": result.submission_id,
+        "contribute_url": result.contribute_url,
+        "error": result.error,
+    }
+
+
+@router.post("/contributions/release-group")
+async def create_release_group(
+    request: ReleaseGroupRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Create a release group linking multiple disc jobs."""
+    import uuid
+
+    if len(request.job_ids) < 2:
+        raise HTTPException(status_code=400, detail="A release group requires at least 2 jobs")
+
+    # Verify all jobs exist
+    jobs = []
+    for job_id in request.job_ids:
+        job = await session.get(DiscJob, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        jobs.append(job)
+
+    release_group_id = str(uuid.uuid4())
+    for job in jobs:
+        job.release_group_id = release_group_id
+        session.add(job)
+    await session.commit()
+
+    return {"release_group_id": release_group_id, "job_ids": request.job_ids}
+
+
+@router.put("/contributions/{job_id}/release-group")
+async def assign_release_group(
+    job_id: int,
+    request: ReleaseGroupAssignRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Assign or remove a job from a release group."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if request.release_group_id:
+        # Verify the release group exists (at least one other job has it)
+        result = await session.execute(
+            select(DiscJob).where(
+                DiscJob.release_group_id == request.release_group_id,
+                DiscJob.id != job_id,
+            )
+        )
+        if not result.scalars().first():
+            raise HTTPException(status_code=404, detail="Release group not found")
+
+    job.release_group_id = request.release_group_id
+    session.add(job)
+    await session.commit()
+
+    return {"job_id": job_id, "release_group_id": request.release_group_id}

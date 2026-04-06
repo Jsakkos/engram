@@ -31,6 +31,8 @@ interface ConfigData {
     discdbContributionsEnabled: boolean;
     discdbContributionTier: number;
     discdbExportPath: string;
+    discdbApiKey: string;
+    discdbApiUrl: string;
 }
 
 interface ToolDetectionResult {
@@ -73,6 +75,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         discdbContributionsEnabled: false,
         discdbContributionTier: 2,
         discdbExportPath: '',
+        discdbApiKey: '',
+        discdbApiUrl: 'https://thediscdb.com',
     });
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
@@ -124,6 +128,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     discdbContributionsEnabled: data.discdb_contributions_enabled ?? false,
                     discdbContributionTier: data.discdb_contribution_tier ?? 2,
                     discdbExportPath: data.discdb_export_path || '',
+                    discdbApiKey: '',  // Never populated from API (sensitive)
+                    discdbApiUrl: data.discdb_api_url || 'https://thediscdb.com',
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -214,6 +220,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     discdb_contributions_enabled: config.discdbContributionsEnabled,
                     discdb_contribution_tier: config.discdbContributionTier,
                     discdb_export_path: config.discdbExportPath,
+                    ...(config.discdbApiKey ? { discdb_api_key: config.discdbApiKey } : {}),
+                    discdb_api_url: config.discdbApiUrl,
                     setup_complete: true,
                 }),
             });
@@ -627,6 +635,18 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                         <option value={2}>Automatic — share auto-collected data</option>
                                         <option value={3}>Full — prompt for UPC and images</option>
                                     </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label htmlFor="discdbApiKey">TheDiscDB API Key</label>
+                                    <input
+                                        id="discdbApiKey"
+                                        type="password"
+                                        value={config.discdbApiKey}
+                                        onChange={(e) => handleInputChange('discdbApiKey', e.target.value)}
+                                        placeholder="Enter API key for automatic submission"
+                                    />
+                                    <small>Required for submitting directly to TheDiscDB. Leave empty for local-only export.</small>
                                 </div>
 
                                 <div className="form-group">

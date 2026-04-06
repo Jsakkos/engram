@@ -107,8 +107,11 @@ class DiscJob(SQLModel, table=True):
     )  # JSON-serialized DiscDbTitleMapping list
 
     # TheDiscDB contribution tracking
-    exported_at: datetime | None = Field(default=None)  # When disc data was exported
+    exported_at: datetime | None = Field(default=None)  # When disc data was exported locally
     upc_code: str | None = Field(default=None)  # UPC barcode for full contributions
+    release_group_id: str | None = Field(default=None)  # UUID grouping multi-disc releases
+    submitted_at: datetime | None = Field(default=None)  # When submitted to TheDiscDB API
+    discdb_submission_id: str | None = Field(default=None)  # ID from TheDiscDB after submission
 
 
 class DiscTitle(SQLModel, table=True):

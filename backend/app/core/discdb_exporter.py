@@ -7,6 +7,7 @@ organized by content hash.
 
 import json
 import logging
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,7 +20,23 @@ from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState
 
 logger = logging.getLogger(__name__)
 
-EXPORT_SCHEMA_VERSION = "1.0"
+EXPORT_SCHEMA_VERSION = "1.1"
+
+_EPISODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
+
+
+def _parse_episode_code(code: str | None) -> tuple[int | None, int | None]:
+    """Parse an episode code like 'S01E01' into (season, episode) integers.
+
+    Returns (None, None) for None or malformed input.
+    For multi-episode codes like 'S01E01E02', returns the first episode.
+    """
+    if not code:
+        return None, None
+    m = _EPISODE_RE.search(code)
+    if not m:
+        return None, None
+    return int(m.group(1)), int(m.group(2))
 
 
 def get_export_directory(config: AppConfig) -> Path:
@@ -88,8 +105,9 @@ def generate_export(
         except json.JSONDecodeError:
             pass
 
-    # Build title entries
+    # Build title entries and track match sources for skip logic
     title_entries = []
+    match_sources = []
     for title in titles:
         # Determine match source
         match_source = None
@@ -99,6 +117,10 @@ def generate_export(
                 match_source = details.get("source")
             except json.JSONDecodeError:
                 pass
+        if match_source:
+            match_sources.append(match_source)
+
+        season, episode = _parse_episode_code(title.matched_episode)
 
         title_entries.append(
             {
@@ -110,12 +132,18 @@ def generate_export(
                 "segment_count": title.segment_count,
                 "segment_map": title.segment_map,
                 "title_type": _derive_title_type(title, job.content_type, discdb_mappings),
-                "matched_episode": title.matched_episode,
+                "season": season,
+                "episode": episode,
                 "match_confidence": title.match_confidence,
                 "match_source": match_source,
                 "edition": title.edition,
             }
         )
+
+    # Skip export if all matched titles came from TheDiscDB (avoids resubmission)
+    if match_sources and all(s == "discdb" for s in match_sources):
+        logger.info(f"Job {job.id}: Skipping export — all matches sourced from TheDiscDB")
+        return None
 
     # Build the export payload
     payload = {
@@ -128,6 +156,7 @@ def generate_export(
             "volume_label": job.volume_label,
             "content_type": job.content_type,
             "disc_number": job.disc_number,
+            "release_id": getattr(job, "release_group_id", None),
         },
         "identification": {
             "tmdb_id": job.tmdb_id,
@@ -139,7 +168,7 @@ def generate_export(
         "titles": title_entries,
         "upc": job.upc_code,
         "images": _list_images(export_dir),
-        "makemkv_logs": _collect_log_references(job.id, export_dir),
+        "scan_log": _collect_scan_log(job.id, export_dir),
     }
 
     # Write JSON
@@ -150,31 +179,22 @@ def generate_export(
     return export_dir
 
 
-def _collect_log_references(job_id: int | None, export_dir: Path) -> dict:
-    """Copy MakeMKV logs to export directory and return references."""
-    result: dict = {"scan_log": None, "rip_logs": []}
+def _collect_scan_log(job_id: int | None, export_dir: Path) -> str | None:
+    """Copy MakeMKV scan log to export directory and return the filename."""
     if not job_id:
-        return result
+        return None
 
     log_dir = get_makemkv_log_dir(job_id)
     if not log_dir.exists():
-        return result
+        return None
 
-    # Copy scan log
     scan_log = log_dir / "scan.log"
     if scan_log.exists():
         dest = export_dir / "makemkv_scan.log"
         shutil.copy2(scan_log, dest)
-        result["scan_log"] = "makemkv_scan.log"
+        return "makemkv_scan.log"
 
-    # Copy rip log
-    rip_log = log_dir / "rip.log"
-    if rip_log.exists():
-        dest = export_dir / "makemkv_rip.log"
-        shutil.copy2(rip_log, dest)
-        result["rip_logs"].append("makemkv_rip.log")
-
-    return result
+    return None
 
 
 def _list_images(export_dir: Path) -> list[str]:

@@ -1460,11 +1460,11 @@ class JobManager:
                 logger.warning(f"Failed to clean staging for job {job_id}: {e}")
 
     async def _auto_export_for_discdb(self, job_id: int, config) -> None:
-        """Auto-export disc data for TheDiscDB contribution."""
+        """Auto-export disc data for TheDiscDB contribution, optionally submitting via API."""
         # Brief delay to let MakeMKV log files flush to disk
         await asyncio.sleep(2)
         try:
-            from app.core.discdb_exporter import generate_export, mark_exported
+            from app.core.discdb_exporter import generate_export, mark_exported, mark_skipped
 
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
@@ -1477,9 +1477,36 @@ class JobManager:
                 from app import __version__
 
                 export_dir = generate_export(job, titles, config, app_version=__version__)
-                if export_dir:
-                    await mark_exported(job_id, session)
-                    logger.info(f"Job {job_id}: Auto-exported disc data to {export_dir}")
+                if not export_dir:
+                    # Export returned None (e.g., all discdb-sourced) — mark as skipped
+                    await mark_skipped(job_id, session)
+                    logger.info(f"Job {job_id}: Skipped export (all discdb-sourced)")
+                    return
+
+                await mark_exported(job_id, session)
+                logger.info(f"Job {job_id}: Auto-exported disc data to {export_dir}")
+
+                # Auto-submit if API key is configured
+                if config.discdb_api_key:
+                    try:
+                        from app.core.discdb_submitter import submit_job
+
+                        result = await submit_job(job, titles, config, app_version=__version__)
+                        if result.success:
+                            from datetime import UTC, datetime
+
+                            job.submitted_at = datetime.now(UTC)
+                            job.discdb_submission_id = result.submission_id
+                            session.add(job)
+                            await session.commit()
+                            logger.info(
+                                f"Job {job_id}: Auto-submitted to TheDiscDB"
+                                f" (id={result.submission_id})"
+                            )
+                        else:
+                            logger.warning(f"Job {job_id}: Auto-submit failed: {result.error}")
+                    except Exception as e:
+                        logger.warning(f"Job {job_id}: Auto-submit error: {e}")
         except Exception as e:
             logger.warning(f"Job {job_id}: Failed to auto-export disc data: {e}")
 
