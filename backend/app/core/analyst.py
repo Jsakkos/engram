@@ -107,6 +107,10 @@ class DiscAnalyst:
             self._config = get_config_sync()
         return self._config
 
+    def set_config(self, config) -> None:
+        """Set config from an async caller to avoid blocking get_config_sync()."""
+        self._config = config
+
     def analyze(
         self,
         titles: list[TitleInfo],
