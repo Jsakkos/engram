@@ -203,7 +203,9 @@ async def test_on_title_ripped_transitions_to_ripping(client):
         patch(
             "app.api.websocket.manager.broadcast_title_update", new_callable=AsyncMock
         ) as mock_broadcast,
-        patch.object(job_manager, "_match_single_file", new_callable=AsyncMock) as mock_match,
+        patch.object(
+            job_manager._matching, "match_single_file", new_callable=AsyncMock
+        ) as mock_match,
     ):
         # Simulate MakeMKV completing title 1 (filename pattern: B1_t01.mkv)
         fake_path = Path("/staging/B1_t01.mkv")
@@ -269,7 +271,7 @@ async def test_on_title_ripped_maps_by_filename_index(client):
 
     with (
         patch("app.api.websocket.manager.broadcast_title_update", new_callable=AsyncMock),
-        patch.object(job_manager, "_match_single_file", new_callable=AsyncMock),
+        patch.object(job_manager._matching, "match_single_file", new_callable=AsyncMock),
     ):
         # Rip title index 3 (filename: title_t03.mkv)
         fake_path = Path("/staging/title_t03.mkv")
