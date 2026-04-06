@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import sqlalchemy
 from sqlalchemy import text as sa_text
@@ -15,6 +16,9 @@ from app.config import settings
 from app.models import AppConfig, DiscJob  # noqa: F401
 
 logger = logging.getLogger(__name__)
+
+# Path to Alembic config (relative to backend/)
+_ALEMBIC_INI = Path(__file__).parent.parent / "alembic.ini"
 
 # Create async engine
 engine = create_async_engine(
@@ -42,14 +46,53 @@ async_session = sessionmaker(
 
 
 async def init_db() -> None:
-    """Initialize the database, creating all tables."""
+    """Initialize the database, creating all tables and running migrations."""
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    # Run schema migration to handle column additions, removals, and table changes
-    await _migrate_schema(engine)
+    # Run Alembic migrations and stamp version if needed
+    _run_alembic_upgrade()
+
+    # Legacy migration for app_config data preservation (Alembic handles schema,
+    # but this preserves API keys/settings across breaking schema changes)
+    await _migrate_app_config(engine)
 
     logger.info("Database initialized successfully")
+
+
+def _run_alembic_upgrade() -> None:
+    """Run Alembic upgrade to head, stamping if this is a fresh database."""
+    if not _ALEMBIC_INI.exists():
+        logger.debug("Alembic config not found (frozen build?), skipping migrations")
+        return
+
+    try:
+        from alembic import command
+        from alembic.config import Config
+
+        alembic_cfg = Config(str(_ALEMBIC_INI))
+
+        # Check if alembic_version table exists (i.e., Alembic has been initialized)
+        from sqlalchemy import create_engine, inspect
+
+        sync_url = settings.database_url.replace("+aiosqlite", "")
+        sync_engine = create_engine(sync_url)
+        with sync_engine.connect() as conn:
+            inspector = inspect(conn)
+            has_version_table = "alembic_version" in inspector.get_table_names()
+
+        if not has_version_table:
+            # First time: stamp as current (tables already created by create_all)
+            command.stamp(alembic_cfg, "head")
+            logger.info("Alembic: stamped existing database at head")
+        else:
+            # Run any pending migrations
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Alembic: migrations up to date")
+
+        sync_engine.dispose()
+    except Exception as e:
+        logger.warning(f"Alembic migration failed (non-fatal): {e}", exc_info=True)
 
 
 def _get_expected_columns(table_name: str) -> set[str]:
@@ -67,13 +110,14 @@ async def _get_actual_columns(conn, table_name: str) -> set[str]:
     return {row[1] for row in rows}  # column name is at index 1
 
 
-async def _migrate_schema(target_engine: AsyncEngine | None = None) -> None:
-    """Compare live schema against SQLModel models and resolve mismatches.
+async def _migrate_app_config(target_engine: AsyncEngine | None = None) -> None:
+    """Preserve app_config data across schema changes.
 
-    - **app_config**: Preserve data — read existing rows, drop/recreate table,
-      restore values (mapping by column name). Users never lose API keys.
-    - **disc_jobs / disc_titles**: Transient data — drop and recreate cleanly.
-    - Idempotent: no-op when schema already matches.
+    Reads existing config rows, drops/recreates the table with the correct
+    schema, and restores values by column name. This ensures users never
+    lose API keys or settings when the AppConfig model changes.
+
+    Idempotent: no-op when schema already matches.
     """
     eng = target_engine or engine
 
@@ -82,98 +126,58 @@ async def _migrate_schema(target_engine: AsyncEngine | None = None) -> None:
         result = await conn.execute(sa_text("SELECT name FROM sqlite_master WHERE type='table'"))
         existing_tables = {row[0] for row in result.fetchall()}
 
-        # --- app_config migration (preserve data) ---
-        if "app_config" in existing_tables:
-            actual_cols = await _get_actual_columns(conn, "app_config")
-            expected_cols = _get_expected_columns("app_config")
+        if "app_config" not in existing_tables:
+            return
 
-            if actual_cols != expected_cols:
-                extra = actual_cols - expected_cols
-                missing = expected_cols - actual_cols
-                logger.info(
-                    f"Schema mismatch in app_config — "
-                    f"extra: {extra or 'none'}, missing: {missing or 'none'}"
+        actual_cols = await _get_actual_columns(conn, "app_config")
+        expected_cols = _get_expected_columns("app_config")
+
+        if actual_cols == expected_cols:
+            return
+
+        extra = actual_cols - expected_cols
+        missing = expected_cols - actual_cols
+        logger.info(
+            f"Schema mismatch in app_config — "
+            f"extra: {extra or 'none'}, missing: {missing or 'none'}"
+        )
+
+        # 1. Read existing config data
+        rows = (await conn.execute(sa_text("SELECT * FROM app_config"))).fetchall()
+        col_result = await conn.execute(sa_text("PRAGMA table_info('app_config')"))
+        old_col_names = [row[1] for row in col_result.fetchall()]
+
+        # 2. Drop old table
+        await conn.execute(sa_text("DROP TABLE app_config"))
+
+        # 3. Recreate with correct schema
+        await conn.run_sync(
+            lambda sync_conn: AppConfig.__table__.create(sync_conn, checkfirst=True)
+        )
+
+        # 4. Restore data using ORM to pick up column defaults
+        if rows:
+            new_fields = set(AppConfig.model_fields.keys())
+            for row in rows:
+                old_data = dict(zip(old_col_names, row, strict=False))
+                config = AppConfig()
+                for key, value in old_data.items():
+                    if key == "id":
+                        continue
+                    if key in new_fields and value is not None:
+                        setattr(config, key, value)
+                insert_data = {}
+                for field_name in new_fields:
+                    if field_name == "id":
+                        continue
+                    insert_data[field_name] = getattr(config, field_name)
+                cols_str = ", ".join(insert_data.keys())
+                placeholders = ", ".join(f":{k}" for k in insert_data.keys())
+                await conn.execute(
+                    sa_text(f"INSERT INTO app_config ({cols_str}) VALUES ({placeholders})"),
+                    insert_data,
                 )
-
-                # 1. Read existing config data
-                rows = (await conn.execute(sa_text("SELECT * FROM app_config"))).fetchall()
-                col_result = await conn.execute(sa_text("PRAGMA table_info('app_config')"))
-                old_col_names = [row[1] for row in col_result.fetchall()]
-
-                # 2. Drop old table
-                await conn.execute(sa_text("DROP TABLE app_config"))
-
-                # 3. Recreate with correct schema
-                await conn.run_sync(
-                    lambda sync_conn: AppConfig.__table__.create(sync_conn, checkfirst=True)
-                )
-
-                # 4. Restore data using ORM to pick up column defaults
-                if rows:
-                    new_fields = set(AppConfig.model_fields.keys())
-                    for row in rows:
-                        old_data = dict(zip(old_col_names, row, strict=False))
-                        # Start with a default AppConfig to fill in all NOT NULL columns
-                        config = AppConfig()
-                        # Overlay old values for columns that still exist
-                        for key, value in old_data.items():
-                            if key == "id":
-                                continue  # Let auto-increment handle id
-                            if key in new_fields and value is not None:
-                                setattr(config, key, value)
-                        # Insert via raw SQL using all model fields
-                        insert_data = {}
-                        for field_name in new_fields:
-                            if field_name == "id":
-                                continue
-                            insert_data[field_name] = getattr(config, field_name)
-                        cols_str = ", ".join(insert_data.keys())
-                        placeholders = ", ".join(f":{k}" for k in insert_data.keys())
-                        await conn.execute(
-                            sa_text(f"INSERT INTO app_config ({cols_str}) VALUES ({placeholders})"),
-                            insert_data,
-                        )
-                        logger.info(f"Restored app_config row with {len(insert_data)} fields")
-
-        # --- disc_jobs / disc_titles migration ---
-        # Use ALTER TABLE ADD COLUMN for additive-only changes to preserve job history.
-        # Only drop/recreate when columns have been removed (incompatible schema change).
-        transient_tables = ["disc_titles", "disc_jobs"]  # titles first (FK dependency)
-        for table_name in transient_tables:
-            if table_name in existing_tables:
-                actual_cols = await _get_actual_columns(conn, table_name)
-                expected_cols = _get_expected_columns(table_name)
-
-                if actual_cols != expected_cols:
-                    missing = expected_cols - actual_cols
-                    extra = actual_cols - expected_cols
-
-                    if extra:
-                        # Columns removed — incompatible change, must recreate
-                        logger.info(
-                            f"Schema mismatch in {table_name} — "
-                            f"removed columns {extra}, dropping and recreating"
-                        )
-                        await conn.execute(sa_text(f"DROP TABLE {table_name}"))
-                        table_obj = SQLModel.metadata.tables[table_name]
-                        await conn.run_sync(
-                            lambda sync_conn, t=table_obj: t.create(sync_conn, checkfirst=True)
-                        )
-                    elif missing:
-                        # Only new columns — use ALTER TABLE to preserve existing data
-                        table_obj = SQLModel.metadata.tables[table_name]
-                        for col_name in missing:
-                            col = table_obj.columns[col_name]
-                            col_type = col.type.compile(
-                                dialect=conn.dialect  # type: ignore[arg-type]
-                            )
-                            logger.info(f"Adding column {col_name} to {table_name}")
-                            await conn.execute(
-                                sa_text(
-                                    f"ALTER TABLE {table_name} "
-                                    f"ADD COLUMN {col_name} {col_type} NULL"
-                                )
-                            )
+                logger.info(f"Restored app_config row with {len(insert_data)} fields")
 
 
 async def reset_db() -> None:
