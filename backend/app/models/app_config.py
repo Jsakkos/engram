@@ -89,6 +89,8 @@ class AppConfig(SQLModel, table=True):
     discdb_contributions_enabled: bool = False  # Opt-in to export disc data
     discdb_contribution_tier: int = 2  # 1=don't share, 2=auto, 3=full (with UPC/images)
     discdb_export_path: str = ""  # Override export directory (default: ~/.engram/discdb-exports)
+    discdb_api_key: str = ""  # API key for TheDiscDB submission
+    discdb_api_url: str = "https://thediscdb.com"  # TheDiscDB API base URL
 
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

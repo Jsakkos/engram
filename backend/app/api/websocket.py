@@ -9,12 +9,16 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
+HEARTBEAT_INTERVAL = 30  # seconds between pings
+HEARTBEAT_TIMEOUT = 10  # seconds to wait for pong
+
 
 class ConnectionManager:
     """Manages WebSocket connections for broadcasting updates."""
 
     def __init__(self) -> None:
         self.active_connections: list[WebSocket] = []
+        self._heartbeat_tasks: dict[WebSocket, asyncio.Task] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket) -> None:
@@ -22,6 +26,8 @@ class ConnectionManager:
         await websocket.accept()
         async with self._lock:
             self.active_connections.append(websocket)
+            task = asyncio.create_task(self._heartbeat_loop(websocket))
+            self._heartbeat_tasks[websocket] = task
         logger.info(f"Client connected. Total connections: {len(self.active_connections)}")
 
     async def disconnect(self, websocket: WebSocket) -> None:
@@ -29,7 +35,36 @@ class ConnectionManager:
         async with self._lock:
             if websocket in self.active_connections:
                 self.active_connections.remove(websocket)
+            task = self._heartbeat_tasks.pop(websocket, None)
+            if task:
+                task.cancel()
         logger.info(f"Client disconnected. Total connections: {len(self.active_connections)}")
+
+    async def _heartbeat_loop(self, websocket: WebSocket) -> None:
+        """Send periodic pings to detect stale connections.
+
+        On failure, closes the socket directly instead of calling disconnect()
+        to avoid deadlocking on self._lock (which broadcast() may hold).
+        The main receive loop in websocket_endpoint will catch the disconnect
+        and call disconnect() to clean up.
+        """
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                try:
+                    await asyncio.wait_for(
+                        websocket.send_json({"type": "ping"}),
+                        timeout=HEARTBEAT_TIMEOUT,
+                    )
+                except Exception:
+                    logger.warning("Heartbeat failed, closing stale connection")
+                    try:
+                        await websocket.close()
+                    except Exception:
+                        pass
+                    return
+        except asyncio.CancelledError:
+            return
 
     async def broadcast(self, message: dict[str, Any]) -> None:
         """Broadcast a message to all connected clients."""

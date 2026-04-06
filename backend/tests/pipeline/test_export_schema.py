@@ -1,4 +1,4 @@
-"""Pipeline tests for TheDiscDB export JSON schema validation."""
+"""Pipeline tests for TheDiscDB export JSON schema validation (v1.1)."""
 
 import json
 
@@ -18,10 +18,16 @@ REQUIRED_TOP_LEVEL_KEYS = {
     "titles",
     "upc",
     "images",
-    "makemkv_logs",
+    "scan_log",
 }
 
-REQUIRED_DISC_KEYS = {"content_hash", "volume_label", "content_type", "disc_number"}
+REQUIRED_DISC_KEYS = {
+    "content_hash",
+    "volume_label",
+    "content_type",
+    "disc_number",
+    "release_id",
+}
 
 REQUIRED_ID_KEYS = {
     "tmdb_id",
@@ -40,7 +46,8 @@ REQUIRED_TITLE_KEYS = {
     "segment_count",
     "segment_map",
     "title_type",
-    "matched_episode",
+    "season",
+    "episode",
     "match_confidence",
     "match_source",
     "edition",
@@ -97,6 +104,41 @@ class TestTVExportSchema:
         for title in data["titles"]:
             assert set(title.keys()) == REQUIRED_TITLE_KEYS
 
+    def test_season_episode_are_integers(self, config, tmp_path):
+        job = DiscJob(
+            id=1,
+            drive_id="E:",
+            volume_label="SHOW_S1D1",
+            content_type=ContentType.TV,
+            state="completed",
+            content_hash="ABCDEF1234567890",
+            detected_title="Test Show",
+            detected_season=1,
+            tmdb_id=12345,
+        )
+        titles = [
+            DiscTitle(
+                id=1,
+                job_id=1,
+                title_index=0,
+                duration_seconds=2700,
+                file_size_bytes=5000000000,
+                chapter_count=8,
+                matched_episode="S01E05",
+                match_confidence=0.95,
+                match_details=json.dumps({"source": "subtitle"}),
+            ),
+        ]
+
+        result = generate_export(job, titles, config)
+        data = json.loads((result / "disc_data.json").read_text())
+
+        t = data["titles"][0]
+        assert isinstance(t["season"], int)
+        assert isinstance(t["episode"], int)
+        assert t["season"] == 1
+        assert t["episode"] == 5
+
 
 class TestMovieExportSchema:
     def test_movie_schema_has_all_required_keys(self, config, tmp_path):
@@ -150,3 +192,7 @@ class TestMovieExportSchema:
         # Title types
         assert data["titles"][0]["title_type"] == "MainMovie"
         assert data["titles"][1]["title_type"] == "Extra"
+
+        # Movie titles have null season/episode
+        assert data["titles"][0]["season"] is None
+        assert data["titles"][0]["episode"] is None

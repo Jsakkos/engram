@@ -595,9 +595,10 @@ class IdentificationCoordinator:
 
     async def _run_classification(self, job, job_id, titles, session, is_staging=False):
         """Run the full classification pipeline (DiscDB, TMDB, AI, Analyst)."""
-        from app.services.config_service import get_config_sync
+        from app.services.config_service import get_config
 
-        config = get_config_sync()
+        config = await get_config()
+        self._analyst.set_config(config)
 
         # Attempt TheDiscDB lookup
         discdb_signal = None

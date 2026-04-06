@@ -1,7 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Upload, SkipForward, Package, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  ArrowLeft,
+  Upload,
+  SkipForward,
+  Package,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  ExternalLink,
+  Link2,
+  Unlink,
+  CheckCircle2,
+} from "lucide-react";
 
 interface ContributionJob {
   id: number;
@@ -11,29 +23,51 @@ interface ContributionJob {
   detected_season: number | null;
   content_hash: string | null;
   completed_at: string | null;
-  export_status: "pending" | "exported" | "skipped";
+  export_status: "pending" | "exported" | "skipped" | "submitted";
+  submitted_at: string | null;
+  contribute_url: string | null;
+  release_group_id: string | null;
 }
 
 interface ContributionStats {
   pending: number;
   exported: number;
   skipped: number;
+  submitted: number;
 }
 
 interface Config {
   discdb_contributions_enabled: boolean;
   discdb_contribution_tier: number;
   discdb_export_path: string;
+  discdb_api_key_set: boolean;
+  discdb_api_url: string;
+}
+
+// Generate a consistent color for a release group UUID
+function releaseGroupColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 60%)`;
 }
 
 export default function ContributePage() {
   const [jobs, setJobs] = useState<ContributionJob[]>([]);
-  const [stats, setStats] = useState<ContributionStats>({ pending: 0, exported: 0, skipped: 0 });
+  const [stats, setStats] = useState<ContributionStats>({
+    pending: 0,
+    exported: 0,
+    skipped: 0,
+    submitted: 0,
+  });
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
   const [upcInput, setUpcInput] = useState("");
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
+  const [selectedJobs, setSelectedJobs] = useState<Set<number>>(new Set());
 
   const fetchData = useCallback(async () => {
     try {
@@ -50,6 +84,8 @@ export default function ContributePage() {
           discdb_contributions_enabled: data.discdb_contributions_enabled,
           discdb_contribution_tier: data.discdb_contribution_tier,
           discdb_export_path: data.discdb_export_path,
+          discdb_api_key_set: data.discdb_api_key_set,
+          discdb_api_url: data.discdb_api_url,
         });
       }
     } catch (error) {
@@ -101,11 +137,61 @@ export default function ContributePage() {
     }
   };
 
+  const handleSubmit = async (jobId: number) => {
+    setActionInProgress(jobId);
+    try {
+      const res = await fetch(`/api/contributions/${jobId}/submit`, { method: "POST" });
+      if (res.ok) await fetchData();
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   const handleExportAll = async () => {
     const pending = jobs.filter((j) => j.export_status === "pending");
     for (const job of pending) {
       await handleExport(job.id);
     }
+  };
+
+  const handleGroupSelected = async () => {
+    const ids = Array.from(selectedJobs);
+    if (ids.length < 2) return;
+    try {
+      const res = await fetch("/api/contributions/release-group", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_ids: ids }),
+      });
+      if (res.ok) {
+        setSelectedJobs(new Set());
+        await fetchData();
+      }
+    } catch (error) {
+      console.error("Failed to create release group:", error);
+    }
+  };
+
+  const handleUngroup = async (jobId: number) => {
+    try {
+      const res = await fetch(`/api/contributions/${jobId}/release-group`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ release_group_id: null }),
+      });
+      if (res.ok) await fetchData();
+    } catch (error) {
+      console.error("Failed to ungroup:", error);
+    }
+  };
+
+  const toggleSelection = (jobId: number) => {
+    setSelectedJobs((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
   };
 
   if (loading) {
@@ -138,8 +224,8 @@ export default function ContributePage() {
               CONTRIBUTIONS DISABLED
             </h2>
             <p className="text-slate-400 font-mono text-sm max-w-lg mx-auto mb-6">
-              Help grow TheDiscDB by sharing disc metadata from your rips.
-              Enable contributions in Settings to get started.
+              Help grow TheDiscDB by sharing disc metadata from your rips. Enable contributions in
+              Settings to get started.
             </p>
             <p className="text-slate-500 font-mono text-xs">
               Go to Settings &gt; TheDiscDB Contributions to enable
@@ -181,21 +267,43 @@ export default function ContributePage() {
               <div className="text-xs text-slate-500 font-mono">Exported</div>
             </div>
             <div className="text-center">
+              <div className="text-lg font-bold text-cyan-400 font-mono">{stats.submitted}</div>
+              <div className="text-xs text-slate-500 font-mono">Submitted</div>
+            </div>
+            <div className="text-center">
               <div className="text-lg font-bold text-slate-500 font-mono">{stats.skipped}</div>
               <div className="text-xs text-slate-500 font-mono">Skipped</div>
             </div>
           </div>
         </div>
 
-        {/* Bulk action */}
-        {stats.pending > 0 && (
-          <div className="mb-6">
+        {/* Bulk actions */}
+        <div className="flex items-center gap-3 mb-6">
+          {stats.pending > 0 && (
             <button
               onClick={handleExportAll}
               className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider text-cyan-400 border border-cyan-500/40 rounded-md hover:bg-cyan-500/10 transition-all"
             >
               Export All Pending ({stats.pending})
             </button>
+          )}
+          {selectedJobs.size >= 2 && (
+            <button
+              onClick={handleGroupSelected}
+              className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider text-magenta-400 border border-magenta-500/40 rounded-md hover:bg-magenta-500/10 transition-all flex items-center gap-2"
+            >
+              <Link2 className="w-3.5 h-3.5" /> Group Selected ({selectedJobs.size})
+            </button>
+          )}
+        </div>
+
+        {/* API key warning */}
+        {config && !config.discdb_api_key_set && (
+          <div className="mb-6 px-4 py-3 border border-amber-500/30 rounded-md bg-amber-500/5">
+            <p className="text-amber-400 font-mono text-xs">
+              No TheDiscDB API key configured. You can export locally, but submission requires an API
+              key. Set it in Settings &gt; TheDiscDB Contributions.
+            </p>
           </div>
         )}
 
@@ -210,7 +318,8 @@ export default function ContributePage() {
         ) : (
           <div className="space-y-2">
             {/* Table header */}
-            <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-4 py-2 text-xs font-mono font-bold text-slate-600 uppercase tracking-wider border-b border-navy-600">
+            <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 px-4 py-2 text-xs font-mono font-bold text-slate-600 uppercase tracking-wider border-b border-navy-600">
+              <span className="w-5" />
               <span>Title</span>
               <span>Type</span>
               <span>Hash</span>
@@ -229,14 +338,29 @@ export default function ContributePage() {
                   className="border border-navy-600/50 rounded-md bg-navy-800/40"
                 >
                   {/* Main row */}
-                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-3 font-mono text-sm">
+                  <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-3 font-mono text-sm">
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={selectedJobs.has(job.id)}
+                      onChange={() => toggleSelection(job.id)}
+                      className="w-4 h-4 accent-cyan-400"
+                    />
+
                     {/* Title */}
-                    <div>
+                    <div className="flex items-center gap-2">
+                      {job.release_group_id && (
+                        <span
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: releaseGroupColor(job.release_group_id) }}
+                          title={`Release group: ${job.release_group_id.slice(0, 8)}...`}
+                        />
+                      )}
                       <span className="text-slate-300">
                         {job.detected_title || job.volume_label}
                       </span>
                       {job.detected_season && (
-                        <span className="text-slate-500 text-xs ml-2">
+                        <span className="text-slate-500 text-xs">
                           Season {job.detected_season}
                         </span>
                       )}
@@ -263,11 +387,13 @@ export default function ContributePage() {
                     {/* Status */}
                     <span
                       className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${
-                        job.export_status === "exported"
-                          ? "text-green-400 bg-green-500/10 border border-green-500/20"
-                          : job.export_status === "skipped"
-                            ? "text-slate-400 bg-slate-500/10 border border-slate-500/20"
-                            : "text-amber-400 bg-amber-500/10 border border-amber-500/20"
+                        job.export_status === "submitted"
+                          ? "text-cyan-300 bg-cyan-500/10 border border-cyan-500/20"
+                          : job.export_status === "exported"
+                            ? "text-green-400 bg-green-500/10 border border-green-500/20"
+                            : job.export_status === "skipped"
+                              ? "text-slate-400 bg-slate-500/10 border border-slate-500/20"
+                              : "text-amber-400 bg-amber-500/10 border border-amber-500/20"
                       }`}
                     >
                       {job.export_status}
@@ -307,18 +433,53 @@ export default function ContributePage() {
                         </>
                       )}
                       {job.export_status === "exported" && (
-                        <button
-                          onClick={() =>
-                            setExpandedJob(expandedJob === job.id ? null : job.id)
-                          }
-                          className="text-xs text-magenta-400 border border-magenta-500/30 px-2.5 py-1 rounded hover:bg-magenta-500/10 flex items-center gap-1"
-                        >
-                          {expandedJob === job.id ? (
-                            <ChevronUp className="w-3 h-3" />
-                          ) : (
-                            <ChevronDown className="w-3 h-3" />
+                        <>
+                          {config?.discdb_api_key_set && (
+                            <button
+                              onClick={() => handleSubmit(job.id)}
+                              disabled={actionInProgress === job.id}
+                              className="text-xs text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1"
+                            >
+                              <Send className="w-3 h-3" /> Submit
+                            </button>
                           )}
-                          Enhance
+                          <button
+                            onClick={() =>
+                              setExpandedJob(expandedJob === job.id ? null : job.id)
+                            }
+                            className="text-xs text-magenta-400 border border-magenta-500/30 px-2.5 py-1 rounded hover:bg-magenta-500/10 flex items-center gap-1"
+                          >
+                            {expandedJob === job.id ? (
+                              <ChevronUp className="w-3 h-3" />
+                            ) : (
+                              <ChevronDown className="w-3 h-3" />
+                            )}
+                            Enhance
+                          </button>
+                        </>
+                      )}
+                      {job.export_status === "submitted" && job.contribute_url && (
+                        <a
+                          href={job.contribute_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded hover:bg-cyan-500/10 flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Continue on TheDiscDB
+                        </a>
+                      )}
+                      {job.export_status === "submitted" && !job.contribute_url && (
+                        <span className="text-xs text-cyan-300 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Submitted
+                        </span>
+                      )}
+                      {job.release_group_id && (
+                        <button
+                          onClick={() => handleUngroup(job.id)}
+                          className="text-xs text-slate-500 border border-slate-500/30 px-2 py-1 rounded hover:bg-slate-500/10 flex items-center gap-1"
+                          title="Remove from release group"
+                        >
+                          <Unlink className="w-3 h-3" />
                         </button>
                       )}
                     </div>
@@ -355,7 +516,7 @@ export default function ContributePage() {
                               disabled={actionInProgress === job.id}
                               className="mt-5 px-4 py-1.5 font-mono font-bold text-xs uppercase text-magenta-400 border border-magenta-500/40 rounded hover:bg-magenta-500/10 disabled:opacity-50"
                             >
-                              Submit
+                              Save
                             </button>
                           </div>
                         </div>

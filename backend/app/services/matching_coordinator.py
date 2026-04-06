@@ -52,6 +52,11 @@ class MatchingCoordinator:
         """Initialize the match semaphore with the given concurrency."""
         self._match_semaphore = asyncio.Semaphore(concurrency)
 
+    async def clear_job_caches(self, job_id: int, state) -> None:
+        """Clear per-job caches to prevent memory leaks. Called on terminal states."""
+        self._episode_runtimes.pop(job_id, None)
+        self._discdb_mappings.pop(job_id, None)
+
     def get_discdb_mappings(self, job_id: int) -> list:
         """Get DiscDB mappings for a job."""
         return self._discdb_mappings.get(job_id, [])

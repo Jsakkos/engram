@@ -101,8 +101,9 @@ class JobManager:
             on_task_done=self._on_task_done,
         )
 
-        # Register staging cleanup on terminal job states
+        # Register terminal job state callbacks
         state_machine.on_terminal_state(self._cleanup.on_job_terminal)
+        state_machine.on_terminal_state(self._matching.clear_job_caches)
 
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
