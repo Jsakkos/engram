@@ -40,6 +40,10 @@ export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptM
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onKeyDown={handleKeyDown}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="name-prompt-title"
+            aria-describedby="name-prompt-description"
         >
             {/* Backdrop */}
             <motion.div
@@ -119,6 +123,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptM
                         </motion.div>
                         <div>
                             <h2
+                                id="name-prompt-title"
                                 className="font-mono font-bold text-lg tracking-[0.2em] uppercase text-cyan-300"
                                 style={{ textShadow: '0 0 10px rgba(6,182,212,0.6)' }}
                             >
@@ -143,7 +148,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptM
                             style={{ filter: 'drop-shadow(0 0 4px rgba(234,179,8,0.6))' }}
                         />
                         <div className="space-y-1.5 min-w-0">
-                            <p className="font-mono text-xs text-yellow-300/80 uppercase tracking-wider">
+                            <p id="name-prompt-description" className="font-mono text-xs text-yellow-300/80 uppercase tracking-wider">
                                 Disc label cannot be read automatically
                             </p>
                             <code
@@ -169,6 +174,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptM
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="e.g. The Italian Job"
+                            aria-required="true"
                             className="w-full bg-navy-800 border-2 border-cyan-500/30 text-cyan-300 font-mono text-sm px-3 py-2.5 placeholder:text-cyan-800 focus:outline-none focus:border-cyan-500 transition-colors"
                             style={{
                                 boxShadow: title

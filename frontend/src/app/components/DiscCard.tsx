@@ -127,6 +127,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
         exit={{ opacity: 0, y: -20 }}
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
+        aria-label={`${disc.title} — ${disc.state}`}
         className="relative overflow-hidden rounded-lg bg-navy-800/80 border border-cyan-500/20 shadow-2xl"
         style={{
           boxShadow: `0 0 15px rgba(6, 182, 212, 0.15), 0 0 30px rgba(236, 72, 153, 0.05), inset 0 0 20px rgba(6, 182, 212, 0.05)`,
@@ -195,7 +196,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 {posterUrl ? (
                   <img
                     src={posterUrl}
-                    alt={disc.title}
+                    alt={`Poster for ${disc.title}`}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       // Fallback to disc icon on error

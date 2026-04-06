@@ -746,8 +746,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         </div>
 
                         <div className="form-group">
-                            <label>Naming Convention</label>
+                            <label htmlFor="namingConvention">Naming Convention</label>
                             <select
+                                id="namingConvention"
                                 value={
                                     config.namingSeasonFormat === 'Season {season:02d}' &&
                                     config.namingEpisodeFormat === '{show} - S{season:02d}E{episode:02d}'
@@ -843,11 +844,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
             <div className="modal wizard-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2 className="modal-title">Setup Wizard</h2>
-                    <button className="modal-close" onClick={onClose}>&times;</button>
+                    <h2 className="modal-title" id="wizard-title">Setup Wizard</h2>
+                    <button className="modal-close" onClick={onClose} aria-label="Close setup wizard">&times;</button>
                 </div>
 
                 <div className={`wizard-progress ${!isOnboarding ? 'tabs-mode' : ''}`}>
@@ -856,6 +857,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             key={s}
                             className={`progress-step ${s === step ? 'active' : ''} ${s < step || !isOnboarding ? 'completed' : ''} ${!isOnboarding ? 'clickable' : ''}`}
                             onClick={() => !isOnboarding && setStep(s)}
+                            role={!isOnboarding ? 'button' : undefined}
+                            tabIndex={!isOnboarding ? 0 : undefined}
+                            onKeyDown={!isOnboarding ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(s); } } : undefined}
+                            aria-label={`Step ${s}: ${s === 1 ? 'Paths' : s === 2 ? 'Tools' : s === 3 ? 'TMDB' : 'Preferences'}${s === step ? ' (current)' : ''}`}
+                            aria-current={s === step ? 'step' : undefined}
                         >
                             <span className="step-number">{!isOnboarding ? (s === step ? '●' : '○') : (s < step ? '✓' : s)}</span>
                             <span className="step-label">

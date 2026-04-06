@@ -25,6 +25,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview }: ActionBu
                     onClick={onCancel}
                     className="p-2 border-2 border-red-500/50 bg-navy-900/80 text-red-400 hover:bg-red-500/20 hover:border-red-500 transition-all"
                     title="Cancel Job"
+                    aria-label="Cancel job"
                     style={{ boxShadow: "0 0 10px rgba(239, 68, 68, 0.3)" }}
                 >
                     <X className="w-4 h-4" />
@@ -39,6 +40,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview }: ActionBu
                     onClick={onReview}
                     className="px-4 py-2 border-2 border-yellow-500 bg-navy-900/80 text-yellow-400 hover:bg-yellow-500/20 hover:border-yellow-400 transition-all font-mono font-bold text-xs uppercase tracking-wider flex items-center gap-2"
                     style={{ boxShadow: "0 0 15px rgba(234, 179, 8, 0.5)" }}
+                    aria-label="Review needed — open review queue"
                 >
                     <AlertTriangle className="w-4 h-4" />
                     <span>REVIEW NEEDED</span>
