@@ -2,6 +2,33 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [0.5.0] - 2026-04-05
+
+### Changed
+- **JobManager decomposition**: broke up the 4,295-line `JobManager` (52 methods) into 5 focused coordinators + thin orchestrator (#58)
+  - `IdentificationCoordinator` — disc scanning, DiscDB/TMDB/AI classification
+  - `MatchingCoordinator` — episode matching, subtitles, file readiness
+  - `FinalizationCoordinator` — conflict resolution, organization, review workflow
+  - `CleanupService` — staging cleanup, timed cleanup, DiscDB export
+  - `SimulationService` — all simulation methods for E2E testing
+  - `JobManager` reduced from 4,295 to 1,166 lines
+- **Alembic for database migrations**: replaced custom `_migrate_schema()` with Alembic for versioned, reversible migrations; existing databases auto-stamped on first startup (#58)
+- **CORS origins configurable**: read from `CORS_ORIGINS` env var (via `Settings` model) instead of hardcoded localhost (#58)
+
+### Added
+- **WebSocket heartbeat**: server sends ping every 30s to detect and clean up stale connections (#58)
+- **Accessibility improvements**: ARIA attributes and keyboard handlers on DiscCard, ReviewQueue, ConfigWizard, NamePromptModal (#58)
+
+### Fixed
+- **Memory leak**: `_episode_runtimes` and `_discdb_mappings` per-job caches now cleared on job completion/failure (#58)
+- **Blocking event loop**: `DiscAnalyst` config loading switched from sync DB call to async preloading in async contexts (#58)
+- **Sync engine churn**: `get_config_sync()` now caches the sync SQLAlchemy engine instead of creating one per call (#58)
+- **O(n²) loop**: `has_selection` check in `_run_ripping` hoisted out of inner loop (#58)
+- **Heartbeat deadlock risk**: heartbeat closes socket directly instead of calling `disconnect()` to avoid lock contention with `broadcast()` (#58)
+
+### Removed
+- Unused frontend dependencies: `@mui/material`, `@mui/icons-material`, `@emotion/react`, `@emotion/styled`, `react-router` v7 (#58)
+
 ## [0.4.5] - 2026-04-04
 
 ### Fixed

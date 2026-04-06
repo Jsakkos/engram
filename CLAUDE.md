@@ -68,7 +68,7 @@ curl -X POST localhost:8000/api/simulate/insert-disc-from-staging
 
 - **Entry point**: `main.py` — FastAPI app with lifespan management, CORS for Vite dev server, WebSocket endpoint at `/ws`
 - **Config**: `config.py` — Pydantic Settings for server-level overrides (host, port, debug). No `.env` file required — all fields have defaults
-- **Database**: `database.py` — Async SQLite via SQLModel + aiosqlite. Tables auto-created on startup. Schema migration uses `ALTER TABLE ADD COLUMN` for additive changes (preserves job history) and drop/recreate only when columns are removed
+- **Database**: `database.py` — Async SQLite via SQLModel + aiosqlite. Tables auto-created on startup. Alembic for versioned migrations; `app_config` data preserved via backup/restore
 
 ### Core Modules (`backend/app/core/`)
 
@@ -85,11 +85,15 @@ Each module maps to a stage in the disc processing pipeline:
 
 ### Orchestration (`backend/app/services/`)
 
-- **JobManager** (`job_manager.py`) — Singleton that wires the spokes together. Manages the `DiscJob` state machine lifecycle. Handles `REVIEW_NEEDED` branching and `FAILED` states. Broadcasts all state transitions via WebSocket. Coordinates subtitle download with matching via `asyncio.Event`. Includes simulation methods for E2E testing.
+- **JobManager** (`job_manager.py`) — Thin orchestrator (~1,166 lines). Wires coordinators together, manages job lifecycle, handles drive events, and coordinates ripping.
+- **IdentificationCoordinator** (`identification_coordinator.py`) — Disc scanning, DiscDB/TMDB/AI lookup, classification pipeline.
+- **MatchingCoordinator** (`matching_coordinator.py`) — Episode matching, subtitle download, file readiness, DiscDB assignment, extras handling. Owns per-job caches.
+- **FinalizationCoordinator** (`finalization_coordinator.py`) — Conflict resolution, file organization, review workflow, job completion.
+- **CleanupService** (`cleanup_service.py`) — Staging directory cleanup, timed cleanup, TheDiscDB auto-export.
+- **SimulationService** (`simulation_service.py`) — All simulation methods for E2E testing (DEBUG only).
 - **JobStateMachine** (`job_state_machine.py`) — Explicit state machine implementation: `IDLE → IDENTIFYING → RIPPING → MATCHING → ORGANIZING → COMPLETED`, with `REVIEW_NEEDED` and `FAILED` branching.
-- **RippingCoordinator** (`ripping_coordinator.py`) — Coordinates the ripping process with subtitle coordination.
 - **EventBroadcaster** (`event_broadcaster.py`) — Abstraction layer for broadcasting events to WebSocket clients. Wraps `ConnectionManager` with typed methods for each event type.
-- **ConfigService** (`config_service.py`) — Configuration service with helper functions for loading and updating config.
+- **ConfigService** (`config_service.py`) — Configuration service with helper functions for loading and updating config. Caches sync engine.
 
 ### Data Models (`backend/app/models/`)
 
@@ -142,7 +146,7 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
 - **Custom error hierarchy**: All domain errors extend `EngramError` with typed subclasses. Use `@handle_errors` decorator for standardized error handling in services.
 - **Ruff config**: Line length 100, target Python 3.11, rules E/F/I/UP/B, double quotes
 - **Tailwind v4**: Uses `@theme inline` blocks in CSS for custom colors (including custom `magenta` palette), not `tailwind.config.js`. No PostCSS config — uses `@tailwindcss/vite` plugin directly.
-- **Database migration**: `_migrate_schema()` uses `ALTER TABLE ADD COLUMN` for additive-only column changes to `disc_jobs`/`disc_titles` (preserves job history across upgrades). Only drops/recreates when columns are removed. `app_config` always preserves data via backup/restore.
+- **Database migration**: Alembic with async SQLModel metadata. `render_as_batch=True` for SQLite. Existing databases auto-stamped at head on first startup. `app_config` always preserves data via backup/restore (independent of Alembic).
 - **DiscDB mapping persistence**: `discdb_mappings_json` column on `DiscJob` stores serialized `DiscDbTitleMapping` list. Persisted during identification, restored from DB on server startup via `_restore_discdb_mappings()`.
 - **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
 

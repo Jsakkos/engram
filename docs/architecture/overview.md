@@ -8,12 +8,26 @@ Engram uses a **hub-and-spoke** design. A Python/FastAPI backend acts as the cen
                         React Dashboard
           (Dashboard, Review Queue, History, Config Wizard)
                              |
-                          WebSocket
+                          WebSocket (with heartbeat)
                              |
                         FastAPI Backend
                              |
-                        Job Manager
+                   JobManager (thin orchestrator)
                              |
+         +-------------------+-------------------+
+         |                   |                   |
+  Identification      Matching           Finalization
+  Coordinator         Coordinator        Coordinator
+   (scan, classify,   (subtitle DL,      (conflict resolution,
+    DiscDB, TMDB,      fingerprint,       file organization,
+    AI fallback)       DiscDB assign)     review workflow)
+         |                   |                   |
+         +-------------------+-------------------+
+         |                                       |
+    CleanupService                       SimulationService
+    (staging cleanup,                    (test-only E2E
+     DiscDB export)                      simulation)
+         |
         +----------+---------+-----------+-----------+
         |          |         |           |           |
     Sentinel   Analyst   Extractor   Curator    Organizer
@@ -21,7 +35,7 @@ Engram uses a **hub-and-spoke** design. A Python/FastAPI backend acts as the cen
      monitor)  movie)    wrapper)    matching)  organization)
 ```
 
-The **Job Manager** sits at the center, wiring the spokes together and driving each disc through the processing pipeline. Every state transition is persisted in SQLite and broadcast to connected clients over WebSocket.
+The **Job Manager** is a thin orchestrator (~1,166 lines) that wires coordinators together and manages the job lifecycle. Each coordinator owns a focused stage of the pipeline. Every state transition is persisted in SQLite and broadcast to connected clients over WebSocket.
 
 ---
 
@@ -53,11 +67,15 @@ Each module maps to a stage in the disc processing pipeline.
 
 | Service | File | Purpose |
 |---------|------|---------|
-| **JobManager** | `job_manager.py` | Singleton orchestrator. Wires the spokes together, manages the `DiscJob` state machine lifecycle, handles `REVIEW_NEEDED` branching and `FAILED` states, broadcasts all transitions via WebSocket, coordinates subtitle download with matching via `asyncio.Event`. Includes simulation methods for E2E testing. |
+| **JobManager** | `job_manager.py` | Thin orchestrator (~1,166 lines). Wires coordinators together, manages job lifecycle, handles drive events, and coordinates ripping. |
+| **IdentificationCoordinator** | `identification_coordinator.py` | Disc scanning, DiscDB/TMDB/AI lookup, classification pipeline. |
+| **MatchingCoordinator** | `matching_coordinator.py` | Episode matching, subtitle download, file readiness, DiscDB assignment, extras handling. Owns per-job caches (`_discdb_mappings`, `_episode_runtimes`). |
+| **FinalizationCoordinator** | `finalization_coordinator.py` | Conflict resolution with cascading reassignment, file organization, review workflow, job completion. |
+| **CleanupService** | `cleanup_service.py` | Staging directory cleanup, timed cleanup, TheDiscDB auto-export. |
+| **SimulationService** | `simulation_service.py` | All simulation methods for E2E testing (only active when `DEBUG=true`). |
 | **JobStateMachine** | `job_state_machine.py` | Explicit state machine with validated transitions: `IDLE -> IDENTIFYING -> RIPPING -> MATCHING -> ORGANIZING -> COMPLETED`, with `REVIEW_NEEDED` and `FAILED` branching from most states. Fires terminal-state callbacks. |
-| **RippingCoordinator** | `ripping_coordinator.py` | Coordinates the ripping process including subtitle download synchronization. |
 | **EventBroadcaster** | `event_broadcaster.py` | Abstraction layer for broadcasting events to WebSocket clients. Wraps `ConnectionManager` with typed, domain-specific methods for each event type. |
-| **ConfigService** | `config_service.py` | Configuration service with helper functions for loading and updating config from the database. |
+| **ConfigService** | `config_service.py` | Configuration service with helper functions for loading and updating config from the database. Caches sync engine for performance. |
 
 ### Data Models (`backend/app/models/`)
 
@@ -108,13 +126,12 @@ Engram uses async SQLite via SQLModel + aiosqlite. The database file is stored a
 
 ### Schema Migration
 
-The `_migrate_schema()` function in `database.py` handles schema evolution:
+Engram uses **Alembic** for versioned database migrations with SQLModel metadata autogeneration.
 
-- **Additive changes**: Uses `ALTER TABLE ADD COLUMN` to add new columns to `disc_jobs` and `disc_titles`, preserving all existing job history across upgrades.
-- **Column removal**: Only drops and recreates tables when columns are removed (rare).
-- **AppConfig**: Always preserves data via backup/restore during migration.
-
-There is no Alembic or other migration framework -- Engram uses direct schema comparison.
+- **Startup behavior**: `init_db()` runs `create_all` for new databases, then stamps or upgrades via Alembic.
+- **Existing databases**: Auto-stamped at head on first startup after upgrading to Alembic.
+- **AppConfig**: Data preserved via backup/restore during schema changes (independent of Alembic).
+- **SQLite batch mode**: `render_as_batch=True` enables ALTER TABLE operations that SQLite doesn't natively support.
 
 ---
 
