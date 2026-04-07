@@ -50,6 +50,10 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
+    # Add any missing columns to existing tables (handles schema upgrades
+    # when Alembic is unavailable, e.g., frozen/PyInstaller builds)
+    await _add_missing_columns()
+
     # Run Alembic migrations and stamp version if needed
     _run_alembic_upgrade()
 
@@ -108,6 +112,52 @@ async def _get_actual_columns(conn, table_name: str) -> set[str]:
     result = await conn.execute(sa_text(f"PRAGMA table_info('{table_name}')"))
     rows = result.fetchall()
     return {row[1] for row in rows}  # column name is at index 1
+
+
+async def _add_missing_columns() -> None:
+    """Add missing columns to existing tables via ALTER TABLE.
+
+    SQLModel's create_all() only creates new tables — it won't add columns
+    to existing ones. Alembic handles this in dev, but frozen builds skip
+    Alembic (no alembic.ini). This function bridges the gap by comparing
+    the model metadata against the live schema and issuing ALTER TABLE
+    ADD COLUMN for any gaps.
+    """
+    async with engine.begin() as conn:
+        result = await conn.execute(sa_text("SELECT name FROM sqlite_master WHERE type='table'"))
+        existing_tables = {row[0] for row in result.fetchall()}
+
+        for table_name, table in SQLModel.metadata.tables.items():
+            if table_name not in existing_tables:
+                continue
+
+            actual = await _get_actual_columns(conn, table_name)
+            expected = _get_expected_columns(table_name)
+            missing = expected - actual
+
+            if not missing:
+                continue
+
+            for col_name in missing:
+                col = table.c[col_name]
+                col_type = col.type.compile(dialect=engine.dialect)
+                # Build DEFAULT clause from server_default or a safe fallback
+                if col.server_default is not None:
+                    default_clause = f" DEFAULT {col.server_default.arg}"
+                elif col.nullable:
+                    default_clause = " DEFAULT NULL"
+                elif isinstance(col.type, sqlalchemy.types.String):
+                    default_clause = " DEFAULT ''"
+                elif isinstance(col.type, (sqlalchemy.types.Integer, sqlalchemy.types.Float)):
+                    default_clause = " DEFAULT 0"
+                elif isinstance(col.type, sqlalchemy.types.Boolean):
+                    default_clause = " DEFAULT 0"
+                else:
+                    default_clause = ""
+
+                sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}{default_clause}"
+                await conn.execute(sa_text(sql))
+                logger.info(f"Added missing column: {table_name}.{col_name} ({col_type})")
 
 
 async def _migrate_app_config(target_engine: AsyncEngine | None = None) -> None:

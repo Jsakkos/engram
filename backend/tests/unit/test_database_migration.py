@@ -263,3 +263,136 @@ class TestSchemaMigration:
             assert row[1] == "old-token"
             assert row[2] in (True, 1)
             assert row[3] == 2  # default value for max_concurrent_matches
+
+    async def test_add_missing_columns_to_disc_jobs(self, migration_engine, migration_factory):
+        """Upgrading from an older schema should add missing columns to disc_jobs.
+
+        Regression test for #57: frozen builds had no migration path for disc_jobs,
+        so users with an old database got 'no such column: classification_confidence'.
+        """
+        # Patch the module-level engine so _add_missing_columns uses our test engine
+        import app.database as db_mod
+        from app.database import _add_missing_columns, _get_actual_columns, _get_expected_columns
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            # Create an OLD disc_jobs table missing newer columns
+            async with migration_engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TABLE disc_jobs (
+                            id INTEGER PRIMARY KEY,
+                            drive_id VARCHAR NOT NULL,
+                            volume_label VARCHAR DEFAULT '',
+                            content_type VARCHAR DEFAULT 'unknown',
+                            detected_title VARCHAR,
+                            detected_season INTEGER,
+                            is_transcoding_enabled BOOLEAN DEFAULT 0,
+                            staging_path VARCHAR,
+                            final_path VARCHAR,
+                            state VARCHAR DEFAULT 'idle',
+                            current_speed VARCHAR DEFAULT '0.0x',
+                            eta_seconds INTEGER DEFAULT 0,
+                            progress_percent FLOAT DEFAULT 0,
+                            current_title INTEGER DEFAULT 0,
+                            total_titles INTEGER DEFAULT 0,
+                            subtitle_status VARCHAR,
+                            subtitles_downloaded INTEGER DEFAULT 0,
+                            subtitles_total INTEGER DEFAULT 0,
+                            subtitles_failed INTEGER DEFAULT 0,
+                            created_at DATETIME,
+                            updated_at DATETIME,
+                            completed_at DATETIME,
+                            cleared_at DATETIME,
+                            error_message VARCHAR,
+                            review_reason VARCHAR,
+                            titles_json VARCHAR,
+                            disc_number INTEGER DEFAULT 1
+                        )
+                    """
+                    )
+                )
+                # Also create disc_titles with full schema
+                await conn.run_sync(
+                    lambda sync_conn: DiscTitle.__table__.create(sync_conn, checkfirst=True)
+                )
+
+            # Insert a job row with the old schema
+            async with migration_factory() as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO disc_jobs (drive_id, volume_label, state, content_type, "
+                        "created_at, updated_at) VALUES "
+                        "('E:', 'OLD_DISC', 'completed', 'tv', datetime('now'), datetime('now'))"
+                    )
+                )
+                await session.commit()
+
+            # Verify columns are missing before migration
+            async with migration_engine.connect() as conn:
+                actual = await _get_actual_columns(conn, "disc_jobs")
+                assert "classification_confidence" not in actual
+                assert "content_hash" not in actual
+                assert "discdb_slug" not in actual
+
+            # Run the migration
+            await _add_missing_columns()
+
+            # Verify missing columns were added
+            async with migration_engine.connect() as conn:
+                actual = await _get_actual_columns(conn, "disc_jobs")
+                expected = _get_expected_columns("disc_jobs")
+                assert expected - actual == set(), f"Still missing columns: {expected - actual}"
+
+            # Verify existing data is preserved
+            async with migration_factory() as session:
+                result = await session.execute(
+                    text("SELECT volume_label, state FROM disc_jobs WHERE id = 1")
+                )
+                row = result.fetchone()
+                assert row is not None
+                assert row[0] == "OLD_DISC"
+                assert row[1] == "completed"
+
+            # Verify new columns have correct defaults
+            async with migration_factory() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT classification_confidence, classification_source, "
+                        "is_ambiguous_movie FROM disc_jobs WHERE id = 1"
+                    )
+                )
+                row = result.fetchone()
+                assert row is not None
+                assert row[0] == 0.0  # default
+                assert row[1] == "heuristic"  # default
+                assert row[2] in (False, 0)  # default
+
+        finally:
+            db_mod.engine = original_engine
+
+    async def test_add_missing_columns_is_idempotent(self, migration_engine):
+        """Running _add_missing_columns on a correct schema should be a no-op."""
+        import app.database as db_mod
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            # Create full schema
+            async with migration_engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+
+            # Should not raise or modify anything
+            await db_mod._add_missing_columns()
+
+            # Tables should still be correct
+            async with migration_engine.connect() as conn:
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
+                expected = db_mod._get_expected_columns("disc_jobs")
+                assert actual == expected
+        finally:
+            db_mod.engine = original_engine
