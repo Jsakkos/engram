@@ -9,6 +9,7 @@ import { useNotifications } from "./hooks/useNotifications";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
+import ReIdentifyModal from "../components/ReIdentifyModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
 import type { Job } from "../types";
@@ -76,7 +77,8 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, cancelJob, clearCompleted, setJobName } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, cancelJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
+  const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
 
   // Disc filtering and transformation
   const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
@@ -422,6 +424,10 @@ function MainDashboard() {
                   disc={disc}
                   onCancel={disc.state !== 'completed' && disc.state !== 'error' ? () => cancelJob(disc.id) : undefined}
                   onReview={disc.needsReview ? () => navigate(`/review/${disc.id}`) : undefined}
+                  onReIdentify={disc.needsReview && disc.title ? () => {
+                    const job = jobs.find(j => String(j.id) === disc.id);
+                    if (job) setReIdentifyTarget(job);
+                  } : undefined}
                 />
               ))}
             </AnimatePresence>
@@ -442,6 +448,20 @@ function MainDashboard() {
               cancelJob(String(namePromptJob.id));
               setNamePromptJob(null);
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Re-Identify Modal — appears when user clicks "Wrong title?" */}
+      <AnimatePresence>
+        {reIdentifyTarget && (
+          <ReIdentifyModal
+            job={reIdentifyTarget}
+            onSubmit={(title, contentType, season, tmdbId) => {
+              reIdentifyJob(reIdentifyTarget.id, title, contentType, season, tmdbId);
+              setReIdentifyTarget(null);
+            }}
+            onCancel={() => setReIdentifyTarget(null)}
           />
         )}
       </AnimatePresence>

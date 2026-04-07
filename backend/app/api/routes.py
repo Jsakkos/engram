@@ -584,6 +584,83 @@ async def set_job_name(
     return {"status": "ok", "job_id": job_id}
 
 
+class ReIdentifyRequest(BaseModel):
+    """Request model for re-identifying a disc with corrected metadata."""
+
+    title: str
+    content_type: str  # "tv" | "movie"
+    season: int | None = None
+    tmdb_id: int | None = None
+
+
+@router.post("/jobs/{job_id}/re-identify")
+async def re_identify_job(
+    job_id: int,
+    req: ReIdentifyRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Re-identify a disc with user-corrected title, content type, and optional TMDB ID."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job must be in review_needed state, currently: {job.state.value}",
+        )
+
+    from app.services.job_manager import job_manager
+
+    await job_manager.re_identify_job(job_id, req.title, req.content_type, req.season, req.tmdb_id)
+    return {"status": "re-identifying", "job_id": job_id}
+
+
+@router.get("/tmdb/search")
+async def tmdb_search(query: str = Query(..., min_length=1)) -> dict:
+    """Search TMDB for TV shows and movies. Returns merged results."""
+    from app.core.tmdb_classifier import _build_auth, _name_similarity
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    if not config.tmdb_api_key:
+        raise HTTPException(status_code=400, detail="TMDB API key not configured")
+
+    import requests
+
+    headers, base_params = _build_auth(config.tmdb_api_key)
+    results = []
+
+    for endpoint, result_type in [
+        ("https://api.themoviedb.org/3/search/tv", "tv"),
+        ("https://api.themoviedb.org/3/search/movie", "movie"),
+    ]:
+        try:
+            params = {**base_params, "query": query}
+            resp = requests.get(endpoint, headers=headers, params=params, timeout=5)
+            if resp.status_code == 200:
+                for item in resp.json().get("results", [])[:5]:
+                    name = item.get("name", item.get("title", ""))
+                    year = item.get("first_air_date", item.get("release_date", ""))[:4]
+                    results.append(
+                        {
+                            "tmdb_id": item["id"],
+                            "name": name,
+                            "type": result_type,
+                            "year": year,
+                            "poster_path": item.get("poster_path"),
+                            "popularity": item.get("popularity", 0),
+                        }
+                    )
+        except (requests.RequestException, ConnectionError, TimeoutError):
+            pass
+
+    # Sort by name similarity to query, then popularity
+    results.sort(key=lambda r: (-_name_similarity(query, r["name"]), -r["popularity"]))
+
+    return {"results": results[:10]}
+
+
 @router.post("/jobs/{job_id}/retry-subtitles")
 async def retry_subtitle_download(
     job_id: int,

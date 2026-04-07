@@ -120,6 +120,30 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
+    async function reIdentifyJob(
+        jobId: number,
+        title: string,
+        contentType: string,
+        season?: number,
+        tmdbId?: number,
+    ) {
+        try {
+            await fetch(`/api/jobs/${jobId}/re-identify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title,
+                    content_type: contentType,
+                    season: season ?? null,
+                    tmdb_id: tmdbId ?? null,
+                }),
+            });
+            // Job will update via WebSocket
+        } catch (error) {
+            console.error('Failed to re-identify job:', error);
+        }
+    }
+
     // Handle WebSocket messages via callback — processes EVERY message, no batching loss
     useEffect(() => {
         if (devMode) return;
@@ -248,5 +272,6 @@ export function useJobManagement(devMode: boolean = false) {
         cancelJob,
         clearCompleted,
         setJobName,
+        reIdentifyJob,
     };
 }

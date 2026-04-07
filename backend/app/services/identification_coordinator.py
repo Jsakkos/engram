@@ -593,6 +593,90 @@ class IdentificationCoordinator:
 
         return job_id  # Signal to JobManager to create the ripping task
 
+    async def re_identify(
+        self,
+        job_id: int,
+        title: str,
+        content_type_str: str,
+        season: int | None = None,
+        tmdb_id: int | None = None,
+    ) -> dict:
+        """Re-identify a job with user-corrected metadata.
+
+        Returns:
+            dict with 'job_id' and 'has_ripped' (bool) to signal
+            whether JobManager should start ripping or matching.
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+
+            if job.state != JobState.REVIEW_NEEDED:
+                raise ValueError(f"Cannot re-identify job in state: {job.state.value}")
+
+            # Check if files already exist in staging (post-rip)
+            has_ripped = False
+            if job.staging_path:
+                staging = Path(job.staging_path)
+                has_ripped = staging.exists() and any(staging.glob("*.mkv"))
+
+            # Update job metadata with user-corrected values
+            job.detected_title = title
+            job.content_type = ContentType(content_type_str)
+            if season is not None:
+                job.detected_season = season
+            job.review_reason = None
+
+            # Optionally re-run TMDB lookup with corrected title
+            if tmdb_id is not None:
+                job.tmdb_id = tmdb_id
+            else:
+                # Try TMDB search with the corrected title
+                try:
+                    from app.core.tmdb_classifier import classify_from_tmdb
+                    from app.services.config_service import get_config
+
+                    config = await get_config()
+                    if config.tmdb_api_key:
+                        signal = classify_from_tmdb(title, config.tmdb_api_key)
+                        if signal and signal.tmdb_id:
+                            job.tmdb_id = signal.tmdb_id
+                            if signal.tmdb_name:
+                                job.detected_title = signal.tmdb_name
+                except Exception:
+                    logger.warning(
+                        f"Job {job_id}: TMDB re-lookup failed for '{title}', "
+                        f"continuing with user-provided title"
+                    )
+
+            if has_ripped:
+                # Post-rip: go to MATCHING to re-run episode matching
+                job.state = JobState.MATCHING
+                target_state = JobState.MATCHING
+            else:
+                # Pre-rip: go to RIPPING
+                job.state = JobState.RIPPING
+                target_state = JobState.RIPPING
+
+            job.updated_at = datetime.now(UTC)
+            await session.commit()
+
+            await ws_manager.broadcast_job_update(
+                job_id,
+                target_state.value,
+                content_type=job.content_type.value,
+                detected_title=job.detected_title,
+                detected_season=job.detected_season,
+            )
+
+            logger.info(
+                f"Job {job_id}: re-identified as '{job.detected_title}' "
+                f"({content_type_str}), transitioning to {target_state.value}"
+            )
+
+        return {"job_id": job_id, "has_ripped": has_ripped}
+
     async def _run_classification(self, job, job_id, titles, session, is_staging=False):
         """Run the full classification pipeline (DiscDB, TMDB, AI, Analyst)."""
         from app.services.config_service import get_config

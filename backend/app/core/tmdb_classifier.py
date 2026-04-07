@@ -21,7 +21,11 @@ HIGH_POPULARITY_THRESHOLD = 50
 
 
 def _name_similarity(query: str, candidate: str) -> float:
-    """Compute Jaccard similarity between query and candidate name tokens."""
+    """Compute similarity between query and candidate name tokens.
+
+    Uses Jaccard similarity with fuzzy prefix matching for near-identical tokens
+    (e.g., "Thunderbird" vs "Thunderbirds").
+    """
 
     def tokens(s: str) -> set[str]:
         return {w.lower() for w in re.sub(r"[^\w\s]", "", s).split() if len(w) > 1}
@@ -29,7 +33,27 @@ def _name_similarity(query: str, candidate: str) -> float:
     q_tok, c_tok = tokens(query), tokens(candidate)
     if not q_tok or not c_tok:
         return 0.0
-    return len(q_tok & c_tok) / len(q_tok | c_tok)
+
+    # Exact intersection
+    exact_match = q_tok & c_tok
+    q_unmatched = q_tok - exact_match
+    c_unmatched = c_tok - exact_match
+
+    # Fuzzy prefix matching for unmatched tokens
+    # Handles inflectional variants like "Thunderbird"/"Thunderbirds", "Alien"/"Aliens"
+    fuzzy_score = 0.0
+    matched_c = set()
+    for qt in q_unmatched:
+        for ct in c_unmatched - matched_c:
+            shorter, longer = sorted([qt, ct], key=len)
+            if longer.startswith(shorter) and len(longer) - len(shorter) <= 2:
+                fuzzy_score += 0.8
+                matched_c.add(ct)
+                break
+
+    # Reduce union for fuzzy-matched pairs (they're "almost" the same token)
+    union_size = len(q_tok | c_tok) - len(matched_c)
+    return (len(exact_match) + fuzzy_score) / union_size
 
 
 class TmdbSignal:

@@ -35,6 +35,26 @@ _GENERIC_VOLUME_LABELS: frozenset[str] = frozenset(
     }
 )
 
+# Studio name prefixes commonly found on disc volume labels.
+# Stripped before title parsing to avoid TMDB matching the studio name instead.
+_STUDIO_PREFIXES: tuple[str, ...] = (
+    "MARVEL_STUDIOS_",
+    "WARNER_BROS_",
+    "WARNER_BROTHERS_",
+    "UNIVERSAL_",
+    "PARAMOUNT_",
+    "DISNEY_",
+    "20TH_CENTURY_",
+    "TWENTIETH_CENTURY_",
+    "COLUMBIA_",
+    "LIONSGATE_",
+    "MGM_",
+    "DREAMWORKS_",
+    "NEW_LINE_",
+    "TOUCHSTONE_",
+    "MIRAMAX_",
+)
+
 
 def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
     """Return True if two title strings share enough word tokens (Jaccard similarity).
@@ -339,28 +359,47 @@ class DiscAnalyst:
                 f"TMDB resolves unknown to {tmdb_type.value} ({tmdb_signal.confidence:.0%})"
             )
         else:
-            # Disagreement — TMDB overrides heuristic
+            # Disagreement — TMDB and heuristic conflict
             override_confidence = tmdb_signal.confidence * 0.8
-            logger.info(
-                f"TMDB overrides heuristic: {heuristic_type.value} -> {tmdb_type.value} "
-                f"(confidence {override_confidence:.0%})"
-            )
-            result.content_type = tmdb_type
-            result.confidence = override_confidence
-            result.classification_source = "tmdb"
 
-            # If the override confidence is not strong, flag for review
-            if override_confidence < 0.6:
+            if result.confidence >= 0.75:
+                # Strong heuristic evidence — do NOT let TMDB override content type.
+                # Keep the heuristic classification and flag for user review.
+                logger.info(
+                    f"TMDB suggests {tmdb_type.value} but strong heuristic "
+                    f"({heuristic_type.value} at {result.confidence:.0%}) — "
+                    f"keeping heuristic, flagging for review"
+                )
+                result.classification_source = "heuristic"
                 result.needs_review = True
                 result.review_reason = (
-                    f"TMDB suggests {tmdb_type.value} but heuristics suggest "
-                    f"{heuristic_type.value}. Low confidence override ({override_confidence:.0%})."
+                    f"TMDB suggests {tmdb_type.value} but heuristics strongly "
+                    f"suggest {heuristic_type.value} ({result.confidence:.0%}). "
+                    f"Please verify."
                 )
             else:
-                # Clear any previous needs_review from ambiguous movie detection
-                # when TMDB gives a confident override
-                if result.needs_review and not result.review_reason:
-                    result.needs_review = False
+                # Weak heuristic — TMDB override is reasonable
+                logger.info(
+                    f"TMDB overrides heuristic: {heuristic_type.value} -> "
+                    f"{tmdb_type.value} (confidence {override_confidence:.0%})"
+                )
+                result.content_type = tmdb_type
+                result.confidence = override_confidence
+                result.classification_source = "tmdb"
+
+                # If the override confidence is not strong, flag for review
+                if override_confidence < 0.6:
+                    result.needs_review = True
+                    result.review_reason = (
+                        f"TMDB suggests {tmdb_type.value} but heuristics suggest "
+                        f"{heuristic_type.value}. Low confidence override "
+                        f"({override_confidence:.0%})."
+                    )
+                else:
+                    # Clear any previous needs_review from ambiguous movie detection
+                    # when TMDB gives a confident override
+                    if result.needs_review and not result.review_reason:
+                        result.needs_review = False
 
         # Use TMDB name if similar enough to the heuristic name (same guard as analyze())
         if tmdb_signal.tmdb_name:
@@ -576,6 +615,14 @@ class DiscAnalyst:
                 f"Volume label '{label}' is a generic placeholder — treating as unlabeled disc"
             )
             return None, None, None
+
+        # Strip studio name prefixes (e.g. MARVEL_STUDIOS_WANDAVISION -> WANDAVISION)
+        upper_label = label.upper()
+        for prefix in _STUDIO_PREFIXES:
+            if upper_label.startswith(prefix) and len(upper_label) > len(prefix):
+                label = label[len(prefix) :]
+                logger.info(f"Stripped studio prefix '{prefix.rstrip('_')}' from volume label")
+                break
 
         # Clean up the label
         original = label.upper().replace("_", " ")
