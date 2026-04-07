@@ -177,31 +177,14 @@ else:
 
 
 if __name__ == "__main__":
-    import threading
-    import webbrowser
-
+    # For frozen builds, use run.py instead — it wraps ALL imports
+    # in error handling so crashes are always visible.
     import uvicorn
 
-    is_frozen = getattr(sys, "frozen", False)
-
-    if is_frozen:
-        # Open browser after a short delay to let the server bind the port
-        url = f"http://{settings.host}:{settings.port}"
-        threading.Timer(1.5, webbrowser.open, args=[url]).start()
-
-    try:
-        uvicorn.run(
-            app,
-            host=settings.host,
-            port=settings.port,
-            # reload is incompatible with passing app object directly
-            # and also incompatible with frozen PyInstaller bundles
-            reload=False if is_frozen else settings.debug,
-            factory=False,
-        )
-    except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        if is_frozen:
-            print(f"\nFatal error: {e}")
-            input("Press Enter to exit...")
-            sys.exit(1)
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug,
+        factory=False,
+    )
