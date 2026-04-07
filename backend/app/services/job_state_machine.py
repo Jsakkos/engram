@@ -26,7 +26,9 @@ class JobStateMachine:
             JobState.FAILED,
         },
         JobState.REVIEW_NEEDED: {
+            JobState.IDENTIFYING,  # Re-identify with corrected title
             JobState.RIPPING,
+            JobState.MATCHING,  # Re-match with corrected metadata (post-rip)
             JobState.COMPLETED,
             JobState.FAILED,
         },

@@ -89,6 +89,7 @@ interface DiscCardProps {
   disc: DiscData;
   onCancel?: () => void;
   onReview?: () => void;
+  onReIdentify?: () => void;
 }
 
 const stateColors = {
@@ -111,7 +112,7 @@ function formatEta(seconds?: number): string {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onReview }, ref) => {
+  ({ disc, onCancel, onReview, onReIdentify }, ref) => {
     const colors = stateColors[disc.state];
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
@@ -275,6 +276,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     isHovered={isHovered}
                     onCancel={onCancel}
                     onReview={onReview}
+                    onReIdentify={onReIdentify}
                   />
                 </div>
               </div>

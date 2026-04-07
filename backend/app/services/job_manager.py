@@ -359,6 +359,75 @@ class JobManager:
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
+    async def re_identify_job(
+        self,
+        job_id: int,
+        title: str,
+        content_type_str: str,
+        season: int | None = None,
+        tmdb_id: int | None = None,
+    ) -> None:
+        """Re-identify a job with user-corrected metadata."""
+        result = await self._identification.re_identify(
+            job_id, title, content_type_str, season, tmdb_id
+        )
+
+        if result["has_ripped"]:
+            # Post-rip: re-run matching for existing files
+            task = asyncio.create_task(self._rerun_matching(job_id))
+        else:
+            # Pre-rip: start ripping with corrected metadata
+            task = asyncio.create_task(self._run_ripping(job_id))
+
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
+        self._active_jobs[job_id] = task
+
+    async def _rerun_matching(self, job_id: int) -> None:
+        """Re-run episode matching for already-ripped titles."""
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job or not job.staging_path:
+                return
+
+            titles_result = await session.execute(
+                select(DiscTitle).where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.is_selected == True,  # noqa: E712
+                )
+            )
+            disc_titles = titles_result.scalars().all()
+
+            staging = Path(job.staging_path)
+            for title in disc_titles:
+                # Reset title state for re-matching
+                title.state = TitleState.MATCHING
+                title.matched_episode = None
+                title.match_confidence = None
+                title.match_details = None
+                session.add(title)
+
+            await session.commit()
+
+            # Start matching for each ripped file
+            for title in disc_titles:
+                if title.output_filename:
+                    file_path = Path(title.output_filename)
+                    if not file_path.exists():
+                        file_path = staging / file_path.name
+                    if file_path.exists():
+                        match_task = asyncio.create_task(
+                            self._matching.match_single_file(job_id, title.id, file_path)
+                        )
+                        match_task.add_done_callback(
+                            lambda t, jid=job_id, tid=title.id: (
+                                self._matching.on_match_task_done(t, jid, tid)
+                            )
+                        )
+
+            logger.info(
+                f"Job {job_id}: re-matching {len(disc_titles)} titles with corrected metadata"
+            )
+
     async def start_ripping(self, job_id: int) -> None:
         """Start the ripping process for a job."""
         async with async_session() as session:

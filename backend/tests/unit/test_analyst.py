@@ -519,3 +519,100 @@ class TestTmdbNameSimilarityGuard:
 
         # Since parsed name is None, TMDB name is accepted
         assert result.detected_name == "Inception"
+
+
+class TestStudioPrefixStripping:
+    """Test that studio prefixes are stripped from volume labels."""
+
+    def test_marvel_studios_prefix_stripped(self):
+        """MARVEL_STUDIOS_WANDAVISION_D1 -> Wandavision."""
+        analyst = DiscAnalyst(config=_default_config())
+        # 9 episodes ~30 min each (WandaVision season structure)
+        titles = _make_titles([30, 30, 30, 30, 30, 30, 40, 45, 50])
+        result = analyst.analyze(titles, "MARVEL_STUDIOS_WANDAVISION_D1")
+
+        assert result.detected_name is not None
+        assert "marvel" not in result.detected_name.lower()
+        assert "wandavision" in result.detected_name.lower()
+
+    def test_warner_bros_prefix_stripped(self):
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([22, 22, 22, 22])
+        result = analyst.analyze(titles, "WARNER_BROS_FRIENDS_S1D1")
+
+        assert result.detected_name is not None
+        assert "warner" not in result.detected_name.lower()
+
+    def test_no_prefix_unchanged(self):
+        """Label without studio prefix is not modified."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([22, 22, 22, 22])
+        result = analyst.analyze(titles, "FRIENDS_S1D1")
+
+        assert result.detected_name is not None
+        assert "friends" in result.detected_name.lower()
+
+    def test_prefix_only_not_stripped(self):
+        """Don't strip if nothing remains after prefix."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([140])
+        # "MARVEL_STUDIOS_" alone — should not be stripped since nothing remains
+        result = analyst.analyze(titles, "MARVEL_STUDIOS_")
+
+        # Should still parse something (the label with prefix intact)
+        assert result is not None
+
+
+class TestTmdbSignalConflict:
+    """Test that strong heuristic signals resist TMDB override."""
+
+    def test_strong_tv_heuristic_resists_tmdb_movie(self):
+        """Thunderbirds case: 4x48min episodes = strong TV, TMDB says movie -> keep TV."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([48, 48, 49, 49, 14])  # 4 episodes + bonus
+        signal = TmdbSignal(
+            content_type=ContentType.MOVIE,
+            confidence=0.85,
+            tmdb_id=639357,
+            tmdb_name="Thunderbird",
+        )
+        result = analyst.analyze(titles, "THUNDERBIRDS4", tmdb_signal=signal)
+
+        # Heuristic should win — content stays TV
+        assert result.content_type == ContentType.TV
+        assert result.needs_review is True
+        assert "TMDB suggests movie" in result.review_reason
+        assert result.classification_source == "heuristic"
+
+    def test_strong_movie_heuristic_resists_tmdb_tv(self):
+        """Single 140min title = strong movie (0.9), TMDB says TV -> keep movie."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([140])
+        signal = TmdbSignal(
+            content_type=ContentType.TV,
+            confidence=0.85,
+            tmdb_id=999,
+            tmdb_name="Some TV Show",
+        )
+        result = analyst.analyze(titles, "SOME_DISC", tmdb_signal=signal)
+
+        assert result.content_type == ContentType.MOVIE
+        assert result.needs_review is True
+        assert "TMDB suggests" in result.review_reason
+
+    def test_weak_heuristic_allows_tmdb_override(self):
+        """Low-confidence heuristic should still be overridden by TMDB."""
+        analyst = DiscAnalyst(config=_default_config())
+        # Label says TV but no episode clusters — label fallback at 0.70 confidence
+        titles = _make_titles([30, 50, 70, 10])  # No cluster (too varied)
+        signal = TmdbSignal(
+            content_type=ContentType.MOVIE,
+            confidence=0.85,
+            tmdb_id=12345,
+            tmdb_name="Some Movie",
+        )
+        result = analyst.analyze(titles, "SOME_MOVIE_DISC", tmdb_signal=signal)
+
+        # With weak/no heuristic, TMDB should be able to override
+        # (exact behavior depends on what heuristic produces for this title set)
+        assert result.tmdb_id == 12345

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from app.core.tmdb_classifier import TmdbSignal, classify_from_tmdb
+from app.core.tmdb_classifier import TmdbSignal, _name_similarity, classify_from_tmdb
 from app.models.disc_job import ContentType
 
 
@@ -206,3 +206,41 @@ class TestTmdbSignal:
         assert "TV" in repr_str or "tv" in repr_str
         assert "123" in repr_str
         assert "Test Show" in repr_str
+
+
+class TestNameSimilarity:
+    """Test _name_similarity fuzzy matching."""
+
+    def test_exact_match(self):
+        assert _name_similarity("Thunderbirds", "Thunderbirds") == 1.0
+
+    def test_prefix_match_singular_plural(self):
+        """Thunderbird vs Thunderbirds should score high via prefix matching."""
+        score = _name_similarity("Thunderbird", "Thunderbirds")
+        assert score > 0.5
+
+    def test_prefix_match_alien_aliens(self):
+        score = _name_similarity("Alien", "Aliens")
+        assert score > 0.5
+
+    def test_multi_word_with_fuzzy_token(self):
+        """'Star Trek Picard' vs 'Star Trek: Picard' — punctuation stripped, exact match."""
+        score = _name_similarity("Star Trek Picard", "Star Trek: Picard")
+        assert score > 0.8
+
+    def test_completely_different(self):
+        assert _name_similarity("Inception", "Interstellar") == 0.0
+
+    def test_partial_overlap_multi_word(self):
+        """'The Office' vs 'The Office US' — 2/3 exact match."""
+        score = _name_similarity("The Office", "The Office US")
+        assert 0.5 < score < 1.0
+
+    def test_empty_string(self):
+        assert _name_similarity("", "Thunderbirds") == 0.0
+        assert _name_similarity("Thunderbirds", "") == 0.0
+
+    def test_single_char_tokens_filtered(self):
+        """Single-char words (len <= 1) are filtered out."""
+        # "A" is filtered, so "A Walk" -> {"walk"} vs "Walk" -> {"walk"}
+        assert _name_similarity("A Walk", "Walk") == 1.0
