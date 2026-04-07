@@ -45,14 +45,25 @@ third_party_hidden = [
     "sklearn.neighbors._partition_nodes",
     # Logging
     "loguru",
+    "rich",
+    "rich.console",
+    "rich.text",
     # HTTP client
     "httpx",
     "httpcore",
+    "requests",
+    # Database migrations (optional at runtime, but declared dependency)
+    "alembic",
+    "alembic.config",
+    "alembic.command",
+    "alembic.runtime",
+    "alembic.runtime.migration",
+    "mako",
+    "mako.template",
     # Other
     "chardet",
     "rapidfuzz",
     "psutil",
-    "beautifulsoup4",
     "bs4",
 ]
 
@@ -71,7 +82,7 @@ datas += collect_data_files("faster_whisper")
 datas += collect_data_files("ctranslate2")
 
 a = Analysis(
-    ["app/main.py"],
+    ["run.py"],
     pathex=[],
     binaries=[],
     datas=datas,
