@@ -74,6 +74,10 @@ class TitleResponse(BaseModel):
     organized_from: str | None = None
     organized_to: str | None = None
     is_extra: bool = False
+    match_source: str | None = None
+    discdb_match_details: str | None = None
+    discdb_flagged: bool = False
+    discdb_flag_reason: str | None = None
 
 
 class HistoryJobResponse(BaseModel):
@@ -498,6 +502,10 @@ async def get_job_detail(job_id: int, session: AsyncSession = Depends(get_sessio
                 "organized_from": t.organized_from,
                 "organized_to": t.organized_to,
                 "is_extra": t.is_extra,
+                "match_source": t.match_source,
+                "discdb_match_details": t.discdb_match_details,
+                "discdb_flagged": t.discdb_flagged,
+                "discdb_flag_reason": t.discdb_flag_reason,
             }
             for t in titles
         ],
@@ -1437,6 +1445,14 @@ class EnhanceRequest(BaseModel):
     upc_code: str | None = None
 
 
+class FlagDiscDBRequest(BaseModel):
+    """Request model for flagging incorrect DiscDB data on a title."""
+
+    title_id: int
+    reason: str
+    details: str | None = None
+
+
 class ReleaseGroupRequest(BaseModel):
     """Request model for creating a release group."""
 
@@ -1594,6 +1610,29 @@ async def enhance_contribution(
 
     await mark_exported(job_id, session)
     return {"status": "enhanced", "export_path": str(export_dir)}
+
+
+@router.post("/jobs/{job_id}/flag-discdb")
+async def flag_discdb(
+    job_id: int,
+    request: FlagDiscDBRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Flag a DiscDB title match as incorrect."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    title = await session.get(DiscTitle, request.title_id)
+    if not title or title.job_id != job_id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    title.discdb_flagged = True
+    title.discdb_flag_reason = request.reason
+    session.add(title)
+    await session.commit()
+
+    return {"status": "flagged", "title_id": title.id}
 
 
 @router.post("/contributions/{job_id}/submit")

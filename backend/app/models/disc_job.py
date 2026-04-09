@@ -156,3 +156,9 @@ class DiscTitle(SQLModel, table=True):
     organized_from: str | None = None  # Source filename
     organized_to: str | None = None  # Destination path
     is_extra: bool = False  # True if organized as extra content
+
+    # Match source tracking
+    match_source: str | None = Field(default=None)  # "discdb", "engram", "user"
+    discdb_match_details: str | None = Field(default=None)  # DiscDB match preserved separately
+    discdb_flagged: bool = Field(default=False)  # User flagged DiscDB data as incorrect
+    discdb_flag_reason: str | None = Field(default=None)  # Reason for flag

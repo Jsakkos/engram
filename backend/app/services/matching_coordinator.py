@@ -103,6 +103,8 @@ class MatchingCoordinator:
         title.matched_episode = episode_code
         title.match_confidence = 0.99
         title.match_details = f'{{"source": "discdb", "episode_title": "{mapping.episode_title}"}}'
+        title.match_source = "discdb"
+        title.discdb_match_details = title.match_details
         title.state = TitleState.MATCHED
         session.add(title)
         await session.commit()
@@ -402,6 +404,8 @@ class MatchingCoordinator:
                         title.match_details = json.dumps(result.match_details)
                     except Exception as e:
                         logger.error(f"Failed to dump match_details: {e}")
+
+                title.match_source = "engram"
 
                 # Extract match stats for broadcast
                 matches_found = 1
