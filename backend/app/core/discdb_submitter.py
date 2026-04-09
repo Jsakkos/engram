@@ -5,7 +5,7 @@ All functions are non-throwing — errors are captured in SubmissionResult.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
@@ -154,4 +154,69 @@ async def submit_job(
     )
 
     logger.info(f"Job {job.id}: Submitted to TheDiscDB (submission_id={result.submission_id})")
+    return result
+
+
+@dataclass
+class BatchSubmissionResult:
+    """Result of batch submission for a release group."""
+
+    submitted: int = 0
+    failed: int = 0
+    results: list = field(default_factory=list)
+    contribute_url: str | None = None
+
+
+async def submit_release_group(
+    release_group_id: str,
+    session,
+    config: AppConfig,
+    app_version: str = "0.4.4",
+) -> BatchSubmissionResult:
+    """Submit all completed jobs in a release group sequentially."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.models.disc_job import JobState
+
+    result = BatchSubmissionResult()
+
+    jobs_query = await session.execute(
+        select(DiscJob).where(
+            DiscJob.release_group_id == release_group_id,
+            DiscJob.state == JobState.COMPLETED,
+        )
+    )
+    jobs = list(jobs_query.scalars().all())
+
+    for job in jobs:
+        titles_query = await session.execute(
+            select(DiscTitle).where(DiscTitle.job_id == job.id)
+        )
+        titles = list(titles_query.scalars().all())
+
+        job_result = await submit_job(job, titles, config, app_version)
+
+        entry = {
+            "job_id": job.id,
+            "success": job_result.success,
+            "submission_id": job_result.submission_id,
+            "contribute_url": job_result.contribute_url,
+            "error": job_result.error,
+        }
+        result.results.append(entry)
+
+        if job_result.success:
+            result.submitted += 1
+            if job_result.contribute_url:
+                result.contribute_url = job_result.contribute_url
+            job.submitted_at = datetime.now(UTC)
+            job.discdb_submission_id = job_result.submission_id
+            job.discdb_contribute_url = job_result.contribute_url
+            session.add(job)
+        else:
+            result.failed += 1
+
+    await session.commit()
     return result

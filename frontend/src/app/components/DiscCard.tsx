@@ -44,6 +44,7 @@ export interface Track {
   // Quality metadata
   videoResolution?: string;        // "1080p", "4K", etc.
   edition?: string;                // "Extended", "Theatrical", etc.
+  matchSource?: string;            // "discdb", "engram", "user"
 
   // Size tracking
   fileSizeBytes?: number;          // Actual file size

@@ -102,7 +102,13 @@ class MatchingCoordinator:
 
         title.matched_episode = episode_code
         title.match_confidence = 0.99
-        title.match_details = f'{{"source": "discdb", "episode_title": "{mapping.episode_title}"}}'
+        title.match_details = json.dumps(
+            {
+                "source": "discdb",
+                "episode_title": mapping.episode_title,
+                "matched_episode": episode_code,
+            }
+        )
         title.match_source = "discdb"
         title.discdb_match_details = title.match_details
         title.state = TitleState.MATCHED
@@ -118,6 +124,91 @@ class MatchingCoordinator:
         )
 
         return True
+
+    async def rematch_single_title(
+        self, job_id: int, title_id: int, source_preference: str | None = None
+    ) -> None:
+        """Re-match a single title with the specified source preference.
+
+        source_preference:
+            "discdb" — restore from stored discdb_match_details
+            "engram" — clear match and re-run audio fingerprinting
+            None — try discdb first if available, else engram
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            title = await session.get(DiscTitle, title_id)
+            if not job or not title or title.job_id != job_id:
+                raise ValueError(f"Job {job_id} or title {title_id} not found")
+
+            use_discdb = False
+            if source_preference == "discdb":
+                use_discdb = True
+            elif source_preference is None and title.discdb_match_details:
+                use_discdb = True
+
+            if use_discdb and title.discdb_match_details:
+                # Restore from stored DiscDB match details
+                details = json.loads(title.discdb_match_details)
+                title.match_details = title.discdb_match_details
+                title.match_source = "discdb"
+                title.match_confidence = 0.99
+
+                # Restore episode code from stored details or in-memory mappings
+                if "matched_episode" in details:
+                    title.matched_episode = details["matched_episode"]
+                else:
+                    mappings = self._discdb_mappings.get(job_id, [])
+                    for m in mappings:
+                        if m.index == title.title_index and m.season and m.episode:
+                            title.matched_episode = f"S{m.season:02d}E{m.episode:02d}"
+                            break
+                title.state = TitleState.MATCHED
+                session.add(title)
+                await session.commit()
+
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    title.id,
+                    TitleState.MATCHED.value,
+                    matched_episode=title.matched_episode,
+                    match_confidence=title.match_confidence,
+                )
+                return
+
+            # Engram re-match: validate staging file exists
+            file_path = self._find_staging_file(job, title)
+            if not file_path:
+                raise ValueError(
+                    f"Staging file not found for title {title_id} "
+                    f"(output_filename={title.output_filename}, staging={job.staging_path})"
+                )
+
+            # Reset match fields
+            title.state = TitleState.MATCHING
+            title.matched_episode = None
+            title.match_confidence = 0.0
+            title.match_details = None
+            title.match_source = None
+            session.add(title)
+            await session.commit()
+
+            await ws_manager.broadcast_title_update(job_id, title.id, TitleState.MATCHING.value)
+
+        # Trigger async matching (outside the session context)
+        await self.match_single_file(job_id, title_id, file_path)
+
+    def _find_staging_file(self, job: DiscJob, title: DiscTitle) -> Path | None:
+        """Find the staging file for a title, trying output_filename then staging_path."""
+        if title.output_filename:
+            p = Path(title.output_filename)
+            if p.exists():
+                return p
+            if job.staging_path:
+                p2 = Path(job.staging_path) / p.name
+                if p2.exists():
+                    return p2
+        return None
 
     async def match_single_file(self, job_id: int, title_id: int, file_path: Path) -> None:
         """Run matching for a single ripped file."""

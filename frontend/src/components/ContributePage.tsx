@@ -68,6 +68,12 @@ export default function ContributePage() {
   const [upcInput, setUpcInput] = useState("");
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<Set<number>>(new Set());
+  const [groupSubmitting, setGroupSubmitting] = useState<string | null>(null);
+  const [groupResult, setGroupResult] = useState<{
+    submitted: number;
+    failed: number;
+    contribute_url?: string | null;
+  } | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -169,6 +175,25 @@ export default function ContributePage() {
       }
     } catch (error) {
       console.error("Failed to create release group:", error);
+    }
+  };
+
+  const handleSubmitGroup = async (releaseGroupId: string) => {
+    setGroupSubmitting(releaseGroupId);
+    setGroupResult(null);
+    try {
+      const res = await fetch(`/api/contributions/release-group/${releaseGroupId}/submit`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGroupResult(data);
+        await fetchData();
+      }
+    } catch (error) {
+      console.error("Failed to submit group:", error);
+    } finally {
+      setGroupSubmitting(null);
     }
   };
 
@@ -278,7 +303,7 @@ export default function ContributePage() {
         </div>
 
         {/* Bulk actions */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
           {stats.pending > 0 && (
             <button
               onClick={handleExportAll}
@@ -295,7 +320,56 @@ export default function ContributePage() {
               <Link2 className="w-3.5 h-3.5" /> Group Selected ({selectedJobs.size})
             </button>
           )}
+
+          {/* Submit Group buttons for each release group with exported jobs */}
+          {config?.discdb_api_key_set &&
+            (() => {
+              const groups = new Map<string, ContributionJob[]>();
+              for (const job of jobs) {
+                if (job.release_group_id) {
+                  const existing = groups.get(job.release_group_id) || [];
+                  existing.push(job);
+                  groups.set(job.release_group_id, existing);
+                }
+              }
+              return Array.from(groups.entries())
+                .filter(([, groupJobs]) =>
+                  groupJobs.every((j) => j.export_status === "exported") && groupJobs.length >= 2
+                )
+                .map(([groupId, groupJobs]) => (
+                  <button
+                    key={groupId}
+                    onClick={() => handleSubmitGroup(groupId)}
+                    disabled={groupSubmitting === groupId}
+                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider text-cyan-400 border border-cyan-500/40 rounded-md hover:bg-cyan-500/10 transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {groupSubmitting === groupId
+                      ? `Submitting ${groupJobs.length} discs...`
+                      : `Submit Group (${groupJobs.length} discs)`}
+                  </button>
+                ));
+            })()}
         </div>
+
+        {/* Group submission result */}
+        {groupResult && (
+          <div className="mb-6 px-4 py-3 border border-cyan-500/30 rounded-md bg-cyan-500/5">
+            <p className="text-cyan-400 font-mono text-xs">
+              Batch submit complete: {groupResult.submitted} submitted, {groupResult.failed} failed.
+            </p>
+            {groupResult.contribute_url && (
+              <a
+                href={groupResult.contribute_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-cyan-400 font-mono text-xs mt-2 hover:underline"
+              >
+                <ExternalLink className="w-3 h-3" /> Continue on TheDiscDB
+              </a>
+            )}
+          </div>
+        )}
 
         {/* API key warning */}
         {config && !config.discdb_api_key_set && (

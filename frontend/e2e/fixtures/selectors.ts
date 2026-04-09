@@ -60,6 +60,11 @@ export const SELECTORS = {
   // Track byte progress (e.g., "245.3 MB / 520.1 MB")
   trackByteProgress: 'text=/\\d+(\\.\\d+)?\\s*(MB|GB)\\s*\\/\\s*\\d+(\\.\\d+)?\\s*(MB|GB)/i',
 
+  // Match source badges
+  matchSourceDiscdb: '[data-testid="source-badge-discdb"]',
+  matchSourceEngram: '[data-testid="source-badge-engram"]',
+  matchSourceManual: '[data-testid="source-badge-user"]',
+
   // Match candidates with confidence
   matchCandidate: 'text=/S\\d{2}E\\d{2}/i',
   matchConfidence: 'text=/\\d+(\\.\\d+)?%/i',

@@ -65,6 +65,10 @@ export interface DiscTitle {
     organized_to?: string | null;
     is_extra?: boolean;
     error_message?: string | null;
+    match_source?: string | null;
+    discdb_match_details?: string | null;
+    discdb_flagged?: boolean;
+    discdb_flag_reason?: string | null;
 }
 
 export interface DriveEvent {

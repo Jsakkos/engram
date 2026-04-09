@@ -1453,6 +1453,19 @@ class FlagDiscDBRequest(BaseModel):
     details: str | None = None
 
 
+class RematchRequest(BaseModel):
+    """Request model for re-matching titles."""
+
+    source_preference: str | None = None  # "discdb", "engram", or None
+
+
+class ReassignRequest(BaseModel):
+    """Request model for manual episode reassignment."""
+
+    episode_code: str
+    edition: str | None = None
+
+
 class ReleaseGroupRequest(BaseModel):
     """Request model for creating a release group."""
 
@@ -1635,6 +1648,79 @@ async def flag_discdb(
     return {"status": "flagged", "title_id": title.id}
 
 
+@router.post("/jobs/{job_id}/titles/{title_id}/rematch")
+async def rematch_title(
+    job_id: int,
+    title_id: int,
+    request: RematchRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Re-match a single title with optional source preference."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job_id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.rematch_single_title(job_id, title_id, request.source_preference)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return {"status": "rematching", "title_id": title_id}
+
+
+@router.post("/jobs/{job_id}/rematch")
+async def rematch_job(
+    job_id: int,
+    request: RematchRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Re-match all titles for a job."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    from app.services.job_manager import job_manager
+
+    await job_manager._rerun_matching(job_id, request.source_preference)
+
+    return {"status": "rematching", "job_id": job_id}
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/reassign")
+async def reassign_episode(
+    job_id: int,
+    title_id: int,
+    request: ReassignRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Manually reassign an episode for a title."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.state in (JobState.ORGANIZING, JobState.FAILED):
+        raise HTTPException(status_code=400, detail=f"Cannot reassign in state: {job.state}")
+
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job_id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.reassign_episode(job_id, title_id, request.episode_code, request.edition)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return {"status": "reassigned", "title_id": title_id}
+
+
 @router.post("/contributions/{job_id}/submit")
 async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_session)):
     """Submit a job's disc data to TheDiscDB API."""
@@ -1726,3 +1812,35 @@ async def assign_release_group(
     await session.commit()
 
     return {"job_id": job_id, "release_group_id": request.release_group_id}
+
+
+@router.post("/contributions/release-group/{release_group_id}/submit")
+async def submit_release_group_endpoint(
+    release_group_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Batch-submit all completed jobs in a release group to TheDiscDB."""
+    from app.core.discdb_submitter import submit_release_group
+    from app.services.config_service import get_config as get_db_config
+
+    # Verify release group exists
+    result = await session.execute(
+        select(DiscJob).where(DiscJob.release_group_id == release_group_id)
+    )
+    if not result.scalars().first():
+        raise HTTPException(status_code=404, detail="Release group not found")
+
+    config = await get_db_config()
+
+    from app import __version__
+
+    batch_result = await submit_release_group(
+        release_group_id, session, config, app_version=__version__
+    )
+
+    return {
+        "submitted": batch_result.submitted,
+        "failed": batch_result.failed,
+        "results": batch_result.results,
+        "contribute_url": batch_result.contribute_url,
+    }

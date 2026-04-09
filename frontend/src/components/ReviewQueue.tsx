@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
 import { MATCHING_CONFIG, EPISODE_CONFIG } from '../config/constants';
@@ -16,6 +16,7 @@ function ReviewQueue() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isRematching, setIsRematching] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Per-title state
@@ -98,6 +99,50 @@ function ReviewQueue() {
     };
 
     // --- API Handlers ---
+
+    const handleRematch = async (titleId: number, sourcePreference: string = 'engram') => {
+        setIsRematching(true);
+        setError(null);
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/titles/${titleId}/rematch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source_preference: sourcePreference }),
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Failed to re-match title: ${text}`);
+            }
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('Failed to re-match:', err);
+            setError(err instanceof Error ? err.message : 'Failed to re-match');
+        } finally {
+            setIsRematching(false);
+        }
+    };
+
+    const handleRematchAll = async () => {
+        setIsRematching(true);
+        setError(null);
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/rematch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source_preference: 'engram' }),
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Failed to re-match all: ${text}`);
+            }
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('Failed to re-match all:', err);
+            setError(err instanceof Error ? err.message : 'Failed to re-match all');
+        } finally {
+            setIsRematching(false);
+        }
+    };
 
     const handleSaveAll = async () => {
         setIsSaving(true);
@@ -427,6 +472,14 @@ function ReviewQueue() {
                                     {isProcessing ? 'PROCESSING...' : `PROCESS ${assignedCount} MATCHED`}
                                 </button>
                             )}
+                            <button
+                                onClick={handleRematchAll}
+                                disabled={isSaving || isProcessing || isRematching}
+                                className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-magenta-400 border-magenta-500/50 hover:border-magenta-400 hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                            >
+                                <RefreshCw className={`w-3 h-3 ${isRematching ? 'animate-spin' : ''}`} />
+                                {isRematching ? 'RE-MATCHING...' : 'RE-MATCH ALL'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -473,6 +526,7 @@ function ReviewQueue() {
                                     onEpisodeChange={handleEpisodeChange}
                                     onTitleAction={handleTitleAction}
                                     onToggleExpand={toggleExpand}
+                                    onRematch={handleRematch}
                                     variant="matched"
                                 />
                             ))}
@@ -501,6 +555,7 @@ function ReviewQueue() {
                                     onEpisodeChange={handleEpisodeChange}
                                     onTitleAction={handleTitleAction}
                                     onToggleExpand={toggleExpand}
+                                    onRematch={handleRematch}
                                     variant="review"
                                 />
                             ))}
@@ -546,6 +601,7 @@ interface TVTitleRowProps {
     onEpisodeChange: (titleId: number, episodeCode: string) => void;
     onTitleAction: (titleId: number, action: TitleAction) => void;
     onToggleExpand: (titleId: number) => void;
+    onRematch: (titleId: number, sourcePreference?: string) => void;
     variant: 'matched' | 'review';
 }
 
@@ -558,6 +614,7 @@ function TVTitleRow({
     onEpisodeChange,
     onTitleAction,
     onToggleExpand,
+    onRematch,
     variant,
 }: TVTitleRowProps) {
     const [season, setSeason] = useState(job?.detected_season || 1);
@@ -613,8 +670,8 @@ function TVTitleRow({
                         </div>
                     </div>
 
-                    {/* Confidence badge */}
-                    <div className="flex-shrink-0">
+                    {/* Confidence badge + match source */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                         {title.match_confidence > 0 ? (
                             <span className={`text-xs font-mono font-bold px-2 py-1 ${
                                 title.match_confidence >= MATCHING_CONFIG.AUTO_MATCH_THRESHOLD
@@ -627,6 +684,17 @@ function TVTitleRow({
                             </span>
                         ) : (
                             <span className="text-xs font-mono text-slate-600 bg-slate-800 px-2 py-1">&mdash;</span>
+                        )}
+                        {title.match_source && (
+                            <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border ${
+                                title.match_source === 'discdb'
+                                    ? 'text-blue-400 border-blue-500/30 bg-blue-500/10'
+                                    : title.match_source === 'user'
+                                      ? 'text-green-400 border-green-500/30 bg-green-500/10'
+                                      : 'text-purple-400 border-purple-500/30 bg-purple-500/10'
+                            }`}>
+                                {title.match_source === 'discdb' ? 'DISCDB' : title.match_source === 'user' ? 'MANUAL' : 'ENGRAM'}
+                            </span>
                         )}
                     </div>
 
@@ -715,6 +783,30 @@ function TVTitleRow({
                         >
                             <SkipForward className="w-3 h-3" />
                         </button>
+                        {/* Source toggle — switch between DiscDB and Engram when both exist */}
+                        {title.discdb_match_details && title.match_details && (
+                            <button
+                                data-testid="source-toggle"
+                                onClick={() => onRematch(
+                                    title.id,
+                                    title.match_source === 'discdb' ? 'engram' : 'discdb'
+                                )}
+                                className="px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border text-magenta-400 border-magenta-500/30 hover:border-magenta-400 hover:bg-magenta-500/10 transition-all"
+                                title={`Switch to ${title.match_source === 'discdb' ? 'Engram' : 'DiscDB'} match`}
+                            >
+                                <RefreshCw className="w-3 h-3" />
+                            </button>
+                        )}
+                        {/* Re-match button — only DiscDB source, no Engram data yet */}
+                        {title.match_source === 'discdb' && !title.match_details && (
+                            <button
+                                onClick={() => onRematch(title.id, 'engram')}
+                                className="px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border text-magenta-400 border-magenta-500/30 hover:border-magenta-400 hover:bg-magenta-500/10 transition-all"
+                                title="Re-match with Engram audio matching"
+                            >
+                                <RefreshCw className="w-3 h-3" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
