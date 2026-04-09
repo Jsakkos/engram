@@ -750,9 +750,9 @@ class EpisodeMatcher:
 
             available_duration = video_duration - skip_initial - skip_final
 
-            # TF-IDF matching is fast (~1ms/query) and accurate, so we only
-            # need a few evenly-spaced samples to identify the episode.
-            num_points = 5
+            # TF-IDF matching is fast (~1ms/query) and accurate. More sample
+            # points reduce false positives from commentary/alternate audio tracks.
+            num_points = 10
 
             # Calculate actual interval to evenly distribute points across available duration
             if num_points > 1:

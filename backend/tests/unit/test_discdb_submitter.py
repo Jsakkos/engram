@@ -87,7 +87,7 @@ class TestSubmitDisc:
     async def test_successful_submission(self, sample_payload, api_key, base_url):
         mock_response = _mock_response(
             200,
-            {"submission_id": "sub-123", "contribute_url": "https://thediscdb.com/c/sub-123"},
+            {"id": 5, "contentHash": "ABC123", "updated": False},
         )
 
         with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
@@ -100,13 +100,34 @@ class TestSubmitDisc:
             result = await submit_disc(sample_payload, api_key, base_url)
 
         assert result.success is True
-        assert result.submission_id == "sub-123"
-        assert result.contribute_url == "https://thediscdb.com/c/sub-123"
+        assert result.submission_id == "5"
+        assert result.contribute_url is None  # No release_id in sample payload
         assert result.error is None
 
         # Verify auth header
         call_kwargs = mock_client.post.call_args
         assert call_kwargs.kwargs["headers"]["Authorization"] == f"ApiKey {api_key}"
+
+    @pytest.mark.anyio
+    async def test_contribute_url_from_release_id(self, api_key, base_url):
+        """When payload has release_id, contribute_url is constructed."""
+        payload = {
+            "disc": {"content_hash": "ABC123", "release_id": "uuid-123"},
+            "titles": [],
+        }
+        mock_response = _mock_response(200, {"id": 6, "contentHash": "ABC123"})
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = await submit_disc(payload, api_key, base_url)
+
+        assert result.success is True
+        assert result.contribute_url == "https://thediscdb.com/contribute/engram/uuid-123"
 
     @pytest.mark.anyio
     async def test_401_unauthorized(self, sample_payload, api_key, base_url):
@@ -137,6 +158,24 @@ class TestSubmitDisc:
 
         assert result.success is False
         assert "Network error" in result.error
+
+    @pytest.mark.anyio
+    async def test_no_auth_header_without_key(self, sample_payload, base_url):
+        """Submission proceeds without API key; no Authorization header sent."""
+        mock_response = _mock_response(200, {"id": 7, "contentHash": "ABC123"})
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = await submit_disc(sample_payload, "", base_url)
+
+        assert result.success is True
+        call_kwargs = mock_client.post.call_args
+        assert "Authorization" not in call_kwargs.kwargs["headers"]
 
 
 class TestSubmitScanLog:
@@ -169,14 +208,21 @@ class TestSubmitScanLog:
         assert result is False
 
 
-class TestSubmitJob:
-    @pytest.mark.anyio
-    async def test_skip_without_api_key(self, completed_job, titles):
-        config = AppConfig(discdb_contributions_enabled=True, discdb_api_key="")
-        result = await submit_job(completed_job, titles, config)
-        assert result.success is False
-        assert "No TheDiscDB API key" in result.error
+class TestAuthHeaders:
+    def test_auth_headers_with_key(self):
+        from app.core.discdb_submitter import _auth_headers
 
+        headers = _auth_headers("my-secret-key")
+        assert headers == {"Authorization": "ApiKey my-secret-key"}
+
+    def test_auth_headers_without_key(self):
+        from app.core.discdb_submitter import _auth_headers
+
+        assert _auth_headers("") == {}
+        assert _auth_headers(None) == {}
+
+
+class TestSubmitJob:
     @pytest.mark.anyio
     async def test_skip_without_content_hash(self, titles, config):
         job = DiscJob(

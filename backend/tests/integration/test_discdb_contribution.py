@@ -196,11 +196,20 @@ async def test_enhance_with_upc(client, completed_job, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_submit_requires_api_key(client, completed_job):
-    """Submit endpoint should fail without API key configured."""
+async def test_submit_without_api_key_attempts_submission(client, completed_job, tmp_path):
+    """Submit endpoint should attempt submission even without API key configured."""
+    await client.put("/api/config", json={"discdb_export_path": str(tmp_path)})
+
+    # Export first so there's data to submit
+    await client.post(f"/api/contributions/{completed_job.id}/export")
+
+    # Submit without API key — should attempt but fail due to network (no real server)
     response = await client.post(f"/api/contributions/{completed_job.id}/submit")
-    assert response.status_code == 400
-    assert "API key" in response.json()["detail"]
+    assert response.status_code == 200
+    data = response.json()
+    # Will fail because there's no real TheDiscDB server in tests, but it should attempt
+    assert "success" in data
+    assert "error" in data
 
 
 @pytest.mark.asyncio

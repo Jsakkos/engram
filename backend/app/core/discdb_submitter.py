@@ -33,6 +33,8 @@ class SubmissionResult:
 
 
 def _auth_headers(api_key: str) -> dict[str, str]:
+    if not api_key:
+        return {}
     return {"Authorization": f"ApiKey {api_key}"}
 
 
@@ -44,6 +46,10 @@ async def submit_disc(
     """Submit disc data JSON to TheDiscDB API.
 
     POST {base_url}/api/engram/disc
+
+    The API returns {"id": int, "contentHash": str, "updated": bool}.
+    If the payload contains a release_id, the contribution page is at
+    {base_url}/contribute/engram/{release_id}.
     """
     url = f"{base_url.rstrip('/')}/api/engram/disc"
     try:
@@ -51,10 +57,19 @@ async def submit_disc(
             resp = await client.post(url, json=payload, headers=_auth_headers(api_key))
             resp.raise_for_status()
             data = resp.json()
+
+            # Map API response fields to our result model
+            submission_id = data.get("submission_id") or str(data.get("id", ""))
+            contribute_url = data.get("contribute_url")
+            if not contribute_url:
+                release_id = payload.get("disc", {}).get("release_id")
+                if release_id:
+                    contribute_url = f"{base_url.rstrip('/')}/contribute/engram/{release_id}"
+
             return SubmissionResult(
                 success=True,
-                submission_id=data.get("submission_id"),
-                contribute_url=data.get("contribute_url"),
+                submission_id=submission_id or None,
+                contribute_url=contribute_url,
             )
     except httpx.HTTPStatusError as e:
         msg = f"TheDiscDB API returned {e.response.status_code}"
@@ -108,13 +123,7 @@ async def submit_job(
     config: AppConfig,
     app_version: str = "0.4.4",
 ) -> SubmissionResult:
-    """Orchestrate full submission: disc data + scan log.
-
-    Returns early if no API key is configured.
-    """
-    if not config.discdb_api_key:
-        return SubmissionResult(error="No TheDiscDB API key configured")
-
+    """Orchestrate full submission: disc data + scan log."""
     if not job.content_hash:
         return SubmissionResult(error="No content hash available")
 

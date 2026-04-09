@@ -112,6 +112,7 @@ class DiscJob(SQLModel, table=True):
     release_group_id: str | None = Field(default=None)  # UUID grouping multi-disc releases
     submitted_at: datetime | None = Field(default=None)  # When submitted to TheDiscDB API
     discdb_submission_id: str | None = Field(default=None)  # ID from TheDiscDB after submission
+    discdb_contribute_url: str | None = Field(default=None)  # URL to continue on TheDiscDB
 
 
 class DiscTitle(SQLModel, table=True):

@@ -1470,9 +1470,9 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
         else:
             status = "exported"
 
-        # Build contribute URL from submission ID if available
-        contribute_url = None
-        if job.discdb_submission_id:
+        # Use stored contribute URL, or construct from submission ID as fallback
+        contribute_url = getattr(job, "discdb_contribute_url", None)
+        if not contribute_url and job.discdb_submission_id:
             contribute_url = f"https://thediscdb.com/contribute/engram/{job.discdb_submission_id}"
 
         responses.append(
@@ -1609,8 +1609,6 @@ async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_s
         raise HTTPException(status_code=400, detail="Job is not completed")
 
     config = await get_db_config()
-    if not config.discdb_api_key:
-        raise HTTPException(status_code=400, detail="No TheDiscDB API key configured")
 
     titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
     titles = list(titles_result.scalars().all())
@@ -1622,6 +1620,7 @@ async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_s
     if result.success:
         job.submitted_at = datetime.now(UTC)
         job.discdb_submission_id = result.submission_id
+        job.discdb_contribute_url = result.contribute_url
         session.add(job)
         await session.commit()
 
