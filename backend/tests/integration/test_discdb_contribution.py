@@ -301,7 +301,5 @@ async def test_batch_submit_release_group(client, completed_job, second_complete
 @pytest.mark.asyncio
 async def test_batch_submit_nonexistent_group(client):
     """Batch submit with a nonexistent release group returns 404."""
-    response = await client.post(
-        "/api/contributions/release-group/nonexistent-uuid-12345/submit"
-    )
+    response = await client.post("/api/contributions/release-group/nonexistent-uuid-12345/submit")
     assert response.status_code == 404

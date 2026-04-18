@@ -109,6 +109,8 @@ class DiscJob(SQLModel, table=True):
     # TheDiscDB contribution tracking
     exported_at: datetime | None = Field(default=None)  # When disc data was exported locally
     upc_code: str | None = Field(default=None)  # UPC barcode for full contributions
+    asin: str | None = Field(default=None)  # Amazon Standard Identification Number
+    release_date: str | None = Field(default=None)  # Release date from product lookup (ISO)
     release_group_id: str | None = Field(default=None)  # UUID grouping multi-disc releases
     submitted_at: datetime | None = Field(default=None)  # When submitted to TheDiscDB API
     discdb_submission_id: str | None = Field(default=None)  # ID from TheDiscDB after submission
@@ -162,3 +164,4 @@ class DiscTitle(SQLModel, table=True):
     discdb_match_details: str | None = Field(default=None)  # DiscDB match preserved separately
     discdb_flagged: bool = Field(default=False)  # User flagged DiscDB data as incorrect
     discdb_flag_reason: str | None = Field(default=None)  # Reason for flag
+    extra_description: str | None = Field(default=None)  # User annotation for extras

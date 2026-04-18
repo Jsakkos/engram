@@ -94,12 +94,12 @@ test.describe('Review Flow - Engram UI', () => {
         await page.waitForTimeout(5000);
 
         // If the job reached review_needed, try submitting via API
-        const jobRes = await page.request.get(`http://localhost:8000/api/jobs/${job_id}`);
+        const jobRes = await page.request.get(`http://localhost:8001/api/jobs/${job_id}`);
         const job = await jobRes.json();
 
         if (job.state === 'review_needed') {
             // Submit review via API
-            const reviewRes = await page.request.post(`http://localhost:8000/api/jobs/${job_id}/review`, {
+            const reviewRes = await page.request.post(`http://localhost:8001/api/jobs/${job_id}/review`, {
                 data: { matches: {} },
             });
             expect(reviewRes.ok()).toBeTruthy();
@@ -108,7 +108,7 @@ test.describe('Review Flow - Engram UI', () => {
             await page.waitForTimeout(3000);
 
             // Job should have progressed beyond review_needed
-            const updatedRes = await page.request.get(`http://localhost:8000/api/jobs/${job_id}`);
+            const updatedRes = await page.request.get(`http://localhost:8001/api/jobs/${job_id}`);
             const updated = await updatedRes.json();
             expect(updated.state).not.toBe('review_needed');
         }

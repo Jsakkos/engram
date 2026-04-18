@@ -20,6 +20,7 @@ import {
   ArrowRight,
   Loader2,
 } from "lucide-react";
+import { FEATURES } from "../config/constants";
 
 interface HistoryJob {
   id: number;
@@ -446,48 +447,50 @@ function JobDetailPanel({
           </div>
 
           {/* TheDiscDB */}
-          <div>
-            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
-              <Database className="w-3 h-3 inline mr-1" />
-              TheDiscDB
-            </div>
-            <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 space-y-2">
-              {detail.content_hash ? (
-                <>
-                  <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-slate-400">Content Hash</span>
-                    <div className="flex items-center gap-1.5">
-                      <code className="text-cyan-300 text-[10px]">
-                        {detail.content_hash.slice(0, 16)}...
-                      </code>
-                      <CopyButton text={detail.content_hash} />
+          {FEATURES.DISCDB && (
+            <div>
+              <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
+                <Database className="w-3 h-3 inline mr-1" />
+                TheDiscDB
+              </div>
+              <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 space-y-2">
+                {detail.content_hash ? (
+                  <>
+                    <div className="flex justify-between items-center text-xs font-mono">
+                      <span className="text-slate-400">Content Hash</span>
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-cyan-300 text-[10px]">
+                          {detail.content_hash.slice(0, 16)}...
+                        </code>
+                        <CopyButton text={detail.content_hash} />
+                      </div>
                     </div>
+                    {detail.discdb_slug && (
+                      <div className="flex justify-between items-center text-xs font-mono">
+                        <span className="text-slate-400">Title</span>
+                        <span className="text-slate-200">{detail.discdb_slug}</span>
+                      </div>
+                    )}
+                    {detail.discdb_disc_slug && (
+                      <div className="flex justify-between items-center text-xs font-mono">
+                        <span className="text-slate-400">Disc</span>
+                        <span className="text-slate-200">{detail.discdb_disc_slug}</span>
+                      </div>
+                    )}
+                    {!detail.discdb_slug && (
+                      <div className="text-[10px] font-mono text-amber-400">
+                        Disc fingerprint computed but not found in TheDiscDB
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-[10px] font-mono text-slate-500">
+                    No disc fingerprint available (scan may have failed before computation)
                   </div>
-                  {detail.discdb_slug && (
-                    <div className="flex justify-between items-center text-xs font-mono">
-                      <span className="text-slate-400">Title</span>
-                      <span className="text-slate-200">{detail.discdb_slug}</span>
-                    </div>
-                  )}
-                  {detail.discdb_disc_slug && (
-                    <div className="flex justify-between items-center text-xs font-mono">
-                      <span className="text-slate-400">Disc</span>
-                      <span className="text-slate-200">{detail.discdb_disc_slug}</span>
-                    </div>
-                  )}
-                  {!detail.discdb_slug && (
-                    <div className="text-[10px] font-mono text-amber-400">
-                      Disc fingerprint computed but not found in TheDiscDB
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-[10px] font-mono text-slate-500">
-                  No disc fingerprint available (scan may have failed before computation)
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Subtitle Info */}
           {detail.subtitle_status && (

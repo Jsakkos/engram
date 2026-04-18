@@ -4,11 +4,17 @@ Submits disc metadata and scan logs to TheDiscDB's ingestion API.
 All functions are non-throwing — errors are captured in SubmissionResult.
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.discdb_exporter import (
     generate_export,
@@ -121,7 +127,7 @@ async def submit_job(
     job: DiscJob,
     titles: list[DiscTitle],
     config: AppConfig,
-    app_version: str = "0.4.4",
+    app_version: str = "unknown",
 ) -> SubmissionResult:
     """Orchestrate full submission: disc data + scan log."""
     if not job.content_hash:
@@ -163,15 +169,15 @@ class BatchSubmissionResult:
 
     submitted: int = 0
     failed: int = 0
-    results: list = field(default_factory=list)
+    results: list[dict] = field(default_factory=list)
     contribute_url: str | None = None
 
 
 async def submit_release_group(
     release_group_id: str,
-    session,
+    session: AsyncSession,
     config: AppConfig,
-    app_version: str = "0.4.4",
+    app_version: str = "unknown",
 ) -> BatchSubmissionResult:
     """Submit all completed jobs in a release group sequentially."""
     from datetime import UTC, datetime
@@ -190,11 +196,21 @@ async def submit_release_group(
     )
     jobs = list(jobs_query.scalars().all())
 
-    for job in jobs:
-        titles_query = await session.execute(
-            select(DiscTitle).where(DiscTitle.job_id == job.id)
+    # Pre-load all titles to avoid N+1 queries
+    job_ids = [j.id for j in jobs]
+    if job_ids:
+        all_titles_query = await session.execute(
+            select(DiscTitle).where(DiscTitle.job_id.in_(job_ids))
         )
-        titles = list(titles_query.scalars().all())
+        all_titles = all_titles_query.scalars().all()
+        titles_by_job: dict[int, list] = {}
+        for t in all_titles:
+            titles_by_job.setdefault(t.job_id, []).append(t)
+    else:
+        titles_by_job = {}
+
+    for job in jobs:
+        titles = titles_by_job.get(job.id, [])
 
         job_result = await submit_job(job, titles, config, app_version)
 

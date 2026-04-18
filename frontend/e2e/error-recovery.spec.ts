@@ -26,7 +26,7 @@ test.describe('Error Recovery - Engram UI', () => {
         await expect(page.locator(SELECTORS.stateRipping).first()).toBeVisible({ timeout: 10000 });
 
         // Cancel the job via API
-        await page.request.post(`http://localhost:8000/api/jobs/${_job_id}/cancel`);
+        await page.request.post(`http://localhost:8001/api/jobs/${_job_id}/cancel`);
 
         // Should show ERROR state indicator
         await expect(page.locator(SELECTORS.stateFailed).first()).toBeVisible({ timeout: 10000 });
@@ -46,7 +46,7 @@ test.describe('Error Recovery - Engram UI', () => {
         await expect(page.locator(SELECTORS.discCard)).toBeVisible({ timeout: 10000 });
         await expect(page.locator(SELECTORS.stateRipping).first()).toBeVisible({ timeout: 10000 });
 
-        await page.request.post(`http://localhost:8000/api/jobs/${_job_id}/cancel`);
+        await page.request.post(`http://localhost:8001/api/jobs/${_job_id}/cancel`);
         await page.waitForTimeout(2000);
 
         // Verify the card is still visible with some content
@@ -91,7 +91,7 @@ test.describe('Error Recovery - Engram UI', () => {
         await expect(page.locator(SELECTORS.stateRipping).first()).toBeVisible({ timeout: 10000 });
 
         // Cancel immediately via API to avoid race with job completion
-        await page.request.post(`http://localhost:8000/api/jobs/${_job_id}/cancel`);
+        await page.request.post(`http://localhost:8001/api/jobs/${_job_id}/cancel`);
 
         // Should show error/failed state
         await expect(page.locator(SELECTORS.stateFailed).first()).toBeVisible({ timeout: 10000 });

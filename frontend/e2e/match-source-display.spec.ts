@@ -6,11 +6,11 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { simulateInsertDisc, advanceJob, resetAllJobs } from './fixtures/api-helpers';
+import { simulateInsertDisc, resetAllJobs } from './fixtures/api-helpers';
 import { TV_DISC_ARRESTED_DEVELOPMENT } from './fixtures/disc-scenarios';
 import { SELECTORS } from './fixtures/selectors';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'http://localhost:8001';
 
 /**
  * Helper: reassign a title to set match_source = "user"
@@ -102,7 +102,7 @@ test.describe('Match Source Badges', () => {
 test.describe('Source Toggle in Review', () => {
     test('source toggle button appears when title has both match sources', async ({ page }) => {
         // Insert disc that will go to review
-        const { job_id } = await simulateInsertDisc({
+        await simulateInsertDisc({
             ...TV_DISC_ARRESTED_DEVELOPMENT,
             simulate_ripping: true,
             rip_speed_multiplier: 100,

@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { ArrowLeft, Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
-import { MATCHING_CONFIG, EPISODE_CONFIG } from '../config/constants';
+import { MATCHING_CONFIG, EPISODE_CONFIG, FEATURES } from '../config/constants';
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
@@ -659,7 +659,7 @@ function TVTitleRow({
                                 {title.output_filename ? title.output_filename.split(/[/\\]/).pop() : `Title ${title.title_index}`}
                             </span>
                             {isConflict && (
-                                <span className="text-xs font-mono text-yellow-400 bg-yellow-500/10 px-2 py-0.5 border border-yellow-500/30 flex-shrink-0">
+                                <span className="text-xs font-mono text-yellow-400 bg-yellow-500/10 px-2 py-0.5 border border-yellow-500/30 flex-shrink-0" title={details.message || ''}>
                                     FILE EXISTS
                                 </span>
                             )}
@@ -685,7 +685,7 @@ function TVTitleRow({
                         ) : (
                             <span className="text-xs font-mono text-slate-600 bg-slate-800 px-2 py-1">&mdash;</span>
                         )}
-                        {title.match_source && (
+                        {FEATURES.DISCDB && title.match_source && (
                             <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border ${
                                 title.match_source === 'discdb'
                                     ? 'text-blue-400 border-blue-500/30 bg-blue-500/10'
@@ -784,7 +784,7 @@ function TVTitleRow({
                             <SkipForward className="w-3 h-3" />
                         </button>
                         {/* Source toggle — switch between DiscDB and Engram when both exist */}
-                        {title.discdb_match_details && title.match_details && (
+                        {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
                             <button
                                 data-testid="source-toggle"
                                 onClick={() => onRematch(
@@ -798,7 +798,7 @@ function TVTitleRow({
                             </button>
                         )}
                         {/* Re-match button — only DiscDB source, no Engram data yet */}
-                        {title.match_source === 'discdb' && !title.match_details && (
+                        {FEATURES.DISCDB && title.match_source === 'discdb' && !title.match_details && (
                             <button
                                 onClick={() => onRematch(title.id, 'engram')}
                                 className="px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border text-magenta-400 border-magenta-500/30 hover:border-magenta-400 hover:bg-magenta-500/10 transition-all"
@@ -814,6 +814,11 @@ function TVTitleRow({
             {/* Expanded details */}
             {isExpanded && (
                 <div className="border-t border-slate-800 bg-navy-800/50 px-4 py-3">
+                    {isConflict && details.message && (
+                        <div className="mb-3 px-3 py-2 border border-yellow-500/30 bg-yellow-500/5 rounded text-xs font-mono text-yellow-400">
+                            {details.message}
+                        </div>
+                    )}
                     <h4 className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-3">&gt; COMPETING MATCHES</h4>
 
                     {/* Match stats */}

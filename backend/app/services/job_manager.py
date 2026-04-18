@@ -403,9 +403,13 @@ class JobManager:
                 # Restore all titles from stored DiscDB match details
                 for title in disc_titles:
                     if title.discdb_match_details:
+                        details = json.loads(title.discdb_match_details)
                         title.match_details = title.discdb_match_details
                         title.match_source = "discdb"
                         title.match_confidence = 0.99
+                        # Restore episode code from stored details
+                        if "matched_episode" in details:
+                            title.matched_episode = details["matched_episode"]
                         title.state = TitleState.MATCHED
                         session.add(title)
                 await session.commit()
@@ -414,7 +418,7 @@ class JobManager:
                     # Reset title state for re-matching
                     title.state = TitleState.MATCHING
                     title.matched_episode = None
-                    title.match_confidence = None
+                    title.match_confidence = 0.0
                     title.match_details = None
                     session.add(title)
 
@@ -512,9 +516,14 @@ class JobManager:
                 TitleState.MATCHED.value,
                 matched_episode=episode_code,
                 match_confidence=1.0,
+                match_source="user",
             )
 
         logger.info(f"Job {job_id}: title {title_id} manually reassigned to {episode_code}")
+
+    async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
+        """Re-run episode matching for all titles in a job."""
+        await self._rerun_matching(job_id, source_preference)
 
     async def rematch_single_title(
         self, job_id: int, title_id: int, source_preference: str | None = None

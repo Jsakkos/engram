@@ -442,6 +442,7 @@ def organize_tv_extras(
     library_path: Path | None = None,
     disc_number: int = 1,
     extra_index: int = 1,
+    title_index: int | None = None,
 ) -> dict:
     """Organize a ripped TV extra/bonus content into the library Extras folder.
 
@@ -452,6 +453,7 @@ def organize_tv_extras(
         library_path: Override for library path (defaults to settings)
         disc_number: Disc number for multi-disc sets (default: 1)
         extra_index: Index of this extra on the disc (default: 1)
+        title_index: MakeMKV title index for unique naming (e.g., t03)
 
     Returns:
         dict with 'success', 'final_path', 'error' keys
@@ -478,7 +480,10 @@ def organize_tv_extras(
     clean_show = sanitize_filename(show_name.strip())
     season_folder = format_season_folder(cfg.naming_season_format, season)
 
-    extra_name = f"{clean_show} Disc {disc_number} Extras {extra_index}.mkv"
+    if title_index is not None:
+        extra_name = f"{clean_show} Disc {disc_number} Extra t{title_index:02d}.mkv"
+    else:
+        extra_name = f"{clean_show} Disc {disc_number} Extra {extra_index}.mkv"
 
     # Build destination path
     library_path = Path(library_path)

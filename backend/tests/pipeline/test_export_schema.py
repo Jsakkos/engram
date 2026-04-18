@@ -17,6 +17,8 @@ REQUIRED_TOP_LEVEL_KEYS = {
     "identification",
     "titles",
     "upc",
+    "asin",
+    "release_date",
     "images",
     "scan_log",
 }
@@ -51,6 +53,7 @@ REQUIRED_TITLE_KEYS = {
     "match_confidence",
     "match_source",
     "edition",
+    "extra_description",
 }
 
 

@@ -173,6 +173,7 @@ class MatchingCoordinator:
                     TitleState.MATCHED.value,
                     matched_episode=title.matched_episode,
                     match_confidence=title.match_confidence,
+                    match_source="discdb",
                 )
                 return
 
@@ -195,8 +196,11 @@ class MatchingCoordinator:
 
             await ws_manager.broadcast_title_update(job_id, title.id, TitleState.MATCHING.value)
 
-        # Trigger async matching (outside the session context)
-        await self.match_single_file(job_id, title_id, file_path)
+        # Fire-and-forget: matching runs in background, progress via WebSocket
+        match_task = asyncio.create_task(self.match_single_file(job_id, title_id, file_path))
+        match_task.add_done_callback(
+            lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
+        )
 
     def _find_staging_file(self, job: DiscJob, title: DiscTitle) -> Path | None:
         """Find the staging file for a title, trying output_filename then staging_path."""
@@ -639,6 +643,7 @@ class MatchingCoordinator:
             None,
             job.disc_number,
             extra_index,
+            title.title_index,
         )
         if org_result["success"]:
             title.state = TitleState.COMPLETED

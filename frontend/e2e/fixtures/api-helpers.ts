@@ -1,8 +1,11 @@
 /**
  * Helper functions for calling simulation endpoints in E2E tests.
+ *
+ * Uses port 8001 (the dedicated E2E backend) so destructive operations
+ * like resetAllJobs never touch the dev database on port 8000.
  */
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'http://localhost:8001';
 
 export async function simulateInsertDisc(params: Record<string, unknown>): Promise<{ status: string; job_id: number }> {
     const res = await fetch(`${API_BASE}/api/simulate/insert-disc`, {

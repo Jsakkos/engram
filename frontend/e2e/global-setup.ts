@@ -5,7 +5,7 @@
  * modal blocks the entire UI. This marks setup as complete so tests can proceed.
  */
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'http://localhost:8001';
 
 async function globalSetup() {
     // Wait for backend to be ready (webServer config starts it, but globalSetup
