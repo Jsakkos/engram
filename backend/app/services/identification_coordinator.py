@@ -685,8 +685,10 @@ class IdentificationCoordinator:
         self._analyst.set_config(config)
 
         # Attempt TheDiscDB lookup
+        from app.core.features import DISCDB_ENABLED
+
         discdb_signal = None
-        if config.discdb_enabled:
+        if DISCDB_ENABLED and config.discdb_enabled:
             try:
                 from app.core.discdb_classifier import classify_from_discdb
 

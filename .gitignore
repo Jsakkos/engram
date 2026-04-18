@@ -25,6 +25,17 @@ node_modules/
 # Vite
 frontend/dist/
 
+# Bundled frontend served from backend (PyInstaller build output)
+backend/app/static/
+
+# Windows bundle output
+engram-windows-x64/
+engram-windows-*.zip
+
+# Ad-hoc debug screenshots
+/*.png
+screenshots/
+
 # MkDocs
 site/
 
@@ -51,6 +62,9 @@ backend/engram.db
 backend/engram.db-shm
 backend/engram.db-wal
 backend/engram.db.bak
+backend/engram_e2e.db
+backend/engram_e2e.db-shm
+backend/engram_e2e.db-wal
 
 # Backend - Secrets
 backend/.env

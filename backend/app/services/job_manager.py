@@ -382,7 +382,7 @@ class JobManager:
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
-    async def _rerun_matching(self, job_id: int) -> None:
+    async def _rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for already-ripped titles."""
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -398,31 +398,47 @@ class JobManager:
             disc_titles = titles_result.scalars().all()
 
             staging = Path(job.staging_path)
-            for title in disc_titles:
-                # Reset title state for re-matching
-                title.state = TitleState.MATCHING
-                title.matched_episode = None
-                title.match_confidence = None
-                title.match_details = None
-                session.add(title)
 
-            await session.commit()
+            if source_preference == "discdb":
+                # Restore all titles from stored DiscDB match details
+                for title in disc_titles:
+                    if title.discdb_match_details:
+                        details = json.loads(title.discdb_match_details)
+                        title.match_details = title.discdb_match_details
+                        title.match_source = "discdb"
+                        title.match_confidence = 0.99
+                        # Restore episode code from stored details
+                        if "matched_episode" in details:
+                            title.matched_episode = details["matched_episode"]
+                        title.state = TitleState.MATCHED
+                        session.add(title)
+                await session.commit()
+            else:
+                for title in disc_titles:
+                    # Reset title state for re-matching
+                    title.state = TitleState.MATCHING
+                    title.matched_episode = None
+                    title.match_confidence = 0.0
+                    title.match_details = None
+                    session.add(title)
 
-            # Start matching for each ripped file
-            for title in disc_titles:
-                if title.output_filename:
-                    file_path = Path(title.output_filename)
-                    if not file_path.exists():
-                        file_path = staging / file_path.name
-                    if file_path.exists():
-                        match_task = asyncio.create_task(
-                            self._matching.match_single_file(job_id, title.id, file_path)
-                        )
-                        match_task.add_done_callback(
-                            lambda t, jid=job_id, tid=title.id: (
-                                self._matching.on_match_task_done(t, jid, tid)
+                await session.commit()
+
+                # Start matching for each ripped file
+                for title in disc_titles:
+                    if title.output_filename:
+                        file_path = Path(title.output_filename)
+                        if not file_path.exists():
+                            file_path = staging / file_path.name
+                        if file_path.exists():
+                            match_task = asyncio.create_task(
+                                self._matching.match_single_file(job_id, title.id, file_path)
                             )
-                        )
+                            match_task.add_done_callback(
+                                lambda t, jid=job_id, tid=title.id: (
+                                    self._matching.on_match_task_done(t, jid, tid)
+                                )
+                            )
 
             logger.info(
                 f"Job {job_id}: re-matching {len(disc_titles)} titles with corrected metadata"
@@ -470,6 +486,50 @@ class JobManager:
     ) -> None:
         """Apply a user's review decision for a title."""
         await self._finalization.apply_review(job_id, title_id, episode_code, edition)
+
+    async def reassign_episode(
+        self,
+        job_id: int,
+        title_id: int,
+        episode_code: str,
+        edition: str | None = None,
+    ) -> None:
+        """Manually reassign an episode for a title. Sets match_source='user'."""
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                raise ValueError(f"Title {title_id} not found for job {job_id}")
+
+            title.matched_episode = episode_code
+            title.match_confidence = 1.0
+            title.match_source = "user"
+            if edition is not None:
+                title.edition = edition
+            if title.state != TitleState.MATCHED:
+                title.state = TitleState.MATCHED
+            session.add(title)
+            await session.commit()
+
+            await ws_manager.broadcast_title_update(
+                job_id,
+                title.id,
+                TitleState.MATCHED.value,
+                matched_episode=episode_code,
+                match_confidence=1.0,
+                match_source="user",
+            )
+
+        logger.info(f"Job {job_id}: title {title_id} manually reassigned to {episode_code}")
+
+    async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
+        """Re-run episode matching for all titles in a job."""
+        await self._rerun_matching(job_id, source_preference)
+
+    async def rematch_single_title(
+        self, job_id: int, title_id: int, source_preference: str | None = None
+    ) -> None:
+        """Re-match a single title. Delegates to matching coordinator."""
+        await self._matching.rematch_single_title(job_id, title_id, source_preference)
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job."""

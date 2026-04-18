@@ -108,8 +108,22 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                     )}
 
                     {/* Quality badges */}
-                    {(track.videoResolution || track.edition || track.isExtra) && (
-                      <div className="flex gap-1 mt-1">
+                    {(track.videoResolution || track.edition || track.isExtra || track.matchSource) && (
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {track.matchSource && (
+                          <span
+                            data-testid={`source-badge-${track.matchSource}`}
+                            className={`px-1.5 py-0.5 text-[10px] font-bold tracking-wider border ${
+                              track.matchSource === 'discdb'
+                                ? 'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                                : track.matchSource === 'user'
+                                  ? 'bg-green-500/20 border-green-500/30 text-green-400'
+                                  : 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                            }`}
+                          >
+                            {track.matchSource === 'discdb' ? 'DISCDB' : track.matchSource === 'user' ? 'MANUAL' : 'ENGRAM'}
+                          </span>
+                        )}
                         {track.videoResolution && (
                           <span className="px-1.5 py-0.5 bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-[10px] font-bold tracking-wider">
                             {track.videoResolution}

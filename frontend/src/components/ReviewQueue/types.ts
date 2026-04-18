@@ -15,6 +15,7 @@ export interface MatchDetails {
         vote_count?: number;
     }>;
     error?: string;
+    message?: string;
     matches_found?: number;
     conflict_reason?: string;
     auto_sorted?: string;

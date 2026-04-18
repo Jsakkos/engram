@@ -26,14 +26,14 @@ export default defineConfig({
         },
     },
     server: {
-        port: 5173,
+        port: parseInt(process.env.VITE_PORT || '5173', 10),
         proxy: {
             '/api': {
-                target: 'http://localhost:8000',
+                target: `http://localhost:${process.env.VITE_BACKEND_PORT || '8000'}`,
                 changeOrigin: true,
             },
             '/ws': {
-                target: 'ws://localhost:8000',
+                target: `ws://localhost:${process.env.VITE_BACKEND_PORT || '8000'}`,
                 changeOrigin: true,
                 ws: true,
                 rewrite: (path) => path,

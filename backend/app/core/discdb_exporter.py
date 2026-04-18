@@ -83,7 +83,7 @@ def generate_export(
     job: DiscJob,
     titles: list[DiscTitle],
     config: AppConfig,
-    app_version: str = "0.4.4",
+    app_version: str = "unknown",
 ) -> Path | None:
     """Generate a JSON export file for a completed job.
 
@@ -103,7 +103,7 @@ def generate_export(
         try:
             discdb_mappings = json.loads(job.discdb_mappings_json)
         except json.JSONDecodeError:
-            pass
+            logger.warning(f"Job {job.id}: Malformed discdb_mappings_json, skipping mappings")
 
     # Build title entries and track match sources for skip logic
     title_entries = []
@@ -116,7 +116,9 @@ def generate_export(
                 details = json.loads(title.match_details)
                 match_source = details.get("source")
             except json.JSONDecodeError:
-                pass
+                logger.warning(
+                    f"Job {job.id}: Malformed match_details for title {title.title_index}"
+                )
         if match_source:
             match_sources.append(match_source)
 
@@ -137,6 +139,7 @@ def generate_export(
                 "match_confidence": title.match_confidence,
                 "match_source": match_source,
                 "edition": title.edition,
+                "extra_description": title.extra_description,
             }
         )
 
@@ -167,6 +170,8 @@ def generate_export(
         },
         "titles": title_entries,
         "upc": job.upc_code,
+        "asin": job.asin,
+        "release_date": job.release_date,
         "images": _list_images(export_dir),
         "scan_log": _collect_scan_log(job.id, export_dir),
     }

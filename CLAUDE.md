@@ -9,6 +9,7 @@ Engram is a disc ripping and media organization tool with a reactive web dashboa
 ## Important Rules
 
 - **NEVER delete `backend/engram.db`** unless the user explicitly asks. It contains API keys and credentials that must be re-entered manually.
+- **Always terminate backend processes after testing.** Kill all `uvicorn`, `python` (uvicorn workers), and `makemkvcon` processes when done. Orphaned processes cause duplicate jobs and MakeMKV drive conflicts. Never use `--reload` — it spawns a child process with its own drive sentinel, creating duplicate disc events.
 
 ## Commands
 

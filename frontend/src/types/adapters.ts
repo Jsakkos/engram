@@ -137,6 +137,7 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
     // Quality metadata
     videoResolution: title.video_resolution || undefined,
     edition: title.edition || undefined,
+    matchSource: title.match_source || undefined,
 
     // Size tracking
     fileSizeBytes: title.file_size_bytes || undefined,

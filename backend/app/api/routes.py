@@ -7,10 +7,12 @@ import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -74,6 +76,10 @@ class TitleResponse(BaseModel):
     organized_from: str | None = None
     organized_to: str | None = None
     is_extra: bool = False
+    match_source: str | None = None
+    discdb_match_details: str | None = None
+    discdb_flagged: bool = False
+    discdb_flag_reason: str | None = None
 
 
 class HistoryJobResponse(BaseModel):
@@ -498,6 +504,10 @@ async def get_job_detail(job_id: int, session: AsyncSession = Depends(get_sessio
                 "organized_from": t.organized_from,
                 "organized_to": t.organized_to,
                 "is_extra": t.is_extra,
+                "match_source": t.match_source,
+                "discdb_match_details": t.discdb_match_details,
+                "discdb_flagged": t.discdb_flagged,
+                "discdb_flag_reason": t.discdb_flag_reason,
             }
             for t in titles
         ],
@@ -1420,6 +1430,9 @@ class ContributionJobResponse(BaseModel):
     submitted_at: datetime | None = None
     contribute_url: str | None = None
     release_group_id: str | None = None
+    upc_code: str | None = None
+    asin: str | None = None
+    release_date: str | None = None
 
 
 class ContributionStatsResponse(BaseModel):
@@ -1435,6 +1448,30 @@ class EnhanceRequest(BaseModel):
     """Request model for tier-3 contribution enhancement."""
 
     upc_code: str | None = None
+    asin: str | None = None
+    release_date: str | None = None
+    extra_descriptions: dict[int, str] | None = None  # title_id -> description
+
+
+class FlagDiscDBRequest(BaseModel):
+    """Request model for flagging incorrect DiscDB data on a title."""
+
+    title_id: int
+    reason: str
+    details: str | None = None
+
+
+class RematchRequest(BaseModel):
+    """Request model for re-matching titles."""
+
+    source_preference: Literal["discdb", "engram"] | None = None
+
+
+class ReassignRequest(BaseModel):
+    """Request model for manual episode reassignment."""
+
+    episode_code: str
+    edition: str | None = None
 
 
 class ReleaseGroupRequest(BaseModel):
@@ -1470,9 +1507,9 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
         else:
             status = "exported"
 
-        # Build contribute URL from submission ID if available
-        contribute_url = None
-        if job.discdb_submission_id:
+        # Use stored contribute URL, or construct from submission ID as fallback
+        contribute_url = job.discdb_contribute_url
+        if not contribute_url and job.discdb_submission_id:
             contribute_url = f"https://thediscdb.com/contribute/engram/{job.discdb_submission_id}"
 
         responses.append(
@@ -1488,6 +1525,9 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
                 submitted_at=job.submitted_at,
                 contribute_url=contribute_url,
                 release_group_id=job.release_group_id,
+                upc_code=job.upc_code,
+                asin=job.asin,
+                release_date=job.release_date,
             )
         )
     return responses
@@ -1557,6 +1597,107 @@ async def skip_contribution(job_id: int, session: AsyncSession = Depends(get_ses
     return {"status": "skipped"}
 
 
+class UPCLookupRequest(BaseModel):
+    """Request model for UPC product lookup."""
+
+    upc_code: str
+
+    @field_validator("upc_code")
+    @classmethod
+    def validate_upc(cls, v: str) -> str:
+        v = v.strip()
+        if not v.isdigit() or not (8 <= len(v) <= 14):
+            raise ValueError("UPC must be 8-14 digits")
+        return v
+
+
+class FetchCoverRequest(BaseModel):
+    """Request model for fetching cover art."""
+
+    image_url: str
+
+
+@router.post("/contributions/{job_id}/upc-lookup")
+async def upc_lookup(
+    job_id: int,
+    request: UPCLookupRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Look up product info by UPC barcode."""
+    from app.core.upc_lookup import compute_match_confidence, lookup_upc
+
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    result = await lookup_upc(request.upc_code)
+    if not result.success:
+        return {"success": False, "error": result.error}
+
+    confidence = compute_match_confidence(result.product_title, job.detected_title)
+
+    return {
+        "success": True,
+        "product_title": result.product_title,
+        "brand": result.brand,
+        "asins": result.asins,
+        "images": result.images,
+        "description": result.description,
+        "match_confidence": confidence,
+    }
+
+
+@router.post("/contributions/{job_id}/fetch-cover")
+async def fetch_cover(
+    job_id: int,
+    request: FetchCoverRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Download a cover image and save it to the export directory."""
+    from app.services.config_service import get_config as get_db_config
+
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.content_hash:
+        raise HTTPException(status_code=400, detail="No content hash")
+
+    config = await get_db_config()
+    export_base = Path(config.discdb_export_path) if config.discdb_export_path else None
+    if not export_base:
+        raise HTTPException(status_code=400, detail="No export path configured")
+
+    export_dir = export_base / job.content_hash
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    max_size = 10 * 1024 * 1024  # 10 MB
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(request.image_url)
+            resp.raise_for_status()
+
+            content_length = resp.headers.get("content-length")
+            if content_length and int(content_length) > max_size:
+                raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")
+            if len(resp.content) > max_size:
+                raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")
+
+            # Determine extension from content type or URL
+            content_type = resp.headers.get("content-type", "")
+            if "png" in content_type:
+                ext = ".png"
+            else:
+                ext = ".jpg"
+
+            filename = f"cover{ext}"
+            filepath = export_dir / filename
+            filepath.write_bytes(resp.content)
+
+        return {"status": "saved", "filename": filename}
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to download image: {e}") from None
+
+
 @router.post("/contributions/{job_id}/enhance")
 async def enhance_contribution(
     job_id: int,
@@ -1573,18 +1714,37 @@ async def enhance_contribution(
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
 
-    # Update UPC
-    if request.upc_code:
+    # Update job-level fields
+    updated = False
+    if request.upc_code is not None:
         job.upc_code = request.upc_code
+        updated = True
+    if request.asin is not None:
+        job.asin = request.asin
+        updated = True
+    if request.release_date is not None:
+        job.release_date = request.release_date
+        updated = True
+    if updated:
         session.add(job)
         await session.commit()
         await session.refresh(job)
 
-    config = await get_db_config()
-    config.discdb_contribution_tier = 3  # Force tier 3 for this export
-
     titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
     titles = list(titles_result.scalars().all())
+
+    # Update per-title extra descriptions
+    if request.extra_descriptions:
+        for title in titles:
+            if title.id in request.extra_descriptions:
+                title.extra_description = request.extra_descriptions[title.id]
+                session.add(title)
+        await session.commit()
+
+    config = await get_db_config()
+    # In-memory override only — forces tier 3 for this single export call
+    # without persisting the change to the database
+    config.discdb_contribution_tier = 3
 
     from app import __version__
 
@@ -1594,6 +1754,102 @@ async def enhance_contribution(
 
     await mark_exported(job_id, session)
     return {"status": "enhanced", "export_path": str(export_dir)}
+
+
+@router.post("/jobs/{job_id}/flag-discdb")
+async def flag_discdb(
+    job_id: int,
+    request: FlagDiscDBRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Flag a DiscDB title match as incorrect."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    title = await session.get(DiscTitle, request.title_id)
+    if not title or title.job_id != job_id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    title.discdb_flagged = True
+    title.discdb_flag_reason = request.reason
+    session.add(title)
+    await session.commit()
+
+    return {"status": "flagged", "title_id": title.id}
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/rematch")
+async def rematch_title(
+    job_id: int,
+    title_id: int,
+    request: RematchRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Re-match a single title with optional source preference."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job_id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.rematch_single_title(job_id, title_id, request.source_preference)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return {"status": "rematching", "title_id": title_id}
+
+
+@router.post("/jobs/{job_id}/rematch")
+async def rematch_job(
+    job_id: int,
+    request: RematchRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Re-match all titles for a job."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    from app.services.job_manager import job_manager
+
+    await job_manager.rerun_matching(job_id, request.source_preference)
+
+    return {"status": "rematching", "job_id": job_id}
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/reassign")
+async def reassign_episode(
+    job_id: int,
+    title_id: int,
+    request: ReassignRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Manually reassign an episode for a title."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.state in (JobState.ORGANIZING, JobState.FAILED, JobState.COMPLETED):
+        raise HTTPException(status_code=400, detail=f"Cannot reassign in state: {job.state}")
+
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job_id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.reassign_episode(job_id, title_id, request.episode_code, request.edition)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return {"status": "reassigned", "title_id": title_id}
 
 
 @router.post("/contributions/{job_id}/submit")
@@ -1607,10 +1863,10 @@ async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_s
         raise HTTPException(status_code=404, detail="Job not found")
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
+    if not job.exported_at or job.exported_at.year == 1970:
+        raise HTTPException(status_code=400, detail="Job must be exported before submission")
 
     config = await get_db_config()
-    if not config.discdb_api_key:
-        raise HTTPException(status_code=400, detail="No TheDiscDB API key configured")
 
     titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
     titles = list(titles_result.scalars().all())
@@ -1622,6 +1878,7 @@ async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_s
     if result.success:
         job.submitted_at = datetime.now(UTC)
         job.discdb_submission_id = result.submission_id
+        job.discdb_contribute_url = result.contribute_url
         session.add(job)
         await session.commit()
 
@@ -1641,8 +1898,10 @@ async def create_release_group(
     """Create a release group linking multiple disc jobs."""
     import uuid
 
-    if len(request.job_ids) < 2:
+    unique_ids = list(dict.fromkeys(request.job_ids))  # deduplicate, preserve order
+    if len(unique_ids) < 2:
         raise HTTPException(status_code=400, detail="A release group requires at least 2 jobs")
+    request.job_ids = unique_ids
 
     # Verify all jobs exist
     jobs = []
@@ -1688,3 +1947,37 @@ async def assign_release_group(
     await session.commit()
 
     return {"job_id": job_id, "release_group_id": request.release_group_id}
+
+
+@router.post("/contributions/release-group/{release_group_id}/submit")
+async def submit_release_group_endpoint(
+    release_group_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Batch-submit all completed jobs in a release group to TheDiscDB."""
+    from app.core.discdb_submitter import submit_release_group
+    from app.services.config_service import get_config as get_db_config
+
+    # Verify release group exists (lightweight count check)
+    count_result = await session.execute(
+        select(func.count())
+        .select_from(DiscJob)
+        .where(DiscJob.release_group_id == release_group_id)
+    )
+    if count_result.scalar() == 0:
+        raise HTTPException(status_code=404, detail="Release group not found")
+
+    config = await get_db_config()
+
+    from app import __version__
+
+    batch_result = await submit_release_group(
+        release_group_id, session, config, app_version=__version__
+    )
+
+    return {
+        "submitted": batch_result.submitted,
+        "failed": batch_result.failed,
+        "results": batch_result.results,
+        "contribute_url": batch_result.contribute_url,
+    }

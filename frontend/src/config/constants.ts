@@ -4,6 +4,15 @@
  */
 
 /**
+ * Feature flags.
+ * Flip to true to expose a feature that's been merged but isn't user-ready.
+ */
+export const FEATURES = {
+  /** TheDiscDB integration — contribute page, match-source badges, settings toggle. */
+  DISCDB: false,
+} as const;
+
+/**
  * Episode matching confidence thresholds
  */
 export const MATCHING_CONFIG = {

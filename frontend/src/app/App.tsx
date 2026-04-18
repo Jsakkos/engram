@@ -12,6 +12,7 @@ import NamePromptModal from "../components/NamePromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
+import { FEATURES } from "../config/constants";
 import type { Job } from "../types";
 
 type ViewMode = "expanded" | "compact";
@@ -41,7 +42,7 @@ function MainDashboard() {
           setShowOnboarding(true);
         }
         // Fetch contribution stats for nav badge
-        if (data.discdb_contributions_enabled) {
+        if (FEATURES.DISCDB && data.discdb_contributions_enabled) {
           try {
             const statsRes = await fetch('/api/contributions/stats');
             if (statsRes.ok) {
@@ -157,21 +158,23 @@ function MainDashboard() {
                 >
                   History
                 </Link>
-                <Link
-                  to="/contribute"
-                  className={`px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all border-b-2 flex items-center gap-1.5 ${
-                    location.pathname === "/contribute"
-                      ? "text-cyan-400 border-cyan-400"
-                      : "text-slate-500 border-transparent hover:text-slate-300"
-                  }`}
-                >
-                  Contribute
-                  {contributionPending > 0 && (
-                    <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
-                      {contributionPending}
-                    </span>
-                  )}
-                </Link>
+                {FEATURES.DISCDB && (
+                  <Link
+                    to="/contribute"
+                    className={`px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all border-b-2 flex items-center gap-1.5 ${
+                      location.pathname === "/contribute"
+                        ? "text-cyan-400 border-cyan-400"
+                        : "text-slate-500 border-transparent hover:text-slate-300"
+                    }`}
+                  >
+                    Contribute
+                    {contributionPending > 0 && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
+                        {contributionPending}
+                      </span>
+                    )}
+                  </Link>
+                )}
               </nav>
             </div>
 
@@ -531,7 +534,7 @@ function App() {
       <Route path="/" element={<MainDashboard />} />
       <Route path="/history" element={<HistoryPage />} />
       <Route path="/history/:jobId" element={<HistoryPage />} />
-      <Route path="/contribute" element={<ContributePage />} />
+      {FEATURES.DISCDB && <Route path="/contribute" element={<ContributePage />} />}
       <Route path="/review/:jobId" element={<ReviewQueue />} />
     </Routes>
   );

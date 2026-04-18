@@ -196,11 +196,20 @@ async def test_enhance_with_upc(client, completed_job, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_submit_requires_api_key(client, completed_job):
-    """Submit endpoint should fail without API key configured."""
+async def test_submit_without_api_key_attempts_submission(client, completed_job, tmp_path):
+    """Submit endpoint should attempt submission even without API key configured."""
+    await client.put("/api/config", json={"discdb_export_path": str(tmp_path)})
+
+    # Export first so there's data to submit
+    await client.post(f"/api/contributions/{completed_job.id}/export")
+
+    # Submit without API key — should attempt but fail due to network (no real server)
     response = await client.post(f"/api/contributions/{completed_job.id}/submit")
-    assert response.status_code == 400
-    assert "API key" in response.json()["detail"]
+    assert response.status_code == 200
+    data = response.json()
+    # Will fail because there's no real TheDiscDB server in tests, but it should attempt
+    assert "success" in data
+    assert "error" in data
 
 
 @pytest.mark.asyncio
@@ -255,3 +264,42 @@ async def test_ungroup_job(client, completed_job, second_completed_job):
     jobs = list_response.json()
     job = next(j for j in jobs if j["id"] == completed_job.id)
     assert job["release_group_id"] is None
+
+
+# --- Wave 3: Batch Submit Tests ---
+
+
+@pytest.mark.asyncio
+async def test_batch_submit_release_group(client, completed_job, second_completed_job, tmp_path):
+    """Batch-submit all jobs in a release group."""
+    # Set export path (needed for submit_job to generate export)
+    await client.put("/api/config", json={"discdb_export_path": str(tmp_path)})
+
+    # Create a release group
+    group_resp = await client.post(
+        "/api/contributions/release-group",
+        json={"job_ids": [completed_job.id, second_completed_job.id]},
+    )
+    assert group_resp.status_code == 200
+    group_id = group_resp.json()["release_group_id"]
+
+    # Batch submit — will fail due to no real TheDiscDB server, but endpoint should work
+    response = await client.post(f"/api/contributions/release-group/{group_id}/submit")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert "submitted" in data
+    assert "failed" in data
+    assert "results" in data
+    assert len(data["results"]) == 2
+    # Each result should have job_id, success, error fields
+    for result in data["results"]:
+        assert "job_id" in result
+        assert "success" in result
+
+
+@pytest.mark.asyncio
+async def test_batch_submit_nonexistent_group(client):
+    """Batch submit with a nonexistent release group returns 404."""
+    response = await client.post("/api/contributions/release-group/nonexistent-uuid-12345/submit")
+    assert response.status_code == 404

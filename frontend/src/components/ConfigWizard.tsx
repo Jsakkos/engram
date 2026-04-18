@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { FEATURES } from '../config/constants';
 import './ConfigWizard.css';
 
 interface ConfigWizardProps {
@@ -543,21 +544,23 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </label>
                         </div>
 
-                        <div className="form-group checkbox-group">
-                            <label className="checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={config.discdbEnabled}
-                                    onChange={(e) => handleInputChange('discdbEnabled', e.target.checked)}
-                                />
-                                <span className="checkbox-text">
-                                    <strong>Enable TheDiscDB Lookup</strong>
-                                    <span className="checkbox-hint">
-                                        Query TheDiscDB for known disc layouts. When matched, skips audio fingerprinting and instantly maps episodes. No API key required.
+                        {FEATURES.DISCDB && (
+                            <div className="form-group checkbox-group">
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={config.discdbEnabled}
+                                        onChange={(e) => handleInputChange('discdbEnabled', e.target.checked)}
+                                    />
+                                    <span className="checkbox-text">
+                                        <strong>Enable TheDiscDB Lookup</strong>
+                                        <span className="checkbox-hint">
+                                            Query TheDiscDB for known disc layouts. When matched, skips audio fingerprinting and instantly maps episodes. No API key required.
+                                        </span>
                                     </span>
-                                </span>
-                            </label>
-                        </div>
+                                </label>
+                            </div>
+                        )}
 
                         <div className="form-group checkbox-group">
                             <label className="checkbox-label">
@@ -607,59 +610,63 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </>
                         )}
 
-                        <div className="form-group checkbox-group">
-                            <label className="checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={config.discdbContributionsEnabled}
-                                    onChange={(e) => handleInputChange('discdbContributionsEnabled', e.target.checked)}
-                                />
-                                <span className="checkbox-text">
-                                    <strong>Enable TheDiscDB Contributions</strong>
-                                    <span className="checkbox-hint">
-                                        Share disc metadata (track info, episode mappings) with TheDiscDB after each rip. Helps others identify their discs automatically. No personal data is shared.
-                                    </span>
-                                </span>
-                            </label>
-                        </div>
-
-                        {config.discdbContributionsEnabled && (
+                        {FEATURES.DISCDB && (
                             <>
-                                <div className="form-group">
-                                    <label htmlFor="discdbContributionTier">Contribution Level</label>
-                                    <select
-                                        id="discdbContributionTier"
-                                        value={config.discdbContributionTier}
-                                        onChange={(e) => handleInputChange('discdbContributionTier', parseInt(e.target.value))}
-                                    >
-                                        <option value={2}>Automatic — share auto-collected data</option>
-                                        <option value={3}>Full — prompt for UPC and images</option>
-                                    </select>
+                                <div className="form-group checkbox-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.discdbContributionsEnabled}
+                                            onChange={(e) => handleInputChange('discdbContributionsEnabled', e.target.checked)}
+                                        />
+                                        <span className="checkbox-text">
+                                            <strong>Enable TheDiscDB Contributions</strong>
+                                            <span className="checkbox-hint">
+                                                Share disc metadata (track info, episode mappings) with TheDiscDB after each rip. Helps others identify their discs automatically. No personal data is shared.
+                                            </span>
+                                        </span>
+                                    </label>
                                 </div>
 
-                                <div className="form-group">
-                                    <label htmlFor="discdbApiKey">TheDiscDB API Key</label>
-                                    <input
-                                        id="discdbApiKey"
-                                        type="password"
-                                        value={config.discdbApiKey}
-                                        onChange={(e) => handleInputChange('discdbApiKey', e.target.value)}
-                                        placeholder="Enter API key for automatic submission"
-                                    />
-                                    <small>Required for submitting directly to TheDiscDB. Leave empty for local-only export.</small>
-                                </div>
+                                {config.discdbContributionsEnabled && (
+                                    <>
+                                        <div className="form-group">
+                                            <label htmlFor="discdbContributionTier">Contribution Level</label>
+                                            <select
+                                                id="discdbContributionTier"
+                                                value={config.discdbContributionTier}
+                                                onChange={(e) => handleInputChange('discdbContributionTier', parseInt(e.target.value))}
+                                            >
+                                                <option value={2}>Automatic — share auto-collected data</option>
+                                                <option value={3}>Full — prompt for UPC and images</option>
+                                            </select>
+                                        </div>
 
-                                <div className="form-group">
-                                    <label htmlFor="discdbExportPath">Export Directory (optional)</label>
-                                    <input
-                                        id="discdbExportPath"
-                                        type="text"
-                                        value={config.discdbExportPath}
-                                        onChange={(e) => handleInputChange('discdbExportPath', e.target.value)}
-                                        placeholder="~/.engram/discdb-exports"
-                                    />
-                                    <small>Leave empty for the default location</small>
-                                </div>
+                                        <div className="form-group">
+                                            <label htmlFor="discdbApiKey">TheDiscDB API Key</label>
+                                            <input
+                                                id="discdbApiKey"
+                                                type="password"
+                                                value={config.discdbApiKey}
+                                                onChange={(e) => handleInputChange('discdbApiKey', e.target.value)}
+                                                placeholder="Enter API key for automatic submission"
+                                            />
+                                            <small>Required for submitting directly to TheDiscDB. Leave empty for local-only export.</small>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="discdbExportPath">Export Directory (optional)</label>
+                                            <input
+                                                id="discdbExportPath"
+                                                type="text"
+                                                value={config.discdbExportPath}
+                                                onChange={(e) => handleInputChange('discdbExportPath', e.target.value)}
+                                                placeholder="~/.engram/discdb-exports"
+                                            />
+                                            <small>Leave empty for the default location</small>
+                                        </div>
+                                    </>
+                                )}
                             </>
                         )}
 

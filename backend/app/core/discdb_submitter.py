@@ -4,11 +4,17 @@ Submits disc metadata and scan logs to TheDiscDB's ingestion API.
 All functions are non-throwing — errors are captured in SubmissionResult.
 """
 
+from __future__ import annotations
+
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.discdb_exporter import (
     generate_export,
@@ -33,6 +39,8 @@ class SubmissionResult:
 
 
 def _auth_headers(api_key: str) -> dict[str, str]:
+    if not api_key:
+        return {}
     return {"Authorization": f"ApiKey {api_key}"}
 
 
@@ -44,6 +52,10 @@ async def submit_disc(
     """Submit disc data JSON to TheDiscDB API.
 
     POST {base_url}/api/engram/disc
+
+    The API returns {"id": int, "contentHash": str, "updated": bool}.
+    If the payload contains a release_id, the contribution page is at
+    {base_url}/contribute/engram/{release_id}.
     """
     url = f"{base_url.rstrip('/')}/api/engram/disc"
     try:
@@ -51,10 +63,19 @@ async def submit_disc(
             resp = await client.post(url, json=payload, headers=_auth_headers(api_key))
             resp.raise_for_status()
             data = resp.json()
+
+            # Map API response fields to our result model
+            submission_id = data.get("submission_id") or str(data.get("id", ""))
+            contribute_url = data.get("contribute_url")
+            if not contribute_url:
+                release_id = payload.get("disc", {}).get("release_id")
+                if release_id:
+                    contribute_url = f"{base_url.rstrip('/')}/contribute/engram/{release_id}"
+
             return SubmissionResult(
                 success=True,
-                submission_id=data.get("submission_id"),
-                contribute_url=data.get("contribute_url"),
+                submission_id=submission_id or None,
+                contribute_url=contribute_url,
             )
     except httpx.HTTPStatusError as e:
         msg = f"TheDiscDB API returned {e.response.status_code}"
@@ -106,15 +127,9 @@ async def submit_job(
     job: DiscJob,
     titles: list[DiscTitle],
     config: AppConfig,
-    app_version: str = "0.4.4",
+    app_version: str = "unknown",
 ) -> SubmissionResult:
-    """Orchestrate full submission: disc data + scan log.
-
-    Returns early if no API key is configured.
-    """
-    if not config.discdb_api_key:
-        return SubmissionResult(error="No TheDiscDB API key configured")
-
+    """Orchestrate full submission: disc data + scan log."""
     if not job.content_hash:
         return SubmissionResult(error="No content hash available")
 
@@ -145,4 +160,79 @@ async def submit_job(
     )
 
     logger.info(f"Job {job.id}: Submitted to TheDiscDB (submission_id={result.submission_id})")
+    return result
+
+
+@dataclass
+class BatchSubmissionResult:
+    """Result of batch submission for a release group."""
+
+    submitted: int = 0
+    failed: int = 0
+    results: list[dict] = field(default_factory=list)
+    contribute_url: str | None = None
+
+
+async def submit_release_group(
+    release_group_id: str,
+    session: AsyncSession,
+    config: AppConfig,
+    app_version: str = "unknown",
+) -> BatchSubmissionResult:
+    """Submit all completed jobs in a release group sequentially."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.models.disc_job import JobState
+
+    result = BatchSubmissionResult()
+
+    jobs_query = await session.execute(
+        select(DiscJob).where(
+            DiscJob.release_group_id == release_group_id,
+            DiscJob.state == JobState.COMPLETED,
+        )
+    )
+    jobs = list(jobs_query.scalars().all())
+
+    # Pre-load all titles to avoid N+1 queries
+    job_ids = [j.id for j in jobs]
+    if job_ids:
+        all_titles_query = await session.execute(
+            select(DiscTitle).where(DiscTitle.job_id.in_(job_ids))
+        )
+        all_titles = all_titles_query.scalars().all()
+        titles_by_job: dict[int, list] = {}
+        for t in all_titles:
+            titles_by_job.setdefault(t.job_id, []).append(t)
+    else:
+        titles_by_job = {}
+
+    for job in jobs:
+        titles = titles_by_job.get(job.id, [])
+
+        job_result = await submit_job(job, titles, config, app_version)
+
+        entry = {
+            "job_id": job.id,
+            "success": job_result.success,
+            "submission_id": job_result.submission_id,
+            "contribute_url": job_result.contribute_url,
+            "error": job_result.error,
+        }
+        result.results.append(entry)
+
+        if job_result.success:
+            result.submitted += 1
+            if job_result.contribute_url:
+                result.contribute_url = job_result.contribute_url
+            job.submitted_at = datetime.now(UTC)
+            job.discdb_submission_id = job_result.submission_id
+            job.discdb_contribute_url = job_result.contribute_url
+            session.add(job)
+        else:
+            result.failed += 1
+
+    await session.commit()
     return result
