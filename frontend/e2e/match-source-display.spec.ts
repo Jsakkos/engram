@@ -45,7 +45,10 @@ test.beforeEach(async ({ page }) => {
     await expect(page.locator(SELECTORS.connectionStatus.connected)).toBeVisible({ timeout: 10000 });
 });
 
-test.describe('Match Source Badges', () => {
+// Match-source badges + source toggle are gated behind FEATURES.DISCDB
+// (frontend/src/config/constants.ts). These tests exercise UI that's hidden
+// while the flag is false. Re-enable along with the feature.
+test.describe.fixme('Match Source Badges', () => {
     test('MANUAL source badge appears after user reassignment', async ({ page }) => {
         // Insert TV disc with fast ripping
         const { job_id } = await simulateInsertDisc({
@@ -99,7 +102,7 @@ test.describe('Match Source Badges', () => {
     });
 });
 
-test.describe('Source Toggle in Review', () => {
+test.describe.fixme('Source Toggle in Review', () => {
     test('source toggle button appears when title has both match sources', async ({ page }) => {
         // Insert disc that will go to review
         await simulateInsertDisc({
