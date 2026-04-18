@@ -1,9 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 // E2E tests use a dedicated backend (port 8001) and Vite server (port 5174)
 // with a separate database so that reset-all-jobs and other destructive test
 // operations never touch the dev database (engram.db).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const E2E_BACKEND_PORT = 8001;
 const E2E_VITE_PORT = 5174;
 const E2E_DB_PATH = path.resolve(__dirname, '../backend/engram_e2e.db');
