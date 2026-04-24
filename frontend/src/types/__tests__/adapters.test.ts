@@ -14,7 +14,7 @@ describe("mapJobStateToDiscState", () => {
   const cases: [JobState, string][] = [
     ["idle", "idle"],
     ["identifying", "scanning"],
-    ["review_needed", "scanning"],
+    ["review_needed", "review_needed"],
     ["ripping", "ripping"],
     ["matching", "matching"],
     ["organizing", "organizing"],

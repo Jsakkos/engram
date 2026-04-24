@@ -221,7 +221,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   transition={{ duration: 3, repeat: Infinity }}
                 />
 
-                {/* State overlay icon */}
+                {/* State overlay icon — review_needed intentionally excluded: job is paused, not actively processing */}
                 {["scanning", "archiving_iso", "ripping", "matching", "organizing", "processing"].includes(disc.state) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                     <motion.div
