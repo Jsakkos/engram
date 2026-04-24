@@ -360,6 +360,7 @@ function MainDashboard() {
                       disc.state === "error" ? "bg-red-400" :
                       disc.state === "ripping" ? "bg-magenta-400" :
                       disc.state === "scanning" ? "bg-cyan-400" :
+                      disc.state === "review_needed" ? "bg-yellow-400" :
                       disc.state === "matching" ? "bg-amber-400" :
                       "bg-slate-500"
                     }`} />

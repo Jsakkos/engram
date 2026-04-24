@@ -9,6 +9,7 @@ interface StateIndicatorProps {
 const stateConfig: Record<DiscState, { label: string; color: string; glow: string; icon: React.ElementType }> = {
   idle: { label: "IDLE", color: "text-slate-400", glow: "rgba(148, 163, 184, 0.5)", icon: Loader2 },
   scanning: { label: "SCANNING", color: "text-cyan-400", glow: "rgba(6, 182, 212, 0.8)", icon: Search },
+  review_needed: { label: "REVIEW NEEDED", color: "text-yellow-400", glow: "rgba(234, 179, 8, 0.8)", icon: AlertTriangle },
   archiving_iso: { label: "ARCHIVING", color: "text-purple-400", glow: "rgba(139, 92, 246, 0.8)", icon: Archive },
   ripping: { label: "RIPPING", color: "text-magenta-400", glow: "rgba(236, 72, 153, 0.8)", icon: Disc3 },
   matching: { label: "MATCHING", color: "text-amber-400", glow: "rgba(245, 158, 11, 0.8)", icon: Fingerprint },

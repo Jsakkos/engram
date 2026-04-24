@@ -49,7 +49,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
             )}
 
             {/* Review Button */}
-            {onReview && (
+            {onReview && state === 'review_needed' && (
                 <motion.button
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}

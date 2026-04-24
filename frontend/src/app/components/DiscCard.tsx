@@ -11,7 +11,7 @@ import { ActionButtons } from "./DiscCard/ActionButtons";
 import { useElapsedTime } from "../hooks/useElapsedTime";
 
 export type MediaType = "movie" | "tv" | "unknown";
-export type DiscState = "idle" | "scanning" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
+export type DiscState = "idle" | "scanning" | "review_needed" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
 export type TrackState = "pending" | "ripping" | "matching" | "matched" | "failed" | "completed";
 
 export interface MatchCandidate {
@@ -96,6 +96,7 @@ interface DiscCardProps {
 const stateColors = {
   idle: { from: "#64748b", to: "#94a3b8" },
   scanning: { from: "#06b6d4", to: "#22d3ee" }, // cyan
+  review_needed: { from: "#eab308", to: "#facc15" }, // yellow
   archiving_iso: { from: "#8b5cf6", to: "#a78bfa" },
   ripping: { from: "#ec4899", to: "#f472b6" }, // magenta
   matching: { from: "#f59e0b", to: "#fbbf24" }, // amber
@@ -220,7 +221,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   transition={{ duration: 3, repeat: Infinity }}
                 />
 
-                {/* State overlay icon */}
+                {/* State overlay icon — review_needed intentionally excluded: job is paused, not actively processing */}
                 {["scanning", "archiving_iso", "ripping", "matching", "organizing", "processing"].includes(disc.state) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                     <motion.div

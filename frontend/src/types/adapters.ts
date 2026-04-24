@@ -9,7 +9,7 @@ export function mapJobStateToDiscState(jobState: Job['state']): DiscState {
   const stateMap: Record<Job['state'], DiscState> = {
     'idle': 'idle',
     'identifying': 'scanning',
-    'review_needed': 'scanning',
+    'review_needed': 'review_needed',
     'ripping': 'ripping',
     'matching': 'matching',
     'organizing': 'organizing',
