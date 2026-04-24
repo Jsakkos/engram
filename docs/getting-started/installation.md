@@ -6,6 +6,32 @@
 - A [TMDB Read Access Token](https://www.themoviedb.org/settings/api) (v4 auth) for media metadata and poster art
 - If running from source: **Python 3.11+** with [uv](https://docs.astral.sh/uv/), and **Node.js 18+**
 
+### Linux-Specific Prerequisites
+
+On Debian/Ubuntu-based distributions (including Linux Mint):
+
+```bash
+# MakeMKV (requires PPA — not in standard repos)
+sudo add-apt-repository ppa:heyarje/makemkv-beta
+sudo apt update
+sudo apt install makemkv-bin makemkv-oss
+
+# FFmpeg (for episode matching)
+sudo apt install ffmpeg
+
+# Optional: blkid and eject for optical drive detection (usually pre-installed)
+sudo apt install util-linux eject
+```
+
+Alternatively, build MakeMKV from source: [makemkv.com](https://www.makemkv.com/forum/viewtopic.php?f=3&t=224).
+
+On Fedora/RHEL:
+
+```bash
+sudo dnf install ffmpeg eject
+# Install MakeMKV from https://www.makemkv.com/
+```
+
 ## Option A: Standalone Executable (Windows)
 
 The simplest way to get started on Windows -- no Python or Node.js required.

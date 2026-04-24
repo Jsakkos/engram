@@ -55,6 +55,7 @@ nav:
     - Simulation: getting-started/simulation.md
   - User Guide:
     - Dashboard: guide/dashboard.md
+    - Linux / macOS Setup: guide/linux-setup.md
     - Review Queue: guide/review-queue.md
     - Job History: guide/history.md
   - Architecture:

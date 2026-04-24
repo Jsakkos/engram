@@ -52,14 +52,17 @@
 
 | Feature | Windows | Linux | macOS |
 |---------|---------|-------|-------|
-| Automatic drive detection | Yes | No | No |
+| Automatic drive detection | Yes | Yes | No |
+| Staging folder auto-import | Yes | Yes | Yes |
 | MakeMKV ripping | Yes | Yes | Yes |
 | Episode matching (ASR) | Yes | Yes | Yes |
 | Web dashboard & API | Yes | Yes | Yes |
 | Tool auto-detection | Yes | Yes | Yes |
 | TheDiscDB / TMDB lookup | Yes | Yes | Yes |
 
-**Windows** is the primary platform with full automatic disc detection via kernel32 APIs. On **Linux** and **macOS**, the backend and dashboard run fully, but disc insertion must be triggered manually via the simulation API or by pointing Engram at a staging directory with pre-ripped files. MakeMKV must be installed on all platforms.
+**Windows** has full automatic disc detection via kernel32 APIs. **Linux** has native optical drive detection via `/sys/block` and `blkid`. On **macOS**, the backend and dashboard run fully, but disc insertion must be triggered via the staging import API.
+
+On all platforms, Engram supports a **staging folder workflow**: drop a folder of pre-ripped MKV files into the staging directory and Engram will auto-detect, classify, match, and organize them. This is the primary workflow on systems without optical drives.
 
 ## Prerequisites
 
@@ -179,6 +182,31 @@ npx playwright install   # first time only
 npm run test:e2e
 npm run test:e2e:ui      # with interactive UI
 ```
+
+### Linux / macOS Usage
+
+On Linux, Engram detects optical drives automatically via `/sys/block`. If you don't have an optical drive, use the **staging folder workflow**:
+
+1. Rip your discs with MakeMKV directly
+2. Place the output MKV files in a subdirectory under the staging path (default: `~/engram/staging/`):
+   ```
+   ~/engram/staging/MY_SHOW_S1D1/
+     title_t00.mkv
+     title_t01.mkv
+     title_t02.mkv
+   ```
+3. The staging watcher automatically detects the new folder and creates a job (enabled by default on Linux/macOS)
+4. Engram classifies, matches episodes, and organizes files into your library
+
+You can also trigger import manually via the API:
+
+```bash
+curl -X POST localhost:8000/api/staging/import \
+  -H "Content-Type: application/json" \
+  -d '{"staging_path":"/home/you/engram/staging/MY_SHOW_S1D1","volume_label":"MY_SHOW_S1D1","content_type":"tv","detected_title":"My Show","detected_season":1}'
+```
+
+The staging watcher can be toggled in Settings (`staging_watch_enabled`).
 
 ### Simulation
 
