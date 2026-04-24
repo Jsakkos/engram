@@ -1,8 +1,18 @@
 """FastAPI application entry point for Engram."""
 
+import mimetypes
 import os
 import sys
 from contextlib import asynccontextmanager
+
+# Override any incorrect Windows Registry MIME type mappings before StaticFiles is mounted.
+# Python's mimetypes module reads from HKEY_CLASSES_ROOT on Windows, which can be corrupted
+# by certain software installs (old Node.js, some IDEs). Browsers silently refuse to apply
+# stylesheets served with a non-"text/css" Content-Type, producing a blank white page.
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
