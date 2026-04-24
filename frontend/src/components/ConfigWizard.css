@@ -1,6 +1,46 @@
 /* Cyberpunk ConfigWizard Styling */
+
+/* Full-viewport backdrop */
+.wizard-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+/* Scrollable content area inside the wizard */
+.wizard-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(6, 182, 212, 0.4) transparent;
+}
+
+.wizard-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.wizard-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wizard-body::-webkit-scrollbar-thumb {
+    background: rgba(6, 182, 212, 0.4);
+    border-radius: 2px;
+}
+
 .wizard-modal {
+    width: 100%;
     max-width: 800px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
     background: #0a0a1a;
     border: 2px solid rgba(6, 182, 212, 0.5);
     box-shadow: 0 0 30px rgba(6, 182, 212, 0.4), inset 0 0 30px rgba(6, 182, 212, 0.1);
