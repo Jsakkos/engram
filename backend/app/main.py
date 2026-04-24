@@ -5,15 +5,6 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-# Override any incorrect Windows Registry MIME type mappings before StaticFiles is mounted.
-# Python's mimetypes module reads from HKEY_CLASSES_ROOT on Windows, which can be corrupted
-# by certain software installs (old Node.js, some IDEs). Browsers silently refuse to apply
-# stylesheets served with a non-"text/css" Content-Type, producing a blank white page.
-mimetypes.add_type("text/css", ".css")
-mimetypes.add_type("application/javascript", ".js")
-mimetypes.add_type("application/javascript", ".mjs")
-mimetypes.add_type("image/svg+xml", ".svg")
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -26,6 +17,15 @@ from app.config import settings
 from app.core.logging import setup_logging
 from app.database import init_db
 from app.services import job_manager
+
+# Override any incorrect Windows Registry MIME type mappings before StaticFiles is mounted.
+# Python's mimetypes module reads from HKEY_CLASSES_ROOT on Windows, which can be corrupted
+# by certain software installs (old Node.js, some IDEs). Browsers silently refuse to apply
+# stylesheets served with a non-"text/css" Content-Type, producing a blank white page.
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 
 @asynccontextmanager
