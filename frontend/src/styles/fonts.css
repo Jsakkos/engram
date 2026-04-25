@@ -1,0 +1,10 @@
+/* Synapse v2 typography — Chakra Petch (display/sans) + JetBrains Mono (mono).
+   Loaded via Google Fonts CDN with display=swap so initial paint uses system
+   fallbacks and the custom font swaps in when ready (no FOIT). */
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --sv-font-display: "Chakra Petch", "Space Grotesk", system-ui, sans-serif;
+  --sv-font-sans: "Chakra Petch", "Space Grotesk", system-ui, sans-serif;
+  --sv-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
