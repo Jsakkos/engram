@@ -115,7 +115,7 @@ export function SvAtmosphere({
         <svg
           style={skylineLayer}
           viewBox="0 0 1280 180"
-          preserveAspectRatio="xMidYEnd slice"
+          preserveAspectRatio="xMidYMax slice"
           aria-hidden="true"
           data-testid="sv-skyline"
         >
