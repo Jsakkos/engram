@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Routes, Route, useNavigate, useLocation, Link } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { Zap, ZapOff, Settings, Trash2, LayoutGrid, List, Info, X } from "lucide-react";
+import { Trash2, LayoutGrid, List, Info, X } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
 import { useJobManagement } from "./hooks/useJobManagement";
 import { useDiscFilters } from "./hooks/useDiscFilters";
@@ -14,12 +14,47 @@ import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
 import { FEATURES } from "../config/constants";
 import type { Job } from "../types";
+import {
+  SvAtmosphere,
+  SvTopBar,
+  SvStatusBar,
+  SvLabel,
+  sv,
+} from "./components/synapse";
+
+/** Placeholder for the new Library route — full implementation lands in Phase 5. */
+function LibraryPagePlaceholder() {
+  return (
+    <SvAtmosphere>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          gap: 12,
+          padding: 60,
+          color: sv.inkDim,
+          fontFamily: sv.sans,
+        }}
+      >
+        <SvLabel>Library</SvLabel>
+        <h2 style={{ fontFamily: sv.display, fontSize: 32, fontWeight: 700, color: sv.cyanHi, margin: 0 }}>
+          Library coming soon
+        </h2>
+        <p style={{ fontFamily: sv.mono, fontSize: 12, letterSpacing: "0.1em", color: sv.inkFaint }}>
+          The new Library view will list completed archives. Track progress in the Synapse v2 rollout.
+        </p>
+      </div>
+    </SvAtmosphere>
+  );
+}
 
 type ViewMode = "expanded" | "compact";
 
 function MainDashboard() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [showSettings, setShowSettings] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [namePromptJob, setNamePromptJob] = useState<Job | null>(null);
@@ -98,166 +133,130 @@ function MainDashboard() {
     setNamePromptJob(needsName ?? null);
   }, [jobs]);
 
-  const isDashboard = location.pathname === "/";
+  const reviewCount = jobs.filter((j) => j.state === 'review_needed').length;
+
+  const navItems = [
+    { label: "DASHBOARD", to: "/" },
+    { label: "REVIEW", to: "/review", badge: reviewCount },
+    { label: "LIBRARY", to: "/library" },
+    { label: "HISTORY", to: "/history" },
+    { label: "CONTRIBUTE", to: "/contribute", badge: contributionPending, show: FEATURES.DISCDB },
+  ];
 
   return (
-    <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
-      {/* Animated gradient overlay */}
-      <motion.div
-        className="fixed inset-0 opacity-20 pointer-events-none"
-        animate={{
-          background: [
-            "radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.1) 0%, transparent 50%)",
-            "radial-gradient(circle at 100% 50%, rgba(245, 158, 11, 0.08) 0%, transparent 50%)",
-            "radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.1) 0%, transparent 50%)",
-            "radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.1) 0%, transparent 50%)",
-          ],
-        }}
-        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+    <SvAtmosphere>
+      <SvTopBar
+        isConnected={isConnected}
+        version={__APP_VERSION__}
+        devMode={DEV_MODE}
+        navItems={navItems}
+        onSettingsClick={() => setShowSettings(true)}
       />
 
-      {/* Header */}
-      <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: "0 0 20px rgba(6, 182, 212, 0.2), 0 0 40px rgba(236, 72, 153, 0.1)" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-4">
-              {/* Logo */}
-              <motion.div
-                animate={{ rotate: [0, 360] }}
-                transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
-                className="relative w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
-              >
-                <img src="/engram.svg" alt="Engram" className="w-full h-full" style={{ filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.6))" }} />
-              </motion.div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-cyan-400 tracking-[0.2em] font-mono uppercase neon-title">
-                  Engram
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-500 font-mono tracking-wider">&gt; MEDIA ARCHIVAL PLATFORM v{__APP_VERSION__}</p>
-              </div>
-
-              {/* Navigation tabs */}
-              <nav className="hidden sm:flex items-center gap-1 ml-6">
-                <Link
-                  to="/"
-                  className={`px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all border-b-2 ${
-                    isDashboard
-                      ? "text-cyan-400 border-cyan-400"
-                      : "text-slate-500 border-transparent hover:text-slate-300"
-                  }`}
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  to="/history"
-                  className={`px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all border-b-2 ${
-                    location.pathname === "/history"
-                      ? "text-cyan-400 border-cyan-400"
-                      : "text-slate-500 border-transparent hover:text-slate-300"
-                  }`}
-                >
-                  History
-                </Link>
-                {FEATURES.DISCDB && (
-                  <Link
-                    to="/contribute"
-                    className={`px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all border-b-2 flex items-center gap-1.5 ${
-                      location.pathname === "/contribute"
-                        ? "text-cyan-400 border-cyan-400"
-                        : "text-slate-500 border-transparent hover:text-slate-300"
-                    }`}
-                  >
-                    Contribute
-                    {contributionPending > 0 && (
-                      <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
-                        {contributionPending}
-                      </span>
-                    )}
-                  </Link>
-                )}
-              </nav>
-            </div>
-
-            {/* Right side: connection status + settings */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              {/* Connection status pill */}
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${
-                isConnected
-                  ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
-                  : "bg-slate-500/10 border border-slate-500/30 text-slate-500"
-              }`}>
-                {isConnected ? <Zap className="w-3 h-3" /> : <ZapOff className="w-3 h-3" />}
-                <span className="hidden sm:inline">{isConnected ? "LIVE" : "OFFLINE"}</span>
-              </div>
-              {DEV_MODE && <span className="text-xs font-mono text-yellow-500 font-bold">[MOCK]</span>}
-
-              {/* Settings Button */}
+      {/* Filter + view-mode strip */}
+      <div
+        style={{
+          padding: "10px 28px",
+          borderBottom: `1px solid ${sv.line}`,
+          background: "rgba(10,14,24,0.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+        }}
+        data-testid="sv-filter-strip"
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {(["all", "active", "completed"] as const).map((f) => {
+            const counts = { all: discsData.length, active: activeCount, completed: completedCount };
+            const labels = { all: "ALL", active: "ACTIVE", completed: "DONE" };
+            const active = filter === f;
+            return (
               <button
-                onClick={() => setShowSettings(true)}
-                className="p-2 font-mono transition-all rounded-lg border border-transparent hover:border-cyan-500/30 hover:text-cyan-400 text-slate-500"
-                title="Settings"
+                key={f}
+                onClick={() => setFilter(f)}
+                data-testid={`sv-filter-${f}`}
+                data-active={active ? "true" : "false"}
+                style={{
+                  padding: "6px 14px",
+                  fontFamily: sv.mono,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.20em",
+                  textTransform: "uppercase",
+                  color: active ? sv.cyanHi : sv.inkDim,
+                  background: active ? "rgba(94,234,212,0.10)" : "transparent",
+                  border: `1px solid ${active ? sv.lineHi : sv.line}`,
+                  cursor: "pointer",
+                  transition: "all 0.18s",
+                }}
               >
-                <Settings className="w-5 h-5" />
+                {labels[f]} [{counts[f]}]
               </button>
-            </div>
-          </div>
+            );
+          })}
         </div>
 
-        {/* Secondary toolbar — filter + view controls */}
-        <div className="border-t border-cyan-500/10 bg-navy-800/50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {(["all", "active", "completed"] as const).map((f) => {
-                const counts = { all: discsData.length, active: activeCount, completed: completedCount };
-                const labels = { all: "ALL", active: "ACTIVE", completed: "DONE" };
-                return (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all rounded-md ${
-                      filter === f
-                        ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/40"
-                        : "text-slate-500 border border-transparent hover:text-slate-300 hover:border-slate-700"
-                    }`}
-                  >
-                    {labels[f]} [{counts[f]}]
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* View mode toggle */}
-              <div className="flex items-center border border-navy-600 rounded-md overflow-hidden">
-                <button
-                  onClick={() => setViewMode("expanded")}
-                  className={`p-1.5 transition-all ${viewMode === "expanded" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-600 hover:text-slate-400"}`}
-                  title="Expanded view"
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode("compact")}
-                  className={`p-1.5 transition-all ${viewMode === "compact" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-600 hover:text-slate-400"}`}
-                  title="Compact view"
-                >
-                  <List className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Clear Completed */}
-              {completedCount > 0 && (
-                <button
-                  onClick={clearCompleted}
-                  className="px-3 py-1.5 font-mono font-bold text-xs uppercase tracking-wider transition-all rounded-md text-red-400 border border-red-500/30 hover:border-red-500 hover:bg-red-500/10 flex items-center gap-1.5"
-                  title="Clear Completed"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">CLEAR</span>
-                </button>
-              )}
-            </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* View mode toggle */}
+          <div style={{ display: "inline-flex", border: `1px solid ${sv.line}` }}>
+            <button
+              onClick={() => setViewMode("expanded")}
+              title="Expanded view"
+              data-testid="sv-view-expanded"
+              style={{
+                padding: 6,
+                background: viewMode === "expanded" ? "rgba(94,234,212,0.10)" : "transparent",
+                color: viewMode === "expanded" ? sv.cyanHi : sv.inkFaint,
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+              }}
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode("compact")}
+              title="Compact view"
+              data-testid="sv-view-compact"
+              style={{
+                padding: 6,
+                background: viewMode === "compact" ? "rgba(94,234,212,0.10)" : "transparent",
+                color: viewMode === "compact" ? sv.cyanHi : sv.inkFaint,
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+              }}
+            >
+              <List size={16} />
+            </button>
           </div>
+
+          {completedCount > 0 && (
+            <button
+              onClick={clearCompleted}
+              data-testid="sv-clear-btn"
+              title="Clear Completed"
+              style={{
+                padding: "6px 12px",
+                fontFamily: sv.mono,
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.20em",
+                textTransform: "uppercase",
+                color: sv.red,
+                background: "transparent",
+                border: `1px solid ${sv.red}55`,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Trash2 size={12} />
+              <span>CLEAR</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -498,34 +497,14 @@ function MainDashboard() {
         </div>
       )}
 
-      {/* Stats Footer — slimmer */}
-      <div className="fixed bottom-0 left-0 right-0 border-t border-cyan-500/20 backdrop-blur-xl bg-navy-900/90">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2">
-          <div className="flex items-center justify-between text-xs font-mono gap-4">
-            <div className="flex items-center gap-4 sm:gap-6">
-              <div className="flex items-center gap-1.5">
-                <motion.div
-                  className="w-1.5 h-1.5 rounded-full bg-cyan-400"
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  style={{ boxShadow: "0 0 6px rgba(6, 182, 212, 0.8)" }}
-                />
-                <span className="text-cyan-400 uppercase tracking-wider font-bold">
-                  {activeCount} Active
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400" style={{ boxShadow: "0 0 6px rgba(16, 185, 129, 0.8)" }} />
-                <span className="text-green-400 uppercase tracking-wider font-bold">
-                  {completedCount} Archived
-                </span>
-              </div>
-            </div>
-            <span className="text-slate-600 font-bold tracking-wider">v{__APP_VERSION__}</span>
-          </div>
-        </div>
-      </div>
-    </div>
+      <SvStatusBar
+        activeCount={activeCount}
+        completedCount={completedCount}
+        isConnected={isConnected}
+        version={__APP_VERSION__}
+        driveLabel={platform === "win32" ? "DRIVE READY" : "STAGING IMPORT"}
+      />
+    </SvAtmosphere>
   );
 }
 
@@ -535,6 +514,7 @@ function App() {
       <Route path="/" element={<MainDashboard />} />
       <Route path="/history" element={<HistoryPage />} />
       <Route path="/history/:jobId" element={<HistoryPage />} />
+      <Route path="/library" element={<LibraryPagePlaceholder />} />
       {FEATURES.DISCDB && <Route path="/contribute" element={<ContributePage />} />}
       <Route path="/review/:jobId" element={<ReviewQueue />} />
     </Routes>

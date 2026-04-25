@@ -1,26 +1,29 @@
 /**
  * Selector constants for E2E tests
  *
- * Updated for the cyberpunk navy theme (PR#46).
- * Prefer text/role selectors over CSS classes where possible for resilience.
+ * Updated for the Synapse v2 redesign — shell is keyed off `data-testid`
+ * attributes from src/app/components/synapse/. Disc-card / track / progress
+ * selectors still target the legacy DiscCard markup until Phase 3.
+ *
+ * Prefer text/role/data-testid selectors over CSS classes for resilience.
  */
 
 export const SELECTORS = {
-  // App-level
-  appContainer: 'div.min-h-screen.bg-navy-900',
-  header: 'div.sticky.top-0.z-10',
-  footer: 'div.fixed.bottom-0',
+  // App-level (Synapse v2 shell — Phase 2)
+  appContainer: '[data-testid="sv-atmosphere"]',
+  header: '[data-testid="sv-topbar"]',
+  footer: '[data-testid="sv-statusbar"]',
 
-  // Connection status (in header pill)
+  // Connection status — appears in both topbar pill and statusbar
   connectionStatus: {
     connected: 'text=/LIVE/i',
-    disconnected: 'text=/OFFLINE/i',
+    disconnected: '[data-testid="sv-status-ws"]:has-text("OFFLINE")',
   },
 
-  // Filter buttons
-  filterAll: 'button:has-text("ALL")',
-  filterActive: 'button:has-text("ACTIVE")',
-  filterDone: 'button:has-text("DONE")',
+  // Filter buttons (Synapse v2 strip)
+  filterAll: '[data-testid="sv-filter-all"]',
+  filterActive: '[data-testid="sv-filter-active"]',
+  filterDone: '[data-testid="sv-filter-completed"]',
 
   // Disc card (expanded view — DiscCard component wrapper)
   discCard: 'div.relative.overflow-hidden.rounded-lg.shadow-2xl',
@@ -76,7 +79,7 @@ export const SELECTORS = {
   emptyState: 'text=/NO DISCS DETECTED|NO ACTIVE OPERATIONS|NO COMPLETED ARCHIVES/i',
 
   // Clear/Cancel buttons
-  clearButton: 'button:has-text("CLEAR")',
+  clearButton: '[data-testid="sv-clear-btn"]',
   cancelButton: 'button[title="Cancel Job"]',
 };
 

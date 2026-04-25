@@ -19,3 +19,5 @@ export { SvRuler } from "./SvRuler";
 export { SvAnimValue } from "./SvAnimValue";
 export { SvTelemetryBand } from "./SvTelemetryBand";
 export { SvMark } from "./SvMark";
+export { SvTopBar } from "./SvTopBar";
+export { SvStatusBar } from "./SvStatusBar";

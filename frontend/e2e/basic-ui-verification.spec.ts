@@ -11,13 +11,11 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
     await page.goto('/');
   });
 
-  test('Header displays Engram branding with cyan styling', async ({ page }) => {
-    // Check for header text
-    const header = page.locator('h1');
-    await expect(header).toContainText('Engram');
-
-    // Check for cyan color class
-    await expect(header).toHaveClass(/text-cyan/);
+  test('Header displays Engram branding (Synapse v2 wordmark)', async ({ page }) => {
+    const topbar = page.locator(SELECTORS.header);
+    await expect(topbar).toBeVisible();
+    // The ENGRAM wordmark text should be visible inside the topbar
+    await expect(topbar).toContainText(/ENGRAM/);
 
     // Screenshot
     await page.screenshot({
@@ -27,8 +25,8 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
     });
   });
 
-  test('Subtitle displays "MEDIA ARCHIVAL PLATFORM"', async ({ page }) => {
-    await expect(page.getByText(/MEDIA ARCHIVAL PLATFORM/i)).toBeVisible();
+  test('Sub-line displays "MEMORY · ARCHIVAL"', async ({ page }) => {
+    await expect(page.getByText(/MEMORY\s*[·.]\s*ARCHIVAL/i)).toBeVisible();
   });
 
   test('Filter buttons are present and styled correctly', async ({ page }) => {
@@ -70,14 +68,14 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
     });
   });
 
-  test('Page uses cyberpunk color scheme', async ({ page }) => {
-    // Check for navy background
-    const body = page.locator(SELECTORS.appContainer);
-    await expect(body).toBeVisible();
+  test('Page uses Synapse v2 atmosphere (dark cyberpunk + scanlines)', async ({ page }) => {
+    // Atmosphere wrapper
+    const atmosphere = page.locator(SELECTORS.appContainer);
+    await expect(atmosphere).toBeVisible();
 
-    // Check for animated gradient overlay
-    const overlay = page.locator('div.fixed.inset-0.opacity-20');
-    await expect(overlay.first()).toBeVisible();
+    // Scanline overlay (Synapse v2 atmosphere always-on)
+    const scanlines = page.locator('[data-testid="sv-scanlines"]');
+    await expect(scanlines).toBeVisible();
   });
 
   test('Footer displays operation counts', async ({ page }) => {
