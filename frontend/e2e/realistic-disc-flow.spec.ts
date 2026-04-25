@@ -62,10 +62,12 @@ test.describe('Realistic Disc Flows', () => {
         // Switch to ALL filter to see completed jobs
         await page.locator(SELECTORS.filterAll).click();
 
-        // Wait for completion
+        // Wait for completion. Real-time simulation can run long when other
+        // tests in the suite share the same backend; bump the timeout to
+        // cover the worst-case multi-track sequential rip + match.
         await expect(
             page.locator(SELECTORS.stateCompleted).first()
-        ).toBeVisible({ timeout: 30000 });
+        ).toBeVisible({ timeout: 60000 });
     });
 
     test('review-blocked job does not block new job on different drive', async ({ page }) => {

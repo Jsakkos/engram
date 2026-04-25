@@ -11,24 +11,25 @@ test.describe('Visual Verification - UI Correctness', () => {
   });
 
   test('Header displays Engram branding', async ({ page }) => {
-    await expect(page.locator('h1')).toContainText('Engram');
-
-    // Check for cyberpunk styling - cyan color
-    const header = page.locator('h1');
-    await expect(header).toHaveClass(/text-cyan/);
+    // Synapse v2 wordmark renders inside the topbar (no <h1> on dashboard now)
+    const topbar = page.locator(SELECTORS.header);
+    await expect(topbar).toBeVisible();
+    await expect(topbar).toContainText(/ENGRAM/);
   });
 
-  test('Disc card shows cyberpunk styling elements', async ({ page }) => {
+  test('Disc card shows Synapse v2 styling elements', async ({ page }) => {
     await simulateInsertDisc(TV_DISC_ARRESTED_DEVELOPMENT);
     await page.waitForSelector(SELECTORS.discCard, { timeout: 5000 });
 
-    // Verify disc card is visible
+    // SvJobCard wrapper visible
     const discCard = page.locator(SELECTORS.discCard).first();
     await expect(discCard).toBeVisible();
 
-    // Check for border styling (cyberpunk aesthetic)
-    await expect(discCard).toHaveClass(/border/);
-    await expect(discCard).toHaveClass(/bg-navy/);
+    // Sv corner ticks render inside the SvPanel (load-bearing visual motif)
+    await expect(discCard.locator('[data-testid^="sv-corner-"]').first()).toBeVisible();
+
+    // State indicator pill is visible (uses Synapse v2 tokens internally)
+    await expect(discCard.locator(SELECTORS.stateIndicator).first()).toBeVisible();
   });
 
   test('Progress bar displays with percentage', async ({ page }) => {

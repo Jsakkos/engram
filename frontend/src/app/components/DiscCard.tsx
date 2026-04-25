@@ -134,19 +134,19 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
         aria-label={`${disc.title} — ${disc.state}`}
-        data-testid="sv-job-card"
         data-state={disc.state}
       >
         <SvPanel
           glow
           pad={20}
           accent={isRipping ? `${sv.magenta}66` : sv.lineMid}
+          testid="sv-job-card"
           style={{
             background: `linear-gradient(180deg, ${sv.bg2}cc, ${sv.bg1}ee)`,
           }}
         >
           <div style={{ display: "flex", gap: 20 }}>
-            {/* Cover art — sharp 90° corners, holo-sweep on hover */}
+            {/* Cover art — sharp 90° corners, holographic overlay on hover */}
             <motion.div
               whileHover={{ scale: 1.03 }}
               transition={{ type: "spring", stiffness: 300 }}

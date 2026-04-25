@@ -1,60 +1,64 @@
 /**
  * Selector constants for E2E tests
  *
- * Updated for the Synapse v2 redesign — shell is keyed off `data-testid`
- * attributes from src/app/components/synapse/. Disc-card / track / progress
- * selectors still target the legacy DiscCard markup until Phase 3.
+ * Updated for the Synapse v2 redesign — every load-bearing element is now
+ * keyed off a `data-testid` attribute. Prefer data-testid > text > role
+ * over CSS classes; classes are presentation details that change with
+ * future restyles.
  *
- * Prefer text/role/data-testid selectors over CSS classes for resilience.
+ * Note: track-state and track-byte selectors deliberately use text regex
+ * instead of testid because the *text content* is the user-visible signal
+ * the tests care about (e.g. "RIPPING", "245 MB / 520 MB").
  */
 
 export const SELECTORS = {
-  // App-level (Synapse v2 shell — Phase 2)
+  // App-level (Synapse v2 shell)
   appContainer: '[data-testid="sv-atmosphere"]',
   header: '[data-testid="sv-topbar"]',
   footer: '[data-testid="sv-statusbar"]',
 
-  // Connection status — appears in both topbar pill and statusbar
+  // Connection status
   connectionStatus: {
     connected: 'text=/LIVE/i',
     disconnected: '[data-testid="sv-status-ws"]:has-text("OFFLINE")',
   },
 
-  // Filter buttons (Synapse v2 strip)
+  // Filter buttons
   filterAll: '[data-testid="sv-filter-all"]',
   filterActive: '[data-testid="sv-filter-active"]',
   filterDone: '[data-testid="sv-filter-completed"]',
 
-  // Disc card (expanded view — DiscCard component wrapper)
-  discCard: 'div.relative.overflow-hidden.rounded-lg.shadow-2xl',
-  discTitle: 'h3.text-xl.font-bold.text-cyan-400',
-  discSubtitle: 'p.text-sm.text-slate-400',
+  // Disc card (the SvJobCard outer)
+  discCard: '[data-testid="sv-job-card"]',
+  discTitle: '[data-testid="sv-job-title"]',
+  discSubtitle: '[data-testid="sv-disc-metadata"] p',
 
-  // Media type badge (inside disc card)
-  movieBadge: 'text=/MOVIE/i',
-  tvBadge: 'text=/TV/i',
+  // Media type badge
+  movieBadge: '[data-testid="sv-mediatype-movie"]',
+  tvBadge: '[data-testid="sv-mediatype-tv"]',
 
-  // State indicator (labels from StateIndicator.tsx)
+  // State indicator
+  stateIndicator: '[data-testid="sv-state-indicator"]',
   stateScanning: 'text=/SCANNING/i',
   stateRipping: 'text=/RIPPING/i',
   stateProcessing: 'text=/PROCESSING/i',
   stateCompleted: 'text=/COMPLETE/i',
   stateFailed: 'text=/ERROR/i',
 
-  // Progress bar (CyberpunkProgressBar component — the outer container with progress text)
-  progressBar: 'div:has(> div.h-3.bg-navy-800)',
+  // Progress bar (the SvBar wrapper used by CyberpunkProgressBar)
+  progressBar: '[data-testid="sv-bar-progress"]',
   progressPercentage: 'text=/\\d+%/',
 
-  // Speed and ETA
+  // Speed and ETA values (text-based — content is the signal)
   speed: 'text=/\\d+(\\.\\d+)?x/',
   eta: 'text=/\\d+\\s*h|\\d+\\s*min|< 1 min/',
 
-  // Track grid (for TV shows and multi-track movies)
-  trackGrid: 'div.grid.grid-cols-2.gap-2',
-  trackItem: 'div.border-2.cursor-pointer',
-  trackTitle: 'div.font-bold.text-sm',
+  // Track grid
+  trackGrid: '[data-testid="sv-track-grid"]',
+  trackItem: '[data-testid="sv-track-card"]',
+  trackTitle: '[data-testid="sv-track-card"]',
 
-  // Per-track state indicators
+  // Per-track state indicators (text content is the signal)
   trackStateRipping: 'text=/RIPPING|EXTRACTING/i',
   trackStateMatching: 'text=/MATCHING/i',
   trackStateMatched: 'text=/MATCHED/i',
@@ -63,7 +67,7 @@ export const SELECTORS = {
   // Track byte progress (e.g., "245.3 MB / 520.1 MB")
   trackByteProgress: 'text=/\\d+(\\.\\d+)?\\s*(MB|GB)\\s*\\/\\s*\\d+(\\.\\d+)?\\s*(MB|GB)/i',
 
-  // Match source badges
+  // Match source badges (preserved data-testid contract)
   matchSourceDiscdb: '[data-testid="source-badge-discdb"]',
   matchSourceEngram: '[data-testid="source-badge-engram"]',
   matchSourceManual: '[data-testid="source-badge-user"]',
@@ -71,9 +75,6 @@ export const SELECTORS = {
   // Match candidates with confidence
   matchCandidate: 'text=/S\\d{2}E\\d{2}/i',
   matchConfidence: 'text=/\\d+(\\.\\d+)?%/i',
-
-  // Cycle indicator dots (transcribing phase)
-  cycleIndicator: 'div[class*="rounded-full"]',
 
   // Empty states
   emptyState: 'text=/NO DISCS DETECTED|NO ACTIVE OPERATIONS|NO COMPLETED ARCHIVES/i',
@@ -84,15 +85,15 @@ export const SELECTORS = {
 };
 
 /**
- * Helper to get disc card by title
+ * Helper: locate a disc card whose title contains the given substring.
  */
 export function getDiscCardByTitle(title: string) {
-  return `div.relative.overflow-hidden.rounded-lg.shadow-2xl:has(h3:has-text("${title}"))`;
+  return `[data-testid="sv-job-card"]:has([data-testid="sv-job-title"]:has-text("${title}"))`;
 }
 
 /**
- * Helper to get disc card by position
+ * Helper: locate the Nth disc card (0-indexed) by position.
  */
 export function getDiscCardByIndex(index: number) {
-  return `(div.relative.overflow-hidden.rounded-lg.shadow-2xl)[${index + 1}]`;
+  return `([data-testid="sv-job-card"]) >> nth=${index}`;
 }

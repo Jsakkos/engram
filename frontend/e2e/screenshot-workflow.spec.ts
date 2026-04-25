@@ -41,7 +41,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await page.screenshot({ path: `${SCREENSHOT_DIR}/03-ripping-state.png`, fullPage: true });
 
         // 04: Track grid visible
-        await expect(card.locator('div.grid.grid-cols-2.gap-2').first()).toBeVisible({ timeout: 15000 });
+        await expect(card.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
         await page.screenshot({ path: `${SCREENSHOT_DIR}/04-track-grid-visible.png`, fullPage: true });
 
         // 05: Per-track RIPPING state on individual tracks
@@ -62,7 +62,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         // Note: titles enter MATCHING state during ripping completion, but candidate
         // vote data only arrives once _simulate_matching runs. Wait for the yellow
         // candidate text (text-yellow-300) which only renders when matchCandidates exist.
-        const hasMatchCandidate = await card.locator('.text-yellow-300').first()
+        const hasMatchCandidate = await card.locator(SELECTORS.matchCandidate).first()
             .waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
         if (hasMatchCandidate) {
             await page.screenshot({ path: `${SCREENSHOT_DIR}/07-matching-state.png`, fullPage: true });
