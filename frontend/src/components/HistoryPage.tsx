@@ -21,6 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { FEATURES } from "../config/constants";
+import { SvAtmosphere } from "../app/components/synapse";
 
 interface HistoryJob {
   id: number;
@@ -736,7 +737,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-navy-900 circuit-bg">
+    <SvAtmosphere>
       {/* Header */}
       <div
         className="border-b border-cyan-500/20 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10"
@@ -1023,6 +1024,6 @@ export default function HistoryPage() {
           </>
         )}
       </AnimatePresence>
-    </div>
+    </SvAtmosphere>
   );
 }

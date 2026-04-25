@@ -5,6 +5,7 @@ import { ArrowLeft, Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
 import { MATCHING_CONFIG, EPISODE_CONFIG, FEATURES } from '../config/constants';
+import { SvAtmosphere, sv } from '../app/components/synapse';
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
@@ -267,35 +268,52 @@ function ReviewQueue() {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-navy-900 circuit-bg flex flex-col items-center justify-center gap-4">
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
-                    <Disc3 className="w-12 h-12 text-cyan-400" style={{ filter: 'drop-shadow(0 0 10px rgba(6, 182, 212, 0.8))' }} />
-                </motion.div>
-                <span className="text-cyan-400 font-mono uppercase tracking-wider text-sm">&gt; LOADING JOB DATA...</span>
-            </div>
+            <SvAtmosphere>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+                        <Disc3 size={48} color={sv.cyan} style={{ filter: `drop-shadow(0 0 10px ${sv.cyan}cc)` }} />
+                    </motion.div>
+                    <span style={{ fontFamily: sv.mono, fontSize: 12, letterSpacing: '0.20em', textTransform: 'uppercase', color: sv.cyan }}>
+                        › LOADING JOB DATA…
+                    </span>
+                </div>
+            </SvAtmosphere>
         );
     }
 
     if (!job) {
         return (
-            <div className="min-h-screen bg-navy-900 circuit-bg flex flex-col items-center justify-center gap-6">
-                <h2 className="text-2xl font-bold text-red-400 font-mono uppercase tracking-wider">JOB NOT FOUND</h2>
-                <button
-                    onClick={() => navigate('/')}
-                    className="px-4 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-cyan-400 border-cyan-500/50 hover:border-cyan-400 transition-all"
-                >
-                    RETURN TO DASHBOARD
-                </button>
-            </div>
+            <SvAtmosphere>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+                    <h2 style={{ fontFamily: sv.display, fontSize: 28, fontWeight: 700, letterSpacing: '0.10em', color: sv.red, textTransform: 'uppercase', textShadow: `0 0 12px ${sv.red}55`, margin: 0 }}>
+                        JOB NOT FOUND
+                    </h2>
+                    <button
+                        onClick={() => navigate('/')}
+                        style={{
+                            padding: '10px 18px',
+                            background: 'transparent',
+                            border: `1px solid ${sv.cyan}88`,
+                            color: sv.cyan,
+                            fontFamily: sv.mono,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            letterSpacing: '0.20em',
+                            textTransform: 'uppercase',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        RETURN TO DASHBOARD
+                    </button>
+                </div>
+            </SvAtmosphere>
         );
     }
 
     // ==================== MOVIE REVIEW ====================
     if (job.content_type === 'movie') {
         return (
-            <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
-                {/* Circuit board background inherited from circuit-bg class */}
-
+            <SvAtmosphere>
                 {/* Header */}
                 <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
                     <div className="max-w-5xl mx-auto px-6 py-5">
@@ -404,21 +422,13 @@ function ReviewQueue() {
                         <option value="IMAX" />
                     </datalist>
                 </div>
-            </div>
+            </SvAtmosphere>
         );
     }
 
     // ==================== TV REVIEW ====================
     return (
-        <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
-            {/* Grid background */}
-            <div className="fixed inset-0 opacity-10 pointer-events-none">
-                <div className="h-full w-full" style={{
-                    backgroundImage: 'linear-gradient(rgba(6, 182, 212, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.3) 1px, transparent 1px)',
-                    backgroundSize: '50px 50px',
-                }} />
-            </div>
-
+        <SvAtmosphere>
             {/* Header */}
             <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
                 <div className="max-w-6xl mx-auto px-6 py-5">
@@ -586,7 +596,7 @@ function ReviewQueue() {
                     </div>
                 )}
             </div>
-        </div>
+        </SvAtmosphere>
     );
 }
 
