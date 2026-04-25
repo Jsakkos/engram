@@ -12,44 +12,15 @@ import NamePromptModal from "../components/NamePromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
+import LibraryPage from "../components/LibraryPage";
 import { FEATURES } from "../config/constants";
 import type { Job } from "../types";
 import {
   SvAtmosphere,
   SvTopBar,
   SvStatusBar,
-  SvLabel,
   sv,
 } from "./components/synapse";
-
-/** Placeholder for the new Library route — full implementation lands in Phase 5. */
-function LibraryPagePlaceholder() {
-  return (
-    <SvAtmosphere>
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          gap: 12,
-          padding: 60,
-          color: sv.inkDim,
-          fontFamily: sv.sans,
-        }}
-      >
-        <SvLabel>Library</SvLabel>
-        <h2 style={{ fontFamily: sv.display, fontSize: 32, fontWeight: 700, color: sv.cyanHi, margin: 0 }}>
-          Library coming soon
-        </h2>
-        <p style={{ fontFamily: sv.mono, fontSize: 12, letterSpacing: "0.1em", color: sv.inkFaint }}>
-          The new Library view will list completed archives. Track progress in the Synapse v2 rollout.
-        </p>
-      </div>
-    </SvAtmosphere>
-  );
-}
 
 type ViewMode = "expanded" | "compact";
 
@@ -514,7 +485,7 @@ function App() {
       <Route path="/" element={<MainDashboard />} />
       <Route path="/history" element={<HistoryPage />} />
       <Route path="/history/:jobId" element={<HistoryPage />} />
-      <Route path="/library" element={<LibraryPagePlaceholder />} />
+      <Route path="/library" element={<LibraryPage />} />
       {FEATURES.DISCDB && <Route path="/contribute" element={<ContributePage />} />}
       <Route path="/review/:jobId" element={<ReviewQueue />} />
     </Routes>

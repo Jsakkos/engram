@@ -21,3 +21,5 @@ export { SvTelemetryBand } from "./SvTelemetryBand";
 export { SvMark } from "./SvMark";
 export { SvTopBar } from "./SvTopBar";
 export { SvStatusBar } from "./SvStatusBar";
+export { SvErrorState } from "./SvErrorState";
+export type { SvErrorKind } from "./SvErrorState";

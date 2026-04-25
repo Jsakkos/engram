@@ -217,7 +217,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
   };
 
   return (
-    <div className="bg-navy-900/50 border border-navy-600/50 rounded-lg p-5 font-mono">
+    <div className="bg-navy-900/50 border border-navy-600/50 p-5 font-mono">
       {/* Step indicator */}
       <div className="flex items-center gap-1 mb-6 overflow-x-auto">
         {allSteps.map((step, i) => {

@@ -113,7 +113,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
 
             {/* Card */}
             <motion.div
-                className="relative w-full max-w-md bg-navy-900 border-2 border-cyan-500/50 overflow-hidden rounded-lg"
+                className="relative w-full max-w-md bg-navy-900 border border-cyan-500/50 overflow-hidden"
                 style={{
                     boxShadow:
                         '0 0 40px rgba(6, 182, 212, 0.3), 0 0 80px rgba(6, 182, 212, 0.1), inset 0 0 30px rgba(6, 182, 212, 0.05)',
