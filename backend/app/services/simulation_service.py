@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from app.services.job_state_machine import JobStateMachine
 from app.services.ripping_helpers import build_title_list
 
 logger = logging.getLogger(__name__)
+
+_SIM_DEFAULT_DRIVE = "/dev/sr0" if sys.platform != "win32" else "E:"
 
 
 class SimulationService:
@@ -59,7 +62,7 @@ class SimulationService:
         """Simulate a disc insertion for testing purposes."""
         from app.services.config_service import get_config as get_sim_config
 
-        drive_id = params.get("drive_id", "E:")
+        drive_id = params.get("drive_id", _SIM_DEFAULT_DRIVE)
         volume_label = params.get("volume_label", "SIMULATED_DISC")
         content_type_str = params.get("content_type", "tv")
 
@@ -198,7 +201,7 @@ class SimulationService:
 
     async def simulate_disc_insert_realistic(self, params: dict) -> int:
         """Simulate disc insertion using real MKV files from staging."""
-        drive_id = params.get("drive_id", "E:")
+        drive_id = params.get("drive_id", _SIM_DEFAULT_DRIVE)
         volume_label = params.get("volume_label", "REAL_DATA_DISC")
         content_type = ContentType(params.get("content_type", "tv"))
         detected_title = params.get("detected_title")
