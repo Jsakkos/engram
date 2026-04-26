@@ -21,6 +21,7 @@ import {
   SvStatusBar,
   sv,
 } from "./components/synapse";
+import { DashboardSideRail } from "./components/DashboardSideRail";
 
 type ViewMode = "expanded" | "compact";
 
@@ -266,40 +267,134 @@ function MainDashboard() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-20 sm:pb-24 relative z-0">
+        <div
+          data-testid="sv-dashboard-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              filteredDiscs.length > 0 && viewMode === "expanded"
+                ? "minmax(0, 1.4fr) 320px"
+                : "1fr",
+            gap: 14,
+            alignItems: "start",
+          }}
+        >
+        <div style={{ minWidth: 0 }}>
         {filteredDiscs.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-16 sm:py-20 text-center"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "80px 0",
+              textAlign: "center",
+            }}
+            data-testid="sv-empty-state"
           >
             <motion.div
-              className="w-24 h-24 sm:w-32 sm:h-32 mb-6 relative"
               animate={{
                 filter: [
-                  "drop-shadow(0 0 12px rgba(6, 182, 212, 0.3))",
-                  "drop-shadow(0 0 20px rgba(6, 182, 212, 0.5))",
-                  "drop-shadow(0 0 12px rgba(6, 182, 212, 0.3))",
+                  `drop-shadow(0 0 12px ${sv.cyan}4d)`,
+                  `drop-shadow(0 0 24px ${sv.cyan}80)`,
+                  `drop-shadow(0 0 12px ${sv.cyan}4d)`,
                 ],
               }}
               transition={{ duration: 3, repeat: Infinity }}
+              style={{ marginBottom: 24 }}
             >
-              <motion.img
-                src="/engram.svg"
-                alt="Engram"
-                className="w-full h-full opacity-40"
-                animate={{ rotate: [0, 360] }}
-                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-              />
+              {/* Synapse beacon — concentric rings + rotating sweep + chapter ticks. Same
+                  visual language as SvDiscInsert but simplified for "no signal yet" semantics. */}
+              <svg
+                width={140}
+                height={140}
+                viewBox="0 0 200 200"
+                aria-label="Engram beacon — awaiting input"
+              >
+                <defs>
+                  <radialGradient id="sv-empty-bg" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor={sv.cyan} stopOpacity="0.18" />
+                    <stop offset="60%" stopColor={sv.cyan} stopOpacity="0.04" />
+                    <stop offset="100%" stopColor={sv.cyan} stopOpacity="0" />
+                  </radialGradient>
+                  <linearGradient id="sv-empty-sweep" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor={sv.cyan} stopOpacity="0" />
+                    <stop offset="100%" stopColor={sv.cyan} stopOpacity="0.55" />
+                  </linearGradient>
+                </defs>
+                <circle cx="100" cy="100" r="92" fill="url(#sv-empty-bg)" />
+                {[88, 72, 56, 40, 22].map((r, i) => (
+                  <circle
+                    key={r}
+                    cx="100"
+                    cy="100"
+                    r={r}
+                    fill="none"
+                    stroke={sv.cyan}
+                    strokeWidth="0.6"
+                    opacity={0.18 + i * 0.06}
+                  />
+                ))}
+                <line x1="100" y1="6" x2="100" y2="194" stroke={sv.cyan} strokeWidth="0.4" opacity="0.22" />
+                <line x1="6" y1="100" x2="194" y2="100" stroke={sv.cyan} strokeWidth="0.4" opacity="0.22" />
+                <g style={{ transformOrigin: "100px 100px", animation: "svSpin 4s linear infinite" }}>
+                  <path
+                    d="M 100 100 L 188 100 A 88 88 0 0 0 100 12 Z"
+                    fill="url(#sv-empty-sweep)"
+                    opacity="0.55"
+                  />
+                </g>
+                {Array.from({ length: 24 }, (_, i) => {
+                  const ang = (i / 24) * Math.PI * 2;
+                  return (
+                    <line
+                      key={i}
+                      x1={100 + Math.cos(ang) * 92}
+                      y1={100 + Math.sin(ang) * 92}
+                      x2={100 + Math.cos(ang) * 84}
+                      y2={100 + Math.sin(ang) * 84}
+                      stroke={sv.inkGhost}
+                      strokeWidth="1"
+                    />
+                  );
+                })}
+                <circle cx="100" cy="100" r="4" fill={sv.cyan} />
+                <circle cx="100" cy="100" r="1.5" fill={sv.bg0} />
+              </svg>
             </motion.div>
-            <h2 className="text-lg sm:text-xl font-bold text-cyan-400 mb-2 font-mono uppercase tracking-wider neon-title">
-              {filter === "active" && "NO ACTIVE OPERATIONS"}
-              {filter === "completed" && "NO COMPLETED ARCHIVES"}
-              {filter === "all" && "NO DISCS DETECTED"}
+            <h2
+              data-testid="sv-empty-heading"
+              style={{
+                fontFamily: sv.display,
+                fontWeight: 700,
+                fontSize: 22,
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: sv.cyanHi,
+                textShadow: `0 0 12px ${sv.cyan}99`,
+                marginBottom: 10,
+              }}
+            >
+              {filter === "active" && "› No active operations"}
+              {filter === "completed" && "› No completed archives"}
+              {filter === "all" && "› No discs detected"}
             </h2>
-            <p className="text-xs sm:text-sm text-slate-500 font-mono max-w-md">
-              {filter === "active" && "> All operations complete. Insert a disc to start a new job."}
-              {filter === "completed" && "> No archived media yet. Completed jobs will appear here."}
-              {filter === "all" && "> Insert a disc into your optical drive to begin archiving."}
+            <p
+              style={{
+                fontFamily: sv.mono,
+                fontSize: 11,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: sv.inkFaint,
+                maxWidth: 480,
+                lineHeight: 1.6,
+              }}
+            >
+              {filter === "active" && "All operations complete. Insert a disc to start a new job."}
+              {filter === "completed" && "No archived media yet. Completed jobs will appear here."}
+              {filter === "all" && "Insert a disc into your optical drive to begin archiving."}
             </p>
           </motion.div>
         ) : viewMode === "compact" ? (
@@ -407,6 +502,11 @@ function MainDashboard() {
             </AnimatePresence>
           </div>
         )}
+        </div>
+        {filteredDiscs.length > 0 && viewMode === "expanded" && (
+          <DashboardSideRail jobs={jobs} titlesMap={titlesMap} />
+        )}
+        </div>
       </div>
 
       {/* Name Prompt Modal — appears when disc label is unreadable */}
