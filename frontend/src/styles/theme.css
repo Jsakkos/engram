@@ -84,6 +84,44 @@
 }
 
 @theme inline {
+  /* ─── Synapse v2 token system ────────────────────────────────────
+     Lifted from docs/design_handoff_synapse/synapse-v2/core.jsx.
+     Use these for new components; the magenta-* / navy-* palettes
+     below are retained for legacy components until Phase 6 cleanup. */
+
+  /* Surfaces — deep blue-blacks */
+  --color-sv-bg0: #05070c;
+  --color-sv-bg1: #0a0e18;
+  --color-sv-bg2: #121827;
+  --color-sv-bg3: #1a2234;
+
+  /* Ink — text hierarchy */
+  --color-sv-ink: #e6ecf5;
+  --color-sv-ink-dim: #8893a8;
+  --color-sv-ink-faint: #4a5369;
+  --color-sv-ink-ghost: #2a3147;
+
+  /* Accents */
+  --color-sv-cyan: #5eead4;
+  --color-sv-cyan-hi: #9ff8e8;
+  --color-sv-cyan-dim: #2dd4bf;
+  --color-sv-magenta: #ff3d7f;
+  --color-sv-magenta-hi: #ff7aa5;
+  --color-sv-magenta-dim: #d63171;
+
+  /* Functional */
+  --color-sv-yellow: #fde047;
+  --color-sv-amber: #fcd34d;
+  --color-sv-green: #86efac;
+  --color-sv-green-dim: #4ade80;
+  --color-sv-red: #ff5555;
+  --color-sv-purple: #a78bfa;
+
+  /* Lines — cyan-tinted at varying alpha (gives the screen its tint) */
+  --color-sv-line: rgba(94, 234, 212, 0.14);
+  --color-sv-line-mid: rgba(94, 234, 212, 0.24);
+  --color-sv-line-hi: rgba(94, 234, 212, 0.42);
+
   /* Custom magenta palette for cyberpunk dual-tone aesthetic */
   --color-magenta-50: #fdf2f8;
   --color-magenta-100: #fce7f3;
@@ -295,4 +333,43 @@
   );
   animation: holo-sweep 4s ease-in-out infinite;
   pointer-events: none;
+}
+
+/* ─── Synapse v2 animations ──────────────────────────────────────── */
+
+@keyframes svPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes svScroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes svSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes svFlicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.92; }
+  52% { opacity: 0.6; }
+  54% { opacity: 1; }
+}
+
+@keyframes svSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes svRipGlow {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 61, 127, 0.4); }
+  50% { box-shadow: 0 0 18px rgba(255, 61, 127, 0.8); }
+}
+
+/* Tabular numerics — keeps progress percent digits from jittering */
+.sv-tnum {
+  font-variant-numeric: tabular-nums;
 }

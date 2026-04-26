@@ -217,7 +217,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
   };
 
   return (
-    <div className="bg-navy-900/50 border border-navy-600/50 rounded-lg p-5 font-mono">
+    <div className="bg-navy-900/50 border border-navy-600/50 p-5 font-mono">
       {/* Step indicator */}
       <div className="flex items-center gap-1 mb-6 overflow-x-auto">
         {allSteps.map((step, i) => {
@@ -231,7 +231,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                 />
               )}
               <div
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors ${
+                className={`flex items-center gap-1.5 px-2.5 py-1text-xs transition-colors ${
                   isCurrent
                     ? "text-cyan-400 bg-cyan-500/10 border border-cyan-500/30"
                     : isCompleted
@@ -269,14 +269,14 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                     value={upc}
                     onChange={(e) => setUpc(e.target.value)}
                     placeholder="e.g., 883929123456"
-                    className="w-full px-3 py-1.5 bg-navy-800 border border-navy-600 rounded text-sm text-slate-300 font-mono placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none"
+                    className="w-full px-3 py-1.5 bg-navy-800 border border-navy-600text-sm text-slate-300 font-mono placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none"
                     onKeyDown={(e) => e.key === "Enter" && handleLookup()}
                   />
                 </div>
                 <button
                   onClick={handleLookup}
                   disabled={lookupLoading || !upc.trim()}
-                  className="px-4 py-1.5 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 py-1.5 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {lookupLoading ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -292,7 +292,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
               )}
 
               {lookupResult && (
-                <div className="border border-navy-600/50 rounded p-3 bg-navy-800/30 space-y-1.5">
+                <div className="border border-navy-600/50p-3 bg-navy-800/30 space-y-1.5">
                   {lookupResult.product_title && (
                     <p className="text-sm text-slate-300">{lookupResult.product_title}</p>
                   )}
@@ -322,7 +322,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                 {lookupResult.asins.map((asin) => (
                   <label
                     key={asin}
-                    className={`flex items-center gap-3 px-3 py-2 rounded border cursor-pointer transition-colors ${
+                    className={`flex items-center gap-3 px-3 py-2border cursor-pointer transition-colors ${
                       selectedAsin === asin
                         ? "border-cyan-500/30 bg-cyan-500/5 text-slate-300"
                         : "border-navy-600 bg-navy-800/30 text-slate-400 hover:border-navy-500"
@@ -355,7 +355,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                       setSelectedImage(url);
                       setCoverSaved(false);
                     }}
-                    className={`aspect-[2/3] rounded border-2 overflow-hidden transition-colors ${
+                    className={`aspect-[2/3]border-2 overflow-hidden transition-colors ${
                       selectedImage === url
                         ? "border-cyan-400"
                         : "border-navy-600 hover:border-navy-500"
@@ -374,7 +374,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                   <button
                     onClick={handleFetchCover}
                     disabled={coverSaving || coverSaved}
-                    className="px-4 py-1.5 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1.5"
+                    className="px-4 py-1.5 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1.5"
                   >
                     {coverSaving ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -398,7 +398,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                 {extras.map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center gap-3 border border-navy-600/50 rounded p-3 bg-navy-800/30"
+                    className="flex items-center gap-3 border border-navy-600/50p-3 bg-navy-800/30"
                   >
                     <div className="flex-shrink-0">
                       <span className="text-xs text-slate-500">
@@ -415,7 +415,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                         setExtraDescriptions((prev) => ({ ...prev, [t.id]: e.target.value }))
                       }
                       placeholder="Describe this extra..."
-                      className="flex-1 px-3 py-1.5 bg-navy-800 border border-navy-600 rounded text-sm text-slate-300 font-mono placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none"
+                      className="flex-1 px-3 py-1.5 bg-navy-800 border border-navy-600text-sm text-slate-300 font-mono placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none"
                     />
                   </div>
                 ))}
@@ -427,7 +427,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
           {currentStepId === "save" && (
             <div>
               <h3 className="text-sm font-bold text-cyan-400 mb-3">SAVE ENHANCEMENT</h3>
-              <div className="border border-navy-600/50 rounded p-3 bg-navy-800/30 space-y-2 mb-4">
+              <div className="border border-navy-600/50p-3 bg-navy-800/30 space-y-2 mb-4">
                 <p className="text-xs text-slate-500">Summary</p>
                 <div className="space-y-1 text-sm text-slate-300">
                   {upc.trim() && <p>UPC: {upc.trim()}</p>}
@@ -453,7 +453,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-5 py-2 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-2"
               >
                 {saving ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -473,14 +473,14 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
           {currentIdx > 0 ? (
             <button
               onClick={goBack}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-400 border border-navy-600 rounded hover:text-slate-300 hover:border-navy-500 flex items-center gap-1"
+              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-400 border border-navy-600hover:text-slate-300 hover:border-navy-500 flex items-center gap-1"
             >
               <ChevronLeft className="w-3.5 h-3.5" /> Back
             </button>
           ) : (
             <button
               onClick={onCancel}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-500 border border-navy-600 rounded hover:text-slate-400 hover:border-navy-500"
+              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-500 border border-navy-600hover:text-slate-400 hover:border-navy-500"
             >
               Cancel
             </button>
@@ -490,7 +490,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
           {currentStepId === "upc" && (
             <button
               onClick={goNext}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-400 border border-navy-600 rounded hover:text-slate-300 hover:border-navy-500"
+              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-400 border border-navy-600hover:text-slate-300 hover:border-navy-500"
             >
               Skip Lookup
             </button>
@@ -498,7 +498,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
           {currentStepId !== "save" && (
             <button
               onClick={goNext}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-magenta-400 border border-magenta-500/30 rounded hover:bg-magenta-500/10 flex items-center gap-1"
+              className="px-3 py-1.5 text-xs font-bold uppercase text-magenta-400 border border-magenta-500/30hover:bg-magenta-500/10 flex items-center gap-1"
             >
               Next <ChevronRight className="w-3.5 h-3.5" />
             </button>

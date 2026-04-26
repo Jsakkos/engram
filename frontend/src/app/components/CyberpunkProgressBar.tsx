@@ -1,4 +1,5 @@
 import { motion } from "motion/react";
+import { sv } from "./synapse";
 
 interface CyberpunkProgressBarProps {
   progress: number;
@@ -6,116 +7,143 @@ interface CyberpunkProgressBarProps {
   label?: string;
 }
 
-const colorStyles = {
-  cyan: {
-    bg: "bg-cyan-500",
-    glow: "rgba(6, 182, 212, 0.6)",
-    text: "text-cyan-400",
-    border: "border-cyan-500/30",
-    tick: "bg-cyan-400/20",
-  },
-  magenta: {
-    bg: "bg-magenta-500",
-    glow: "rgba(236, 72, 153, 0.6)",
-    text: "text-magenta-400",
-    border: "border-magenta-500/30",
-    tick: "bg-magenta-400/20",
-  },
-  yellow: {
-    bg: "bg-yellow-400",
-    glow: "rgba(250, 204, 21, 0.6)",
-    text: "text-yellow-400",
-    border: "border-yellow-500/30",
-    tick: "bg-yellow-400/20",
-  },
-  green: {
-    bg: "bg-green-500",
-    glow: "rgba(16, 185, 129, 0.6)",
-    text: "text-green-400",
-    border: "border-green-500/30",
-    tick: "bg-green-400/20",
-  },
+/**
+ * Map color name → Synapse v2 token. Centralizes the per-color glow /
+ * gradient bookkeeping that was previously duplicated across screens.
+ */
+const COLOR: Record<CyberpunkProgressBarProps["color"], { fg: string; secondary: string; glow: string }> = {
+  cyan:    { fg: sv.cyan,    secondary: sv.cyanHi,    glow: sv.cyan    },
+  magenta: { fg: sv.magenta, secondary: sv.magentaHi, glow: sv.magenta },
+  yellow:  { fg: sv.yellow,  secondary: sv.amber,     glow: sv.yellow  },
+  green:   { fg: sv.green,   secondary: sv.greenDim,  glow: sv.green   },
 };
 
+/**
+ * Synapse v2 progress bar — sharp 90° corners, gradient fill, chunked
+ * ticks, glow, and a sweep highlight while in-flight. Public prop
+ * contract preserved so DiscCard / TrackGrid keep working unchanged.
+ */
 export function CyberpunkProgressBar({ progress, color, label }: CyberpunkProgressBarProps) {
-  const style = colorStyles[color];
+  const c = COLOR[color];
+  const value = Math.min(100, Math.max(0, progress));
 
   return (
-    <div className="relative">
-      {/* Background track */}
-      <div className={`h-3 bg-navy-800 border ${style.border} relative overflow-hidden rounded-sm`}>
-        {/* Grid pattern background */}
-        <div
-          className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: "repeating-linear-gradient(90deg, transparent, transparent 4px, rgba(255,255,255,0.1) 4px, rgba(255,255,255,0.1) 5px)",
-          }}
-        />
-
-        {/* Tick marks at 25/50/75% */}
-        {[25, 50, 75].map((tick) => (
+    <div
+      data-testid="sv-bar-progress"
+      data-value={value}
+      style={{ position: "relative" }}
+    >
+      {/* Track */}
+      <div
+        style={{
+          position: "relative",
+          height: 12,
+          background: sv.bg2,
+          border: `1px solid ${c.fg}44`,
+          overflow: "hidden",
+        }}
+      >
+        {/* Major tick lines at 25/50/75 */}
+        {[25, 50, 75].map((t) => (
           <div
-            key={tick}
-            className={`absolute top-0 bottom-0 w-px ${style.tick}`}
-            style={{ left: `${tick}%` }}
+            key={t}
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: `${t}%`,
+              width: 1,
+              background: `${c.fg}33`,
+            }}
           />
         ))}
 
-        {/* Progress fill */}
+        {/* Gradient fill */}
         <motion.div
-          className={`h-full ${style.bg} relative`}
           initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
+          animate={{ width: `${value}%` }}
           transition={{ duration: 0.5, ease: "easeOut" }}
           style={{
-            boxShadow: `0 0 ${8 + (progress / 10)}px ${style.glow}, inset 0 0 10px ${style.glow}`,
+            position: "absolute",
+            inset: "0 auto 0 0",
+            height: "100%",
+            background: `linear-gradient(90deg, ${c.fg}, ${c.secondary})`,
+            boxShadow: `0 0 ${8 + value / 10}px ${c.glow}aa, inset 0 0 10px ${c.glow}66`,
           }}
         >
-          {/* Animated glitch bars */}
-          {progress < 100 && (
+          {/* Live sweep highlight while in-flight */}
+          {value < 100 && value > 0 && (
             <>
               <motion.div
-                className="absolute inset-y-0 right-0 w-1 bg-white"
-                animate={{
-                  opacity: [1, 0.3, 1],
-                  scaleY: [1, 0.8, 1],
+                style={{
+                  position: "absolute",
+                  inset: "0 0 0 auto",
+                  width: 2,
+                  background: sv.ink,
+                  opacity: 0.85,
                 }}
-                transition={{
-                  duration: 0.3,
-                  repeat: Infinity,
-                  repeatType: "reverse",
-                }}
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 0.3, repeat: Infinity, repeatType: "reverse" }}
               />
-
               <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                animate={{
-                  x: ["-100%", "200%"],
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: `linear-gradient(90deg, transparent, ${sv.ink}33, transparent)`,
                 }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "linear",
-                }}
+                animate={{ x: ["-100%", "200%"] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
               />
             </>
           )}
         </motion.div>
+
+        {/* Chunked tick overlay (10% repeating, low alpha) */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: `repeating-linear-gradient(90deg, transparent 0 9%, ${sv.bg0}55 9% 10%)`,
+            pointerEvents: "none",
+          }}
+        />
       </div>
 
-      {/* Label and percentage */}
-      <div className="flex items-center justify-between mt-2">
-        <span className={`text-xs ${style.text} uppercase tracking-wider font-mono font-bold`}>
+      {/* Label + percentage */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginTop: 6,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: sv.mono,
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.20em",
+            textTransform: "uppercase",
+            color: c.fg,
+          }}
+        >
           {label || "PROGRESS"}
         </span>
         <motion.span
-          key={progress}
-          initial={{ scale: 1.3, opacity: 0 }}
+          key={Math.round(value)}
+          initial={{ scale: 1.2, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className={`text-sm font-bold ${style.text} font-mono`}
-          style={{ textShadow: `0 0 8px ${style.glow}` }}
+          className="sv-tnum"
+          style={{
+            fontFamily: sv.mono,
+            fontSize: 13,
+            fontWeight: 700,
+            color: c.fg,
+            textShadow: `0 0 8px ${c.glow}`,
+          }}
         >
-          {progress.toFixed(1)}%
+          {value.toFixed(1)}%
         </motion.span>
       </div>
     </div>

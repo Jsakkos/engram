@@ -21,6 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { FEATURES } from "../config/constants";
+import { SvAtmosphere, SvBarChart, SvLabel, SvPanel, sv } from "../app/components/synapse";
 
 interface HistoryJob {
   id: number;
@@ -111,6 +112,7 @@ interface Stats {
   avg_processing_seconds: number | null;
   common_errors: { message: string; count: number }[];
   recent_jobs: HistoryJob[];
+  daily_throughput?: number[];
 }
 
 function formatDuration(seconds: number): string {
@@ -638,6 +640,182 @@ function JobDetailPanel({
   );
 }
 
+/**
+ * Right-column stats rail for the History page. Three stacked panels:
+ * 1) 2x2 stat grid (Archived/Volume/Matched/Flagged)
+ * 2) 14-day throughput sparkline
+ * 3) Movies vs TV distribution bars
+ */
+function HistoryStatsRail({ stats }: { stats: Stats }) {
+  const archived = stats.completed_jobs;
+  const matched = stats.total_titles_ripped;
+  const flagged = stats.failed_jobs;
+  const throughput = stats.daily_throughput ?? [];
+  const sumThroughput = throughput.reduce((a, b) => a + b, 0);
+
+  const total = stats.movie_count + stats.tv_count;
+  const movieRatio = total > 0 ? stats.movie_count / total : 0;
+  const tvRatio = total > 0 ? stats.tv_count / total : 0;
+
+  return (
+    <aside
+      data-testid="sv-history-stats-rail"
+      style={{ display: "flex", flexDirection: "column", gap: 14, position: "sticky", top: 14 }}
+    >
+      {/* 2x2 stat grid — last 14 days */}
+      <SvPanel pad={18} testid="sv-history-stats-grid">
+        <SvLabel>Last · 14d</SvLabel>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 14,
+            marginTop: 14,
+          }}
+        >
+          <RailStat label="Archived" value={archived} sub="discs" accent={sv.cyan} />
+          <RailStat label="Volume" value={sumThroughput} sub="14d total" accent={sv.green} />
+          <RailStat label="Matched" value={matched} sub="titles" accent={sv.cyanHi} />
+          <RailStat label="Flagged" value={flagged} sub="manual" accent={sv.yellow} />
+        </div>
+      </SvPanel>
+
+      {/* 14-day throughput sparkline */}
+      <SvPanel pad={18} testid="sv-history-stats-throughput">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <SvLabel>Throughput · 14d</SvLabel>
+          <span
+            style={{
+              fontFamily: sv.mono,
+              fontSize: 9,
+              letterSpacing: "0.22em",
+              color: sv.inkFaint,
+              textTransform: "uppercase",
+            }}
+          >
+            jobs/day
+          </span>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <SvBarChart values={throughput} accent="cyan" height={70} />
+        </div>
+      </SvPanel>
+
+      {/* Distribution */}
+      <SvPanel pad={18} testid="sv-history-stats-distribution">
+        <SvLabel>Distribution</SvLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+          <DistRow label="Movies" count={stats.movie_count} ratio={movieRatio} accent={sv.cyan} />
+          <DistRow label="TV seasons" count={stats.tv_count} ratio={tvRatio} accent={sv.magenta} />
+        </div>
+      </SvPanel>
+    </aside>
+  );
+}
+
+function RailStat({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: number;
+  sub?: string;
+  accent: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span
+        style={{
+          fontFamily: sv.mono,
+          fontSize: 9,
+          letterSpacing: "0.22em",
+          color: sv.inkFaint,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: sv.display,
+          fontSize: 28,
+          fontWeight: 700,
+          color: accent,
+          letterSpacing: "0.04em",
+          fontVariantNumeric: "tabular-nums",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </span>
+      {sub && (
+        <span
+          style={{
+            fontFamily: sv.mono,
+            fontSize: 9,
+            letterSpacing: "0.16em",
+            color: sv.inkFaint,
+            textTransform: "uppercase",
+          }}
+        >
+          {sub}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DistRow({
+  label,
+  count,
+  ratio,
+  accent,
+}: {
+  label: string;
+  count: number;
+  ratio: number;
+  accent: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontFamily: sv.mono,
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          color: sv.inkDim,
+          textTransform: "uppercase",
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ color: accent }}>{count}</span>
+      </div>
+      <div
+        style={{
+          height: 4,
+          background: sv.inkGhost,
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: "0 auto 0 0",
+            width: `${Math.min(100, Math.max(0, ratio * 100))}%`,
+            background: `linear-gradient(90deg, ${accent}, ${accent}99)`,
+            boxShadow: `0 0 8px ${accent}66`,
+            transition: "width 0.3s ease",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function HistoryPage() {
   const navigate = useNavigate();
   const { jobId: urlJobId } = useParams<{ jobId: string }>();
@@ -736,7 +914,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-navy-900 circuit-bg">
+    <SvAtmosphere>
       {/* Header */}
       <div
         className="border-b border-cyan-500/20 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10"
@@ -787,6 +965,16 @@ export default function HistoryPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8">
+        <div
+          data-testid="sv-history-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: stats ? "minmax(0, 1fr) 320px" : "1fr",
+            gap: 14,
+            alignItems: "start",
+          }}
+        >
+        <div style={{ minWidth: 0 }} className="space-y-8">
         {/* Stats Grid */}
         {stats && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1002,6 +1190,9 @@ export default function HistoryPage() {
             Next <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+        </div>
+        {stats && <HistoryStatsRail stats={stats} />}
+        </div>
       </div>
 
       {/* Detail Panel Overlay */}
@@ -1023,6 +1214,6 @@ export default function HistoryPage() {
           </>
         )}
       </AnimatePresence>
-    </div>
+    </SvAtmosphere>
   );
 }
