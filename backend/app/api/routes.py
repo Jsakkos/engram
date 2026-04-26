@@ -156,6 +156,9 @@ class StatsResponse(BaseModel):
     avg_processing_seconds: float | None = None
     common_errors: list[dict] = []
     recent_jobs: list[HistoryJobResponse] = []
+    # Per-day completed-job counts over the last 14 days, oldest first.
+    # Used by the History page throughput sparkline.
+    daily_throughput: list[int] = []
 
 
 class ConfigResponse(BaseModel):
@@ -375,6 +378,22 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
     )
     recent = recent_result.scalars().all()
 
+    # 14-day throughput: count of completions per day, oldest first.
+    now = datetime.now(UTC)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    daily_throughput: list[int] = [0] * 14
+    for j in completed:
+        if not j.completed_at:
+            continue
+        completed_at = j.completed_at
+        if completed_at.tzinfo is None:
+            completed_at = completed_at.replace(tzinfo=UTC)
+        day_start = completed_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        days_ago = (today - day_start).days
+        if 0 <= days_ago < 14:
+            # Index 0 is 13 days ago, index 13 is today.
+            daily_throughput[13 - days_ago] += 1
+
     return {
         "total_jobs": len(jobs),
         "completed_jobs": len(completed),
@@ -406,6 +425,7 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
             }
             for j in recent
         ],
+        "daily_throughput": daily_throughput,
     }
 
 

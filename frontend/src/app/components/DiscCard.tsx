@@ -9,7 +9,7 @@ import { MediaTypeBadge } from "./DiscCard/MediaTypeBadge";
 import { DiscMetadata } from "./DiscCard/DiscMetadata";
 import { ActionButtons } from "./DiscCard/ActionButtons";
 import { useElapsedTime } from "../hooks/useElapsedTime";
-import { sv, SvPanel, SvLabel } from "./synapse";
+import { sv, SvPanel, SvLabel, SvDiscInsert, type DiscInsertPhase } from "./synapse";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "review_needed" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
@@ -313,22 +313,27 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 </div>
               </div>
 
-              {/* Scanning */}
-              {disc.state === "scanning" && (
-                <motion.div
-                  animate={{ opacity: [0.4, 1, 0.4] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  style={{
-                    fontFamily: sv.mono,
-                    fontSize: 12,
-                    letterSpacing: "0.2em",
-                    color: sv.cyan,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  › SCANNING DISC STRUCTURE…
-                </motion.div>
-              )}
+              {/* Scanning / identifying — full disc-insert visualization */}
+              {disc.state === "scanning" && (() => {
+                // Map identifying-state job data to a phase. The backend doesn't
+                // emit fine-grained phases yet, so we infer:
+                //   - no detected_title → 'scan' (still reading structure)
+                //   - has detected_title + known content_type → 'classify'
+                const hasMatch = !!disc.title && disc.mediaType !== "unknown";
+                const phase: DiscInsertPhase = hasMatch ? "classify" : "scan";
+                const typeLabel =
+                  disc.mediaType === "tv" ? "TV" : disc.mediaType === "movie" ? "MOVIE" : "UNKNOWN";
+                const meta = [typeLabel, disc.discLabel].filter(Boolean).join(" · ");
+                return (
+                  <SvDiscInsert
+                    phase={phase}
+                    driveLabel={disc.discLabel ? `Drive · ${disc.discLabel}` : "Drive · scanning"}
+                    driveMeta={disc.discLabel ?? "—"}
+                    bestMatch={hasMatch ? disc.title : undefined}
+                    bestMatchMeta={hasMatch ? meta : undefined}
+                  />
+                );
+              })()}
 
               {/* ISO archiving */}
               {disc.state === "archiving_iso" && disc.isoProgress !== undefined && (

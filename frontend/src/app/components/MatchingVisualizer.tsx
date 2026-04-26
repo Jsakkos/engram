@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { TrendingUp } from "lucide-react";
 import type { MatchCandidate } from "./DiscCard";
+import { sv, SvBar, SvLabel } from "./synapse";
 
 interface MatchingVisualizerProps {
   candidates: MatchCandidate[];
@@ -8,153 +9,233 @@ interface MatchingVisualizerProps {
 }
 
 export function MatchingVisualizer({ candidates, compact = false }: MatchingVisualizerProps) {
-  // Sort by votes descending
   const sortedCandidates = [...candidates].sort((a, b) => b.votes - a.votes);
 
   if (compact) {
     return (
-      <div className="mt-2 space-y-1">
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
         {sortedCandidates.slice(0, 2).map((candidate, index) => {
-          const voteProgress = (candidate.votes / candidate.targetVotes) * 100;
+          const voteProgress = candidate.votes / Math.max(1, candidate.targetVotes);
           const isLeading = index === 0;
-          
+          const accent = isLeading ? sv.yellow : sv.inkFaint;
           return (
-            <div key={candidate.episode} className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className={`text-xs font-mono truncate ${
-                  isLeading ? "text-yellow-400" : "text-slate-500"
-                }`}>
+            <div
+              key={candidate.episode}
+              style={{ display: "flex", flexDirection: "column", gap: 4 }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span
+                  style={{
+                    fontFamily: sv.mono,
+                    fontSize: 11,
+                    color: accent,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: 1,
+                  }}
+                >
                   {candidate.episode}
                 </span>
-                <span className={`text-xs font-mono font-bold ${
-                  isLeading ? "text-yellow-400" : "text-slate-600"
-                }`}>
+                <span
+                  style={{
+                    fontFamily: sv.mono,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: accent,
+                  }}
+                >
                   {candidate.votes}/{candidate.targetVotes}
                 </span>
               </div>
-              <div className="h-1 bg-black border border-white/10 overflow-hidden">
-                <motion.div
-                  className={`h-full ${isLeading ? "bg-yellow-400" : "bg-slate-600"}`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${voteProgress}%` }}
-                  transition={{ duration: 0.5 }}
-                  style={{
-                    boxShadow: isLeading ? "0 0 8px rgba(250, 204, 21, 0.6)" : "none",
-                  }}
-                />
-              </div>
+              <SvBar
+                value={voteProgress}
+                color={accent}
+                glow={isLeading}
+                chunked={false}
+                height={3}
+              />
             </div>
           );
         })}
       </div>
     );
   }
-  
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs text-yellow-400 uppercase tracking-wider font-mono font-bold">
-        <TrendingUp className="w-4 h-4" />
-        <span>&gt; MATCH VOTING</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          color: sv.yellow,
+          textTransform: "uppercase",
+          letterSpacing: "0.18em",
+          fontFamily: sv.mono,
+          fontSize: 11,
+          fontWeight: 700,
+        }}
+      >
+        <TrendingUp size={14} />
+        <SvLabel size={10} color={sv.yellow}>
+          Match voting
+        </SvLabel>
       </div>
-      
-      <div className="space-y-2">
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sortedCandidates.map((candidate, index) => {
-          const voteProgress = (candidate.votes / candidate.targetVotes) * 100;
+          const voteProgress = candidate.votes / Math.max(1, candidate.targetVotes);
           const isLeading = index === 0;
-          const confidenceColor = 
-            candidate.confidence >= 0.8 ? "text-green-400" :
-            candidate.confidence >= 0.6 ? "text-yellow-400" :
-            "text-red-400";
-          
+          const confidencePct = Math.round(candidate.confidence * 100);
+          const confidenceColor =
+            candidate.confidence >= 0.8
+              ? sv.green
+              : candidate.confidence >= 0.6
+                ? sv.yellow
+                : sv.red;
+          const borderColor = isLeading ? `${sv.yellow}80` : sv.lineMid;
+          const bgColor = isLeading ? `${sv.yellow}0a` : `${sv.bg2}80`;
+
           return (
             <motion.div
               key={candidate.episode}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
-              className={`relative border ${
-                isLeading ? "border-yellow-500/50 bg-yellow-950/20" : "border-slate-700/30 bg-slate-900/20"
-              } p-3`}
               style={{
-                boxShadow: isLeading ? "0 0 15px rgba(250, 204, 21, 0.2)" : "none",
+                position: "relative",
+                border: `1px solid ${borderColor}`,
+                background: bgColor,
+                padding: 12,
+                boxShadow: isLeading ? `0 0 15px ${sv.yellow}33` : "none",
               }}
             >
-              {/* Leading indicator */}
               {isLeading && (
                 <motion.div
-                  className="absolute top-0 left-0 w-1 h-full bg-yellow-400"
                   animate={{ opacity: [0.5, 1, 0.5] }}
                   transition={{ duration: 1.5, repeat: Infinity }}
-                  style={{ boxShadow: "0 0 10px rgba(250, 204, 21, 0.8)" }}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: 2,
+                    height: "100%",
+                    background: sv.yellow,
+                    boxShadow: `0 0 10px ${sv.yellow}cc`,
+                  }}
                 />
               )}
-              
-              <div className="relative pl-2">
-                {/* Episode info */}
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-sm font-bold font-mono truncate ${
-                      isLeading ? "text-yellow-400" : "text-slate-400"
-                    }`}>
+
+              <div style={{ position: "relative", paddingLeft: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: isLeading ? sv.yellow : sv.inkDim,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
                       {candidate.episode}
                     </div>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="text-xs text-slate-500 font-mono">
-                        CONFIDENCE
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 4 }}>
+                      <span
+                        style={{
+                          fontFamily: sv.mono,
+                          fontSize: 10,
+                          color: sv.inkFaint,
+                          letterSpacing: "0.18em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Confidence
                       </span>
-                      <span className={`text-xs font-bold font-mono ${confidenceColor}`}>
-                        {Math.round(candidate.confidence * 100)}%
+                      <span
+                        style={{
+                          fontFamily: sv.mono,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: confidenceColor,
+                        }}
+                      >
+                        {confidencePct}%
                       </span>
                     </div>
                   </div>
-                  
-                  {/* Vote count */}
-                  <div className="text-right">
-                    <div className={`text-lg font-bold font-mono ${
-                      isLeading ? "text-yellow-400" : "text-slate-500"
-                    }`}>
+
+                  <div style={{ textAlign: "right" }}>
+                    <div
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 18,
+                        fontWeight: 700,
+                        color: isLeading ? sv.yellow : sv.inkDim,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
                       {candidate.votes}
                     </div>
-                    <div className="text-xs text-slate-600 font-mono">
+                    <div
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 10,
+                        color: sv.inkFaint,
+                      }}
+                    >
                       /{candidate.targetVotes}
                     </div>
                   </div>
                 </div>
-                
-                {/* Vote progress bar */}
-                <div className="h-2 bg-black border border-white/20 overflow-hidden">
-                  <motion.div
-                    className={`h-full ${
-                      isLeading 
-                        ? "bg-gradient-to-r from-yellow-400 to-yellow-500" 
-                        : "bg-gradient-to-r from-slate-600 to-slate-700"
-                    }`}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${voteProgress}%` }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
+
+                <SvBar
+                  value={voteProgress}
+                  color={isLeading ? sv.yellow : sv.inkFaint}
+                  secondary={isLeading ? sv.amber : sv.inkDim}
+                  glow={isLeading}
+                  chunked={false}
+                  height={4}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: 4,
+                  }}
+                >
+                  <span
                     style={{
-                      boxShadow: isLeading ? "0 0 10px rgba(250, 204, 21, 0.6)" : "none",
+                      fontFamily: sv.mono,
+                      fontSize: 10,
+                      color: sv.inkFaint,
+                      letterSpacing: "0.18em",
+                      textTransform: "uppercase",
                     }}
                   >
-                    {/* Shimmer effect for leading candidate */}
-                    {isLeading && voteProgress < 100 && (
-                      <motion.div
-                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-                        animate={{ x: ["-100%", "200%"] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                      />
-                    )}
-                  </motion.div>
-                </div>
-                
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs text-slate-600 font-mono">
-                    VOTES
+                    Votes
                   </span>
-                  <span className={`text-xs font-bold font-mono ${
-                    isLeading ? "text-yellow-400" : "text-slate-500"
-                  }`}>
-                    {Math.round(voteProgress)}%
+                  <span
+                    style={{
+                      fontFamily: sv.mono,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: isLeading ? sv.yellow : sv.inkDim,
+                    }}
+                  >
+                    {Math.round(voteProgress * 100)}%
                   </span>
                 </div>
               </div>

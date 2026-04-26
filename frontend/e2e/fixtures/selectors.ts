@@ -76,6 +76,30 @@ export const SELECTORS = {
   matchCandidate: 'text=/S\\d{2}E\\d{2}/i',
   matchConfidence: 'text=/\\d+(\\.\\d+)?%/i',
 
+  // Dashboard side rail (visible when active jobs exist + expanded view)
+  dashboardGrid: '[data-testid="sv-dashboard-grid"]',
+  sideRail: '[data-testid="sv-side-rail"]',
+  sideRailNumeric: '[data-testid="sv-side-rail-numeric"]',
+  sideRailBytes: '[data-testid="sv-side-rail-bytes"]',
+  sideRailSpeed: '[data-testid="sv-side-rail-speed"]',
+  sideRailThroughput: '[data-testid="sv-side-rail-throughput"]',
+  sideRailStats: '[data-testid="sv-side-rail-stats"]',
+  sideRailLog: '[data-testid="sv-side-rail-log"]',
+  sideRailLogEntry: '[data-testid="sv-side-rail-log-entry"]',
+
+  // History page stats rail
+  historyGrid: '[data-testid="sv-history-grid"]',
+  historyStatsRail: '[data-testid="sv-history-stats-rail"]',
+  historyStatsGrid: '[data-testid="sv-history-stats-grid"]',
+  historyStatsThroughput: '[data-testid="sv-history-stats-throughput"]',
+  historyStatsDistribution: '[data-testid="sv-history-stats-distribution"]',
+
+  // Disc-insert / classify visualization
+  discInsert: '[data-testid="sv-disc-insert"]',
+  discInsertRadar: '[data-testid="sv-disc-insert-radar"]',
+  discInsertBreadcrumb: '[data-testid="sv-disc-insert-breadcrumb"]',
+  discInsertBestMatch: '[data-testid="sv-disc-insert-best-match"]',
+
   // Empty states
   emptyState: 'text=/NO DISCS DETECTED|NO ACTIVE OPERATIONS|NO COMPLETED ARCHIVES/i',
 

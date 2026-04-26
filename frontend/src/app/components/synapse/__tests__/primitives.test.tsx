@@ -4,6 +4,7 @@ import {
   SvAtmosphere,
   SvBadge,
   SvBar,
+  SvBarChart,
   SvLabel,
   SvMark,
   SvPanel,
@@ -13,6 +14,7 @@ import {
 } from "..";
 import { SvAnimValue } from "../SvAnimValue";
 import { SvCorners } from "../SvCorners";
+import { SvDiscInsert } from "../SvDiscInsert";
 
 describe("Synapse v2 primitives — smoke", () => {
   it("SvPanel renders children, includes corner ticks by default", () => {
@@ -65,6 +67,23 @@ describe("Synapse v2 primitives — smoke", () => {
     expect(screen.getByTestId("sv-bar").getAttribute("data-value")).toBe("0.42");
   });
 
+  it("SvBarChart normalizes values against max and tags last bar", () => {
+    render(<SvBarChart values={[2, 4, 8, 6]} testid="t-chart" />);
+    const chart = screen.getByTestId("t-chart");
+    expect(chart.getAttribute("data-count")).toBe("4");
+    const bars = screen.getAllByTestId("t-chart-bar");
+    expect(bars).toHaveLength(4);
+    // Bar 2 (value=8) is the max → 1.0
+    expect(bars[2].getAttribute("data-value")).toBe("1");
+    // Bar 0 (value=2) → 0.25
+    expect(bars[0].getAttribute("data-value")).toBe("0.25");
+  });
+
+  it("SvBarChart renders empty placeholder for empty input", () => {
+    render(<SvBarChart values={[]} testid="t-chart-empty" />);
+    expect(screen.getByTestId("t-chart-empty").getAttribute("data-empty")).toBe("true");
+  });
+
   it("SvBadge maps state to data attribute", () => {
     render(<SvBadge state="ripping">RIPPING</SvBadge>);
     const el = screen.getByTestId("sv-badge");
@@ -114,6 +133,21 @@ describe("Synapse v2 primitives — smoke", () => {
     );
     expect(screen.queryByTestId("sv-scanlines")).toBeNull();
     expect(screen.queryByTestId("sv-skyline")).toBeNull();
+  });
+
+  it("SvDiscInsert renders SVG radar + breadcrumb, marks active phase", () => {
+    render(<SvDiscInsert phase="classify" testid="t-insert" bestMatch="Arrested Development" />);
+    expect(screen.getByTestId("t-insert").getAttribute("data-phase")).toBe("classify");
+    expect(screen.getByTestId("sv-disc-insert-radar")).toBeDefined();
+    expect(screen.getByTestId("sv-disc-insert-classify")).toBeDefined();
+    expect(screen.getByTestId("sv-disc-insert-best-match").textContent).toBe("Arrested Development");
+    expect(screen.getByTestId("sv-disc-insert-phase-classify").getAttribute("data-active")).toBe("true");
+    expect(screen.getByTestId("sv-disc-insert-phase-detect").getAttribute("data-active")).toBe("false");
+  });
+
+  it("SvDiscInsert hides best-match block when no match yet (scan phase)", () => {
+    render(<SvDiscInsert phase="scan" testid="t-insert-scan" />);
+    expect(screen.queryByTestId("sv-disc-insert-best-match")).toBeNull();
   });
 
   it("tokens.ts surfaces are non-empty hex values", () => {

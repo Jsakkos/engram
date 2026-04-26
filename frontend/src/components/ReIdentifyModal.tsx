@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 're
 import { motion, AnimatePresence } from 'motion/react';
 import { Disc3, Film, Tv, Search, RefreshCw } from 'lucide-react';
 import type { Job } from '../types';
+import { SvPanel, SvLabel, sv } from '../app/components/synapse';
 
 interface TmdbResult {
     tmdb_id: number;
@@ -83,6 +84,19 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
         if (e.key === 'Escape') onCancel();
     };
 
+    const inputStyle = (filled: boolean): React.CSSProperties => ({
+        width: '100%',
+        background: sv.bg1,
+        border: `1px solid ${filled ? sv.lineHi : sv.lineMid}`,
+        color: sv.cyanHi,
+        fontFamily: sv.mono,
+        fontSize: 13,
+        padding: '10px 12px',
+        outline: 'none',
+        boxShadow: filled ? `0 0 12px ${sv.cyan}33, inset 0 0 8px ${sv.cyan}0d` : 'none',
+        transition: 'border-color 0.18s',
+    });
+
     return (
         <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -94,368 +108,451 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
             aria-modal="true"
             aria-labelledby="re-identify-title"
         >
-            {/* Backdrop */}
             <motion.div
-                className="absolute inset-0 bg-navy-900/85 backdrop-blur-sm"
+                className="absolute inset-0"
+                style={{ background: `${sv.bg0}d9`, backdropFilter: 'blur(4px)' }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={onCancel}
             />
-
-            {/* Scanline overlay */}
             <div
-                className="absolute inset-0 pointer-events-none opacity-[0.03]"
+                className="absolute inset-0 pointer-events-none"
                 style={{
-                    backgroundImage:
-                        'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(6, 182, 212, 1) 2px, rgba(6, 182, 212, 1) 4px)',
+                    backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 2px, ${sv.cyan} 2px, ${sv.cyan} 4px)`,
+                    opacity: 0.03,
                 }}
             />
 
-            {/* Card */}
             <motion.div
-                className="relative w-full max-w-md bg-navy-900 border border-cyan-500/50 overflow-hidden"
-                style={{
-                    boxShadow:
-                        '0 0 40px rgba(6, 182, 212, 0.3), 0 0 80px rgba(6, 182, 212, 0.1), inset 0 0 30px rgba(6, 182, 212, 0.05)',
-                }}
+                className="relative w-full max-w-md"
                 initial={{ opacity: 0, scale: 0.92, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.92, y: 20 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             >
-                {/* Corner accents */}
-                <motion.div
-                    className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-cyan-400"
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                />
-                <motion.div
-                    className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-pink-500"
-                    animate={{ opacity: [1, 0.5, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                />
-                <motion.div
-                    className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-pink-500"
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 2, repeat: Infinity, delay: 1 }}
-                />
-                <motion.div
-                    className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-cyan-400"
-                    animate={{ opacity: [1, 0.5, 1] }}
-                    transition={{ duration: 2, repeat: Infinity, delay: 1 }}
-                />
-
-                {/* Ambient glow */}
-                <motion.div
-                    className="absolute inset-0 pointer-events-none"
-                    animate={{
-                        background: [
-                            'radial-gradient(circle at 0% 0%, rgba(6,182,212,0.06) 0%, transparent 60%)',
-                            'radial-gradient(circle at 100% 100%, rgba(236,72,153,0.06) 0%, transparent 60%)',
-                            'radial-gradient(circle at 0% 0%, rgba(6,182,212,0.06) 0%, transparent 60%)',
-                        ],
+                <SvPanel
+                    glow
+                    pad={0}
+                    style={{
+                        background: `linear-gradient(180deg, ${sv.bg2}, ${sv.bg1})`,
+                        boxShadow: `0 0 40px ${sv.cyan}33, 0 0 80px ${sv.cyan}11, inset 0 0 30px ${sv.cyan}0d`,
                     }}
-                    transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
-                />
-
-                <div className="relative p-6 space-y-5">
-                    {/* Header */}
-                    <div className="flex items-center gap-3">
-                        <motion.div
-                            animate={{ rotate: [0, 360] }}
-                            transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-                        >
-                            <RefreshCw
-                                className="w-6 h-6 text-cyan-400"
-                                style={{ filter: 'drop-shadow(0 0 6px rgba(6,182,212,0.8))' }}
-                            />
-                        </motion.div>
-                        <div>
-                            <h2
-                                id="re-identify-title"
-                                className="font-mono font-bold text-lg tracking-[0.2em] uppercase text-cyan-300"
-                                style={{ textShadow: '0 0 10px rgba(6,182,212,0.6)' }}
-                            >
-                                Re-Identify Disc
-                            </h2>
+                >
+                    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <motion.div
-                                className="h-px bg-gradient-to-r from-cyan-500/80 to-transparent mt-1"
-                                initial={{ scaleX: 0, originX: 0 }}
-                                animate={{ scaleX: 1 }}
-                                transition={{ delay: 0.2, duration: 0.4 }}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Current identification info */}
-                    <div className="flex items-start gap-3 border border-yellow-500/30 bg-yellow-500/5 p-3">
-                        <Disc3
-                            className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0"
-                            style={{ filter: 'drop-shadow(0 0 4px rgba(234,179,8,0.6))' }}
-                        />
-                        <div className="space-y-1 min-w-0">
-                            <p className="font-mono text-xs text-yellow-300/80 uppercase tracking-wider">
-                                Wrong identification? Correct it below.
-                            </p>
-                            {job.review_reason && (
-                                <p className="text-xs font-mono text-yellow-500/60">
-                                    {job.review_reason}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="h-px bg-cyan-500/20" />
-
-                    {/* TMDB Search */}
-                    <div className="space-y-2">
-                        <label className="block font-mono text-xs tracking-[0.15em] uppercase text-cyan-400/70">
-                            Search TMDB
-                        </label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-600" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => handleSearchChange(e.target.value)}
-                                placeholder="Search for correct title..."
-                                className="w-full bg-navy-800 border-2 border-cyan-500/30 text-cyan-300 font-mono text-sm pl-10 pr-3 py-2.5 placeholder:text-cyan-800 focus:outline-none focus:border-cyan-500 transition-colors"
-                            />
-                            {isSearching && (
-                                <motion.div
-                                    className="absolute right-3 top-1/2 -translate-y-1/2"
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                animate={{ rotate: [0, 360] }}
+                                transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+                            >
+                                <RefreshCw
+                                    size={22}
+                                    color={sv.cyan}
+                                    style={{ filter: `drop-shadow(0 0 6px ${sv.cyan}cc)` }}
+                                />
+                            </motion.div>
+                            <div style={{ flex: 1 }}>
+                                <h2
+                                    id="re-identify-title"
+                                    style={{
+                                        fontFamily: sv.display,
+                                        fontWeight: 700,
+                                        fontSize: 18,
+                                        letterSpacing: '0.2em',
+                                        textTransform: 'uppercase',
+                                        color: sv.cyanHi,
+                                        textShadow: `0 0 10px ${sv.cyan}99`,
+                                        margin: 0,
+                                    }}
                                 >
-                                    <RefreshCw className="w-4 h-4 text-cyan-500" />
-                                </motion.div>
-                            )}
+                                    Re-Identify Disc
+                                </h2>
+                                <motion.div
+                                    style={{
+                                        height: 1,
+                                        marginTop: 4,
+                                        background: `linear-gradient(90deg, ${sv.cyan}cc, transparent)`,
+                                    }}
+                                    initial={{ scaleX: 0, originX: 0 }}
+                                    animate={{ scaleX: 1 }}
+                                    transition={{ delay: 0.2, duration: 0.4 }}
+                                />
+                            </div>
                         </div>
 
-                        {/* Search Results */}
+                        {/* Notice */}
+                        <div
+                            style={{
+                                display: 'flex',
+                                gap: 12,
+                                alignItems: 'flex-start',
+                                padding: 12,
+                                border: `1px solid ${sv.yellow}4d`,
+                                background: `${sv.yellow}0d`,
+                            }}
+                        >
+                            <Disc3
+                                size={16}
+                                color={sv.yellow}
+                                style={{ marginTop: 2, flexShrink: 0, filter: `drop-shadow(0 0 4px ${sv.yellow}99)` }}
+                            />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                                <p
+                                    style={{
+                                        fontFamily: sv.mono,
+                                        fontSize: 11,
+                                        color: `${sv.yellow}cc`,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.14em',
+                                        margin: 0,
+                                    }}
+                                >
+                                    Wrong identification? Correct it below.
+                                </p>
+                                {job.review_reason && (
+                                    <p
+                                        style={{
+                                            fontFamily: sv.mono,
+                                            fontSize: 11,
+                                            color: `${sv.yellow}99`,
+                                            margin: 0,
+                                        }}
+                                    >
+                                        {job.review_reason}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div style={{ height: 1, background: sv.line }} />
+
+                        {/* TMDB Search */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <SvLabel size={10}>Search TMDB</SvLabel>
+                            <div style={{ position: 'relative' }}>
+                                <Search
+                                    size={14}
+                                    color={sv.inkFaint}
+                                    style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }}
+                                />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => handleSearchChange(e.target.value)}
+                                    placeholder="Search for correct title..."
+                                    style={{ ...inputStyle(!!searchQuery), paddingLeft: 36 }}
+                                    onFocus={(e) => (e.currentTarget.style.borderColor = sv.cyan)}
+                                    onBlur={(e) =>
+                                        (e.currentTarget.style.borderColor = searchQuery ? sv.lineHi : sv.lineMid)
+                                    }
+                                />
+                                {isSearching && (
+                                    <motion.div
+                                        animate={{ rotate: 360 }}
+                                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                        style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}
+                                    >
+                                        <RefreshCw size={14} color={sv.cyan} />
+                                    </motion.div>
+                                )}
+                            </div>
+
+                            <AnimatePresence>
+                                {searchResults.length > 0 && (
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        style={{
+                                            maxHeight: 192,
+                                            overflowY: 'auto',
+                                            border: `1px solid ${sv.line}`,
+                                            background: `${sv.bg1}80`,
+                                        }}
+                                    >
+                                        {searchResults.map((result) => (
+                                            <button
+                                                key={`${result.type}-${result.tmdb_id}`}
+                                                onClick={() => selectResult(result)}
+                                                style={{
+                                                    width: '100%',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 12,
+                                                    padding: '8px 12px',
+                                                    borderBottom: `1px solid ${sv.line}`,
+                                                    background: 'transparent',
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    transition: 'background 0.18s',
+                                                }}
+                                                onMouseEnter={(e) =>
+                                                    (e.currentTarget.style.background = `${sv.cyan}1a`)
+                                                }
+                                                onMouseLeave={(e) =>
+                                                    (e.currentTarget.style.background = 'transparent')
+                                                }
+                                            >
+                                                {result.poster_path ? (
+                                                    <img
+                                                        src={`https://image.tmdb.org/t/p/w92${result.poster_path}`}
+                                                        alt=""
+                                                        style={{
+                                                            width: 32,
+                                                            height: 48,
+                                                            objectFit: 'cover',
+                                                            flexShrink: 0,
+                                                            border: `1px solid ${sv.line}`,
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        style={{
+                                                            width: 32,
+                                                            height: 48,
+                                                            background: sv.bg2,
+                                                            border: `1px solid ${sv.line}`,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            flexShrink: 0,
+                                                        }}
+                                                    >
+                                                        {result.type === 'tv' ? (
+                                                            <Tv size={14} color={sv.inkFaint} />
+                                                        ) : (
+                                                            <Film size={14} color={sv.inkFaint} />
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <div style={{ minWidth: 0, flex: 1 }}>
+                                                    <p
+                                                        style={{
+                                                            fontFamily: sv.mono,
+                                                            fontSize: 13,
+                                                            color: sv.cyanHi,
+                                                            margin: 0,
+                                                            whiteSpace: 'nowrap',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                        }}
+                                                    >
+                                                        {result.name}
+                                                    </p>
+                                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
+                                                        <span
+                                                            style={{
+                                                                fontFamily: sv.mono,
+                                                                fontSize: 10,
+                                                                textTransform: 'uppercase',
+                                                                padding: '2px 6px',
+                                                                color: result.type === 'tv' ? sv.cyan : sv.magenta,
+                                                                border: `1px solid ${result.type === 'tv' ? sv.cyan : sv.magenta}4d`,
+                                                                background: `${result.type === 'tv' ? sv.cyan : sv.magenta}1a`,
+                                                                letterSpacing: '0.14em',
+                                                            }}
+                                                        >
+                                                            {result.type}
+                                                        </span>
+                                                        {result.year && (
+                                                            <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
+                                                                {result.year}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        <div style={{ height: 1, background: sv.line }} />
+
+                        {/* Title Input */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <SvLabel size={10}>Title</SvLabel>
+                            <input
+                                ref={titleInputRef}
+                                type="text"
+                                value={title}
+                                onChange={(e) => {
+                                    setTitle(e.target.value);
+                                    setTmdbId(undefined);
+                                }}
+                                placeholder="e.g. Thunderbirds"
+                                style={inputStyle(!!title)}
+                                onFocus={(e) => (e.currentTarget.style.borderColor = sv.cyan)}
+                                onBlur={(e) =>
+                                    (e.currentTarget.style.borderColor = title ? sv.lineHi : sv.lineMid)
+                                }
+                            />
+                        </div>
+
+                        {/* Media Type Toggle */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <SvLabel size={10}>Media Type</SvLabel>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                {(
+                                    [
+                                        { value: 'movie', label: 'Movie', Icon: Film },
+                                        { value: 'tv', label: 'TV Show', Icon: Tv },
+                                    ] as const
+                                ).map(({ value, label, Icon }) => {
+                                    const active = contentType === value;
+                                    return (
+                                        <motion.button
+                                            key={value}
+                                            type="button"
+                                            onClick={() => setContentType(value)}
+                                            whileHover={{ scale: 1.02 }}
+                                            whileTap={{ scale: 0.98 }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: 8,
+                                                padding: '10px 14px',
+                                                fontFamily: sv.mono,
+                                                fontSize: 11,
+                                                fontWeight: 700,
+                                                letterSpacing: '0.18em',
+                                                textTransform: 'uppercase',
+                                                color: active ? sv.magentaHi : sv.inkDim,
+                                                border: `1px solid ${active ? sv.magenta : sv.lineMid}`,
+                                                background: active ? `${sv.magenta}14` : 'transparent',
+                                                boxShadow: active
+                                                    ? `0 0 12px ${sv.magenta}4d, inset 0 0 8px ${sv.magenta}0d`
+                                                    : 'none',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.18s',
+                                            }}
+                                        >
+                                            <Icon size={14} />
+                                            {label}
+                                        </motion.button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         <AnimatePresence>
-                            {searchResults.length > 0 && (
+                            {contentType === 'tv' && (
                                 <motion.div
                                     initial={{ opacity: 0, height: 0 }}
                                     animate={{ opacity: 1, height: 'auto' }}
                                     exit={{ opacity: 0, height: 0 }}
-                                    className="max-h-48 overflow-y-auto border border-cyan-500/20 bg-navy-800/50"
+                                    transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                                    style={{ overflow: 'hidden' }}
                                 >
-                                    {searchResults.map((result) => (
-                                        <button
-                                            key={`${result.type}-${result.tmdb_id}`}
-                                            onClick={() => selectResult(result)}
-                                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-cyan-500/10 transition-colors text-left border-b border-cyan-500/10 last:border-b-0"
-                                        >
-                                            {result.poster_path ? (
-                                                <img
-                                                    src={`https://image.tmdb.org/t/p/w92${result.poster_path}`}
-                                                    alt=""
-                                                    className="w-8 h-12 object-cover flex-shrink-0 border border-cyan-500/20"
-                                                />
-                                            ) : (
-                                                <div className="w-8 h-12 bg-navy-700 border border-cyan-500/20 flex items-center justify-center flex-shrink-0">
-                                                    {result.type === 'tv' ? (
-                                                        <Tv className="w-4 h-4 text-cyan-600" />
-                                                    ) : (
-                                                        <Film className="w-4 h-4 text-cyan-600" />
-                                                    )}
-                                                </div>
-                                            )}
-                                            <div className="min-w-0 flex-1">
-                                                <p className="font-mono text-sm text-cyan-300 truncate">
-                                                    {result.name}
-                                                </p>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`font-mono text-[10px] uppercase px-1.5 py-0.5 border ${
-                                                        result.type === 'tv'
-                                                            ? 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10'
-                                                            : 'text-pink-400 border-pink-500/30 bg-pink-500/10'
-                                                    }`}>
-                                                        {result.type}
-                                                    </span>
-                                                    {result.year && (
-                                                        <span className="font-mono text-[10px] text-cyan-600">
-                                                            {result.year}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    ))}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+                                        <SvLabel size={10}>Season</SvLabel>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={99}
+                                            value={season}
+                                            onChange={(e) => setSeason(e.target.value)}
+                                            style={{ ...inputStyle(true), width: 128, background: sv.bg0 }}
+                                            onFocus={(e) => (e.currentTarget.style.borderColor = sv.cyan)}
+                                            onBlur={(e) => (e.currentTarget.style.borderColor = sv.lineHi)}
+                                        />
+                                    </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
-                    </div>
 
-                    {/* Divider */}
-                    <div className="h-px bg-cyan-500/20" />
+                        <div style={{ height: 1, background: sv.line }} />
 
-                    {/* Title Input */}
-                    <div className="space-y-2">
-                        <label className="block font-mono text-xs tracking-[0.15em] uppercase text-cyan-400/70">
-                            Title
-                        </label>
-                        <input
-                            ref={titleInputRef}
-                            type="text"
-                            value={title}
-                            onChange={(e) => { setTitle(e.target.value); setTmdbId(undefined); }}
-                            placeholder="e.g. Thunderbirds"
-                            className="w-full bg-navy-800 border-2 border-cyan-500/30 text-cyan-300 font-mono text-sm px-3 py-2.5 placeholder:text-cyan-800 focus:outline-none focus:border-cyan-500 transition-colors"
-                            style={{
-                                boxShadow: title
-                                    ? '0 0 12px rgba(6,182,212,0.2), inset 0 0 8px rgba(6,182,212,0.05)'
-                                    : 'none',
-                            }}
-                        />
-                    </div>
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                            <motion.button
+                                type="button"
+                                onClick={onCancel}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.97 }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    fontFamily: sv.mono,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    letterSpacing: '0.18em',
+                                    textTransform: 'uppercase',
+                                    color: sv.red,
+                                    border: `1px solid ${sv.red}80`,
+                                    background: 'transparent',
+                                    boxShadow: `0 0 8px ${sv.red}26`,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Cancel
+                            </motion.button>
 
-                    {/* Media Type Toggle */}
-                    <div className="space-y-2">
-                        <label className="block font-mono text-xs tracking-[0.15em] uppercase text-cyan-400/70">
-                            Media Type
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {(
-                                [
-                                    { value: 'movie', label: 'Movie', Icon: Film },
-                                    { value: 'tv', label: 'TV Show', Icon: Tv },
-                                ] as const
-                            ).map(({ value, label, Icon }) => (
-                                <motion.button
-                                    key={value}
-                                    type="button"
-                                    onClick={() => setContentType(value)}
-                                    className="relative flex items-center justify-center gap-2 py-2.5 px-4 border-2 font-mono text-xs font-bold uppercase tracking-wider transition-colors"
-                                    animate={
-                                        contentType === value
-                                            ? {
-                                                borderColor: 'rgba(236,72,153,0.8)',
-                                                color: 'rgb(249,168,212)',
-                                            }
-                                            : {
-                                                borderColor: 'rgba(6,182,212,0.2)',
-                                                color: 'rgba(6,182,212,0.5)',
-                                            }
-                                    }
-                                    style={
-                                        contentType === value
-                                            ? {
-                                                boxShadow:
-                                                    '0 0 12px rgba(236,72,153,0.3), inset 0 0 8px rgba(236,72,153,0.05)',
-                                                background: 'rgba(236,72,153,0.08)',
-                                            }
-                                            : {}
-                                    }
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                >
-                                    <Icon className="w-3.5 h-3.5" />
-                                    {label}
-                                    {contentType === value && (
-                                        <motion.div
-                                            className="absolute inset-0 border border-pink-400/30"
-                                            layoutId="re-id-media-type"
-                                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                                        />
-                                    )}
-                                </motion.button>
-                            ))}
+                            <motion.button
+                                type="button"
+                                onClick={handleSubmit}
+                                disabled={!title.trim()}
+                                whileHover={title.trim() ? { scale: 1.02 } : {}}
+                                whileTap={title.trim() ? { scale: 0.97 } : {}}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    fontFamily: sv.mono,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    letterSpacing: '0.18em',
+                                    textTransform: 'uppercase',
+                                    color: title.trim() ? sv.cyan : `${sv.cyan}4d`,
+                                    border: `1px solid ${title.trim() ? sv.cyan : `${sv.cyan}33`}`,
+                                    background: title.trim() ? `${sv.cyan}1f` : 'transparent',
+                                    boxShadow: title.trim()
+                                        ? `0 0 16px ${sv.cyan}4d, inset 0 0 8px ${sv.cyan}0d`
+                                        : 'none',
+                                    cursor: title.trim() ? 'pointer' : 'not-allowed',
+                                    opacity: title.trim() ? 1 : 0.3,
+                                }}
+                            >
+                                Re-Identify
+                            </motion.button>
                         </div>
                     </div>
 
-                    {/* Season field — TV only */}
-                    <AnimatePresence>
-                        {contentType === 'tv' && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                                animate={{ opacity: 1, height: 'auto', marginTop: undefined }}
-                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                                transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-                                className="overflow-hidden"
-                            >
-                                <div className="space-y-2 pt-1">
-                                    <label className="block font-mono text-xs tracking-[0.15em] uppercase text-cyan-400/70">
-                                        Season
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        max={99}
-                                        value={season}
-                                        onChange={(e) => setSeason(e.target.value)}
-                                        className="w-32 bg-black border-2 border-cyan-500/30 text-cyan-300 font-mono text-sm px-3 py-2.5 focus:outline-none focus:border-cyan-500 transition-colors"
-                                        style={{ boxShadow: '0 0 8px rgba(6,182,212,0.1)' }}
-                                    />
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    {/* Divider */}
-                    <div className="h-px bg-cyan-500/20" />
-
-                    {/* Action Buttons */}
-                    <div className="flex items-center justify-between gap-3">
-                        <motion.button
-                            type="button"
-                            onClick={onCancel}
-                            className="flex-1 py-2.5 px-4 border-2 border-red-500/50 text-red-400 font-mono text-xs font-bold uppercase tracking-wider hover:bg-red-500/10 hover:border-red-500 transition-colors"
-                            style={{ boxShadow: '0 0 8px rgba(239,68,68,0.15)' }}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.97 }}
+                    {/* Bottom status bar */}
+                    <div
+                        style={{
+                            borderTop: `1px solid ${sv.line}`,
+                            padding: '8px 24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                        }}
+                    >
+                        <motion.div
+                            animate={{ opacity: [0.3, 1, 0.3] }}
+                            transition={{ duration: 1.5, repeat: Infinity }}
+                            style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: '50%',
+                                background: sv.cyan,
+                                filter: `drop-shadow(0 0 3px ${sv.cyan}cc)`,
+                            }}
+                        />
+                        <span
+                            style={{
+                                fontFamily: sv.mono,
+                                fontSize: 10,
+                                letterSpacing: '0.22em',
+                                textTransform: 'uppercase',
+                                color: sv.inkFaint,
+                            }}
                         >
-                            Cancel
-                        </motion.button>
-
-                        <motion.button
-                            type="button"
-                            onClick={handleSubmit}
-                            disabled={!title.trim()}
-                            className="flex-1 py-2.5 px-4 border-2 font-mono text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                            animate={
-                                title.trim()
-                                    ? {
-                                        borderColor: 'rgba(6,182,212,0.8)',
-                                        color: 'rgb(6,182,212)',
-                                        backgroundColor: 'rgba(6,182,212,0.12)',
-                                    }
-                                    : {
-                                        borderColor: 'rgba(6,182,212,0.2)',
-                                        color: 'rgba(6,182,212,0.3)',
-                                        backgroundColor: 'transparent',
-                                    }
-                            }
-                            style={
-                                title.trim()
-                                    ? {
-                                        boxShadow:
-                                            '0 0 16px rgba(6,182,212,0.3), inset 0 0 8px rgba(6,182,212,0.05)',
-                                    }
-                                    : {}
-                            }
-                            whileHover={title.trim() ? { scale: 1.02 } : {}}
-                            whileTap={title.trim() ? { scale: 0.97 } : {}}
-                        >
-                            Re-Identify
-                        </motion.button>
+                            {job.volume_label || 'Unknown'} · Correcting Identification
+                        </span>
                     </div>
-                </div>
-
-                {/* Bottom status bar */}
-                <div className="border-t border-cyan-500/20 px-6 py-2 flex items-center gap-2">
-                    <motion.div
-                        className="w-1.5 h-1.5 rounded-full bg-cyan-400"
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                        style={{ filter: 'drop-shadow(0 0 3px rgba(6,182,212,0.8))' }}
-                    />
-                    <span className="font-mono text-[10px] tracking-widest uppercase text-cyan-600">
-                        {job.volume_label || 'Unknown'} · Correcting Identification
-                    </span>
-                </div>
+                </SvPanel>
             </motion.div>
         </motion.div>
     );
