@@ -543,8 +543,7 @@ function MainDashboard() {
 /**
  * Compact list view for the dashboard — sv-token row layout that mirrors the
  * SvPanel vocabulary used elsewhere (1px tinted border, sharp corners, mono
- * uppercase headers). Replaces the prior Tailwind-classed `bg-navy-800/40`
- * row design.
+ * uppercase headers).
  */
 function CompactList({
   discs,
