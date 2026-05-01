@@ -851,8 +851,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-            <div className="modal wizard-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="wizard-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+            <div className="wizard-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2 className="modal-title" id="wizard-title">Setup Wizard</h2>
                     <button className="modal-close" onClick={onClose} aria-label="Close setup wizard">&times;</button>
@@ -878,7 +878,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     ))}
                 </div>
 
-                <div className="modal-body">
+                <div className="wizard-body">
                     {isLoading ? (
                         <div className="wizard-loading">
                             <div className="spinner-mini"></div>

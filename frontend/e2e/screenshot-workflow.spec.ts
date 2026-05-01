@@ -69,7 +69,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         }
 
         // 04: Track grid visible
-        await expect(card.locator('div.grid.grid-cols-2.gap-2').first()).toBeVisible({ timeout: 15000 });
+        await expect(card.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
         await page.screenshot({ path: `${SCREENSHOT_DIR}/04-track-grid-visible.png`, fullPage: true });
 
         // 05: Per-track RIPPING state on individual tracks
@@ -86,8 +86,8 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
             await page.screenshot({ path: `${SCREENSHOT_DIR}/06-byte-progress.png`, fullPage: true });
         }
 
-        // 07: MATCHING state — wait for candidate rows (yellow text only appears when matchCandidates exist)
-        const hasMatchCandidate = await card.locator('.text-yellow-300').first()
+        // 07: MATCHING state — wait for candidate rows
+        const hasMatchCandidate = await card.locator(SELECTORS.matchCandidate).first()
             .waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
         if (hasMatchCandidate) {
             await page.screenshot({ path: `${SCREENSHOT_DIR}/07-matching-state.png`, fullPage: true });
@@ -209,12 +209,12 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
 
         // If onboarding wizard auto-appeared (setup_complete=false), use it.
         // Otherwise open settings manually via the gear button.
-        const modalAlreadyVisible = await page.locator('.modal-overlay').isVisible();
+        const modalAlreadyVisible = await page.locator('.wizard-overlay').isVisible();
         if (!modalAlreadyVisible) {
             await page.locator('button[title="Settings"]').click();
         }
 
-        await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.wizard-overlay')).toBeVisible({ timeout: 5000 });
 
         // Wait for config to finish loading
         await expect(page.locator('.wizard-loading')).not.toBeVisible({ timeout: 10000 });
@@ -261,7 +261,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
 
         // Close the wizard
         await page.locator('.modal-close').click();
-        await expect(page.locator('.modal-overlay')).not.toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.wizard-overlay')).not.toBeVisible({ timeout: 5000 });
     });
 
     test('History page with completed jobs and detail panel', async ({ page }) => {

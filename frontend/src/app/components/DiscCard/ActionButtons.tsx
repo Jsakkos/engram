@@ -1,10 +1,22 @@
 /**
- * Action buttons component for disc cards (Cancel, Review, Re-Identify)
+ * Action buttons for the disc card (Cancel, Re-Identify, Review Needed).
+ *
+ * Synapse v2 vocabulary: monospace + uppercase labels, 1px tinted borders,
+ * sharp 90° corners, sv-token glow on hover. All three buttons share a
+ * common 30px height so they baseline-align with the StateIndicator pill
+ * to the left.
+ *
+ * Visual hierarchy (intentional, not arbitrary):
+ *   Cancel       — 30×30 square, icon-only, red    → quiet/destructive
+ *   Re-Identify  — 30 tall, icon + 10px label, cyan → tertiary action
+ *   Review       — 30 tall, icon + 11px label, yellow → primary callout
  */
 
+import { useState, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 import { motion } from "motion/react";
 import { X, AlertTriangle, RefreshCw } from "lucide-react";
 import type { DiscState } from "../DiscCard";
+import { sv } from "../synapse";
 
 interface ActionButtonsProps {
     state: DiscState;
@@ -14,53 +26,148 @@ interface ActionButtonsProps {
     onReIdentify?: () => void;
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify }: ActionButtonsProps) {
+interface Tone {
+    fg: string;        // foreground / icon / text
+    fgHi: string;      // hover-state foreground
+    border: string;    // resting border (rgba)
+    borderHi: string;  // hover border (rgba)
+    glow: string;      // resting box-shadow color
+    glowHi: string;    // hover box-shadow color
+    bgHi: string;      // hover background tint
+}
+
+const RED: Tone = {
+    fg: sv.red,
+    fgHi: "#ff8a8a",
+    border: `${sv.red}55`,
+    borderHi: sv.red,
+    glow: `${sv.red}33`,
+    glowHi: `${sv.red}66`,
+    bgHi: "rgba(255, 85, 85, 0.10)",
+};
+
+const CYAN: Tone = {
+    fg: sv.cyan,
+    fgHi: sv.cyanHi,
+    border: `${sv.cyan}55`,
+    borderHi: sv.cyan,
+    glow: `${sv.cyan}33`,
+    glowHi: `${sv.cyan}66`,
+    bgHi: "rgba(94, 234, 212, 0.10)",
+};
+
+const YELLOW: Tone = {
+    fg: sv.yellow,
+    fgHi: sv.yellow,
+    border: `${sv.yellow}99`,
+    borderHi: sv.yellow,
+    glow: `${sv.yellow}55`,
+    glowHi: `${sv.yellow}99`,
+    bgHi: "rgba(253, 224, 71, 0.12)",
+};
+
+const BUTTON_HEIGHT = 30;
+
+function baseStyle(tone: Tone, hovered: boolean): CSSProperties {
+    return {
+        height: BUTTON_HEIGHT,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        background: hovered ? tone.bgHi : sv.bg0,
+        border: `1px solid ${hovered ? tone.borderHi : tone.border}`,
+        color: hovered ? tone.fgHi : tone.fg,
+        boxShadow: `0 0 ${hovered ? 14 : 8}px ${hovered ? tone.glowHi : tone.glow}`,
+        fontFamily: sv.mono,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.20em",
+        cursor: "pointer",
+        transition: "background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out",
+    };
+}
+
+interface ToneButtonProps {
+    tone: Tone;
+    onClick: (e: MouseEvent) => void;
+    title?: string;
+    ariaLabel: string;
+    children: ReactNode;
+    /** Horizontal padding in px. 0 means render as a square icon-only button. */
+    paddingX?: number;
+}
+
+function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0 }: ToneButtonProps) {
+    const [hovered, setHovered] = useState(false);
+    const isSquare = paddingX === 0;
     return (
-        <div className="flex items-center gap-2">
-            {/* Cancel Button */}
-            {onCancel && (isHovered || ['scanning', 'ripping', 'processing'].includes(state)) && (
-                <motion.button
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    onClick={onCancel}
-                    className="p-2 border-2 border-red-500/50 bg-navy-900/80 text-red-400 hover:bg-red-500/20 hover:border-red-500 transition-all"
-                    title="Cancel Job"
-                    aria-label="Cancel job"
-                    style={{ boxShadow: "0 0 10px rgba(239, 68, 68, 0.3)" }}
+        <motion.button
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            onClick={onClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            onFocus={() => setHovered(true)}
+            onBlur={() => setHovered(false)}
+            title={title}
+            aria-label={ariaLabel}
+            style={{
+                ...baseStyle(tone, hovered),
+                paddingLeft: paddingX,
+                paddingRight: paddingX,
+                width: isSquare ? BUTTON_HEIGHT : undefined,
+                justifyContent: isSquare ? "center" : "flex-start",
+            }}
+        >
+            {children}
+        </motion.button>
+    );
+}
+
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify }: ActionButtonsProps) {
+    const showCancel = !!onCancel && (isHovered || ["scanning", "ripping", "processing"].includes(state));
+    const showReview = !!onReview && state === "review_needed";
+
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {showCancel && (
+                <ToneButton
+                    tone={RED}
+                    onClick={onCancel!}
+                    title="Cancel job"
+                    ariaLabel="Cancel job"
+                    paddingX={0}
                 >
-                    <X className="w-4 h-4" />
-                </motion.button>
+                    <X size={14} />
+                </ToneButton>
             )}
 
-            {/* Wrong Title Button */}
             {onReIdentify && (
-                <motion.button
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
+                <ToneButton
+                    tone={CYAN}
                     onClick={(e) => { e.stopPropagation(); onReIdentify(); }}
-                    className="px-3 py-2 border-2 border-cyan-500/50 bg-navy-900/80 text-cyan-400 hover:bg-cyan-500/20 hover:border-cyan-400 transition-all font-mono font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5"
-                    style={{ boxShadow: "0 0 10px rgba(6, 182, 212, 0.3)" }}
-                    aria-label="Wrong title — re-identify disc"
+                    title="Wrong title — re-identify disc"
+                    ariaLabel="Wrong title — re-identify disc"
+                    paddingX={10}
                 >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Wrong Title?</span>
-                </motion.button>
+                    <RefreshCw size={12} />
+                    <span style={{ fontSize: 10 }}>Wrong title?</span>
+                </ToneButton>
             )}
 
-            {/* Review Button */}
-            {onReview && state === 'review_needed' && (
-                <motion.button
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    onClick={onReview}
-                    className="px-4 py-2 border-2 border-yellow-500 bg-navy-900/80 text-yellow-400 hover:bg-yellow-500/20 hover:border-yellow-400 transition-all font-mono font-bold text-xs uppercase tracking-wider flex items-center gap-2"
-                    style={{ boxShadow: "0 0 15px rgba(234, 179, 8, 0.5)" }}
-                    aria-label="Review needed — open review queue"
+            {showReview && (
+                <ToneButton
+                    tone={YELLOW}
+                    onClick={onReview!}
+                    title="Review needed — open review queue"
+                    ariaLabel="Review needed — open review queue"
+                    paddingX={12}
                 >
-                    <AlertTriangle className="w-4 h-4" />
-                    <span>REVIEW NEEDED</span>
-                </motion.button>
+                    <AlertTriangle size={14} />
+                    <span style={{ fontSize: 11 }}>Review needed</span>
+                </ToneButton>
             )}
         </div>
     );

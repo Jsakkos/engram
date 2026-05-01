@@ -81,6 +81,7 @@ class JobManager:
             get_discdb_mappings=self._matching.get_discdb_mappings,
             set_discdb_mappings=self._matching.set_discdb_mappings,
             start_subtitle_download=self._matching.start_subtitle_download,
+            restart_subtitle_download=self._matching.restart_subtitle_download,
             try_discdb_assignment=self._matching.try_discdb_assignment,
             match_single_file=self._matching.match_single_file,
             on_match_task_done=self._matching.on_match_task_done,
@@ -523,6 +524,25 @@ class JobManager:
 
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
+        # If a previous subtitle download failed (e.g. unresolvable label that
+        # has since been corrected via re-identification), give the user a
+        # recovery path: retry subtitles when they hit "Re-match all".
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            needs_subtitle_retry = (
+                job is not None
+                and job.content_type == ContentType.TV
+                and job.subtitle_status == "failed"
+                and job.detected_title
+                and job.detected_season is not None
+            )
+            retry_args = (
+                (job_id, job.detected_title, job.detected_season) if needs_subtitle_retry else None
+            )
+
+        if retry_args is not None:
+            await self._matching.restart_subtitle_download(*retry_args)
+
         await self._rerun_matching(job_id, source_preference)
 
     async def rematch_single_title(

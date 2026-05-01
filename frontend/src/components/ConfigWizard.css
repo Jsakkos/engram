@@ -1,9 +1,49 @@
 /* Cyberpunk ConfigWizard Styling */
+
+/* Full-viewport backdrop */
+.wizard-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+/* Scrollable content area inside the wizard */
+.wizard-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(94, 234, 212, 0.4) transparent;
+}
+
+.wizard-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.wizard-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wizard-body::-webkit-scrollbar-thumb {
+    background: rgba(94, 234, 212, 0.4);
+    /* sharp corners */
+}
+
 .wizard-modal {
+    width: 100%;
     max-width: 800px;
-    background: #0a0a1a;
-    border: 2px solid rgba(6, 182, 212, 0.5);
-    box-shadow: 0 0 30px rgba(6, 182, 212, 0.4), inset 0 0 30px rgba(6, 182, 212, 0.1);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    background: #0a0e18;
+    border: 2px solid rgba(94, 234, 212, 0.5);
+    box-shadow: 0 0 30px rgba(94, 234, 212, 0.4), inset 0 0 30px rgba(94, 234, 212, 0.1);
     position: relative;
     overflow: hidden;
 }
@@ -11,8 +51,8 @@
 /* Modal Header */
 .modal-header {
     padding: 1.5rem 2rem;
-    background: rgba(6, 182, 212, 0.05);
-    border-bottom: 2px solid rgba(6, 182, 212, 0.3);
+    background: rgba(94, 234, 212, 0.05);
+    border-bottom: 2px solid rgba(94, 234, 212, 0.3);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -23,18 +63,18 @@
 .modal-title {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #06b6d4;
+    color: #5eead4;
     text-transform: uppercase;
     letter-spacing: 3px;
-    font-family: 'Courier New', monospace;
-    text-shadow: 0 0 15px rgba(6, 182, 212, 0.6);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    text-shadow: 0 0 15px rgba(94, 234, 212, 0.6);
     margin: 0;
 }
 
 .modal-close {
     background: none;
-    border: 2px solid rgba(236, 72, 153, 0.5);
-    color: #ec4899;
+    border: 2px solid rgba(255, 61, 127, 0.5);
+    color: #ff3d7f;
     font-size: 2rem;
     width: 40px;
     height: 40px;
@@ -49,9 +89,9 @@
 }
 
 .modal-close:hover {
-    background: rgba(236, 72, 153, 0.2);
-    border-color: #ec4899;
-    box-shadow: 0 0 15px rgba(236, 72, 153, 0.5);
+    background: rgba(255, 61, 127, 0.2);
+    border-color: #ff3d7f;
+    box-shadow: 0 0 15px rgba(255, 61, 127, 0.5);
     transform: rotate(90deg);
 }
 
@@ -64,8 +104,8 @@
         0deg,
         transparent,
         transparent 2px,
-        rgba(6, 182, 212, 0.03) 2px,
-        rgba(6, 182, 212, 0.03) 4px
+        rgba(94, 234, 212, 0.03) 2px,
+        rgba(94, 234, 212, 0.03) 4px
     );
     pointer-events: none;
     z-index: 1;
@@ -81,10 +121,10 @@
     bottom: 0;
     pointer-events: none;
     background:
-        linear-gradient(90deg, #06b6d4 2px, transparent 2px) 0 0,
-        linear-gradient(90deg, #06b6d4 2px, transparent 2px) 0 100%,
-        linear-gradient(0deg, #06b6d4 2px, transparent 2px) 0 0,
-        linear-gradient(0deg, #06b6d4 2px, transparent 2px) 100% 0;
+        linear-gradient(90deg, #5eead4 2px, transparent 2px) 0 0,
+        linear-gradient(90deg, #5eead4 2px, transparent 2px) 0 100%,
+        linear-gradient(0deg, #5eead4 2px, transparent 2px) 0 0,
+        linear-gradient(0deg, #5eead4 2px, transparent 2px) 100% 0;
     background-size: 20px 2px, 20px 2px, 2px 20px, 2px 20px;
     background-repeat: no-repeat;
     z-index: 1;
@@ -96,8 +136,8 @@
     justify-content: center;
     gap: 2rem;
     padding: 1.5rem;
-    background: rgba(6, 182, 212, 0.05);
-    border-bottom: 2px solid rgba(6, 182, 212, 0.3);
+    background: rgba(94, 234, 212, 0.05);
+    border-bottom: 2px solid rgba(94, 234, 212, 0.3);
     position: relative;
     z-index: 2;
 }
@@ -122,47 +162,47 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    background: #0a0a1a;
-    border: 2px solid rgba(100, 116, 139, 0.5);
+    /* sharp 90° corners — synapse v2 */
+    background: #0a0e18;
+    border: 2px solid rgba(94, 234, 212, 0.5);
     font-size: 0.875rem;
     font-weight: 700;
-    color: #64748b;
-    font-family: 'Courier New', monospace;
+    color: #4a5369;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     transition: all 0.3s ease;
 }
 
 .progress-step.active .step-number {
-    background: rgba(6, 182, 212, 0.2);
-    border-color: #06b6d4;
-    color: #06b6d4;
-    box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
-    text-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+    background: rgba(94, 234, 212, 0.2);
+    border-color: #5eead4;
+    color: #5eead4;
+    box-shadow: 0 0 15px rgba(94, 234, 212, 0.5);
+    text-shadow: 0 0 10px rgba(94, 234, 212, 0.8);
 }
 
 .progress-step.completed .step-number {
-    background: rgba(16, 185, 129, 0.2);
-    border-color: #10b981;
-    color: #10b981;
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+    background: rgba(134, 239, 172, 0.2);
+    border-color: #86efac;
+    color: #86efac;
+    box-shadow: 0 0 15px rgba(134, 239, 172, 0.5);
 }
 
 .step-label {
     font-size: 0.7rem;
-    color: #64748b;
+    color: #4a5369;
     text-transform: uppercase;
     letter-spacing: 1px;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 700;
 }
 
 .progress-step.active .step-label {
-    color: #06b6d4;
-    text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+    color: #5eead4;
+    text-shadow: 0 0 10px rgba(94, 234, 212, 0.5);
 }
 
 .progress-step.completed .step-label {
-    color: #10b981;
+    color: #86efac;
 }
 
 /* Wizard Step Content */
@@ -177,18 +217,18 @@
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 0.75rem;
-    color: #06b6d4;
+    color: #5eead4;
     text-transform: uppercase;
     letter-spacing: 2px;
-    font-family: 'Courier New', monospace;
-    text-shadow: 0 0 15px rgba(6, 182, 212, 0.6);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    text-shadow: 0 0 15px rgba(94, 234, 212, 0.6);
 }
 
 .step-description {
-    color: #94a3b8;
+    color: #8893a8;
     margin-bottom: 2rem;
     line-height: 1.6;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 0.9rem;
 }
 
@@ -200,12 +240,12 @@
 .form-group label {
     display: block;
     margin-bottom: 0.5rem;
-    color: #ec4899;
+    color: #ff3d7f;
     font-weight: 600;
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 1px;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .form-group input[type="text"],
@@ -214,37 +254,37 @@
 .form-group select {
     width: 100%;
     padding: 0.75rem;
-    background: rgba(6, 182, 212, 0.05);
-    border: 2px solid rgba(6, 182, 212, 0.3);
-    color: #ffffff;
+    background: rgba(94, 234, 212, 0.05);
+    border: 2px solid rgba(94, 234, 212, 0.3);
+    color: #e6ecf5;
     font-size: 0.9rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     transition: all 0.3s ease;
 }
 
 .form-group input:focus,
 .form-group select:focus {
     outline: none;
-    border-color: #06b6d4;
-    box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
-    background: rgba(6, 182, 212, 0.1);
+    border-color: #5eead4;
+    box-shadow: 0 0 15px rgba(94, 234, 212, 0.3);
+    background: rgba(94, 234, 212, 0.1);
 }
 
 .form-group input::placeholder {
-    color: #475569;
+    color: #2a3147;
 }
 
 .form-group select option {
-    background: #0a0a1a;
-    color: #ffffff;
+    background: #0a0e18;
+    color: #e6ecf5;
 }
 
 .form-hint {
     display: block;
     margin-top: 0.5rem;
     font-size: 0.75rem;
-    color: #64748b;
-    font-family: 'Courier New', monospace;
+    color: #4a5369;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 /* Checkbox */
@@ -258,14 +298,14 @@
     gap: 0.75rem;
     cursor: pointer;
     padding: 0.75rem;
-    background: rgba(236, 72, 153, 0.05);
-    border: 1px solid rgba(236, 72, 153, 0.2);
+    background: rgba(255, 61, 127, 0.05);
+    border: 1px solid rgba(255, 61, 127, 0.2);
     transition: all 0.3s ease;
 }
 
 .checkbox-label:hover {
-    background: rgba(236, 72, 153, 0.1);
-    border-color: rgba(236, 72, 153, 0.4);
+    background: rgba(255, 61, 127, 0.1);
+    border-color: rgba(255, 61, 127, 0.4);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -273,39 +313,39 @@
     height: 18px;
     margin-top: 0.25rem;
     cursor: pointer;
-    accent-color: #ec4899;
+    accent-color: #ff3d7f;
 }
 
 .checkbox-text {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    color: #ffffff;
-    font-family: 'Courier New', monospace;
+    color: #e6ecf5;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .checkbox-hint {
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: #8893a8;
 }
 
 /* Config Summary */
 .config-summary {
     margin-top: 2rem;
     padding: 1.5rem;
-    background: rgba(6, 182, 212, 0.05);
-    border: 2px solid rgba(6, 182, 212, 0.3);
-    box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+    background: rgba(94, 234, 212, 0.05);
+    border: 2px solid rgba(94, 234, 212, 0.3);
+    box-shadow: 0 0 15px rgba(94, 234, 212, 0.2);
 }
 
 .config-summary h4 {
     font-size: 0.9rem;
     font-weight: 700;
     margin-bottom: 1rem;
-    color: #ec4899;
+    color: #ff3d7f;
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .config-summary dl {
@@ -313,16 +353,16 @@
     grid-template-columns: auto 1fr;
     gap: 0.75rem 1.5rem;
     font-size: 0.85rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .config-summary dt {
-    color: #64748b;
+    color: #4a5369;
     font-weight: 600;
 }
 
 .config-summary dd {
-    color: #06b6d4;
+    color: #5eead4;
     font-weight: 500;
     word-break: break-all;
 }
@@ -335,16 +375,16 @@
     justify-content: center;
     height: 400px;
     gap: 1rem;
-    color: #06b6d4;
-    font-family: 'Courier New', monospace;
+    color: #5eead4;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .wizard-loading .spinner-mini {
     width: 32px;
     height: 32px;
-    border: 3px solid rgba(6, 182, 212, 0.2);
-    border-top-color: #06b6d4;
-    border-radius: 50%;
+    border: 3px solid rgba(94, 234, 212, 0.2);
+    border-top-color: #5eead4;
+    /* sharp 90° corners — synapse v2 */
     animation: spin 1s linear infinite;
 }
 
@@ -354,35 +394,35 @@
 
 /* Validation Status */
 .validation-success {
-    color: #10b981;
+    color: #86efac;
     font-size: 0.8rem;
     margin-top: 0.5rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 600;
 }
 
 .validation-success::before {
     content: '✓';
-    color: #10b981;
+    color: #86efac;
 }
 
 .validation-error {
-    color: #ef4444;
+    color: #ff5555;
     font-size: 0.8rem;
     margin-top: 0.5rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 600;
 }
 
 .validation-error::before {
     content: '✗';
-    color: #ef4444;
+    color: #ff5555;
 }
 
 /* Tool Detection Status Cards */
@@ -395,25 +435,25 @@
 .tool-status-card {
     padding: 1rem 1.25rem;
     border: 2px solid;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
 }
 
 .tool-status-card.tool-detecting {
-    border-color: rgba(6, 182, 212, 0.3);
-    background: rgba(6, 182, 212, 0.03);
+    border-color: rgba(94, 234, 212, 0.3);
+    background: rgba(94, 234, 212, 0.03);
 }
 
 .tool-status-card.tool-found {
-    border-color: rgba(16, 185, 129, 0.5);
-    background: rgba(16, 185, 129, 0.05);
+    border-color: rgba(134, 239, 172, 0.5);
+    background: rgba(134, 239, 172, 0.05);
 }
 
 .tool-status-card.tool-not-found {
-    border-color: rgba(245, 158, 11, 0.5);
-    background: rgba(245, 158, 11, 0.05);
+    border-color: rgba(252, 211, 77, 0.5);
+    background: rgba(252, 211, 77, 0.05);
 }
 
 .tool-status-header {
@@ -425,9 +465,9 @@
 .tool-status-header .spinner-mini {
     width: 18px;
     height: 18px;
-    border: 2px solid rgba(6, 182, 212, 0.2);
-    border-top-color: #06b6d4;
-    border-radius: 50%;
+    border: 2px solid rgba(94, 234, 212, 0.2);
+    border-top-color: #5eead4;
+    /* sharp 90° corners — synapse v2 */
     animation: spin 1s linear infinite;
     flex-shrink: 0;
 }
@@ -445,45 +485,45 @@
 }
 
 .tool-status-icon.found {
-    color: #10b981;
-    border: 2px solid #10b981;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    color: #86efac;
+    border: 2px solid #86efac;
+    box-shadow: 0 0 8px rgba(134, 239, 172, 0.4);
 }
 
 .tool-status-icon.not-found {
-    color: #f59e0b;
-    border: 2px solid #f59e0b;
-    box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+    color: #fcd34d;
+    border: 2px solid #fcd34d;
+    box-shadow: 0 0 8px rgba(252, 211, 77, 0.4);
 }
 
 .tool-name {
     font-weight: 700;
     font-size: 0.95rem;
-    color: #ffffff;
+    color: #e6ecf5;
 }
 
 .tool-version {
     font-size: 0.8rem;
-    color: #10b981;
+    color: #86efac;
     margin-left: auto;
 }
 
 .tool-path {
     font-size: 0.75rem;
-    color: #64748b;
+    color: #4a5369;
     padding-left: 2.75rem;
     word-break: break-all;
 }
 
 .tool-status-text {
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: #8893a8;
     padding-left: 2.75rem;
     line-height: 1.5;
 }
 
 .tool-status-text a {
-    color: #06b6d4;
+    color: #5eead4;
     text-decoration: none;
 }
 
@@ -493,13 +533,13 @@
 
 .tool-install-hint {
     font-size: 0.75rem;
-    color: #64748b;
+    color: #4a5369;
     padding-left: 2.75rem;
 }
 
 .tool-install-hint code {
-    color: #ec4899;
-    background: rgba(236, 72, 153, 0.1);
+    color: #ff3d7f;
+    background: rgba(255, 61, 127, 0.1);
     padding: 0.15rem 0.4rem;
 }
 
@@ -508,20 +548,20 @@
     margin-left: 2.75rem;
     padding: 0.25rem 0.75rem;
     font-size: 0.7rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #64748b;
+    color: #4a5369;
     background: none;
-    border: 1px solid rgba(100, 116, 139, 0.3);
+    border: 1px solid rgba(94, 234, 212, 0.3);
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .tool-override-toggle:hover {
-    color: #06b6d4;
-    border-color: rgba(6, 182, 212, 0.5);
+    color: #5eead4;
+    border-color: rgba(94, 234, 212, 0.5);
 }
 
 .tool-override-input {
@@ -531,42 +571,42 @@
 .tool-override-input input {
     width: 100%;
     padding: 0.5rem 0.75rem;
-    background: rgba(6, 182, 212, 0.05);
-    border: 2px solid rgba(6, 182, 212, 0.3);
-    color: #ffffff;
+    background: rgba(94, 234, 212, 0.05);
+    border: 2px solid rgba(94, 234, 212, 0.3);
+    color: #e6ecf5;
     font-size: 0.85rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     transition: all 0.3s ease;
 }
 
 .tool-override-input input:focus {
     outline: none;
-    border-color: #06b6d4;
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+    border-color: #5eead4;
+    box-shadow: 0 0 10px rgba(94, 234, 212, 0.3);
 }
 
 .tool-override-input input::placeholder {
-    color: #475569;
+    color: #2a3147;
 }
 
 .tool-rescan-btn {
     align-self: flex-start;
     padding: 0.35rem 1rem;
     font-size: 0.75rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: #06b6d4;
+    color: #5eead4;
     background: none;
-    border: 1px solid rgba(6, 182, 212, 0.4);
+    border: 1px solid rgba(94, 234, 212, 0.4);
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .tool-rescan-btn:not(:disabled):hover {
-    background: rgba(6, 182, 212, 0.1);
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+    background: rgba(94, 234, 212, 0.1);
+    box-shadow: 0 0 10px rgba(94, 234, 212, 0.3);
 }
 
 .tool-rescan-btn:disabled {
@@ -577,8 +617,8 @@
 /* Wizard Actions */
 .wizard-actions {
     padding: 1.5rem 2rem;
-    background: rgba(236, 72, 153, 0.05);
-    border-top: 2px solid rgba(236, 72, 153, 0.3);
+    background: rgba(255, 61, 127, 0.05);
+    border-top: 2px solid rgba(255, 61, 127, 0.3);
     display: flex;
     justify-content: space-between;
     position: relative;
@@ -587,13 +627,13 @@
 
 .wizard-actions button {
     padding: 0.75rem 2rem;
-    font-family: 'Courier New', monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 700;
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 1.5px;
     border: 2px solid;
-    background: #0a0a1a;
+    background: #0a0e18;
     cursor: pointer;
     transition: all 0.3s ease;
 }
@@ -608,21 +648,21 @@
 }
 
 .wizard-actions .btn-secondary {
-    color: #64748b;
-    border-color: #475569;
+    color: #4a5369;
+    border-color: #2a3147;
 }
 
 .wizard-actions .btn-secondary:not(:disabled):hover {
-    color: #06b6d4;
-    border-color: #06b6d4;
+    color: #5eead4;
+    border-color: #5eead4;
 }
 
 .wizard-actions .btn-primary {
-    color: #ec4899;
-    border-color: #ec4899;
+    color: #ff3d7f;
+    border-color: #ff3d7f;
 }
 
 .wizard-actions .btn-primary:not(:disabled):hover {
-    background: rgba(236, 72, 153, 0.1);
-    border-color: #ec4899;
+    background: rgba(255, 61, 127, 0.1);
+    border-color: #ff3d7f;
 }
