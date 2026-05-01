@@ -46,6 +46,7 @@ class IdentificationCoordinator:
         self._get_discdb_mappings: callable = None
         self._set_discdb_mappings: callable = None
         self._start_subtitle_download: callable = None
+        self._restart_subtitle_download: callable = None
         self._try_discdb_assignment: callable = None
         self._match_single_file: callable = None
         self._on_match_task_done: callable = None
@@ -59,6 +60,7 @@ class IdentificationCoordinator:
         get_discdb_mappings,
         set_discdb_mappings,
         start_subtitle_download,
+        restart_subtitle_download,
         try_discdb_assignment,
         match_single_file,
         on_match_task_done,
@@ -70,6 +72,7 @@ class IdentificationCoordinator:
         self._get_discdb_mappings = get_discdb_mappings
         self._set_discdb_mappings = set_discdb_mappings
         self._start_subtitle_download = start_subtitle_download
+        self._restart_subtitle_download = restart_subtitle_download
         self._try_discdb_assignment = try_discdb_assignment
         self._match_single_file = match_single_file
         self._on_match_task_done = on_match_task_done
@@ -662,6 +665,22 @@ class IdentificationCoordinator:
             job.updated_at = datetime.now(UTC)
             await session.commit()
 
+            # Restart subtitle download with the corrected title. The original
+            # subtitle attempt likely failed against the unresolvable label,
+            # leaving subtitle_status="failed" and a stale `_subtitle_ready`
+            # event that would gate matching back into REVIEW.
+            should_restart_subtitles = (
+                job.content_type == ContentType.TV
+                and job.detected_title
+                and job.detected_season is not None
+                and self._restart_subtitle_download is not None
+            )
+            restart_args = (
+                (job_id, job.detected_title, job.detected_season)
+                if should_restart_subtitles
+                else None
+            )
+
             await ws_manager.broadcast_job_update(
                 job_id,
                 target_state.value,
@@ -674,6 +693,11 @@ class IdentificationCoordinator:
                 f"Job {job_id}: re-identified as '{job.detected_title}' "
                 f"({content_type_str}), transitioning to {target_state.value}"
             )
+
+        # Restart outside the session block: restart_subtitle_download opens its
+        # own session for cleanup and would deadlock on the same connection.
+        if restart_args is not None:
+            await self._restart_subtitle_download(*restart_args)
 
         return {"job_id": job_id, "has_ripped": has_ripped}
 

@@ -72,6 +72,47 @@ class MatchingCoordinator:
             self.download_subtitles(job_id, show_name, season)
         )
 
+    async def restart_subtitle_download(self, job_id: int, show_name: str, season: int) -> None:
+        """Cancel any in-flight subtitle download and start a fresh one.
+
+        Used after re-identification corrects the show title. Resets the
+        in-memory event/task pair, clears stale `subtitle_status` and
+        subtitle-related error_message in the DB, then kicks off a new download.
+        """
+        from sqlalchemy import update
+
+        # Cancel a stale or in-flight task. Awaiting cancellation prevents the
+        # old task's DB write from racing past the new one.
+        old_task = self._subtitle_tasks.get(job_id)
+        if old_task is not None and not old_task.done():
+            old_task.cancel()
+            try:
+                await old_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job is None:
+                return
+            update_values: dict = {"subtitle_status": None}
+            # Only wipe error_message if it came from the subtitle pipeline.
+            if job.error_message and (
+                job.error_message.startswith("Subtitle download")
+                or job.error_message.startswith("Download error")
+            ):
+                update_values["error_message"] = None
+            await session.execute(
+                update(DiscJob).where(DiscJob.id == job_id).values(**update_values)
+            )
+            await session.commit()
+
+        # Clear the persistent UI banner immediately; the new task will emit
+        # progress events as it runs.
+        await ws_manager.broadcast_subtitle_event(job_id, "downloading", downloaded=0, total=0)
+
+        self.start_subtitle_download(job_id, show_name, season)
+
     async def try_discdb_assignment(self, job_id: int, title: "DiscTitle", session) -> bool:
         """Try to assign episode info from TheDiscDB mappings, skipping fingerprinting.
 
