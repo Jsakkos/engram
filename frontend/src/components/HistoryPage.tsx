@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   Film,
@@ -21,6 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { FEATURES } from "../config/constants";
+import { SvActionButton, SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
 
 interface HistoryJob {
   id: number;
@@ -111,6 +111,7 @@ interface Stats {
   avg_processing_seconds: number | null;
   common_errors: { message: string; count: number }[];
   recent_jobs: HistoryJob[];
+  daily_throughput?: number[];
 }
 
 function formatDuration(seconds: number): string {
@@ -173,44 +174,159 @@ function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-lg border border-cyan-500/20 bg-navy-800/80 p-4"
+    >
+      <SvPanel pad={14} accent={`${color}33`}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ color, filter: `drop-shadow(0 0 6px ${color}99)`, display: "inline-flex" }}>
+            {icon}
+          </span>
+          <div>
+            <div
+              style={{
+                fontFamily: sv.display,
+                fontSize: 24,
+                fontWeight: 700,
+                color,
+                letterSpacing: "0.04em",
+                textShadow: `0 0 8px ${color}66`,
+                lineHeight: 1,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {value}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontFamily: sv.mono,
+                fontSize: 9,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: sv.inkFaint,
+              }}
+            >
+              {label}
+            </div>
+          </div>
+        </div>
+      </SvPanel>
+    </motion.div>
+  );
+}
+
+/** Synapse-styled select dropdown. */
+function SvSelect({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
       style={{
-        boxShadow: `0 0 15px ${color}22`,
+        background: sv.bg0,
+        border: `1px solid ${sv.lineMid}`,
+        color: sv.ink,
+        fontFamily: sv.mono,
+        fontSize: 11,
+        letterSpacing: "0.06em",
+        padding: "6px 10px",
+        outline: "none",
+        cursor: "pointer",
+        transition: "border-color 120ms",
+      }}
+      onFocus={(e) => { e.currentTarget.style.borderColor = sv.cyan; }}
+      onBlur={(e) => { e.currentTarget.style.borderColor = sv.lineMid; }}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value} style={{ background: sv.bg1, color: sv.ink }}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Key/value row used inside Classification / Subtitles / Paths panels. */
+function KvRow({
+  label,
+  value,
+  valueColor,
+  alignTop,
+  truncate,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+  alignTop?: boolean;
+  truncate?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: alignTop ? "flex-start" : "center",
+        justifyContent: "space-between",
+        gap: 12,
+        fontFamily: sv.mono,
+        fontSize: 11,
       }}
     >
-      <div className="flex items-center gap-3">
-        <div style={{ color }} className="opacity-80">
-          {icon}
-        </div>
-        <div>
-          <div
-            className="text-2xl font-bold font-mono"
-            style={{ color, textShadow: `0 0 8px ${color}88` }}
-          >
-            {value}
-          </div>
-          <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">
-            {label}
-          </div>
-        </div>
-      </div>
-    </motion.div>
+      <span style={{ color: sv.inkDim, flexShrink: 0 }}>{label}</span>
+      <span
+        style={{
+          color: valueColor ?? sv.ink,
+          textAlign: "right",
+          minWidth: 0,
+          maxWidth: alignTop ? "60%" : undefined,
+          overflow: truncate ? "hidden" : undefined,
+          textOverflow: truncate ? "ellipsis" : undefined,
+          whiteSpace: truncate ? "nowrap" : undefined,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/** Single-line timeline entry: `Created  ›  2026-04-30 12:34:56` */
+function TimelineRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: sv.mono, fontSize: 11 }}>
+      <span style={{ color: sv.inkFaint, width: 88 }}>{label}</span>
+      <ArrowRight size={11} color={`${sv.cyan}88`} />
+      <span style={{ color: accent ?? sv.ink }}>{value}</span>
+    </div>
   );
 }
 
 function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.round(value * 100);
-  const color =
-    pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#ef4444";
+  const color = pct >= 80 ? sv.green : pct >= 50 ? sv.amber : sv.red;
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-navy-700 rounded-full overflow-hidden">
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, height: 3, background: sv.bg3, position: "relative" }}>
         <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          style={{
+            position: "absolute",
+            inset: "0 auto 0 0",
+            width: `${pct}%`,
+            background: `linear-gradient(90deg, ${color}, ${color}cc)`,
+            boxShadow: `0 0 6px ${color}66`,
+            transition: "width 0.3s ease",
+          }}
         />
       </div>
-      <span className="text-xs font-mono" style={{ color }}>
+      <span
+        className="sv-tnum"
+        style={{ fontFamily: sv.mono, fontSize: 11, fontWeight: 700, color }}
+      >
         {pct}%
       </span>
     </div>
@@ -218,37 +334,45 @@ function ConfidenceBar({ value }: { value: number }) {
 }
 
 function TitleStateBadge({ state }: { state: string }) {
-  const config: Record<string, { color: string; label: string }> = {
-    completed: { color: "text-green-400", label: "OK" },
-    failed: { color: "text-red-400", label: "FAIL" },
-    matched: { color: "text-cyan-400", label: "MATCHED" },
-    review: { color: "text-amber-400", label: "REVIEW" },
-    pending: { color: "text-slate-500", label: "PENDING" },
-    ripping: { color: "text-magenta-400", label: "RIPPING" },
-    matching: { color: "text-violet-400", label: "MATCHING" },
+  const map: Record<string, { state: SvBadgeState; label: string }> = {
+    completed: { state: "complete", label: "OK" },
+    failed:    { state: "error",    label: "FAIL" },
+    matched:   { state: "matched",  label: "MATCHED" },
+    review:    { state: "review",   label: "REVIEW" },
+    pending:   { state: "queued",   label: "PENDING" },
+    ripping:   { state: "ripping",  label: "RIPPING" },
+    matching:  { state: "matching", label: "MATCHING" },
   };
-  const c = config[state] || { color: "text-slate-500", label: state.toUpperCase() };
-  return <span className={`text-[10px] font-mono uppercase ${c.color}`}>{c.label}</span>;
+  const m = map[state] ?? { state: "idle" as SvBadgeState, label: state.toUpperCase() };
+  return <SvBadge state={m.state} size="sm" dot={false}>{m.label}</SvBadge>;
 }
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
+      type="button"
       onClick={(e) => {
         e.stopPropagation();
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-slate-500 hover:text-cyan-400 transition-colors"
       title="Copy to clipboard"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        background: "transparent",
+        border: 0,
+        padding: 2,
+        color: copied ? sv.green : sv.inkFaint,
+        cursor: "pointer",
+        transition: "color 120ms",
+      }}
+      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = sv.cyan; }}
+      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = sv.inkFaint; }}
     >
-      {copied ? (
-        <CheckCircle2 className="w-3 h-3 text-green-400" />
-      ) : (
-        <Copy className="w-3 h-3" />
-      )}
+      {copied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
     </button>
   );
 }
@@ -291,71 +415,122 @@ function JobDetailPanel({
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="fixed top-0 right-0 h-full w-full sm:w-[560px] bg-navy-900 border-l border-cyan-500/20 z-50 overflow-y-auto"
       style={{
-        boxShadow: "-4px 0 30px rgba(6, 182, 212, 0.1)",
+        position: "fixed",
+        top: 0,
+        right: 0,
+        height: "100vh",
+        width: "min(560px, 100vw)",
+        background: sv.bg1,
+        borderLeft: `1px solid ${sv.lineMid}`,
+        boxShadow: `-4px 0 30px ${sv.cyan}1a`,
+        zIndex: 50,
+        overflowY: "auto",
       }}
     >
-      {/* Panel Header */}
-      <div className="sticky top-0 z-10 bg-navy-900/95 backdrop-blur-sm border-b border-cyan-500/20 px-5 py-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-mono font-bold text-cyan-400 uppercase tracking-wider">
-            &gt; Job Detail
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-cyan-400 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+      {/* Panel header — sticky, mirrors SvPageHeader vocabulary */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "rgba(10, 14, 24, 0.92)",
+          backdropFilter: "blur(8px)",
+          borderBottom: `1px solid ${sv.lineMid}`,
+          padding: "14px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: sv.mono,
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: "0.20em",
+            textTransform: "uppercase",
+            color: sv.cyanHi,
+          }}
+        >
+          › Job detail
+        </h2>
+        <button
+          onClick={onClose}
+          aria-label="Close detail panel"
+          style={{
+            width: 28,
+            height: 28,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "transparent",
+            border: `1px solid ${sv.line}`,
+            color: sv.inkDim,
+            cursor: "pointer",
+            transition: "border-color 120ms, color 120ms",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = sv.cyan;
+            e.currentTarget.style.color = sv.cyanHi;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = sv.line;
+            e.currentTarget.style.color = sv.inkDim;
+          }}
+        >
+          <X size={14} />
+        </button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}>
+          <Loader2 size={22} color={sv.cyan} className="animate-spin" />
         </div>
       ) : detail ? (
-        <div className="px-5 py-4 space-y-5">
+        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
           {/* Title & Status */}
           <div>
-            <h3 className="text-lg font-bold text-slate-100">
+            <h3
+              style={{
+                margin: 0,
+                fontFamily: sv.display,
+                fontSize: 18,
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                color: sv.ink,
+              }}
+            >
               {detail.detected_title || detail.volume_label}
             </h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span
-                className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
-                  detail.content_type === "tv"
-                    ? "text-amber-400 border-amber-400/30"
-                    : detail.content_type === "movie"
-                      ? "text-magenta-400 border-magenta-400/30"
-                      : "text-slate-500 border-slate-500/30"
-                }`}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+              <SvBadge
+                size="sm"
+                tone={detail.content_type === "tv" ? sv.amber : detail.content_type === "movie" ? sv.magenta : sv.inkFaint}
               >
                 {detail.content_type}
-              </span>
-              <span
-                className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
-                  detail.state === "completed"
-                    ? "text-green-400 border-green-400/30"
-                    : "text-red-400 border-red-400/30"
-                }`}
+              </SvBadge>
+              <SvBadge
+                size="sm"
+                state={detail.state === "completed" ? "complete" : "error"}
+                dot={false}
               >
                 {detail.state}
-              </span>
-              {detail.detected_season && (
-                <span className="text-[10px] font-mono text-slate-400">
+              </SvBadge>
+              {detail.detected_season != null && (
+                <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
                   Season {detail.detected_season}
                 </span>
               )}
               {detail.disc_number > 1 && (
-                <span className="text-[10px] font-mono text-slate-400">
+                <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
                   Disc {detail.disc_number}
                 </span>
               )}
             </div>
             {detail.detected_title && (
-              <div className="text-[10px] font-mono text-slate-500 mt-1">
+              <div style={{ marginTop: 6, fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
                 {detail.volume_label} on {detail.drive_id}
               </div>
             )}
@@ -363,131 +538,113 @@ function JobDetailPanel({
 
           {/* Error Details */}
           {detail.error_message && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
-              <div className="text-[10px] font-mono font-bold text-red-400 uppercase tracking-wider mb-2">
-                <AlertTriangle className="w-3 h-3 inline mr-1" />
+            <SvNotice tone="error" icon={<AlertTriangle size={14} />}>
+              <div style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: sv.red, marginBottom: 6 }}>
                 Error
               </div>
-              <pre className="text-xs font-mono text-red-300 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+              <pre
+                style={{
+                  margin: 0,
+                  fontFamily: sv.mono,
+                  fontSize: 11,
+                  color: `${sv.red}cc`,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  maxHeight: 160,
+                  overflowY: "auto",
+                }}
+              >
                 {detail.error_message}
               </pre>
-            </div>
+            </SvNotice>
           )}
 
           {/* Processing Timeline */}
           <div>
-            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
-              &gt; Timeline
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 text-xs font-mono">
-                <span className="text-slate-500 w-20">Created</span>
-                <ArrowRight className="w-3 h-3 text-cyan-500/40" />
-                <span className="text-slate-300">{formatDateShort(detail.created_at)}</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs font-mono">
-                <span className="text-slate-500 w-20">
-                  {detail.state === "completed" ? "Completed" : "Failed"}
-                </span>
-                <ArrowRight className="w-3 h-3 text-cyan-500/40" />
-                <span className="text-slate-300">{formatDateShort(detail.completed_at)}</span>
-              </div>
+            <SvLabel>Timeline</SvLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              <TimelineRow label="Created" value={formatDateShort(detail.created_at)} />
+              <TimelineRow
+                label={detail.state === "completed" ? "Completed" : "Failed"}
+                value={formatDateShort(detail.completed_at)}
+              />
               {detail.created_at && detail.completed_at && (
-                <div className="flex items-center gap-2 text-xs font-mono">
-                  <span className="text-slate-500 w-20">Duration</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-500/40" />
-                  <span className="text-cyan-400">
-                    {formatDuration(
-                      (new Date(detail.completed_at).getTime() -
-                        new Date(detail.created_at).getTime()) /
-                        1000
-                    )}
-                  </span>
-                </div>
+                <TimelineRow
+                  label="Duration"
+                  value={formatDuration(
+                    (new Date(detail.completed_at).getTime() -
+                      new Date(detail.created_at).getTime()) /
+                      1000
+                  )}
+                  accent={sv.cyan}
+                />
               )}
             </div>
           </div>
 
           {/* Classification */}
           <div>
-            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
-              &gt; Classification
-            </div>
-            <div className="space-y-2 rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3">
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-slate-400">Source</span>
-                <span className="text-slate-200">{detail.classification_source}</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-mono text-slate-400">Confidence</span>
-                <ConfidenceBar value={detail.classification_confidence} />
-              </div>
-              {detail.tmdb_id && (
-                <div className="flex justify-between items-center text-xs font-mono">
-                  <span className="text-slate-400">TMDB</span>
-                  <span className="text-slate-200">
-                    {detail.tmdb_name || `ID ${detail.tmdb_id}`}
-                  </span>
+            <SvLabel>Classification</SvLabel>
+            <div style={{ marginTop: 8 }}>
+              <SvPanel pad={12}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <KvRow label="Source" value={detail.classification_source} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>Confidence</span>
+                    <ConfidenceBar value={detail.classification_confidence} />
+                  </div>
+                  {detail.tmdb_id && (
+                    <KvRow label="TMDB" value={detail.tmdb_name || `ID ${detail.tmdb_id}`} />
+                  )}
+                  {detail.is_ambiguous_movie && (
+                    <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.amber }}>
+                      Ambiguous movie (multiple possible main features)
+                    </span>
+                  )}
+                  {detail.review_reason && (
+                    <KvRow label="Review reason" value={detail.review_reason} valueColor={sv.amber} alignTop />
+                  )}
                 </div>
-              )}
-              {detail.is_ambiguous_movie && (
-                <div className="text-[10px] font-mono text-amber-400">
-                  Ambiguous movie (multiple possible main features)
-                </div>
-              )}
-              {detail.review_reason && (
-                <div className="flex justify-between items-start text-xs font-mono">
-                  <span className="text-slate-400">Review Reason</span>
-                  <span className="text-amber-400 text-right max-w-[60%]">
-                    {detail.review_reason}
-                  </span>
-                </div>
-              )}
+              </SvPanel>
             </div>
           </div>
 
           {/* TheDiscDB */}
           {FEATURES.DISCDB && (
             <div>
-              <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
-                <Database className="w-3 h-3 inline mr-1" />
+              <SvLabel>
+                <Database size={11} style={{ marginRight: 4 }} />
                 TheDiscDB
-              </div>
-              <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 space-y-2">
-                {detail.content_hash ? (
-                  <>
-                    <div className="flex justify-between items-center text-xs font-mono">
-                      <span className="text-slate-400">Content Hash</span>
-                      <div className="flex items-center gap-1.5">
-                        <code className="text-cyan-300 text-[10px]">
-                          {detail.content_hash.slice(0, 16)}...
-                        </code>
-                        <CopyButton text={detail.content_hash} />
-                      </div>
-                    </div>
-                    {detail.discdb_slug && (
-                      <div className="flex justify-between items-center text-xs font-mono">
-                        <span className="text-slate-400">Title</span>
-                        <span className="text-slate-200">{detail.discdb_slug}</span>
-                      </div>
+              </SvLabel>
+              <div style={{ marginTop: 8 }}>
+                <SvPanel pad={12}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {detail.content_hash ? (
+                      <>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: sv.mono, fontSize: 11 }}>
+                          <span style={{ color: sv.inkDim }}>Content hash</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <code style={{ fontFamily: sv.mono, fontSize: 10, color: sv.cyanHi }}>
+                              {detail.content_hash.slice(0, 16)}…
+                            </code>
+                            <CopyButton text={detail.content_hash} />
+                          </div>
+                        </div>
+                        {detail.discdb_slug && <KvRow label="Title" value={detail.discdb_slug} />}
+                        {detail.discdb_disc_slug && <KvRow label="Disc" value={detail.discdb_disc_slug} />}
+                        {!detail.discdb_slug && (
+                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.amber }}>
+                            Disc fingerprint computed but not found in TheDiscDB
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
+                        No disc fingerprint available (scan may have failed before computation)
+                      </span>
                     )}
-                    {detail.discdb_disc_slug && (
-                      <div className="flex justify-between items-center text-xs font-mono">
-                        <span className="text-slate-400">Disc</span>
-                        <span className="text-slate-200">{detail.discdb_disc_slug}</span>
-                      </div>
-                    )}
-                    {!detail.discdb_slug && (
-                      <div className="text-[10px] font-mono text-amber-400">
-                        Disc fingerprint computed but not found in TheDiscDB
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-[10px] font-mono text-slate-500">
-                    No disc fingerprint available (scan may have failed before computation)
                   </div>
-                )}
+                </SvPanel>
               </div>
             </div>
           )}
@@ -495,126 +652,138 @@ function JobDetailPanel({
           {/* Subtitle Info */}
           {detail.subtitle_status && (
             <div>
-              <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
-                &gt; Subtitles
-              </div>
-              <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 text-xs font-mono space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Status</span>
-                  <span className="text-slate-200">{detail.subtitle_status}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Downloaded</span>
-                  <span className="text-slate-200">
-                    {detail.subtitles_downloaded}/{detail.subtitles_total}
-                    {detail.subtitles_failed > 0 && (
-                      <span className="text-red-400 ml-1">({detail.subtitles_failed} failed)</span>
-                    )}
-                  </span>
-                </div>
+              <SvLabel>Subtitles</SvLabel>
+              <div style={{ marginTop: 8 }}>
+                <SvPanel pad={12}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: sv.mono, fontSize: 11 }}>
+                    <KvRow label="Status" value={detail.subtitle_status} />
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: sv.inkDim }}>Downloaded</span>
+                      <span style={{ color: sv.ink }}>
+                        {detail.subtitles_downloaded}/{detail.subtitles_total}
+                        {detail.subtitles_failed > 0 && (
+                          <span style={{ color: sv.red, marginLeft: 4 }}>
+                            ({detail.subtitles_failed} failed)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </SvPanel>
               </div>
             </div>
           )}
 
           {/* Track Breakdown */}
           <div>
-            <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
-              <Disc3 className="w-3 h-3 inline mr-1" />
+            <SvLabel>
+              <Disc3 size={11} style={{ marginRight: 4 }} />
               Tracks ({detail.titles.length})
-            </div>
-            {detail.titles.length > 0 ? (
-              <div className="space-y-1.5">
-                {detail.titles.map((t) => (
+            </SvLabel>
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+              {detail.titles.length > 0 ? (
+                detail.titles.map((t) => (
                   <div
                     key={t.id}
-                    className="rounded border border-cyan-500/10 bg-navy-800/60 px-3 py-2"
+                    style={{
+                      padding: "8px 12px",
+                      background: sv.bg2,
+                      border: `1px solid ${sv.line}`,
+                    }}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-slate-500">
-                          #{t.title_index}
-                        </span>
-                        <span className="text-xs font-mono text-slate-300">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                        <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>#{t.title_index}</span>
+                        <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.ink }}>
                           {formatTitleDuration(t.duration_seconds)}
                         </span>
-                        <span className="text-[10px] font-mono text-slate-500">
+                        <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
                           {formatBytes(t.file_size_bytes)}
                         </span>
                         {t.video_resolution && (
-                          <span className="text-[10px] font-mono text-violet-400">
-                            {t.video_resolution}
-                          </span>
+                          <SvBadge size="sm" tone={sv.purple}>{t.video_resolution}</SvBadge>
                         )}
                       </div>
                       <TitleStateBadge state={t.state} />
                     </div>
                     {(t.matched_episode || t.edition || t.is_extra) && (
-                      <div className="flex items-center gap-2 mt-1">
+                      <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         {t.matched_episode && (
-                          <span className="text-[10px] font-mono text-cyan-400">
+                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.cyan }}>
                             {t.matched_episode}
                           </span>
                         )}
                         {t.edition && (
-                          <span className="text-[10px] font-mono text-amber-400">
+                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.amber }}>
                             {t.edition}
                           </span>
                         )}
                         {t.is_extra && (
-                          <span className="text-[10px] font-mono text-slate-500">extra</span>
+                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>extra</span>
                         )}
                         {t.match_confidence > 0 && (
-                          <span className="text-[10px] font-mono text-slate-500">
+                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
                             ({Math.round(t.match_confidence * 100)}% match)
                           </span>
                         )}
                       </div>
                     )}
                     {t.organized_to && (
-                      <div className="text-[10px] font-mono text-slate-500 mt-1 truncate">
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontFamily: sv.mono,
+                          fontSize: 10,
+                          color: sv.inkFaint,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {t.organized_to}
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs font-mono text-slate-500 rounded border border-cyan-500/10 bg-navy-800/60 px-3 py-4 text-center">
-                No tracks found (scan may have failed before disc analysis)
-              </div>
-            )}
+                ))
+              ) : (
+                <div
+                  style={{
+                    padding: "16px 12px",
+                    textAlign: "center",
+                    background: sv.bg2,
+                    border: `1px solid ${sv.line}`,
+                    fontFamily: sv.mono,
+                    fontSize: 11,
+                    color: sv.inkFaint,
+                  }}
+                >
+                  No tracks found (scan may have failed before disc analysis)
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Paths */}
           {(detail.staging_path || detail.final_path) && (
             <div>
-              <div className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider mb-2">
-                &gt; Paths
-              </div>
-              <div className="rounded-lg border border-cyan-500/10 bg-navy-800/60 p-3 text-xs font-mono space-y-1">
-                {detail.staging_path && (
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-400 shrink-0">Staging</span>
-                    <span className="text-slate-500 truncate">{detail.staging_path}</span>
+              <SvLabel>Paths</SvLabel>
+              <div style={{ marginTop: 8 }}>
+                <SvPanel pad={12}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: sv.mono, fontSize: 11 }}>
+                    {detail.staging_path && <KvRow label="Staging" value={detail.staging_path} truncate />}
+                    {detail.final_path && <KvRow label="Library" value={detail.final_path} truncate />}
                   </div>
-                )}
-                {detail.final_path && (
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-400 shrink-0">Library</span>
-                    <span className="text-slate-500 truncate">{detail.final_path}</span>
-                  </div>
-                )}
+                </SvPanel>
               </div>
             </div>
           )}
 
           {/* Bug Report for this specific job */}
-          <div className="pt-2 border-t border-cyan-500/10">
+          <div style={{ paddingTop: 8, borderTop: `1px solid ${sv.line}` }}>
             <a
               href={`/api/diagnostics/report?job_id=${detail.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-red-400 transition-colors"
               onClick={async (e) => {
                 e.preventDefault();
                 try {
@@ -627,14 +796,203 @@ function JobDetailPanel({
                   // silently fail
                 }
               }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontFamily: sv.mono,
+                fontSize: 11,
+                letterSpacing: "0.06em",
+                color: sv.inkDim,
+                textDecoration: "none",
+                transition: "color 120ms",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = sv.red; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = sv.inkDim; }}
             >
-              <Bug className="w-3 h-3" />
+              <Bug size={12} />
               Report bug for this job
             </a>
           </div>
         </div>
       ) : null}
     </motion.div>
+  );
+}
+
+/**
+ * Right-column stats rail for the History page. Three stacked panels:
+ * 1) 2x2 stat grid (Archived/Volume/Matched/Flagged)
+ * 2) 14-day throughput sparkline
+ * 3) Movies vs TV distribution bars
+ */
+function HistoryStatsRail({ stats }: { stats: Stats }) {
+  const archived = stats.completed_jobs;
+  const matched = stats.total_titles_ripped;
+  const flagged = stats.failed_jobs;
+  const throughput = stats.daily_throughput ?? [];
+  const sumThroughput = throughput.reduce((a, b) => a + b, 0);
+
+  const total = stats.movie_count + stats.tv_count;
+  const movieRatio = total > 0 ? stats.movie_count / total : 0;
+  const tvRatio = total > 0 ? stats.tv_count / total : 0;
+
+  return (
+    <aside
+      data-testid="sv-history-stats-rail"
+      style={{ display: "flex", flexDirection: "column", gap: 14, position: "sticky", top: 14 }}
+    >
+      {/* 2x2 stat grid — last 14 days */}
+      <SvPanel pad={18} testid="sv-history-stats-grid">
+        <SvLabel>Last · 14d</SvLabel>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 14,
+            marginTop: 14,
+          }}
+        >
+          <RailStat label="Archived" value={archived} sub="discs" accent={sv.cyan} />
+          <RailStat label="Volume" value={sumThroughput} sub="14d total" accent={sv.green} />
+          <RailStat label="Matched" value={matched} sub="titles" accent={sv.cyanHi} />
+          <RailStat label="Flagged" value={flagged} sub="manual" accent={sv.yellow} />
+        </div>
+      </SvPanel>
+
+      {/* 14-day throughput sparkline */}
+      <SvPanel pad={18} testid="sv-history-stats-throughput">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <SvLabel>Throughput · 14d</SvLabel>
+          <span
+            style={{
+              fontFamily: sv.mono,
+              fontSize: 9,
+              letterSpacing: "0.22em",
+              color: sv.inkFaint,
+              textTransform: "uppercase",
+            }}
+          >
+            jobs/day
+          </span>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <SvBarChart values={throughput} accent="cyan" height={70} />
+        </div>
+      </SvPanel>
+
+      {/* Distribution */}
+      <SvPanel pad={18} testid="sv-history-stats-distribution">
+        <SvLabel>Distribution</SvLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+          <DistRow label="Movies" count={stats.movie_count} ratio={movieRatio} accent={sv.cyan} />
+          <DistRow label="TV seasons" count={stats.tv_count} ratio={tvRatio} accent={sv.magenta} />
+        </div>
+      </SvPanel>
+    </aside>
+  );
+}
+
+function RailStat({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: number;
+  sub?: string;
+  accent: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span
+        style={{
+          fontFamily: sv.mono,
+          fontSize: 9,
+          letterSpacing: "0.22em",
+          color: sv.inkFaint,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: sv.display,
+          fontSize: 28,
+          fontWeight: 700,
+          color: accent,
+          letterSpacing: "0.04em",
+          fontVariantNumeric: "tabular-nums",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </span>
+      {sub && (
+        <span
+          style={{
+            fontFamily: sv.mono,
+            fontSize: 9,
+            letterSpacing: "0.16em",
+            color: sv.inkFaint,
+            textTransform: "uppercase",
+          }}
+        >
+          {sub}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DistRow({
+  label,
+  count,
+  ratio,
+  accent,
+}: {
+  label: string;
+  count: number;
+  ratio: number;
+  accent: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontFamily: sv.mono,
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          color: sv.inkDim,
+          textTransform: "uppercase",
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ color: accent }}>{count}</span>
+      </div>
+      <div
+        style={{
+          height: 4,
+          background: sv.inkGhost,
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: "0 auto 0 0",
+            width: `${Math.min(100, Math.max(0, ratio * 100))}%`,
+            background: `linear-gradient(90deg, ${accent}, ${accent}99)`,
+            boxShadow: `0 0 8px ${accent}66`,
+            transition: "width 0.3s ease",
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -736,181 +1094,148 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-navy-900 circuit-bg">
-      {/* Header */}
-      <div
-        className="border-b border-cyan-500/20 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10"
-        style={{
-          boxShadow:
-            "0 0 20px rgba(6, 182, 212, 0.2), 0 0 40px rgba(236, 72, 153, 0.1)",
-        }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate("/")}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <div className="flex items-center gap-3">
-                <BarChart3
-                  className="w-6 h-6 text-cyan-400"
-                  style={{
-                    filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.8))",
-                  }}
-                />
-                <h1
-                  className="text-xl sm:text-2xl font-bold text-cyan-400 tracking-wider font-mono uppercase"
-                  style={{
-                    textShadow:
-                      "0 0 10px rgba(6, 182, 212, 1), 0 0 30px rgba(6, 182, 212, 0.6)",
-                  }}
-                >
-                  Job History & Analytics
-                </h1>
-              </div>
-            </div>
-            <button
-              onClick={handleReportBug}
-              disabled={reportLoading}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:border-red-500/60 hover:bg-red-500/10 transition-all font-mono text-xs uppercase tracking-wider disabled:opacity-50"
-            >
-              <Bug className="w-4 h-4" />
-              <span className="hidden sm:inline">
-                {reportLoading ? "Generating..." : "Report Bug"}
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
+    <SvAtmosphere>
+      <SvPageHeader
+        title="Job History & Analytics"
+        icon={<BarChart3 size={20} />}
+        onBack={() => navigate("/")}
+        right={
+          <button
+            onClick={handleReportBug}
+            disabled={reportLoading}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              height: 32,
+              padding: "0 12px",
+              background: sv.bg0,
+              border: `1px solid ${sv.red}55`,
+              color: sv.red,
+              fontFamily: sv.mono,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.20em",
+              textTransform: "uppercase",
+              cursor: reportLoading ? "wait" : "pointer",
+              opacity: reportLoading ? 0.5 : 1,
+              boxShadow: `0 0 8px ${sv.red}33`,
+              transition: "border-color 120ms, color 120ms, box-shadow 120ms",
+            }}
+            onMouseEnter={(e) => {
+              if (reportLoading) return;
+              e.currentTarget.style.borderColor = sv.red;
+              e.currentTarget.style.boxShadow = `0 0 14px ${sv.red}66`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = `${sv.red}55`;
+              e.currentTarget.style.boxShadow = `0 0 8px ${sv.red}33`;
+            }}
+          >
+            <Bug size={14} />
+            <span>{reportLoading ? "Generating…" : "Report Bug"}</span>
+          </button>
+        }
+      />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-8">
+        <div
+          data-testid="sv-history-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: stats ? "minmax(0, 1fr) 320px" : "1fr",
+            gap: 14,
+            alignItems: "start",
+          }}
+        >
+        <div style={{ minWidth: 0 }} className="space-y-8">
         {/* Stats Grid */}
         {stats && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <StatCard
-              label="Total Jobs"
-              value={stats.total_jobs}
-              icon={<BarChart3 className="w-5 h-5" />}
-              color="#06b6d4"
-            />
-            <StatCard
-              label="Completed"
-              value={stats.completed_jobs}
-              icon={<CheckCircle2 className="w-5 h-5" />}
-              color="#10b981"
-            />
-            <StatCard
-              label="Failed"
-              value={stats.failed_jobs}
-              icon={<XCircle className="w-5 h-5" />}
-              color="#ef4444"
-            />
-            <StatCard
-              label="TV Shows"
-              value={stats.tv_count}
-              icon={<Tv className="w-5 h-5" />}
-              color="#f59e0b"
-            />
-            <StatCard
-              label="Movies"
-              value={stats.movie_count}
-              icon={<Film className="w-5 h-5" />}
-              color="#ec4899"
-            />
+            <StatCard label="Total Jobs"  value={stats.total_jobs}      icon={<BarChart3 size={18} />}    color={sv.cyan} />
+            <StatCard label="Completed"   value={stats.completed_jobs}  icon={<CheckCircle2 size={18} />} color={sv.green} />
+            <StatCard label="Failed"      value={stats.failed_jobs}     icon={<XCircle size={18} />}      color={sv.red} />
+            <StatCard label="TV Shows"    value={stats.tv_count}        icon={<Tv size={18} />}           color={sv.amber} />
+            <StatCard label="Movies"      value={stats.movie_count}     icon={<Film size={18} />}         color={sv.magenta} />
             <StatCard
               label="Avg Time"
-              value={
-                stats.avg_processing_seconds
-                  ? formatDuration(stats.avg_processing_seconds)
-                  : "\u2014"
-              }
-              icon={<Clock className="w-5 h-5" />}
-              color="#8b5cf6"
+              value={stats.avg_processing_seconds ? formatDuration(stats.avg_processing_seconds) : "\u2014"}
+              icon={<Clock size={18} />}
+              color={sv.purple}
             />
           </div>
         )}
 
         {/* Common Errors */}
         {stats && stats.common_errors.length > 0 && (
-          <div className="rounded-lg border border-red-500/30 bg-navy-800/80 p-4">
-            <h2 className="text-sm font-mono font-bold text-red-400 uppercase tracking-wider mb-3">
-              &gt; Common Errors
-            </h2>
-            <div className="space-y-2">
+          <SvNotice tone="error">
+            <div style={{ fontFamily: sv.mono, fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: sv.red, marginBottom: 8 }}>
+              Common errors
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {stats.common_errors.map((err, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-3 text-xs font-mono"
-                >
-                  <span className="text-red-400 font-bold min-w-[2rem] text-right">
-                    x{err.count}
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, fontFamily: sv.mono, fontSize: 11 }}>
+                  <span style={{ color: sv.red, fontWeight: 700, minWidth: 32, textAlign: "right" }}>
+                    ×{err.count}
                   </span>
-                  <span className="text-slate-400 break-all">
-                    {err.message}
-                  </span>
+                  <span style={{ color: sv.inkDim, wordBreak: "break-all" }}>{err.message}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </SvNotice>
         )}
 
         {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-mono text-slate-500 uppercase tracking-wider">
-            Filter:
-          </span>
-          <select
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <SvLabel>Filter</SvLabel>
+          <SvSelect
             value={filterType}
-            onChange={(e) => {
-              setFilterType(e.target.value);
-              setPage(1);
-            }}
-            className="bg-navy-800 border border-cyan-500/20 rounded-md text-slate-300 font-mono text-xs px-3 py-1.5 focus:border-cyan-500/50 outline-none"
-          >
-            <option value="">All Types</option>
-            <option value="tv">TV</option>
-            <option value="movie">Movie</option>
-          </select>
-          <select
+            onChange={(v) => { setFilterType(v); setPage(1); }}
+            options={[
+              { value: "", label: "All types" },
+              { value: "tv", label: "TV" },
+              { value: "movie", label: "Movie" },
+            ]}
+          />
+          <SvSelect
             value={filterState}
-            onChange={(e) => {
-              setFilterState(e.target.value);
-              setPage(1);
-            }}
-            className="bg-navy-800 border border-cyan-500/20 rounded-md text-slate-300 font-mono text-xs px-3 py-1.5 focus:border-cyan-500/50 outline-none"
-          >
-            <option value="">All States</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-          </select>
+            onChange={(v) => { setFilterState(v); setPage(1); }}
+            options={[
+              { value: "", label: "All states" },
+              { value: "completed", label: "Completed" },
+              { value: "failed", label: "Failed" },
+            ]}
+          />
         </div>
 
         {/* History Table */}
-        <div className="rounded-lg border border-cyan-500/20 bg-navy-800/80 overflow-x-auto">
-          <table className="w-full text-xs sm:text-sm font-mono">
+        <div style={{ border: `1px solid ${sv.lineMid}`, background: sv.bg1, overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: sv.mono, fontSize: 12 }}>
             <thead>
-              <tr className="border-b border-cyan-500/20 text-left">
-                <th className="px-4 py-3 text-cyan-400 uppercase tracking-wider font-bold">
-                  Title
-                </th>
-                <th className="px-4 py-3 text-cyan-400 uppercase tracking-wider font-bold hidden sm:table-cell">
-                  Type
-                </th>
-                <th className="px-4 py-3 text-cyan-400 uppercase tracking-wider font-bold">
-                  State
-                </th>
-                <th className="px-4 py-3 text-cyan-400 uppercase tracking-wider font-bold hidden md:table-cell">
-                  Titles
-                </th>
-                <th className="px-4 py-3 text-cyan-400 uppercase tracking-wider font-bold hidden lg:table-cell">
-                  Source
-                </th>
-                <th className="px-4 py-3 text-cyan-400 uppercase tracking-wider font-bold hidden sm:table-cell">
-                  Date
-                </th>
+              <tr style={{ borderBottom: `1px solid ${sv.lineMid}` }}>
+                {(["Title", "Type", "State", "Titles", "Source", "Date"] as const).map((h, i) => (
+                  <th
+                    key={h}
+                    className={
+                      i === 1 ? "hidden sm:table-cell" :
+                      i === 3 ? "hidden md:table-cell" :
+                      i === 4 ? "hidden lg:table-cell" :
+                      i === 5 ? "hidden sm:table-cell" : ""
+                    }
+                    style={{
+                      textAlign: "left",
+                      padding: "12px 16px",
+                      color: sv.cyan,
+                      fontFamily: sv.mono,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.20em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -918,89 +1243,99 @@ export default function HistoryPage() {
                 <tr>
                   <td
                     colSpan={6}
-                    className="px-4 py-8 text-center text-slate-500"
+                    style={{
+                      padding: "32px 16px",
+                      textAlign: "center",
+                      color: sv.inkFaint,
+                      fontFamily: sv.mono,
+                      fontSize: 12,
+                    }}
                   >
                     No completed or failed jobs yet
                   </td>
                 </tr>
               ) : (
-                history.map((job) => (
-                  <tr
-                    key={job.id}
-                    onClick={() => handleRowClick(job.id)}
-                    className={`border-b border-navy-700/50 hover:bg-cyan-500/5 transition-colors cursor-pointer ${
-                      selectedJobId === job.id ? "bg-cyan-500/10" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="text-slate-200">
-                        {job.detected_title || job.volume_label}
-                      </div>
-                      {job.detected_title && (
-                        <div className="text-[10px] text-slate-500">
-                          {job.volume_label}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <span
-                        className={`uppercase ${
-                          job.content_type === "tv"
-                            ? "text-amber-400"
-                            : job.content_type === "movie"
-                              ? "text-magenta-400"
-                              : "text-slate-500"
-                        }`}
-                      >
-                        {job.content_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {job.state === "completed" ? (
-                        <span className="text-green-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> OK
+                history.map((job) => {
+                  const isSelected = selectedJobId === job.id;
+                  const typeColor = job.content_type === "tv" ? sv.amber : job.content_type === "movie" ? sv.magenta : sv.inkFaint;
+                  return (
+                    <tr
+                      key={job.id}
+                      onClick={() => handleRowClick(job.id)}
+                      style={{
+                        borderBottom: `1px solid ${sv.line}`,
+                        background: isSelected ? `${sv.cyan}10` : "transparent",
+                        cursor: "pointer",
+                        transition: "background 120ms",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = `${sv.cyan}06`;
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ color: sv.ink }}>{job.detected_title || job.volume_label}</div>
+                        {job.detected_title && (
+                          <div style={{ fontSize: 10, color: sv.inkFaint, marginTop: 2 }}>{job.volume_label}</div>
+                        )}
+                      </td>
+                      <td className="hidden sm:table-cell" style={{ padding: "12px 16px" }}>
+                        <span
+                          style={{
+                            color: typeColor,
+                            textTransform: "uppercase",
+                            fontWeight: 700,
+                            letterSpacing: "0.18em",
+                            fontSize: 11,
+                          }}
+                        >
+                          {job.content_type}
                         </span>
-                      ) : (
-                        <span className="text-red-400 flex items-center gap-1">
-                          <XCircle className="w-3 h-3" /> FAIL
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-400 hidden md:table-cell">
-                      {job.total_titles}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 hidden lg:table-cell">
-                      {job.classification_source}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 hidden sm:table-cell">
-                      {formatDate(job.completed_at || job.created_at)}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        {job.state === "completed" ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: sv.green }}>
+                            <CheckCircle2 size={12} /> OK
+                          </span>
+                        ) : (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: sv.red }}>
+                            <XCircle size={12} /> FAIL
+                          </span>
+                        )}
+                      </td>
+                      <td className="hidden md:table-cell" style={{ padding: "12px 16px", color: sv.inkDim }}>
+                        {job.total_titles}
+                      </td>
+                      <td className="hidden lg:table-cell" style={{ padding: "12px 16px", color: sv.inkFaint }}>
+                        {job.classification_source}
+                      </td>
+                      <td className="hidden sm:table-cell" style={{ padding: "12px 16px", color: sv.inkFaint }}>
+                        {formatDate(job.completed_at || job.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="flex items-center gap-1 px-3 py-2 rounded-md font-mono text-xs uppercase tracking-wider border border-cyan-500/20 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" /> Prev
-          </button>
-          <span className="text-xs font-mono text-slate-500">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <SvActionButton tone="neutral" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+            <ChevronLeft size={12} /> Prev
+          </SvActionButton>
+          <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint, letterSpacing: "0.06em" }}>
             Page {page}
           </span>
-          <button
-            onClick={() => setPage((p) => p + 1)}
-            disabled={!hasMore}
-            className="flex items-center gap-1 px-3 py-2 rounded-md font-mono text-xs uppercase tracking-wider border border-cyan-500/20 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            Next <ChevronRight className="w-4 h-4" />
-          </button>
+          <SvActionButton tone="neutral" onClick={() => setPage((p) => p + 1)} disabled={!hasMore}>
+            Next <ChevronRight size={12} />
+          </SvActionButton>
+        </div>
+        </div>
+        {stats && <HistoryStatsRail stats={stats} />}
         </div>
       </div>
 
@@ -1023,6 +1358,6 @@ export default function HistoryPage() {
           </>
         )}
       </AnimatePresence>
-    </div>
+    </SvAtmosphere>
   );
 }

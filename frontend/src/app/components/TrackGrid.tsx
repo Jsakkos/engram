@@ -2,6 +2,7 @@ import React from "react";
 import { motion } from "motion/react";
 import { Loader2, CheckCircle2, AlertTriangle, Vote } from "lucide-react";
 import type { Track, TrackState } from "./DiscCard";
+import { sv, SvBadge, SvBar, SvLabel } from "./synapse";
 
 interface TrackGridProps {
   tracks: Track[];
@@ -14,300 +15,429 @@ function formatBytes(bytes: number): string {
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
-const stateConfig: Record<TrackState, { label: string; color: string; textColor: string; icon: typeof Loader2 | null; glow?: string }> = {
-  pending: {
-    label: "PENDING",
-    color: "border-navy-600/50 bg-navy-800/40",
-    textColor: "text-slate-500",
-    icon: null,
-  },
-  ripping: {
-    label: "RIPPING",
-    color: "border-cyan-500/50 bg-cyan-950/30",
-    textColor: "text-cyan-400",
-    icon: Loader2,
-    glow: "rgba(6, 182, 212, 0.3)",
-  },
-  matching: {
-    label: "MATCHING",
-    color: "border-yellow-500/50 bg-yellow-950/30",
-    textColor: "text-yellow-400",
-    icon: Vote,
-    glow: "rgba(250, 204, 21, 0.3)",
-  },
-  matched: {
-    label: "MATCHED",
-    color: "border-green-500/50 bg-green-950/30",
-    textColor: "text-green-400",
-    icon: CheckCircle2,
-    glow: "rgba(16, 185, 129, 0.3)",
-  },
-  failed: {
-    label: "FAILED",
-    color: "border-red-500/50 bg-red-950/30",
-    textColor: "text-red-400",
-    icon: AlertTriangle,
-    glow: "rgba(239, 68, 68, 0.3)",
-  },
-  completed: {
-    label: "DONE",
-    color: "border-green-500/50 bg-green-950/30",
-    textColor: "text-green-400",
-    icon: CheckCircle2,
-    glow: "rgba(16, 185, 129, 0.3)",
-  },
+interface StateConfig {
+  label: string;
+  color: string;
+  border: string;
+  bg: string;
+  Icon: typeof Loader2 | null;
+}
+
+const STATE: Record<TrackState, StateConfig> = {
+  pending:   { label: "PENDING",  color: sv.inkDim,  border: `${sv.line}`,         bg: `${sv.bg2}66`, Icon: null         },
+  ripping:   { label: "RIPPING",  color: sv.magenta, border: `${sv.magenta}66`,    bg: `${sv.magenta}10`, Icon: Loader2  },
+  matching:  { label: "MATCHING", color: sv.amber,   border: `${sv.amber}55`,      bg: `${sv.amber}10`, Icon: Vote       },
+  matched:   { label: "MATCHED",  color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: CheckCircle2 },
+  failed:    { label: "FAILED",   color: sv.red,     border: `${sv.red}66`,        bg: `${sv.red}10`, Icon: AlertTriangle  },
+  completed: { label: "DONE",     color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: CheckCircle2 },
 };
 
-// Memoized component to prevent unnecessary re-renders
+const matchSourceColor = (source?: string): string => {
+  if (source === "discdb") return "#60a5fa"; // blue
+  if (source === "user") return sv.green;
+  return sv.purple;
+};
+
+const matchSourceLabel = (source?: string): string => {
+  if (source === "discdb") return "DISCDB";
+  if (source === "user") return "MANUAL";
+  return "ENGRAM";
+};
+
 export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProps) {
   return (
-    <div className="mt-4 space-y-2">
-      <div className="text-xs text-cyan-400 uppercase tracking-wider font-mono font-bold mb-3">
-        &gt; TRACK STATUS
-      </div>
-      
-      <div className="grid grid-cols-2 gap-2">
+    <div data-testid="sv-track-grid" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <SvLabel>TRACK STATUS</SvLabel>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, 1fr)",
+          gap: 8,
+        }}
+      >
         {tracks.map((track, index) => {
-          const config = stateConfig[track.state];
-          const Icon = config.icon;
-          
+          const config = STATE[track.state];
+          const Icon = config.Icon;
+          const ripPct =
+            track.expectedSizeBytes && track.actualSizeBytes
+              ? Math.min(1, track.actualSizeBytes / track.expectedSizeBytes)
+              : Math.max(0, Math.min(1, track.progress / 100));
+
           return (
             <motion.div
               key={track.id}
-              initial={{ opacity: 0, scale: 0.9 }}
+              data-testid="sv-track-card"
+              data-state={track.state}
+              initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: index * 0.05 }}
-              className={`relative border-2 ${config.color} p-3 overflow-hidden group cursor-pointer`}
               style={{
-                boxShadow: 'glow' in config ? `0 0 10px ${config.glow}` : "none",
+                position: "relative",
+                padding: 12,
+                background: config.bg,
+                border: `1px solid ${config.border}`,
+                overflow: "hidden",
+                transition: "all 0.18s",
+                cursor: "pointer",
               }}
+              whileHover={{ y: -2 }}
             >
-              {/* Left accent bar showing state color */}
-              <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${
-                track.state === "matched" ? "bg-green-400" :
-                track.state === "ripping" ? "bg-cyan-400" :
-                track.state === "matching" ? "bg-yellow-400" :
-                track.state === "failed" ? "bg-red-400" :
-                "bg-slate-700"
-              }`} />
-              
-              <div className="relative">
-                {/* Header */}
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex-1 min-w-0">
-                    {/* Only show track number if no meaningful title */}
-                    {track.title.startsWith('Track ') && (
-                      <div className="text-xs text-slate-400 font-mono mb-1">TRACK {index + 1}</div>
-                    )}
-                    <div className={`text-sm font-bold ${config.textColor} truncate font-mono`}>
-                      {track.title}
-                    </div>
-                    {/* Always show duration */}
-                    {track.duration && (
-                      <div className="text-xs text-slate-300 font-mono mt-1">{track.duration}</div>
-                    )}
+              {/* Left accent bar */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 2,
+                  background: config.color,
+                  boxShadow: `0 0 6px ${config.color}88`,
+                }}
+              />
 
-                    {/* Quality badges */}
-                    {(track.videoResolution || track.edition || track.isExtra || track.matchSource) && (
-                      <div className="flex gap-1 mt-1 flex-wrap">
-                        {track.matchSource && (
-                          <span
-                            data-testid={`source-badge-${track.matchSource}`}
-                            className={`px-1.5 py-0.5 text-[10px] font-bold tracking-wider border ${
-                              track.matchSource === 'discdb'
-                                ? 'bg-blue-500/20 border-blue-500/30 text-blue-400'
-                                : track.matchSource === 'user'
-                                  ? 'bg-green-500/20 border-green-500/30 text-green-400'
-                                  : 'bg-purple-500/20 border-purple-500/30 text-purple-400'
-                            }`}
-                          >
-                            {track.matchSource === 'discdb' ? 'DISCDB' : track.matchSource === 'user' ? 'MANUAL' : 'ENGRAM'}
-                          </span>
-                        )}
-                        {track.videoResolution && (
-                          <span className="px-1.5 py-0.5 bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-[10px] font-bold tracking-wider">
-                            {track.videoResolution}
-                          </span>
-                        )}
-                        {track.edition && (
-                          <span className="px-1.5 py-0.5 bg-magenta-500/20 border border-magenta-500/30 text-magenta-400 text-[10px] font-bold tracking-wider">
-                            {track.edition}
-                          </span>
-                        )}
-                        {track.isExtra && (
-                          <span className="px-1.5 py-0.5 bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 text-[10px] font-bold tracking-wider">
-                            EXTRA
-                          </span>
-                        )}
-                      </div>
-                    )}
+              {/* Header — title + icon */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {track.title.startsWith('Track ') && (
+                    <div style={{ fontFamily: sv.mono, fontSize: 9, color: sv.inkFaint, letterSpacing: "0.2em", marginBottom: 2 }}>
+                      TRACK {index + 1}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      fontFamily: sv.mono,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: config.color,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {track.title}
                   </div>
-                  
-                  {/* Icon */}
-                  {Icon && (
-                    <motion.div
-                      animate={
-                        track.state === "ripping" || track.state === "matching"
-                          ? { rotate: 360 }
-                          : {}
-                      }
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Icon className={`w-4 h-4 ${config.textColor}`} />
-                    </motion.div>
+                  {track.duration && (
+                    <div className="sv-tnum" style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim, marginTop: 3 }}>
+                      {track.duration}
+                    </div>
+                  )}
+
+                  {/* Quality / source / extra badges */}
+                  {(track.videoResolution || track.edition || track.isExtra || track.matchSource) && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                      {track.matchSource && (
+                        <SvBadge
+                          size="sm"
+                          tone={matchSourceColor(track.matchSource)}
+                          testid={`source-badge-${track.matchSource}`}
+                        >
+                          {matchSourceLabel(track.matchSource)}
+                        </SvBadge>
+                      )}
+                      {track.videoResolution && (
+                        <SvBadge size="sm" tone={sv.cyan}>{track.videoResolution}</SvBadge>
+                      )}
+                      {track.edition && (
+                        <SvBadge size="sm" tone={sv.magenta}>{track.edition}</SvBadge>
+                      )}
+                      {track.isExtra && <SvBadge size="sm" tone={sv.yellow}>EXTRA</SvBadge>}
+                    </div>
                   )}
                 </div>
-                
-                {/* Error message for failed tracks */}
-                {track.state === "failed" && track.errorMessage && (
-                  <div className="mt-1 text-xs text-red-400/80 font-mono truncate" title={track.errorMessage}>
-                    {track.errorMessage}
-                  </div>
-                )}
 
-                {/* Queued label for pending tracks */}
-                {track.state === "pending" && (
-                  <div className="mt-1">
-                    <span className="text-xs text-slate-500 font-mono">QUEUED</span>
-                  </div>
+                {Icon && (
+                  <motion.div
+                    animate={
+                      track.state === "ripping" || track.state === "matching"
+                        ? { rotate: 360 }
+                        : {}
+                    }
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Icon size={14} color={config.color} />
+                  </motion.div>
                 )}
+              </div>
 
-                {/* Progress bar for ripping - with byte-level progress */}
-                {track.state === "ripping" && (
-                  <div className="mb-2">
-                    <div className="h-1.5 bg-navy-800 border border-white/20 overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-cyan-600 to-yellow-400"
-                        initial={{ width: 0 }}
-                        animate={{
-                          width: `${
-                            track.expectedSizeBytes && track.actualSizeBytes
-                              ? (track.actualSizeBytes / track.expectedSizeBytes) * 100
-                              : track.progress
-                          }%`
-                        }}
-                        transition={{ duration: 0.3 }}
-                        style={{
-                          boxShadow: "0 0 10px rgba(6, 182, 212, 0.6)",
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-xs text-slate-500 font-mono">{config.label}</span>
-                      {track.expectedSizeBytes && track.actualSizeBytes ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-500 font-mono">
-                            {formatBytes(track.actualSizeBytes)} / {formatBytes(track.expectedSizeBytes)}
-                          </span>
-                          <span className={`text-xs ${config.textColor} font-mono font-bold`}>
-                            {((track.actualSizeBytes / track.expectedSizeBytes) * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                      ) : (
-                        <span className={`text-xs ${config.textColor} font-mono font-bold`}>{track.progress.toFixed(1)}%</span>
-                      )}
-                    </div>
-                  </div>
-                )}
+              {/* Failed: error message */}
+              {track.state === "failed" && track.errorMessage && (
+                <div
+                  title={track.errorMessage}
+                  style={{
+                    fontFamily: sv.mono,
+                    fontSize: 10,
+                    color: `${sv.red}cc`,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginTop: 4,
+                  }}
+                >
+                  {track.errorMessage}
+                </div>
+              )}
 
-                {/* Output filename after ripping completes */}
-                {track.outputFilename && !track.organizedTo && track.state !== "pending" && track.state !== "ripping" && (
-                  <div className="text-xs text-slate-400 font-mono mt-1 truncate">{track.outputFilename}</div>
-                )}
+              {/* Pending: queued tag */}
+              {track.state === "pending" && (
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, letterSpacing: "0.18em" }}>
+                    QUEUED
+                  </span>
+                </div>
+              )}
 
-                {/* Progress bar for matching */}
-                {track.state === "matching" && (
-                  <div className="mb-2">
-                    <div className="h-1.5 bg-navy-800 border border-white/20 overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-cyan-500 via-magenta-500 to-yellow-400"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${track.progress}%` }}
-                        transition={{ duration: 0.3 }}
-                        style={{
-                          boxShadow: "0 0 10px rgba(6, 182, 212, 0.6)",
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-xs text-slate-500 font-mono">{config.label}</span>
-                      <span className={`text-xs ${config.textColor} font-mono font-bold`}>{track.progress.toFixed(1)}%</span>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Match candidates with voting */}
-                {track.state === "matching" && track.matchCandidates && track.matchCandidates.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {track.matchCandidates.slice(0, 3).map((candidate, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-xs gap-3">
-                        <span className="text-yellow-300 font-mono truncate flex-1 font-bold">{candidate.episode}</span>
-                        <span className="text-yellow-300 font-mono font-bold shrink-0">
-                          {Math.min(candidate.votes, candidate.targetVotes)}/{candidate.targetVotes}
+              {/* Ripping progress */}
+              {track.state === "ripping" && (
+                <div style={{ marginTop: 6 }}>
+                  <SvBar value={ripPct} color={sv.magenta} secondary={sv.magentaHi} height={3} chunked={false} />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: 4,
+                    }}
+                  >
+                    <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkFaint }}>
+                      {config.label}
+                    </span>
+                    {track.expectedSizeBytes && track.actualSizeBytes ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span className="sv-tnum" style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
+                          {formatBytes(track.actualSizeBytes)} / {formatBytes(track.expectedSizeBytes)}
+                        </span>
+                        <span
+                          className="sv-tnum"
+                          style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, color: config.color }}
+                        >
+                          {(ripPct * 100).toFixed(1)}%
                         </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-                
-                {/* Final match with organization info */}
-                {track.state === "matched" && track.finalMatch && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex justify-between items-center text-xs gap-3">
-                      <span className="text-green-400 font-mono border-l-2 border-green-400 pl-2 flex-1">
-                        → {track.finalMatch}
+                    ) : (
+                      <span
+                        className="sv-tnum"
+                        style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, color: config.color }}
+                      >
+                        {track.progress.toFixed(1)}%
                       </span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        {track.finalMatchConfidence !== undefined && (
-                          <span className={`font-mono font-bold ${track.finalMatchConfidence >= 0.7 ? 'text-green-300' : track.finalMatchConfidence >= 0.4 ? 'text-yellow-300' : 'text-red-300'}`}>
-                            {(track.finalMatchConfidence * 100).toFixed(0)}%
-                          </span>
-                        )}
-                        {track.finalMatchVotes !== undefined && (
-                          <span className="text-green-300 font-mono font-bold">
-                            {Math.min(track.finalMatchVotes, track.finalMatchTargetVotes || 4)}/{track.finalMatchTargetVotes || 4}
-                          </span>
-                        )}
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Output filename after rip / before organization */}
+              {track.outputFilename && !track.organizedTo && track.state !== "pending" && track.state !== "ripping" && (
+                <div
+                  style={{
+                    fontFamily: sv.mono,
+                    fontSize: 10,
+                    color: sv.inkDim,
+                    marginTop: 4,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {track.outputFilename}
+                </div>
+              )}
+
+              {/* Matching progress */}
+              {track.state === "matching" && (
+                <div style={{ marginTop: 6 }}>
+                  <SvBar value={track.progress / 100} color={sv.amber} secondary={sv.cyan} height={3} chunked={false} />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: 4,
+                    }}
+                  >
+                    <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkFaint }}>
+                      {config.label}
+                    </span>
+                    <span
+                      className="sv-tnum"
+                      style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, color: config.color }}
+                    >
+                      {track.progress.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Matching: top candidates with voting */}
+              {track.state === "matching" && track.matchCandidates && track.matchCandidates.length > 0 && (
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                  {track.matchCandidates.slice(0, 3).map((candidate, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                      <span
+                        style={{
+                          fontFamily: sv.mono,
+                          fontSize: 10,
+                          color: sv.amber,
+                          fontWeight: 600,
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {candidate.episode}
+                      </span>
+                      <span
+                        className="sv-tnum"
+                        style={{ fontFamily: sv.mono, fontSize: 10, color: sv.amber, fontWeight: 700, flexShrink: 0 }}
+                      >
+                        {Math.min(candidate.votes, candidate.targetVotes)}/{candidate.targetVotes}
                       </span>
                     </div>
+                  ))}
+                </div>
+              )}
 
-                    {/* Runner-ups */}
-                    {track.matchCandidates && track.matchCandidates.length > 0 && (
-                      <div className="space-y-0.5 pt-1">
-                        {track.matchCandidates.filter(c => c.episode !== track.finalMatch).slice(0, 2).map((candidate, idx) => (
-                          <div key={idx} className="flex justify-between items-center text-xs gap-3 pl-2 border-l-2 border-slate-700">
-                            <span className="text-slate-500 font-mono truncate flex-1">{candidate.episode}</span>
-                            <span className="text-slate-500 font-mono shrink-0">
+              {/* Matched: final match + runners-up + organization paths */}
+              {track.state === "matched" && track.finalMatch && (
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                    <span
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 11,
+                        color: sv.green,
+                        borderLeft: `2px solid ${sv.green}`,
+                        paddingLeft: 6,
+                        flex: 1,
+                      }}
+                    >
+                      → {track.finalMatch}
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      {track.finalMatchConfidence !== undefined && (
+                        <span
+                          className="sv-tnum"
+                          style={{
+                            fontFamily: sv.mono,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color:
+                              track.finalMatchConfidence >= 0.7 ? sv.green :
+                              track.finalMatchConfidence >= 0.4 ? sv.yellow : sv.red,
+                          }}
+                        >
+                          {(track.finalMatchConfidence * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {track.finalMatchVotes !== undefined && (
+                        <span
+                          className="sv-tnum"
+                          style={{ fontFamily: sv.mono, fontSize: 10, color: sv.green, fontWeight: 700 }}
+                        >
+                          {Math.min(track.finalMatchVotes, track.finalMatchTargetVotes || 4)}/{track.finalMatchTargetVotes || 4}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  {track.matchCandidates && track.matchCandidates.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingTop: 4 }}>
+                      {track.matchCandidates
+                        .filter(c => c.episode !== track.finalMatch)
+                        .slice(0, 2)
+                        .map((candidate, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 12,
+                              paddingLeft: 6,
+                              borderLeft: `2px solid ${sv.inkGhost}`,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontFamily: sv.mono,
+                                fontSize: 10,
+                                color: sv.inkFaint,
+                                flex: 1,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {candidate.episode}
+                            </span>
+                            <span
+                              className="sv-tnum"
+                              style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, flexShrink: 0 }}
+                            >
                               {Math.min(candidate.votes, candidate.targetVotes)}/{candidate.targetVotes}
                             </span>
                           </div>
                         ))}
-                      </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Organization paths */}
-                    {track.organizedTo && (
-                      <div className="pt-2 border-t border-green-500/20 space-y-1">
-                        <div className="flex items-start gap-2">
-                          <span className="text-xs text-slate-500 font-mono shrink-0">FROM:</span>
-                          <span className="text-xs text-slate-400 font-mono break-all">
-                            {track.outputFilename || track.organizedFrom}
-                          </span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-xs text-green-400 font-mono shrink-0 flex items-center gap-1">
-                            <span>→</span>
-                            {track.isExtra && <span className="text-yellow-400">[EXTRA]</span>}
-                          </span>
-                          <span className="text-xs text-green-400 font-mono break-all">
-                            {track.organizedTo.split('/').slice(-2).join('/')}
-                          </span>
-                        </div>
+                  {/* Organization paths (after organizing completes) */}
+                  {track.organizedTo && (
+                    <div
+                      style={{
+                        paddingTop: 8,
+                        borderTop: `1px solid ${sv.green}33`,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                        <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkFaint, flexShrink: 0 }}>
+                          FROM:
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: sv.mono,
+                            fontSize: 10,
+                            color: sv.inkDim,
+                            wordBreak: "break-all",
+                          }}
+                        >
+                          {track.outputFilename || track.organizedFrom}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                        <span
+                          style={{
+                            fontFamily: sv.mono,
+                            fontSize: 10,
+                            color: sv.green,
+                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <span>→</span>
+                          {track.isExtra && <span style={{ color: sv.yellow }}>[EXTRA]</span>}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: sv.mono,
+                            fontSize: 10,
+                            color: sv.green,
+                            wordBreak: "break-all",
+                          }}
+                        >
+                          {track.organizedTo.split('/').slice(-2).join('/')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
           );
         })}

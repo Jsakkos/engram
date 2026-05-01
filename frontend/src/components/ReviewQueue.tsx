@@ -1,10 +1,164 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
 import { MATCHING_CONFIG, EPISODE_CONFIG, FEATURES } from '../config/constants';
+import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
+
+/**
+ * Synapse text input — used for the Edition tag field on movie titles and
+ * the manual episode-code input in the TV title row.
+ */
+function SvTextInput({
+    value,
+    onChange,
+    placeholder,
+    list,
+    ariaLabel,
+    style,
+}: {
+    value: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+    list?: string;
+    ariaLabel?: string;
+    style?: CSSProperties;
+}) {
+    return (
+        <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            list={list}
+            aria-label={ariaLabel}
+            style={{
+                width: '100%',
+                padding: '7px 12px',
+                background: sv.bg0,
+                border: `1px solid ${sv.lineMid}`,
+                color: sv.ink,
+                fontFamily: sv.mono,
+                fontSize: 12,
+                letterSpacing: '0.04em',
+                outline: 'none',
+                transition: 'border-color 120ms, box-shadow 120ms',
+                ...style,
+            }}
+            onFocus={(e) => {
+                e.currentTarget.style.borderColor = sv.cyan;
+                e.currentTarget.style.boxShadow = `0 0 8px ${sv.cyan}33`;
+            }}
+            onBlur={(e) => {
+                e.currentTarget.style.borderColor = sv.lineMid;
+                e.currentTarget.style.boxShadow = 'none';
+            }}
+        />
+    );
+}
+
+/**
+ * Section heading — colored dot + uppercase mono label + bracket count.
+ * Used for the Auto-matched / Needs review / Processed groupings on the TV
+ * review page.
+ */
+function SectionHeading({
+    color,
+    count,
+    children,
+}: {
+    color: string;
+    count: number;
+    children: ReactNode;
+}) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <span
+                style={{
+                    width: 8,
+                    height: 8,
+                    background: color,
+                    boxShadow: `0 0 8px ${color}cc`,
+                }}
+            />
+            <h2
+                style={{
+                    margin: 0,
+                    fontFamily: sv.mono,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    letterSpacing: '0.20em',
+                    textTransform: 'uppercase',
+                    color,
+                }}
+            >
+                {children}
+                <span style={{ marginLeft: 8, color: `${color}aa` }}>[{count}]</span>
+            </h2>
+        </div>
+    );
+}
+
+/**
+ * Small uniform header-action button for the ReviewQueue. Inline-styled with
+ * sv tokens so it matches the `SvPageHeader` chrome and the dashboard's
+ * ActionButtons family.
+ */
+function HeaderButton({
+    color,
+    onClick,
+    disabled,
+    icon,
+    children,
+}: {
+    color: string;
+    onClick: () => void;
+    disabled?: boolean;
+    icon?: ReactNode;
+    children: ReactNode;
+}) {
+    const base: CSSProperties = {
+        height: 32,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '0 12px',
+        background: sv.bg0,
+        border: `1px solid ${color}55`,
+        color,
+        fontFamily: sv.mono,
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '0.20em',
+        textTransform: 'uppercase',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        boxShadow: `0 0 8px ${color}33`,
+        transition: 'border-color 120ms, box-shadow 120ms',
+    };
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            style={base}
+            onMouseEnter={(e) => {
+                if (disabled) return;
+                e.currentTarget.style.borderColor = color;
+                e.currentTarget.style.boxShadow = `0 0 14px ${color}66`;
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = `${color}55`;
+                e.currentTarget.style.boxShadow = `0 0 8px ${color}33`;
+            }}
+        >
+            {icon}
+            <span>{children}</span>
+        </button>
+    );
+}
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
@@ -267,131 +421,143 @@ function ReviewQueue() {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-navy-900 circuit-bg flex flex-col items-center justify-center gap-4">
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
-                    <Disc3 className="w-12 h-12 text-cyan-400" style={{ filter: 'drop-shadow(0 0 10px rgba(6, 182, 212, 0.8))' }} />
-                </motion.div>
-                <span className="text-cyan-400 font-mono uppercase tracking-wider text-sm">&gt; LOADING JOB DATA...</span>
-            </div>
+            <SvAtmosphere>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+                        <Disc3 size={48} color={sv.cyan} style={{ filter: `drop-shadow(0 0 10px ${sv.cyan}cc)` }} />
+                    </motion.div>
+                    <span style={{ fontFamily: sv.mono, fontSize: 12, letterSpacing: '0.20em', textTransform: 'uppercase', color: sv.cyan }}>
+                        › LOADING JOB DATA…
+                    </span>
+                </div>
+            </SvAtmosphere>
         );
     }
 
     if (!job) {
         return (
-            <div className="min-h-screen bg-navy-900 circuit-bg flex flex-col items-center justify-center gap-6">
-                <h2 className="text-2xl font-bold text-red-400 font-mono uppercase tracking-wider">JOB NOT FOUND</h2>
-                <button
-                    onClick={() => navigate('/')}
-                    className="px-4 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-cyan-400 border-cyan-500/50 hover:border-cyan-400 transition-all"
-                >
-                    RETURN TO DASHBOARD
-                </button>
-            </div>
+            <SvAtmosphere>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+                    <h2 style={{ fontFamily: sv.display, fontSize: 28, fontWeight: 700, letterSpacing: '0.10em', color: sv.red, textTransform: 'uppercase', textShadow: `0 0 12px ${sv.red}55`, margin: 0 }}>
+                        JOB NOT FOUND
+                    </h2>
+                    <button
+                        onClick={() => navigate('/')}
+                        style={{
+                            padding: '10px 18px',
+                            background: 'transparent',
+                            border: `1px solid ${sv.cyan}88`,
+                            color: sv.cyan,
+                            fontFamily: sv.mono,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            letterSpacing: '0.20em',
+                            textTransform: 'uppercase',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        RETURN TO DASHBOARD
+                    </button>
+                </div>
+            </SvAtmosphere>
         );
     }
 
     // ==================== MOVIE REVIEW ====================
     if (job.content_type === 'movie') {
         return (
-            <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
-                {/* Circuit board background inherited from circuit-bg class */}
-
-                {/* Header */}
-                <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
-                    <div className="max-w-5xl mx-auto px-6 py-5">
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={() => navigate('/')}
-                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
-                                aria-label="Back to dashboard"
-                            >
-                                <ArrowLeft className="w-4 h-4" />
-                            </button>
-                            <div>
-                                <h1 className="text-xl font-bold text-cyan-400 font-mono uppercase tracking-wider" style={{ textShadow: '0 0 15px rgba(6, 182, 212, 0.6)' }}>
-                                    SELECT MOVIE VERSION
-                                </h1>
-                                <p className="text-sm text-slate-400 font-mono">
-                                    &gt; {job.detected_title || job.volume_label}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <SvAtmosphere>
+                <SvPageHeader
+                    title="Select movie version"
+                    subtitle={`› ${job.detected_title || job.volume_label}`}
+                    onBack={() => navigate('/')}
+                    maxWidth={1280}
+                />
 
                 {/* Content */}
-                <div className="max-w-5xl mx-auto px-6 py-8 relative z-0">
-                    {error && (
-                        <div className="mb-6 px-4 py-3 border-2 border-red-500/50 bg-red-500/10 text-red-400 font-mono text-sm">
-                            &gt; ERROR: {error}
-                        </div>
-                    )}
+                <div className="max-w-[1280px] mx-auto px-6 py-8 relative z-0">
+                    {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
+                    <SvNotice tone="warn">
+                        › MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.
+                    </SvNotice>
 
-                    <div className="mb-6 px-4 py-3 border-2 border-yellow-500/30 bg-yellow-500/5 text-yellow-400 font-mono text-sm">
-                        &gt; MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.
-                    </div>
-
-                    <div className="space-y-4">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {titles.map(title => (
                             <motion.div
                                 key={title.id}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="border-2 border-cyan-500/20 bg-navy-800/80 overflow-hidden"
-                                style={{ boxShadow: '0 0 10px rgba(6, 182, 212, 0.1)' }}
                             >
-                                <div className="p-5 flex items-center gap-6">
-                                    {/* Title info */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <span className="text-xs font-mono text-slate-500 bg-slate-800 px-2 py-0.5">
-                                                #{title.title_index}
-                                            </span>
-                                            <span className="text-sm font-mono text-cyan-300 truncate">
-                                                {title.output_filename ? title.output_filename.split(/[/\\]/).pop() : `Title ${title.title_index}`}
-                                            </span>
+                                <SvPanel pad={20}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+                                        {/* Title info */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                                                <SvBadge size="sm" tone={sv.inkDim} dot={false}>
+                                                    #{title.title_index}
+                                                </SvBadge>
+                                                <span
+                                                    style={{
+                                                        fontFamily: sv.mono,
+                                                        fontSize: 13,
+                                                        color: sv.cyanHi,
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    {title.output_filename ? title.output_filename.split(/[/\\]/).pop() : `Title ${title.title_index}`}
+                                                </span>
+                                            </div>
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 24,
+                                                    fontFamily: sv.mono,
+                                                    fontSize: 11,
+                                                    color: sv.inkFaint,
+                                                }}
+                                            >
+                                                <span>{formatDuration(title.duration_seconds)}</span>
+                                                <span>{formatSize(title.file_size_bytes)}</span>
+                                                <SvBadge size="sm" tone={sv.cyan} dot={false}>
+                                                    {title.video_resolution || 'Unknown'}
+                                                </SvBadge>
+                                                <span>{title.chapter_count} chapters</span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-6 text-xs font-mono text-slate-500">
-                                            <span>{formatDuration(title.duration_seconds)}</span>
-                                            <span>{formatSize(title.file_size_bytes)}</span>
-                                            <span className="px-2 py-0.5 border border-slate-700 text-slate-400">
-                                                {title.video_resolution || 'Unknown'}
-                                            </span>
-                                            <span>{title.chapter_count} chapters</span>
+
+                                        {/* Edition input */}
+                                        <div style={{ width: 192 }}>
+                                            <SvTextInput
+                                                value={selectedEditions[title.id] || ''}
+                                                onChange={(v) => handleEditionChange(title.id, v)}
+                                                placeholder="Edition tag…"
+                                                list="edition-suggestions"
+                                                ariaLabel={`Edition tag for title ${title.title_index}`}
+                                            />
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                            <SvActionButton
+                                                tone="green"
+                                                onClick={() => handleSaveMovie(title.id, 'save')}
+                                                disabled={isSaving}
+                                            >
+                                                Select
+                                            </SvActionButton>
+                                            <SvActionButton
+                                                tone="red"
+                                                onClick={() => handleSaveMovie(title.id, 'skip')}
+                                                disabled={isSaving}
+                                            >
+                                                Discard
+                                            </SvActionButton>
                                         </div>
                                     </div>
-
-                                    {/* Edition input */}
-                                    <div className="w-48">
-                                        <input
-                                            type="text"
-                                            placeholder="Edition tag..."
-                                            list="edition-suggestions"
-                                            value={selectedEditions[title.id] || ''}
-                                            onChange={(e) => handleEditionChange(title.id, e.target.value)}
-                                            className="w-full px-3 py-1.5 text-sm font-mono bg-navy-800 border border-slate-700 text-slate-300 placeholder-slate-600 focus:border-cyan-500/50 focus:outline-none"
-                                            aria-label={`Edition tag for title ${title.title_index}`}
-                                        />
-                                    </div>
-
-                                    {/* Actions */}
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => handleSaveMovie(title.id, 'save')}
-                                            disabled={isSaving}
-                                            className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-green-400 border-green-500/50 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all disabled:opacity-50"
-                                        >
-                                            SELECT
-                                        </button>
-                                        <button
-                                            onClick={() => handleSaveMovie(title.id, 'skip')}
-                                            disabled={isSaving}
-                                            className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-red-400 border-red-500/50 hover:border-red-400 transition-all disabled:opacity-50"
-                                        >
-                                            DISCARD
-                                        </button>
-                                    </div>
-                                </div>
+                                </SvPanel>
                             </motion.div>
                         ))}
                     </div>
@@ -404,117 +570,76 @@ function ReviewQueue() {
                         <option value="IMAX" />
                     </datalist>
                 </div>
-            </div>
+            </SvAtmosphere>
         );
     }
 
     // ==================== TV REVIEW ====================
+    const subtitleText = `› ${job.detected_title || job.volume_label}${job.detected_season ? ` / SEASON ${job.detected_season}` : ''}`;
     return (
-        <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
-            {/* Grid background */}
-            <div className="fixed inset-0 opacity-10 pointer-events-none">
-                <div className="h-full w-full" style={{
-                    backgroundImage: 'linear-gradient(rgba(6, 182, 212, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.3) 1px, transparent 1px)',
-                    backgroundSize: '50px 50px',
-                }} />
-            </div>
-
-            {/* Header */}
-            <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
-                <div className="max-w-6xl mx-auto px-6 py-5">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={() => navigate('/')}
-                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
-                                aria-label="Back to dashboard"
-                            >
-                                <ArrowLeft className="w-4 h-4" />
-                            </button>
-                            <div>
-                                <h1 className="text-xl font-bold text-cyan-400 font-mono uppercase tracking-wider" style={{ textShadow: '0 0 15px rgba(6, 182, 212, 0.6)' }}>
-                                    REVIEW TITLES
-                                </h1>
-                                <p className="text-sm text-slate-400 font-mono">
-                                    &gt; {job.detected_title || job.volume_label}
-                                    {job.detected_season && ` / SEASON ${job.detected_season}`}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={handleStartRip}
+        <SvAtmosphere>
+            <SvPageHeader
+                title="Review titles"
+                subtitle={subtitleText}
+                onBack={() => navigate('/')}
+                maxWidth={1280}
+                right={
+                    <>
+                        <HeaderButton
+                            color={sv.cyan}
+                            onClick={handleStartRip}
+                            disabled={isSaving || isProcessing}
+                            icon={<Play size={12} />}
+                        >
+                            Start rip
+                        </HeaderButton>
+                        {assignedCount > 0 && (
+                            <HeaderButton
+                                color={sv.yellow}
+                                onClick={handleSaveAll}
                                 disabled={isSaving || isProcessing}
-                                className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-cyan-400 border-cyan-500/50 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                                icon={<Save size={12} />}
                             >
-                                <Play className="w-3 h-3" />
-                                START RIP
-                            </button>
-                            {assignedCount > 0 && (
-                                <button
-                                    onClick={handleSaveAll}
-                                    disabled={isSaving || isProcessing}
-                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-yellow-400 border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_15px_rgba(250,204,21,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    <Save className="w-3 h-3" />
-                                    {isSaving ? 'SAVING...' : `SAVE ${assignedCount} ASSIGNMENTS`}
-                                </button>
-                            )}
-                            {assignedCount > 0 && (
-                                <button
-                                    onClick={handleProcessMatched}
-                                    disabled={isSaving || isProcessing}
-                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-green-400 border-green-500/50 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    <Package className="w-3 h-3" />
-                                    {isProcessing ? 'PROCESSING...' : `PROCESS ${assignedCount} MATCHED`}
-                                </button>
-                            )}
-                            <button
-                                onClick={handleRematchAll}
-                                disabled={isSaving || isProcessing || isRematching}
-                                className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-magenta-400 border-magenta-500/50 hover:border-magenta-400 hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                                {isSaving ? 'Saving…' : `Save ${assignedCount}`}
+                            </HeaderButton>
+                        )}
+                        {assignedCount > 0 && (
+                            <HeaderButton
+                                color={sv.green}
+                                onClick={handleProcessMatched}
+                                disabled={isSaving || isProcessing}
+                                icon={<Package size={12} />}
                             >
-                                <RefreshCw className={`w-3 h-3 ${isRematching ? 'animate-spin' : ''}`} />
-                                {isRematching ? 'RE-MATCHING...' : 'RE-MATCH ALL'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                                {isProcessing ? 'Processing…' : `Process ${assignedCount}`}
+                            </HeaderButton>
+                        )}
+                        <HeaderButton
+                            color={sv.magenta}
+                            onClick={handleRematchAll}
+                            disabled={isSaving || isProcessing || isRematching}
+                            icon={<RefreshCw size={12} className={isRematching ? 'animate-spin' : ''} />}
+                        >
+                            {isRematching ? 'Re-matching…' : 'Re-match all'}
+                        </HeaderButton>
+                    </>
+                }
+            />
 
             {/* Content */}
-            <div className="max-w-6xl mx-auto px-6 py-8 relative z-0 pb-24">
-                {error && (
-                    <div className="mb-6 px-4 py-3 border-2 border-red-500/50 bg-red-500/10 text-red-400 font-mono text-sm">
-                        &gt; ERROR: {error}
-                    </div>
-                )}
-
-                {job.error_message && (
-                    <div className="mb-6 px-4 py-3 border-2 border-yellow-500/30 bg-yellow-500/5 text-yellow-400 font-mono text-sm">
-                        &gt; {job.error_message}
-                    </div>
-                )}
-
+            <div className="max-w-[1280px] mx-auto px-6 py-8 relative z-0 pb-24">
+                {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
+                {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
                 {job.subtitle_status === 'failed' && !job.error_message?.includes('Subtitle') && (
-                    <div className="mb-6 px-4 py-3 border-2 border-yellow-500/30 bg-yellow-500/5 text-yellow-400 font-mono text-sm">
-                        &gt; SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
-                    </div>
+                    <SvNotice tone="warn">
+                        › SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
+                    </SvNotice>
                 )}
 
                 {/* Matched Section */}
                 {matchedTitles.length > 0 && (
-                    <div className="mb-8">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-2 h-2 bg-green-400" style={{ boxShadow: '0 0 8px rgba(34, 197, 94, 0.8)' }} />
-                            <h2 className="text-sm font-bold text-green-400 font-mono uppercase tracking-wider">
-                                AUTO-MATCHED [{matchedTitles.length}]
-                            </h2>
-                        </div>
-                        <div className="space-y-2">
+                    <div style={{ marginBottom: 32 }}>
+                        <SectionHeading color={sv.green} count={matchedTitles.length}>Auto-matched</SectionHeading>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {matchedTitles.map(title => (
                                 <TVTitleRow
                                     key={title.id}
@@ -536,14 +661,9 @@ function ReviewQueue() {
 
                 {/* Needs Review Section */}
                 {needsReviewTitles.length > 0 && (
-                    <div className="mb-8">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-2 h-2 bg-yellow-400" style={{ boxShadow: '0 0 8px rgba(250, 204, 21, 0.8)' }} />
-                            <h2 className="text-sm font-bold text-yellow-400 font-mono uppercase tracking-wider">
-                                NEEDS REVIEW [{needsReviewTitles.length}]
-                            </h2>
-                        </div>
-                        <div className="space-y-2">
+                    <div style={{ marginBottom: 32 }}>
+                        <SectionHeading color={sv.yellow} count={needsReviewTitles.length}>Needs review</SectionHeading>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {needsReviewTitles.map(title => (
                                 <TVTitleRow
                                     key={title.id}
@@ -565,28 +685,51 @@ function ReviewQueue() {
 
                 {/* Completed Section */}
                 {completedTitles.length > 0 && (
-                    <div className="mb-8">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-2 h-2 bg-slate-500" />
-                            <h2 className="text-sm font-bold text-slate-500 font-mono uppercase tracking-wider">
-                                PROCESSED [{completedTitles.length}]
-                            </h2>
-                        </div>
-                        <div className="space-y-2 opacity-50">
+                    <div style={{ marginBottom: 32 }}>
+                        <SectionHeading color={sv.inkFaint} count={completedTitles.length}>Processed</SectionHeading>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, opacity: 0.55 }}>
                             {completedTitles.map(title => (
-                                <div key={title.id} className="border border-slate-800 bg-navy-800/50 p-4 flex items-center gap-6 font-mono text-xs text-slate-600">
-                                    <span className="bg-slate-900 px-2 py-0.5">#{title.title_index}</span>
-                                    <span className="flex-1 truncate">{title.output_filename?.split(/[/\\]/).pop() || `Title ${title.title_index}`}</span>
+                                <div
+                                    key={title.id}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 24,
+                                        padding: '14px 16px',
+                                        background: sv.bg1,
+                                        border: `1px solid ${sv.line}`,
+                                        fontFamily: sv.mono,
+                                        fontSize: 11,
+                                        color: sv.inkFaint,
+                                    }}
+                                >
+                                    <SvBadge size="sm" tone={sv.inkFaint} dot={false}>#{title.title_index}</SvBadge>
+                                    <span
+                                        style={{
+                                            flex: 1,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                        }}
+                                    >
+                                        {title.output_filename?.split(/[/\\]/).pop() || `Title ${title.title_index}`}
+                                    </span>
                                     <span>{formatDuration(title.duration_seconds)}</span>
                                     <span>{title.matched_episode || '—'}</span>
-                                    <span className={title.state === 'completed' ? 'text-green-600' : 'text-red-600'}>{title.state.toUpperCase()}</span>
+                                    <SvBadge
+                                        size="sm"
+                                        state={title.state === 'completed' ? 'complete' : 'error'}
+                                        dot={false}
+                                    >
+                                        {title.state.toUpperCase()}
+                                    </SvBadge>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
             </div>
-        </div>
+        </SvAtmosphere>
     );
 }
 
@@ -624,119 +767,174 @@ function TVTitleRow({
     const alternatives = details.runner_ups || [];
 
     const borderColor = isConflict
-        ? 'border-yellow-500/40'
+        ? `${sv.yellow}66`
         : variant === 'matched'
-        ? 'border-green-500/20'
-        : 'border-cyan-500/20';
+        ? `${sv.green}33`
+        : `${sv.cyan}33`;
+
+    const confColor =
+        title.match_confidence >= MATCHING_CONFIG.AUTO_MATCH_THRESHOLD ? sv.green :
+        title.match_confidence >= MATCHING_CONFIG.MIN_CONFIDENCE ? sv.yellow : sv.red;
+
+    const sourceTone =
+        title.match_source === 'discdb' ? '#60a5fa' :
+        title.match_source === 'user' ? sv.green : sv.purple;
+    const sourceLabel =
+        title.match_source === 'discdb' ? 'DISCDB' :
+        title.match_source === 'user' ? 'MANUAL' : 'ENGRAM';
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`border-2 ${borderColor} bg-navy-800/80 overflow-hidden`}
-        >
-            <div className="p-4">
-                <div className="flex items-center gap-4">
+        <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
+            <SvPanel pad={16} accent={borderColor}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     {/* Expand button */}
                     <button
+                        type="button"
                         onClick={() => onToggleExpand(title.id)}
-                        className="text-slate-600 hover:text-cyan-400 transition-colors"
                         aria-expanded={isExpanded}
                         aria-label={isExpanded ? `Collapse details for title ${title.title_index}` : `Expand details for title ${title.title_index}`}
+                        style={{
+                            background: 'transparent',
+                            border: 0,
+                            color: sv.inkFaint,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            transition: 'color 120ms',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = sv.cyan; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = sv.inkFaint; }}
                     >
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
 
                     {/* Title index */}
-                    <span className="text-xs font-mono text-slate-500 bg-slate-800 px-2 py-0.5 flex-shrink-0">
+                    <SvBadge size="sm" tone={sv.inkDim} dot={false}>
                         #{title.title_index}
-                    </span>
+                    </SvBadge>
 
                     {/* Title name + conflict indicator */}
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3">
-                            <span className="text-sm font-mono text-cyan-300 truncate">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <span
+                                style={{
+                                    fontFamily: sv.mono,
+                                    fontSize: 13,
+                                    color: sv.cyanHi,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
                                 {title.output_filename ? title.output_filename.split(/[/\\]/).pop() : `Title ${title.title_index}`}
                             </span>
                             {isConflict && (
-                                <span className="text-xs font-mono text-yellow-400 bg-yellow-500/10 px-2 py-0.5 border border-yellow-500/30 flex-shrink-0" title={details.message || ''}>
-                                    FILE EXISTS
-                                </span>
+                                <SvBadge size="sm" state="warn" dot={false}>
+                                    File exists
+                                </SvBadge>
                             )}
                         </div>
-                        <div className="flex items-center gap-4 mt-1 text-xs font-mono text-slate-600">
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 16,
+                                marginTop: 4,
+                                fontFamily: sv.mono,
+                                fontSize: 11,
+                                color: sv.inkFaint,
+                            }}
+                        >
                             <span>{formatDuration(title.duration_seconds)}</span>
                             <span>{formatSize(title.file_size_bytes)}</span>
                         </div>
                     </div>
 
-                    {/* Confidence badge + match source */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/* Confidence + source */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                         {title.match_confidence > 0 ? (
-                            <span className={`text-xs font-mono font-bold px-2 py-1 ${
-                                title.match_confidence >= MATCHING_CONFIG.AUTO_MATCH_THRESHOLD
-                                    ? 'text-green-400 bg-green-500/10 border border-green-500/30'
-                                    : title.match_confidence >= MATCHING_CONFIG.MIN_CONFIDENCE
-                                    ? 'text-yellow-400 bg-yellow-500/10 border border-yellow-500/30'
-                                    : 'text-red-400 bg-red-500/10 border border-red-500/30'
-                            }`}>
+                            <SvBadge size="sm" tone={confColor} dot={false}>
                                 {Math.round(title.match_confidence * 100)}%
-                            </span>
+                            </SvBadge>
                         ) : (
-                            <span className="text-xs font-mono text-slate-600 bg-slate-800 px-2 py-1">&mdash;</span>
+                            <SvBadge size="sm" tone={sv.inkFaint} dot={false}>—</SvBadge>
                         )}
                         {FEATURES.DISCDB && title.match_source && (
-                            <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border ${
-                                title.match_source === 'discdb'
-                                    ? 'text-blue-400 border-blue-500/30 bg-blue-500/10'
-                                    : title.match_source === 'user'
-                                      ? 'text-green-400 border-green-500/30 bg-green-500/10'
-                                      : 'text-purple-400 border-purple-500/30 bg-purple-500/10'
-                            }`}>
-                                {title.match_source === 'discdb' ? 'DISCDB' : title.match_source === 'user' ? 'MANUAL' : 'ENGRAM'}
-                            </span>
+                            <SvBadge size="sm" tone={sourceTone}>{sourceLabel}</SvBadge>
                         )}
                     </div>
 
                     {/* Review reasons */}
                     {reasons.length > 0 && (
-                        <div className="flex gap-1 flex-shrink-0">
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                             {reasons.slice(0, 2).map((r, i) => (
-                                <span key={i} className="text-[10px] font-mono text-orange-400 bg-orange-500/10 px-1.5 py-0.5 border border-orange-500/20">
-                                    {r}
-                                </span>
+                                <SvBadge key={i} size="sm" tone="#fb923c">{r}</SvBadge>
                             ))}
                         </div>
                     )}
 
                     {/* Episode selector with season input */}
-                    <div className="w-52 flex-shrink-0 flex items-center gap-1">
-                        <label className="text-xs text-slate-400 font-mono" title="Season">S</label>
+                    <div style={{ width: 208, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span
+                            style={{
+                                fontFamily: sv.mono,
+                                fontSize: 11,
+                                color: sv.inkDim,
+                                letterSpacing: '0.10em',
+                            }}
+                            title="Season"
+                        >
+                            S
+                        </span>
                         <input
                             type="number"
                             min={1}
                             max={20}
                             value={season}
                             onChange={(e) => setSeason(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-                            className="w-10 bg-slate-800 border border-slate-600 rounded px-1 py-1 text-xs text-center font-mono text-slate-200"
                             title="Season number"
                             aria-label="Season number"
+                            style={{
+                                width: 40,
+                                padding: '4px 6px',
+                                background: sv.bg0,
+                                border: `1px solid ${sv.lineMid}`,
+                                color: sv.ink,
+                                fontFamily: sv.mono,
+                                fontSize: 11,
+                                textAlign: 'center',
+                                outline: 'none',
+                            }}
+                            onFocus={(e) => { e.currentTarget.style.borderColor = sv.cyan; }}
+                            onBlur={(e) => { e.currentTarget.style.borderColor = sv.lineMid; }}
                         />
                         <select
                             value={selectedEpisode}
                             onChange={(e) => onEpisodeChange(title.id, e.target.value)}
-                            className="flex-1 px-2 py-1.5 text-xs font-mono bg-navy-800 border border-slate-700 text-slate-300 focus:border-cyan-500/50 focus:outline-none"
                             aria-label={`Episode assignment for title ${title.title_index}`}
+                            style={{
+                                flex: 1,
+                                padding: '6px 8px',
+                                background: sv.bg0,
+                                border: `1px solid ${sv.lineMid}`,
+                                color: sv.ink,
+                                fontFamily: sv.mono,
+                                fontSize: 11,
+                                outline: 'none',
+                                cursor: 'pointer',
+                            }}
+                            onFocus={(e) => { e.currentTarget.style.borderColor = sv.cyan; }}
+                            onBlur={(e) => { e.currentTarget.style.borderColor = sv.lineMid; }}
                         >
-                            <option value="">Select episode...</option>
+                            <option value="">Select episode…</option>
                             {title.matched_episode && (
                                 <option value={title.matched_episode}>
-                                    {title.matched_episode} - Best ({Math.round(title.match_confidence * 100)}%)
+                                    {title.matched_episode} — Best ({Math.round(title.match_confidence * 100)}%)
                                 </option>
                             )}
                             {alternatives.map((alt, idx) => (
                                 <option key={`alt-${idx}`} value={alt.episode}>
-                                    {alt.episode} - Alt ({Math.round(alt.confidence * 100)}%)
+                                    {alt.episode} — Alt ({Math.round(alt.confidence * 100)}%)
                                 </option>
                             ))}
                             {(title.matched_episode || alternatives.length > 0) && (
@@ -749,131 +947,163 @@ function TVTitleRow({
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex gap-1 flex-shrink-0">
-                        <button
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <SvActionButton
+                            tone={titleAction === 'extra' ? 'cyan' : 'neutral'}
+                            size="sm"
                             onClick={() => onTitleAction(title.id, 'extra')}
-                            className={`px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border transition-all ${
-                                titleAction === 'extra'
-                                    ? 'text-cyan-400 border-cyan-500 bg-cyan-500/10'
-                                    : 'text-slate-500 border-slate-700 hover:text-cyan-400 hover:border-cyan-500/50'
-                            }`}
                             title="Keep as extra content"
                         >
-                            EXTRA
-                        </button>
-                        <button
+                            Extra
+                        </SvActionButton>
+                        <SvActionButton
+                            tone={titleAction === 'discard' ? 'red' : 'neutral'}
+                            size="sm"
                             onClick={() => onTitleAction(title.id, 'discard')}
-                            className={`px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border transition-all ${
-                                titleAction === 'discard'
-                                    ? 'text-red-400 border-red-500 bg-red-500/10'
-                                    : 'text-slate-500 border-slate-700 hover:text-red-400 hover:border-red-500/50'
-                            }`}
                             title="Discard this title"
+                            ariaLabel="Discard"
                         >
-                            <Trash2 className="w-3 h-3" />
-                        </button>
-                        <button
+                            <Trash2 size={11} />
+                        </SvActionButton>
+                        <SvActionButton
+                            tone={titleAction === 'skip' ? 'neutral' : 'neutral'}
+                            size="sm"
                             onClick={() => onTitleAction(title.id, 'skip')}
-                            className={`px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border transition-all ${
-                                titleAction === 'skip'
-                                    ? 'text-slate-300 border-slate-500 bg-slate-500/10'
-                                    : 'text-slate-500 border-slate-700 hover:text-slate-300 hover:border-slate-500'
-                            }`}
                             title="Skip for now"
+                            ariaLabel="Skip"
                         >
-                            <SkipForward className="w-3 h-3" />
-                        </button>
+                            <SkipForward size={11} />
+                        </SvActionButton>
                         {/* Source toggle — switch between DiscDB and Engram when both exist */}
                         {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
-                            <button
-                                data-testid="source-toggle"
-                                onClick={() => onRematch(
-                                    title.id,
-                                    title.match_source === 'discdb' ? 'engram' : 'discdb'
-                                )}
-                                className="px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border text-magenta-400 border-magenta-500/30 hover:border-magenta-400 hover:bg-magenta-500/10 transition-all"
+                            <SvActionButton
+                                tone="magenta"
+                                size="sm"
+                                onClick={() => onRematch(title.id, title.match_source === 'discdb' ? 'engram' : 'discdb')}
                                 title={`Switch to ${title.match_source === 'discdb' ? 'Engram' : 'DiscDB'} match`}
+                                ariaLabel="Toggle match source"
                             >
-                                <RefreshCw className="w-3 h-3" />
-                            </button>
+                                <RefreshCw size={11} />
+                            </SvActionButton>
                         )}
                         {/* Re-match button — only DiscDB source, no Engram data yet */}
                         {FEATURES.DISCDB && title.match_source === 'discdb' && !title.match_details && (
-                            <button
+                            <SvActionButton
+                                tone="magenta"
+                                size="sm"
                                 onClick={() => onRematch(title.id, 'engram')}
-                                className="px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border text-magenta-400 border-magenta-500/30 hover:border-magenta-400 hover:bg-magenta-500/10 transition-all"
                                 title="Re-match with Engram audio matching"
+                                ariaLabel="Re-match"
                             >
-                                <RefreshCw className="w-3 h-3" />
-                            </button>
+                                <RefreshCw size={11} />
+                            </SvActionButton>
                         )}
                     </div>
                 </div>
-            </div>
 
-            {/* Expanded details */}
-            {isExpanded && (
-                <div className="border-t border-slate-800 bg-navy-800/50 px-4 py-3">
-                    {isConflict && details.message && (
-                        <div className="mb-3 px-3 py-2 border border-yellow-500/30 bg-yellow-500/5 rounded text-xs font-mono text-yellow-400">
-                            {details.message}
+                {/* Expanded details */}
+                {isExpanded && (
+                    <div
+                        style={{
+                            marginTop: 16,
+                            paddingTop: 12,
+                            borderTop: `1px solid ${sv.line}`,
+                        }}
+                    >
+                        {isConflict && details.message && (
+                            <div style={{ marginBottom: 12 }}>
+                                <SvNotice tone="warn">{details.message}</SvNotice>
+                            </div>
+                        )}
+                        <div style={{ marginBottom: 12 }}>
+                            <SvLabel>Competing matches</SvLabel>
                         </div>
-                    )}
-                    <h4 className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-3">&gt; COMPETING MATCHES</h4>
 
-                    {/* Match stats */}
-                    {details.vote_count !== undefined && (
-                        <div className="flex gap-6 mb-3 text-xs font-mono">
-                            <span className="text-slate-500">Votes: <span className="text-slate-300">{details.vote_count}</span></span>
-                            <span className="text-slate-500">Coverage: <span className="text-slate-300">{Math.round((details.file_cov || 0) * 100)}%</span></span>
-                            <span className="text-slate-500">Gap: <span className="text-slate-300">{details.score_gap !== undefined ? `+${Math.round(details.score_gap * 100)}%` : '—'}</span></span>
-                        </div>
-                    )}
+                        {/* Match stats */}
+                        {details.vote_count !== undefined && (
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    gap: 24,
+                                    marginBottom: 12,
+                                    fontFamily: sv.mono,
+                                    fontSize: 11,
+                                    color: sv.inkFaint,
+                                }}
+                            >
+                                <span>Votes: <span style={{ color: sv.ink }}>{details.vote_count}</span></span>
+                                <span>Coverage: <span style={{ color: sv.ink }}>{Math.round((details.file_cov || 0) * 100)}%</span></span>
+                                <span>Gap: <span style={{ color: sv.ink }}>{details.score_gap !== undefined ? `+${Math.round(details.score_gap * 100)}%` : '—'}</span></span>
+                            </div>
+                        )}
 
-                    <table className="w-full text-xs font-mono">
-                        <thead>
-                            <tr className="text-slate-600 border-b border-slate-800">
-                                <th className="text-left py-1.5 pr-4">RANK</th>
-                                <th className="text-left py-1.5 pr-4">EPISODE</th>
-                                <th className="text-left py-1.5 pr-4">SCORE</th>
-                                <th className="text-left py-1.5 pr-4">VOTES</th>
-                                <th className="text-left py-1.5">ASSESSMENT</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {title.matched_episode && (
-                                <tr className="text-green-400/80 border-b border-slate-800/50">
-                                    <td className="py-1.5 pr-4">1st</td>
-                                    <td className="py-1.5 pr-4 font-bold">{title.matched_episode}</td>
-                                    <td className="py-1.5 pr-4">{Math.round(title.match_confidence * 100)}%</td>
-                                    <td className="py-1.5 pr-4">{details.vote_count || '?'}</td>
-                                    <td className="py-1.5">
-                                        <span className="text-green-400 bg-green-500/10 px-1.5 py-0.5 border border-green-500/20">BEST</span>
-                                    </td>
+                        <table style={{ width: '100%', fontFamily: sv.mono, fontSize: 11, borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: `1px solid ${sv.line}` }}>
+                                    {(['Rank', 'Episode', 'Score', 'Votes', 'Assessment'] as const).map((h) => (
+                                        <th
+                                            key={h}
+                                            style={{
+                                                textAlign: 'left',
+                                                padding: '6px 16px 6px 0',
+                                                color: sv.inkFaint,
+                                                letterSpacing: '0.18em',
+                                                textTransform: 'uppercase',
+                                                fontSize: 9,
+                                                fontWeight: 700,
+                                            }}
+                                        >
+                                            {h}
+                                        </th>
+                                    ))}
                                 </tr>
-                            )}
-                            {alternatives.map((alt, idx) => (
-                                <tr key={idx} className="text-slate-500 border-b border-slate-800/30">
-                                    <td className="py-1.5 pr-4">{idx + 2}{idx === 0 ? 'nd' : idx === 1 ? 'rd' : 'th'}</td>
-                                    <td className="py-1.5 pr-4">{alt.episode}</td>
-                                    <td className="py-1.5 pr-4">{Math.round(alt.confidence * 100)}%</td>
-                                    <td className="py-1.5 pr-4">{alt.vote_count || '?'}</td>
-                                    <td className="py-1.5">
-                                        <span className="text-slate-500 bg-slate-800 px-1.5 py-0.5 border border-slate-700">
-                                            {alt.confidence > MATCHING_CONFIG.MIN_CONFIDENCE ? 'POSSIBLE' : 'UNLIKELY'}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                            {!title.matched_episode && alternatives.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="py-3 text-slate-600 text-center">NO MATCH DATA AVAILABLE</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                            </thead>
+                            <tbody>
+                                {title.matched_episode && (
+                                    <tr style={{ borderBottom: `1px solid ${sv.line}` }}>
+                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green }}>1st</td>
+                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green, fontWeight: 700 }}>
+                                            {title.matched_episode}
+                                        </td>
+                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green }}>
+                                            {Math.round(title.match_confidence * 100)}%
+                                        </td>
+                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green }}>{details.vote_count || '?'}</td>
+                                        <td style={{ padding: '6px 0' }}>
+                                            <SvBadge size="sm" state="complete" dot={false}>BEST</SvBadge>
+                                        </td>
+                                    </tr>
+                                )}
+                                {alternatives.map((alt, idx) => (
+                                    <tr key={idx} style={{ borderBottom: `1px solid ${sv.line}`, color: sv.inkDim }}>
+                                        <td style={{ padding: '6px 16px 6px 0' }}>
+                                            {idx + 2}{idx === 0 ? 'nd' : idx === 1 ? 'rd' : 'th'}
+                                        </td>
+                                        <td style={{ padding: '6px 16px 6px 0' }}>{alt.episode}</td>
+                                        <td style={{ padding: '6px 16px 6px 0' }}>{Math.round(alt.confidence * 100)}%</td>
+                                        <td style={{ padding: '6px 16px 6px 0' }}>{alt.vote_count || '?'}</td>
+                                        <td style={{ padding: '6px 0' }}>
+                                            <SvBadge size="sm" tone={sv.inkDim} dot={false}>
+                                                {alt.confidence > MATCHING_CONFIG.MIN_CONFIDENCE ? 'POSSIBLE' : 'UNLIKELY'}
+                                            </SvBadge>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {!title.matched_episode && alternatives.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={5}
+                                            style={{ padding: '14px 0', textAlign: 'center', color: sv.inkFaint }}
+                                        >
+                                            No match data available
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </SvPanel>
         </motion.div>
     );
 }
