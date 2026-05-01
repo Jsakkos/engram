@@ -114,7 +114,11 @@ export function SvBarChart({
               height: `${clamped * 100}%`,
               background: `linear-gradient(180deg, ${color}, ${color}33)`,
               boxShadow: highlightLast && isLast ? `0 0 8px ${color}` : "none",
-              transition: "height 0.3s ease",
+              // Brief transition so the rightmost bar's "this just appeared"
+              // moment isn't a hard pop. The previous 0.3s ease was long
+              // enough to smear genuine throughput noise into a deceptively
+              // smooth curve as the rolling window shifted each second.
+              transition: "height 0.12s linear",
             }}
           />
         );

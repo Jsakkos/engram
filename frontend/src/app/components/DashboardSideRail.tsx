@@ -18,10 +18,14 @@ interface Props {
 const ACTIVE_JOB_STATES: JobState[] = ["identifying", "ripping", "matching", "organizing"];
 const TERMINAL_TITLE_STATES: TitleState[] = ["matched", "completed", "review", "failed"];
 
-/** Parse "4.5x (20.3 M/s)" → 20.3. Returns 0 for unparseable inputs. */
+/**
+ * Parse "4.5x (20.3 M/s)" → 20.3. Tolerates `M/s` and `MB/s` (with or
+ * without a leading multiplier prefix). Returns 0 for unparseable input
+ * — callers should treat 0 as "no signal" and skip rather than record.
+ */
 function parseMbPerSec(speedStr: string | undefined): number {
   if (!speedStr) return 0;
-  const m = speedStr.match(/([\d.]+)\s*M\/s/);
+  const m = speedStr.match(/([\d.]+)\s*M[Bb]?\/s/);
   return m ? parseFloat(m[1]) : 0;
 }
 
@@ -72,20 +76,33 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
 
   const mbPerSec = parseMbPerSec(focusedJob?.current_speed);
 
-  // Rolling 60-sample throughput buffer (one sample per second).
+  // Rolling 60-sample throughput buffer.
+  //
+  // Sampling design (gotchas to know about):
+  //   - The interval is set up ONCE per focused job. Putting `mbPerSec`
+  //     in the dependency array would tear down and recreate the interval
+  //     on every WebSocket update — usually multiple times per second —
+  //     and the 1 s tick would rarely actually fire. We use a ref to
+  //     read the latest value at tick time without re-running the effect.
+  //   - When `current_speed` is momentarily blank/non-matching (e.g. the
+  //     job just transitioned to matching), `parseMbPerSec` returns 0.
+  //     Recording 0 would dump a fake "no throughput" dip into the chart.
+  //     We hold the previous valid sample instead, so the chart shows
+  //     genuine variation rather than instrumentation gaps.
   const [throughput, setThroughput] = useState<number[]>([]);
-  const throughputRef = useRef(throughput);
-  throughputRef.current = throughput;
+  const mbPerSecRef = useRef(mbPerSec);
+  mbPerSecRef.current = mbPerSec;
 
   useEffect(() => {
+    if (focusedJob?.id == null) return;
+    let lastValid = 0;
     const id = setInterval(() => {
-      setThroughput((prev) => {
-        const next = [...prev, mbPerSec].slice(-60);
-        return next;
-      });
+      const v = mbPerSecRef.current;
+      if (v > 0) lastValid = v;
+      setThroughput((prev) => [...prev, lastValid].slice(-60));
     }, 1000);
     return () => clearInterval(id);
-  }, [mbPerSec]);
+  }, [focusedJob?.id]);
 
   // Reset throughput when focused job changes
   const focusedJobIdRef = useRef<number | null>(null);
