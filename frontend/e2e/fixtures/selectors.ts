@@ -58,11 +58,13 @@ export const SELECTORS = {
   trackItem: '[data-testid="sv-track-card"]',
   trackTitle: '[data-testid="sv-track-card"]',
 
-  // Per-track state indicators (text content is the signal)
-  trackStateRipping: 'text=/RIPPING|EXTRACTING/i',
-  trackStateMatching: 'text=/MATCHING/i',
-  trackStateMatched: 'text=/MATCHED/i',
-  trackStateQueued: 'text=/QUEUED/i',
+  // Per-track state indicators — scoped to the track card via data-state.
+  // Page-wide text matchers would also pick up "RIPPING" etc. from the
+  // job-level StateIndicator pill and the DashboardSideRail activity log.
+  trackStateRipping: '[data-testid="sv-track-card"][data-state="ripping"]',
+  trackStateMatching: '[data-testid="sv-track-card"][data-state="matching"]',
+  trackStateMatched: '[data-testid="sv-track-card"][data-state="matched"]',
+  trackStateQueued: '[data-testid="sv-track-card"][data-state="pending"]',
 
   // Track byte progress (e.g., "245.3 MB / 520.1 MB")
   trackByteProgress: 'text=/\\d+(\\.\\d+)?\\s*(MB|GB)\\s*\\/\\s*\\d+(\\.\\d+)?\\s*(MB|GB)/i',
