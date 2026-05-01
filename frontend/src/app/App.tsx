@@ -320,7 +320,10 @@ function MainDashboard() {
                 ? "minmax(0, 1.4fr) 320px"
                 : "1fr",
             gap: 14,
-            alignItems: "start",
+            // `stretch` lets the right rail's grid cell match the disc-card
+            // column's height. The Activity log panel already has `flex: 1`,
+            // so it consumes the slack and bottom-aligns with the card.
+            alignItems: "stretch",
           }}
         >
         <div style={{ minWidth: 0 }}>
