@@ -6,6 +6,14 @@ interface Props {
   values: number[];
   /** Explicit max for normalization. Defaults to Math.max(...values, epsilon). */
   max?: number;
+  /**
+   * Floor for auto-computed max — the chart will scale to at least this value
+   * even if all observed values are below it. Prevents the "flat wall of bars"
+   * visual when a series is steady (e.g. consistent 24 MB/s throughput would
+   * normalize every bar to 100% without a floor). Has no effect when `max`
+   * is set explicitly.
+   */
+  min?: number;
   /** Accent color. Defaults to cyan. */
   accent?: SvAccent;
   /** Total chart height in px. Defaults to 70 (matches handoff). */
@@ -32,6 +40,7 @@ interface Props {
 export function SvBarChart({
   values,
   max,
+  min,
   accent = "cyan",
   height = 70,
   gap = 4,
@@ -43,7 +52,10 @@ export function SvBarChart({
 }: Props) {
   const color = accentColor[accent];
   const observedMax = Math.max(...values, 0);
-  const safeMax = max ?? (observedMax > 0 ? observedMax : 1e-6);
+  // Auto-scale floor: when min is set, enforce it as a lower bound on the max
+  // so a steady stream below `min` doesn't normalize every bar to 100%.
+  const autoMax = min !== undefined ? Math.max(observedMax, min) : observedMax;
+  const safeMax = max ?? (autoMax > 0 ? autoMax : 1e-6);
 
   const wrap: CSSProperties = {
     display: "flex",
@@ -55,7 +67,9 @@ export function SvBarChart({
   };
 
   // Treat empty array OR all-zero series as empty — both render as no
-  // visible bars, so show the "no data" placeholder for either.
+  // visible bars, so show the "no data" placeholder for either. The `min`
+  // prop deliberately doesn't unmask zero data (a flat-zero series with a
+  // floor would still be misleading).
   const isEmpty = values.length === 0 || (max === undefined && observedMax === 0);
 
   if (isEmpty) {

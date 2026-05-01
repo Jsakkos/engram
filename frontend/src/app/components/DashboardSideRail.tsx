@@ -294,7 +294,12 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
           </span>
         </div>
         <div style={{ marginTop: 14 }}>
-          <SvBarChart values={throughput} accent="cyan" height={70} />
+          {/* min=50 MB/s anchors the chart's vertical scale: a steady ~24 MB/s
+              ripping stream renders as ~half-height bars (variance visible),
+              and spikes above 50 MB/s still grow the chart upward. Without
+              this floor, auto-scale collapses every bar to 100% of the
+              observed max, producing a flat wall of identical bars. */}
+          <SvBarChart values={throughput} accent="cyan" height={70} min={50} />
         </div>
       </SvPanel>
 

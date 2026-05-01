@@ -84,6 +84,27 @@ describe("Synapse v2 primitives — smoke", () => {
     expect(screen.getByTestId("t-chart-empty").getAttribute("data-empty")).toBe("true");
   });
 
+  it("SvBarChart respects `min` floor — steady values below min stay below 100%", () => {
+    // A steady stream at 24 should normalize against min=50, not against
+    // observedMax (24). Each bar should render at 24/50 = 0.48 — preventing
+    // the "flat wall of bars at 100%" visual bug.
+    render(<SvBarChart values={[24, 24, 24, 24]} min={50} testid="t-chart-floor" />);
+    const bars = screen.getAllByTestId("t-chart-floor-bar");
+    expect(bars).toHaveLength(4);
+    for (const bar of bars) {
+      expect(bar.getAttribute("data-value")).toBe("0.48");
+    }
+  });
+
+  it("SvBarChart `min` is a floor, not a cap — observed values above min still rescale up", () => {
+    // observedMax=80 > min=50, so the chart scales to 80, putting that bar
+    // at 1.0 (not clipped at min=50).
+    render(<SvBarChart values={[20, 40, 80, 60]} min={50} testid="t-chart-overflow" />);
+    const bars = screen.getAllByTestId("t-chart-overflow-bar");
+    expect(bars[2].getAttribute("data-value")).toBe("1");
+    expect(bars[0].getAttribute("data-value")).toBe("0.25");
+  });
+
   it("SvBadge maps state to data attribute", () => {
     render(<SvBadge state="ripping">RIPPING</SvBadge>);
     const el = screen.getByTestId("sv-badge");
