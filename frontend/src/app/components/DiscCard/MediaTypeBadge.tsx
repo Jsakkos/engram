@@ -44,7 +44,7 @@ export function MediaTypeBadge({ mediaType }: MediaTypeBadgeProps) {
                 fontWeight: 700,
                 letterSpacing: "0.20em",
                 color: v.color,
-                animation: v.pulse ? "svPulse 1.6s ease-in-out infinite" : undefined,
+                animation: v.pulse ? "svPulse 1.2s ease-in-out infinite" : undefined,
             }}
         >
             <Icon size={14} color={v.color} />

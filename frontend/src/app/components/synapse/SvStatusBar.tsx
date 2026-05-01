@@ -44,12 +44,11 @@ export function SvStatusBar({
     zIndex: 20,
   };
 
+  // Ambient-only band: WS / version / drive are already shown as left & right
+  // pills, so they're omitted here to avoid simultaneous duplication.
   const defaultTelemetry = [
     "UNIT 07",
     "SESSION 01",
-    isConnected ? "WS · CONNECTED" : "WS · OFFLINE",
-    `v${version}`,
-    driveLabel ?? "DRIVE READY",
     "BUFFER NOMINAL",
     "THERMAL NOMINAL",
     "CPU IDLE",

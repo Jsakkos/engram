@@ -45,11 +45,19 @@ const LEVEL_COLOR: Record<ActivityEvent["level"], string> = {
 };
 
 /**
- * Right-column dashboard side rail per Synapse v2 spec:
- * - Aggregate progress numeric (focused job)
- * - Byte progress + speed
- * - Throughput sparkline (rolling 60s window)
- * - Activity log (last 6 events derived from job/title state changes)
+ * Right-column dashboard side rail.
+ *
+ * Two render modes, switched on `stats.active`:
+ *   - **≤1 active job** → compact mode. The card already owns progress %, speed,
+ *     bytes, and track count, so the rail shrinks to a thin status strip plus
+ *     unique signals only: throughput sparkline + activity log.
+ *   - **≥2 active jobs** → aggregate mode. Restores the big % readout and
+ *     System · status grid, but switches the percent source from a single
+ *     focusedJob to titles-completed-across-all-jobs (so it isn't a literal
+ *     duplicate of any card).
+ *
+ * Throughput tracks the *focused* job in both modes (most-recently-started
+ * ripping/matching/organizing/identifying) — a uniquely rail-only signal.
  */
 export function DashboardSideRail({ jobs, titlesMap }: Props) {
   // Pick the focused job: first ripping, then matching, then identifying.
@@ -62,9 +70,6 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
     return null;
   }, [jobs]);
 
-  const focusedTitles = focusedJob ? titlesMap[focusedJob.id] ?? [] : [];
-  const totalBytes = focusedTitles.reduce((sum, t) => sum + (t.file_size_bytes || t.expected_size_bytes || 0), 0);
-  const ripped = focusedJob ? (focusedJob.progress_percent / 100) * totalBytes : 0;
   const mbPerSec = parseMbPerSec(focusedJob?.current_speed);
 
   // Rolling 60-sample throughput buffer (one sample per second).
@@ -156,16 +161,16 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
   }, [jobs, titlesMap]);
 
   const visibleEvents = events.slice(-6).reverse();
-  const aggregatePercent = focusedJob?.progress_percent ?? 0;
-  const aggregateRatio = aggregatePercent / 100;
 
-  // Aggregate stats across all jobs (always shown, even with no focused job)
+  // Aggregate stats across all jobs
   const stats = useMemo(() => {
     let active = 0;
     let completed = 0;
     let review = 0;
     let titlesDone = 0;
     let titlesTotal = 0;
+    let bytesRipped = 0;
+    let bytesTotal = 0;
     for (const j of jobs) {
       if (ACTIVE_JOB_STATES.includes(j.state)) active++;
       else if (j.state === "completed") completed++;
@@ -173,13 +178,24 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
       const ts = titlesMap[j.id] ?? [];
       titlesTotal += ts.length;
       titlesDone += ts.filter((t) => TERMINAL_TITLE_STATES.includes(t.state)).length;
+      if (ACTIVE_JOB_STATES.includes(j.state)) {
+        const jobTotal = ts.reduce((s, t) => s + (t.file_size_bytes || t.expected_size_bytes || 0), 0);
+        bytesTotal += jobTotal;
+        bytesRipped += (j.progress_percent / 100) * jobTotal;
+      }
     }
-    return { active, completed, review, titlesDone, titlesTotal };
+    return { active, completed, review, titlesDone, titlesTotal, bytesRipped, bytesTotal };
   }, [jobs, titlesMap]);
+
+  const aggregatePercent =
+    stats.titlesTotal > 0 ? (stats.titlesDone / stats.titlesTotal) * 100 : 0;
+  const aggregateRatio = aggregatePercent / 100;
+  const isAggregateMode = stats.active >= 2;
 
   return (
     <aside
       data-testid="sv-side-rail"
+      data-mode={isAggregateMode ? "aggregate" : "compact"}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -188,50 +204,80 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
         top: 14,
       }}
     >
-      {/* Aggregate progress */}
-      <SvPanel pad={18} testid="sv-side-rail-progress">
-        <SvLabel>Aggregate · progress</SvLabel>
-        <div
-          data-testid="sv-side-rail-numeric"
-          style={{
-            fontFamily: sv.display,
-            fontSize: 64,
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            color: sv.cyan,
-            textShadow: `0 0 24px ${sv.cyan}55`,
-            lineHeight: 1,
-            marginTop: 14,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {aggregatePercent.toFixed(0)}
-          <span style={{ fontSize: 28, marginLeft: 4, color: sv.cyanDim }}>%</span>
-        </div>
-        <div style={{ marginTop: 14 }}>
-          <SvBar value={aggregateRatio} height={4} />
-        </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginTop: 10,
-            fontFamily: sv.mono,
-            fontSize: 11,
-            letterSpacing: "0.06em",
-            color: sv.inkDim,
-          }}
-        >
-          <span data-testid="sv-side-rail-bytes">
-            {formatBytes(ripped)} / {formatBytes(totalBytes)}
-          </span>
-          <span data-testid="sv-side-rail-speed" style={{ color: mbPerSec > 0 ? sv.cyanHi : sv.inkFaint }}>
-            {mbPerSec > 0 ? `${mbPerSec.toFixed(1)} MB/s` : "idle"}
-          </span>
-        </div>
-      </SvPanel>
+      {isAggregateMode ? (
+        // ── Aggregate mode (2+ jobs): titles-based percent across all active jobs ─
+        <SvPanel pad={18} testid="sv-side-rail-progress">
+          <SvLabel>Aggregate · {stats.active} jobs</SvLabel>
+          <div
+            data-testid="sv-side-rail-numeric"
+            style={{
+              fontFamily: sv.display,
+              fontSize: 64,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              color: sv.cyan,
+              textShadow: `0 0 24px ${sv.cyan}55`,
+              lineHeight: 1,
+              marginTop: 14,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {aggregatePercent.toFixed(0)}
+            <span style={{ fontSize: 28, marginLeft: 4, color: sv.cyanDim }}>%</span>
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <SvBar value={aggregateRatio} height={4} />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: 10,
+              fontFamily: sv.mono,
+              fontSize: 11,
+              letterSpacing: "0.06em",
+              color: sv.inkDim,
+            }}
+          >
+            <span data-testid="sv-side-rail-tracks">
+              {stats.titlesDone}/{stats.titlesTotal} tracks
+            </span>
+            <span data-testid="sv-side-rail-bytes">
+              {formatBytes(stats.bytesRipped)} / {formatBytes(stats.bytesTotal)}
+            </span>
+          </div>
+        </SvPanel>
+      ) : (
+        // ── Compact mode (0–1 jobs): thin status strip, no duplicated facts ──
+        <SvPanel pad={14} testid="sv-side-rail-active-strip">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <SvLabel>{stats.active === 1 ? "Active · operation" : "Idle · awaiting"}</SvLabel>
+            <span
+              style={{
+                fontFamily: sv.mono,
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: "0.20em",
+                textTransform: "uppercase",
+                color: stats.active === 1 ? sv.cyanHi : sv.inkFaint,
+                textShadow: stats.active === 1 ? `0 0 8px ${sv.cyan}66` : undefined,
+              }}
+              data-testid="sv-side-rail-active-count"
+            >
+              {stats.active === 1 ? "› streaming" : "› no signal"}
+            </span>
+          </div>
+        </SvPanel>
+      )}
 
-      {/* Throughput sparkline */}
+      {/* Throughput sparkline — unique to the rail (never on the card) */}
       <SvPanel pad={18} testid="sv-side-rail-throughput">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <SvLabel>Throughput · 60s</SvLabel>
@@ -252,25 +298,26 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
         </div>
       </SvPanel>
 
-      {/* Aggregate stats */}
-      <SvPanel pad={18} testid="sv-side-rail-stats">
-        <SvLabel>System · status</SvLabel>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-            marginTop: 14,
-          }}
-        >
-          <Stat label="Active" value={stats.active} accent={sv.magenta} />
-          <Stat label="Done" value={stats.completed} accent={sv.green} />
-          <Stat label="Review" value={stats.review} accent={sv.yellow} />
-          <Stat label="Tracks" value={`${stats.titlesDone}/${stats.titlesTotal}`} accent={sv.cyan} />
-        </div>
-      </SvPanel>
+      {/* System · status — only in aggregate mode (2+ jobs) */}
+      {isAggregateMode && (
+        <SvPanel pad={18} testid="sv-side-rail-stats">
+          <SvLabel>System · status</SvLabel>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 10,
+              marginTop: 14,
+            }}
+          >
+            <Stat label="Active" value={stats.active} accent={sv.magenta} />
+            <Stat label="Done" value={stats.completed} accent={sv.green} />
+            <Stat label="Review" value={stats.review} accent={sv.yellow} />
+          </div>
+        </SvPanel>
+      )}
 
-      {/* Activity log */}
+      {/* Activity log — unique to the rail */}
       <SvPanel pad={18} testid="sv-side-rail-log" style={{ flex: 1, minHeight: 180 }}>
         <SvLabel>Activity · log</SvLabel>
         <div

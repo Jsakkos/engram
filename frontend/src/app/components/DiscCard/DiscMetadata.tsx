@@ -13,6 +13,12 @@ interface DiscMetadataProps {
 }
 
 export function DiscMetadata({ title, subtitle, discLabel }: DiscMetadataProps) {
+    // Suppress the standalone disc-label caret line when the subtitle already
+    // contains it (e.g. subtitle "TV · FOR_ALL_MANKIND_S1_D1" + discLabel
+    // "FOR_ALL_MANKIND_S1_D1" → render only the subtitle).
+    const showDiscLabel =
+        !!discLabel && !(subtitle && subtitle.toUpperCase().includes(discLabel.toUpperCase()));
+
     return (
         <div style={{ flex: 1, minWidth: 0 }} data-testid="sv-disc-metadata">
             <h3
@@ -48,7 +54,7 @@ export function DiscMetadata({ title, subtitle, discLabel }: DiscMetadataProps) 
                     {subtitle}
                 </p>
             )}
-            {discLabel && (
+            {showDiscLabel && (
                 <motion.p
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
