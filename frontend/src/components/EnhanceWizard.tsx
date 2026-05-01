@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
@@ -12,6 +12,7 @@ import {
   Film,
   Save,
 } from "lucide-react";
+import { SvActionButton, SvLabel, SvNotice, SvPanel, sv } from "../app/components/synapse";
 
 interface ContributionJob {
   id: number;
@@ -65,6 +66,29 @@ interface StepDef {
   icon: React.ReactNode;
 }
 
+const inputStyle: CSSProperties = {
+  width: "100%",
+  padding: "8px 12px",
+  background: sv.bg0,
+  border: `1px solid ${sv.lineMid}`,
+  color: sv.ink,
+  fontFamily: sv.mono,
+  fontSize: 12,
+  letterSpacing: "0.04em",
+  outline: "none",
+  transition: "border-color 120ms, box-shadow 120ms",
+};
+
+function focusInput(e: React.FocusEvent<HTMLInputElement>) {
+  e.currentTarget.style.borderColor = sv.cyan;
+  e.currentTarget.style.boxShadow = `0 0 8px ${sv.cyan}33`;
+}
+
+function blurInput(e: React.FocusEvent<HTMLInputElement>) {
+  e.currentTarget.style.borderColor = sv.lineMid;
+  e.currentTarget.style.boxShadow = "none";
+}
+
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -97,23 +121,22 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
 
   const allSteps: StepDef[] = useMemo(() => {
     const steps: StepDef[] = [
-      { id: "upc", label: "UPC", icon: <Barcode className="w-3.5 h-3.5" /> },
+      { id: "upc", label: "UPC", icon: <Barcode size={14} /> },
     ];
     if (lookupResult && lookupResult.asins.length > 0) {
-      steps.push({ id: "asin", label: "ASIN", icon: <Tag className="w-3.5 h-3.5" /> });
+      steps.push({ id: "asin", label: "ASIN", icon: <Tag size={14} /> });
     }
     if (lookupResult && lookupResult.images.length > 0) {
-      steps.push({ id: "cover", label: "Cover", icon: <Image className="w-3.5 h-3.5" /> });
+      steps.push({ id: "cover", label: "Cover", icon: <Image size={14} /> });
     }
     if (extras.length > 0) {
-      steps.push({ id: "extras", label: "Extras", icon: <Film className="w-3.5 h-3.5" /> });
+      steps.push({ id: "extras", label: "Extras", icon: <Film size={14} /> });
     }
-    steps.push({ id: "save", label: "Save", icon: <Save className="w-3.5 h-3.5" /> });
+    steps.push({ id: "save", label: "Save", icon: <Save size={14} /> });
     return steps;
   }, [lookupResult, extras.length]);
 
   const [currentStepId, setCurrentStepId] = useState<StepId>("upc");
-
   const currentIdx = allSteps.findIndex((s) => s.id === currentStepId);
 
   useEffect(() => {
@@ -123,15 +146,10 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
   }, [allSteps, currentIdx]);
 
   const goNext = () => {
-    if (currentIdx < allSteps.length - 1) {
-      setCurrentStepId(allSteps[currentIdx + 1].id);
-    }
+    if (currentIdx < allSteps.length - 1) setCurrentStepId(allSteps[currentIdx + 1].id);
   };
-
   const goBack = () => {
-    if (currentIdx > 0) {
-      setCurrentStepId(allSteps[currentIdx - 1].id);
-    }
+    if (currentIdx > 0) setCurrentStepId(allSteps[currentIdx - 1].id);
   };
 
   const handleLookup = async () => {
@@ -184,7 +202,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
         extra_descriptions: Object.fromEntries(
           Object.entries(extraDescriptions)
             .filter(([, v]) => v.trim())
-            .map(([k, v]) => [k, v.trim()])
+            .map(([k, v]) => [k, v.trim()]),
         ),
       };
       const res = await fetch(`/api/contributions/${job.id}/enhance`, {
@@ -205,41 +223,55 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
   };
 
   const confidenceColor = (c: string) => {
-    if (c === "high") return "text-green-400";
-    if (c === "low") return "text-amber-400";
-    return "text-red-400";
+    if (c === "high") return sv.green;
+    if (c === "low") return sv.amber;
+    return sv.red;
   };
 
   const confidenceLabel = (c: string) => {
-    if (c === "high") return "High Match";
-    if (c === "low") return "Low Match";
-    return "No Match";
+    if (c === "high") return "High match";
+    if (c === "low") return "Low match";
+    return "No match";
   };
 
   return (
-    <div className="bg-navy-900/50 border border-navy-600/50 p-5 font-mono">
+    <SvPanel pad={20}>
       {/* Step indicator */}
-      <div className="flex items-center gap-1 mb-6 overflow-x-auto">
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 24, overflowX: "auto" }}>
         {allSteps.map((step, i) => {
           const isCurrent = step.id === currentStepId;
           const isCompleted = i < currentIdx;
+          const fg = isCurrent ? sv.cyan : isCompleted ? `${sv.cyan}99` : sv.inkFaint;
+          const border = isCurrent ? `${sv.cyan}66` : isCompleted ? `${sv.cyan}33` : sv.line;
+          const bg = isCurrent ? `${sv.cyan}10` : "transparent";
           return (
-            <div key={step.id} className="flex items-center gap-1">
+            <div key={step.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
               {i > 0 && (
                 <div
-                  className={`w-6 h-px ${isCompleted ? "bg-cyan-500/50" : "bg-navy-600"}`}
+                  style={{
+                    width: 24,
+                    height: 1,
+                    background: isCompleted ? `${sv.cyan}66` : sv.line,
+                  }}
                 />
               )}
               <div
-                className={`flex items-center gap-1.5 px-2.5 py-1text-xs transition-colors ${
-                  isCurrent
-                    ? "text-cyan-400 bg-cyan-500/10 border border-cyan-500/30"
-                    : isCompleted
-                      ? "text-cyan-400/60 border border-cyan-500/15"
-                      : "text-slate-600 border border-navy-600"
-                }`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 10px",
+                  background: bg,
+                  border: `1px solid ${border}`,
+                  color: fg,
+                  fontFamily: sv.mono,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                }}
               >
-                {isCompleted ? <Check className="w-3 h-3" /> : step.icon}
+                {isCompleted ? <Check size={12} /> : step.icon}
                 {step.label}
               </div>
             </div>
@@ -255,156 +287,203 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.15 }}
-          className="min-h-[180px]"
+          style={{ minHeight: 180 }}
         >
-          {/* Step 1: UPC */}
           {currentStepId === "upc" && (
             <div>
-              <h3 className="text-sm font-bold text-cyan-400 mb-3">UPC CODE LOOKUP</h3>
-              <div className="flex items-end gap-3 mb-4">
-                <div className="flex-1 max-w-sm">
-                  <label className="text-xs text-slate-500 block mb-1">UPC / Barcode</label>
+              <SvLabel>UPC code lookup</SvLabel>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginTop: 12, marginBottom: 12 }}>
+                <div style={{ flex: 1, maxWidth: 360 }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: 6,
+                      fontFamily: sv.mono,
+                      fontSize: 10,
+                      letterSpacing: "0.20em",
+                      textTransform: "uppercase",
+                      color: sv.inkFaint,
+                    }}
+                  >
+                    UPC / Barcode
+                  </label>
                   <input
                     type="text"
                     value={upc}
                     onChange={(e) => setUpc(e.target.value)}
                     placeholder="e.g., 883929123456"
-                    className="w-full px-3 py-1.5 bg-navy-800 border border-navy-600text-sm text-slate-300 font-mono placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none"
+                    style={inputStyle}
+                    onFocus={focusInput}
+                    onBlur={blurInput}
                     onKeyDown={(e) => e.key === "Enter" && handleLookup()}
                   />
                 </div>
-                <button
+                <SvActionButton
+                  tone="cyan"
                   onClick={handleLookup}
                   disabled={lookupLoading || !upc.trim()}
-                  className="px-4 py-1.5 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  {lookupLoading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Search className="w-3.5 h-3.5" />
-                  )}
+                  {lookupLoading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
                   Lookup
-                </button>
+                </SvActionButton>
               </div>
 
               {lookupError && (
-                <p className="text-xs text-red-400 mb-3">{lookupError}</p>
+                <div style={{ marginTop: 12 }}>
+                  <SvNotice tone="error">{lookupError}</SvNotice>
+                </div>
               )}
 
               {lookupResult && (
-                <div className="border border-navy-600/50p-3 bg-navy-800/30 space-y-1.5">
-                  {lookupResult.product_title && (
-                    <p className="text-sm text-slate-300">{lookupResult.product_title}</p>
-                  )}
-                  {lookupResult.brand && (
-                    <p className="text-xs text-slate-500">Brand: {lookupResult.brand}</p>
-                  )}
-                  <p
-                    className={`text-xs font-bold ${confidenceColor(lookupResult.match_confidence)}`}
-                  >
-                    {confidenceLabel(lookupResult.match_confidence)}
-                  </p>
-                  {lookupResult.release_date && (
-                    <p className="text-xs text-slate-500">
-                      Release: {lookupResult.release_date}
+                <SvPanel pad={12} style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {lookupResult.product_title && (
+                      <p style={{ margin: 0, fontFamily: sv.mono, fontSize: 13, color: sv.ink }}>
+                        {lookupResult.product_title}
+                      </p>
+                    )}
+                    {lookupResult.brand && (
+                      <p style={{ margin: 0, fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>
+                        Brand: {lookupResult.brand}
+                      </p>
+                    )}
+                    <p
+                      style={{
+                        margin: 0,
+                        fontFamily: sv.mono,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: confidenceColor(lookupResult.match_confidence),
+                      }}
+                    >
+                      {confidenceLabel(lookupResult.match_confidence)}
                     </p>
-                  )}
-                </div>
+                    {lookupResult.release_date && (
+                      <p style={{ margin: 0, fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>
+                        Release: {lookupResult.release_date}
+                      </p>
+                    )}
+                  </div>
+                </SvPanel>
               )}
             </div>
           )}
 
-          {/* Step 2: ASIN */}
           {currentStepId === "asin" && lookupResult && (
             <div>
-              <h3 className="text-sm font-bold text-cyan-400 mb-3">SELECT ASIN</h3>
-              <div className="space-y-2">
-                {lookupResult.asins.map((asin) => (
-                  <label
-                    key={asin}
-                    className={`flex items-center gap-3 px-3 py-2border cursor-pointer transition-colors ${
-                      selectedAsin === asin
-                        ? "border-cyan-500/30 bg-cyan-500/5 text-slate-300"
-                        : "border-navy-600 bg-navy-800/30 text-slate-400 hover:border-navy-500"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="asin"
-                      value={asin}
-                      checked={selectedAsin === asin}
-                      onChange={() => setSelectedAsin(asin)}
-                      className="accent-cyan-400"
-                    />
-                    <span className="text-sm">{asin}</span>
-                  </label>
-                ))}
+              <SvLabel>Select ASIN</SvLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                {lookupResult.asins.map((asin) => {
+                  const checked = selectedAsin === asin;
+                  return (
+                    <label
+                      key={asin}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "10px 12px",
+                        background: checked ? `${sv.cyan}10` : sv.bg1,
+                        border: `1px solid ${checked ? sv.cyan : sv.line}`,
+                        color: checked ? sv.ink : sv.inkDim,
+                        cursor: "pointer",
+                        fontFamily: sv.mono,
+                        fontSize: 12,
+                        transition: "background 120ms, border-color 120ms",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="asin"
+                        value={asin}
+                        checked={checked}
+                        onChange={() => setSelectedAsin(asin)}
+                        style={{ accentColor: sv.cyan }}
+                      />
+                      <span>{asin}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Step 3: Cover Art */}
           {currentStepId === "cover" && lookupResult && (
             <div>
-              <h3 className="text-sm font-bold text-cyan-400 mb-3">COVER ART</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                {lookupResult.images.slice(0, 4).map((url) => (
-                  <button
-                    key={url}
-                    onClick={() => {
-                      setSelectedImage(url);
-                      setCoverSaved(false);
-                    }}
-                    className={`aspect-[2/3]border-2 overflow-hidden transition-colors ${
-                      selectedImage === url
-                        ? "border-cyan-400"
-                        : "border-navy-600 hover:border-navy-500"
-                    }`}
-                  >
-                    <img
-                      src={url}
-                      alt="Cover"
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
-                ))}
+              <SvLabel>Cover art</SvLabel>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: 12,
+                  marginTop: 12,
+                  marginBottom: 12,
+                }}
+              >
+                {lookupResult.images.slice(0, 4).map((url) => {
+                  const selected = selectedImage === url;
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => {
+                        setSelectedImage(url);
+                        setCoverSaved(false);
+                      }}
+                      style={{
+                        aspectRatio: "2 / 3",
+                        background: sv.bg0,
+                        border: `2px solid ${selected ? sv.cyan : sv.line}`,
+                        boxShadow: selected ? `0 0 12px ${sv.cyan}55` : "none",
+                        padding: 0,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                        transition: "border-color 120ms, box-shadow 120ms",
+                      }}
+                    >
+                      <img src={url} alt="Cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    </button>
+                  );
+                })}
               </div>
               {selectedImage && (
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleFetchCover}
-                    disabled={coverSaving || coverSaved}
-                    className="px-4 py-1.5 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {coverSaving ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : coverSaved ? (
-                      <Check className="w-3.5 h-3.5" />
-                    ) : (
-                      <Image className="w-3.5 h-3.5" />
-                    )}
-                    {coverSaved ? "Saved!" : "Fetch Cover"}
-                  </button>
-                </div>
+                <SvActionButton tone="cyan" onClick={handleFetchCover} disabled={coverSaving || coverSaved}>
+                  {coverSaving ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : coverSaved ? (
+                    <Check size={12} />
+                  ) : (
+                    <Image size={12} />
+                  )}
+                  {coverSaved ? "Saved" : "Fetch cover"}
+                </SvActionButton>
               )}
             </div>
           )}
 
-          {/* Step 4: Extras */}
           {currentStepId === "extras" && (
             <div>
-              <h3 className="text-sm font-bold text-cyan-400 mb-3">ANNOTATE EXTRAS</h3>
-              <div className="space-y-3">
+              <SvLabel>Annotate extras</SvLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
                 {extras.map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center gap-3 border border-navy-600/50p-3 bg-navy-800/30"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "10px 12px",
+                      background: sv.bg1,
+                      border: `1px solid ${sv.line}`,
+                    }}
                   >
-                    <div className="flex-shrink-0">
-                      <span className="text-xs text-slate-500">
+                    <div style={{ flexShrink: 0 }}>
+                      <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint }}>
                         #{t.title_index}
                       </span>
-                      <span className="text-xs text-slate-600 ml-2">
+                      <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint, marginLeft: 8 }}>
                         {formatDuration(t.duration_seconds)}
                       </span>
                     </div>
@@ -414,8 +493,10 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                       onChange={(e) =>
                         setExtraDescriptions((prev) => ({ ...prev, [t.id]: e.target.value }))
                       }
-                      placeholder="Describe this extra..."
-                      className="flex-1 px-3 py-1.5 bg-navy-800 border border-navy-600text-sm text-slate-300 font-mono placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none"
+                      placeholder="Describe this extra…"
+                      style={{ ...inputStyle, flex: 1 }}
+                      onFocus={focusInput}
+                      onBlur={blurInput}
                     />
                   </div>
                 ))}
@@ -423,88 +504,96 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
             </div>
           )}
 
-          {/* Final: Save */}
           {currentStepId === "save" && (
             <div>
-              <h3 className="text-sm font-bold text-cyan-400 mb-3">SAVE ENHANCEMENT</h3>
-              <div className="border border-navy-600/50p-3 bg-navy-800/30 space-y-2 mb-4">
-                <p className="text-xs text-slate-500">Summary</p>
-                <div className="space-y-1 text-sm text-slate-300">
-                  {upc.trim() && <p>UPC: {upc.trim()}</p>}
-                  {selectedAsin && <p>ASIN: {selectedAsin}</p>}
-                  {coverSaved && <p>Cover art saved</p>}
+              <SvLabel>Save enhancement</SvLabel>
+              <SvPanel pad={12} style={{ marginTop: 12, marginBottom: 12 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    fontFamily: sv.mono,
+                    fontSize: 10,
+                    letterSpacing: "0.18em",
+                    textTransform: "uppercase",
+                    color: sv.inkFaint,
+                  }}
+                >
+                  Summary
+                </p>
+                <div
+                  style={{
+                    marginTop: 8,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    fontFamily: sv.mono,
+                    fontSize: 12,
+                    color: sv.ink,
+                  }}
+                >
+                  {upc.trim() && <p style={{ margin: 0 }}>UPC: {upc.trim()}</p>}
+                  {selectedAsin && <p style={{ margin: 0 }}>ASIN: {selectedAsin}</p>}
+                  {coverSaved && <p style={{ margin: 0 }}>Cover art saved</p>}
                   {Object.values(extraDescriptions).filter((v) => v.trim()).length > 0 && (
-                    <p>
-                      {Object.values(extraDescriptions).filter((v) => v.trim()).length} extra(s)
-                      annotated
+                    <p style={{ margin: 0 }}>
+                      {Object.values(extraDescriptions).filter((v) => v.trim()).length} extra(s) annotated
                     </p>
                   )}
                   {!upc.trim() &&
                     !selectedAsin &&
                     !coverSaved &&
                     Object.values(extraDescriptions).filter((v) => v.trim()).length === 0 && (
-                      <p className="text-slate-500">No enhancements to save</p>
+                      <p style={{ margin: 0, color: sv.inkFaint }}>No enhancements to save</p>
                     )}
                 </div>
-              </div>
+              </SvPanel>
 
-              {saveError && <p className="text-xs text-red-400 mb-3">{saveError}</p>}
+              {saveError && (
+                <div style={{ marginBottom: 12 }}>
+                  <SvNotice tone="error">{saveError}</SvNotice>
+                </div>
+              )}
 
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-5 py-2 text-xs font-bold uppercase text-cyan-400 border border-cyan-500/30hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-2"
-              >
-                {saving ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Save className="w-3.5 h-3.5" />
-                )}
-                Save Enhancement
-              </button>
+              <SvActionButton tone="cyan" size="lg" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save enhancement
+              </SvActionButton>
             </div>
           )}
         </motion.div>
       </AnimatePresence>
 
       {/* Navigation */}
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-navy-600/50">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginTop: 24,
+          paddingTop: 16,
+          borderTop: `1px solid ${sv.line}`,
+        }}
+      >
         <div>
           {currentIdx > 0 ? (
-            <button
-              onClick={goBack}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-400 border border-navy-600hover:text-slate-300 hover:border-navy-500 flex items-center gap-1"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" /> Back
-            </button>
+            <SvActionButton tone="neutral" onClick={goBack}>
+              <ChevronLeft size={12} /> Back
+            </SvActionButton>
           ) : (
-            <button
-              onClick={onCancel}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-500 border border-navy-600hover:text-slate-400 hover:border-navy-500"
-            >
-              Cancel
-            </button>
+            <SvActionButton tone="neutral" onClick={onCancel}>Cancel</SvActionButton>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {currentStepId === "upc" && (
-            <button
-              onClick={goNext}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-slate-400 border border-navy-600hover:text-slate-300 hover:border-navy-500"
-            >
-              Skip Lookup
-            </button>
+            <SvActionButton tone="neutral" onClick={goNext}>Skip lookup</SvActionButton>
           )}
           {currentStepId !== "save" && (
-            <button
-              onClick={goNext}
-              className="px-3 py-1.5 text-xs font-bold uppercase text-magenta-400 border border-magenta-500/30hover:bg-magenta-500/10 flex items-center gap-1"
-            >
-              Next <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+            <SvActionButton tone="magenta" onClick={goNext}>
+              Next <ChevronRight size={12} />
+            </SvActionButton>
           )}
         </div>
       </div>
-    </div>
+    </SvPanel>
   );
 }

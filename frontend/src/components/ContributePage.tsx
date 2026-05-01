@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  ArrowLeft,
   Upload,
   SkipForward,
   Package,
@@ -20,6 +19,17 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "../app/components/ui/tooltip";
+import {
+  SvActionButton,
+  SvAtmosphere,
+  SvBadge,
+  type SvBadgeState,
+  SvLabel,
+  SvNotice,
+  SvPageHeader,
+  SvPanel,
+  sv,
+} from "../app/components/synapse";
 import EnhanceWizard, { type TitleInfo } from "./EnhanceWizard";
 
 interface ContributionJob {
@@ -64,7 +74,26 @@ function releaseGroupColor(id: string): string {
   return `hsl(${hue}, 70%, 60%)`;
 }
 
+const STATUS_BADGE: Record<ContributionJob["export_status"], { state: SvBadgeState; label: string }> = {
+  submitted: { state: "matched",  label: "SUBMITTED" },
+  exported:  { state: "complete", label: "EXPORTED"  },
+  skipped:   { state: "queued",   label: "SKIPPED"   },
+  pending:   { state: "warn",     label: "PENDING"   },
+};
+
+const TYPE_TONE: Record<string, string> = {
+  movie: sv.magenta,
+  tv: sv.cyan,
+};
+
+const SOURCE_TONE: Record<string, string> = {
+  discdb: "#60a5fa",
+  engram: sv.purple,
+  user: sv.green,
+};
+
 export default function ContributePage() {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<ContributionJob[]>([]);
   const [stats, setStats] = useState<ContributionStats>({
     pending: 0,
@@ -301,98 +330,129 @@ export default function ContributePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-navy-900 circuit-bg flex items-center justify-center">
-        <div className="text-cyan-400 font-mono animate-pulse">Loading...</div>
-      </div>
+      <SvAtmosphere>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span
+            style={{
+              fontFamily: sv.mono,
+              fontSize: 12,
+              letterSpacing: "0.20em",
+              textTransform: "uppercase",
+              color: sv.cyan,
+              animation: "svPulse 1.2s ease-in-out infinite",
+            }}
+          >
+            › LOADING
+          </span>
+        </div>
+      </SvAtmosphere>
     );
   }
 
   // Show setup prompt when contributions are disabled
   if (config && !config.discdb_contributions_enabled) {
     return (
-      <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-slate-500 hover:text-cyan-400 font-mono text-sm mb-8 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" /> Dashboard
-          </Link>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center py-16"
-          >
-            <Package className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-cyan-400 font-mono mb-3">
-              CONTRIBUTIONS DISABLED
-            </h2>
-            <p className="text-slate-400 font-mono text-sm max-w-lg mx-auto mb-6">
-              Help grow TheDiscDB by sharing disc metadata from your rips. Enable contributions in
-              Settings to get started.
-            </p>
-            <p className="text-slate-500 font-mono text-xs">
-              Go to Settings &gt; TheDiscDB Contributions to enable
-            </p>
-          </motion.div>
+      <SvAtmosphere>
+        <SvPageHeader
+          title="Contribute to TheDiscDB"
+          onBack={() => navigate("/")}
+        />
+        <div style={{ maxWidth: 720, margin: "0 auto", padding: "64px 24px" }}>
+          <SvPanel pad={32}>
+            <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+              <Package size={56} color={sv.inkFaint} />
+              <h2
+                style={{
+                  margin: 0,
+                  fontFamily: sv.display,
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: sv.cyanHi,
+                  textShadow: `0 0 12px ${sv.cyan}55`,
+                }}
+              >
+                Contributions disabled
+              </h2>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: sv.mono,
+                  fontSize: 12,
+                  letterSpacing: "0.06em",
+                  color: sv.inkDim,
+                  maxWidth: 480,
+                  lineHeight: 1.5,
+                }}
+              >
+                Help grow TheDiscDB by sharing disc metadata from your rips. Enable contributions in
+                Settings to get started.
+              </p>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: sv.mono,
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: sv.inkFaint,
+                }}
+              >
+                › Settings → TheDiscDB Contributions
+              </p>
+            </div>
+          </SvPanel>
         </div>
-      </div>
+      </SvAtmosphere>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-navy-900 circuit-bg relative overflow-hidden">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 pb-20">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <Link
-              to="/"
-              className="inline-flex items-center gap-2 text-slate-500 hover:text-cyan-400 font-mono text-sm mb-3 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" /> Dashboard
-            </Link>
-            <h1 className="text-2xl font-bold text-cyan-400 font-mono tracking-wider">
-              CONTRIBUTE TO THEDISCDB
-            </h1>
-            <p className="text-slate-500 font-mono text-xs mt-1">
-              Share disc metadata to help others identify their discs automatically
-            </p>
-          </div>
+  // Bulk action: pre-compute group buttons
+  const groups = new Map<string, ContributionJob[]>();
+  for (const job of jobs) {
+    if (job.release_group_id) {
+      const existing = groups.get(job.release_group_id) || [];
+      existing.push(job);
+      groups.set(job.release_group_id, existing);
+    }
+  }
+  const submittableGroups = Array.from(groups.entries()).filter(
+    ([, groupJobs]) => groupJobs.every((j) => j.export_status === "exported") && groupJobs.length >= 2,
+  );
 
-          {/* Stats badges */}
-          <div className="flex items-center gap-3">
-            <div className="text-center">
-              <div className="text-lg font-bold text-amber-400 font-mono">{stats.pending}</div>
-              <div className="text-xs text-slate-500 font-mono">Pending</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-green-400 font-mono">{stats.exported}</div>
-              <div className="text-xs text-slate-500 font-mono">Exported</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-cyan-400 font-mono">{stats.submitted}</div>
-              <div className="text-xs text-slate-500 font-mono">Submitted</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-slate-500 font-mono">{stats.skipped}</div>
-              <div className="text-xs text-slate-500 font-mono">Skipped</div>
-            </div>
-          </div>
+  return (
+    <SvAtmosphere>
+      <SvPageHeader
+        title="Contribute to TheDiscDB"
+        subtitle="› Share disc metadata to help others identify their discs automatically"
+        onBack={() => navigate("/")}
+      />
+
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 24px 80px" }}>
+        {/* Stats row */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 12,
+            marginBottom: 24,
+          }}
+        >
+          <StatCard label="Pending"   value={stats.pending}   accent={sv.amber}   />
+          <StatCard label="Exported"  value={stats.exported}  accent={sv.green}   />
+          <StatCard label="Submitted" value={stats.submitted} accent={sv.cyan}    />
+          <StatCard label="Skipped"   value={stats.skipped}   accent={sv.inkDim}  />
         </div>
 
         {/* Bulk actions */}
-        <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16 }}>
           {stats.pending > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
-                  onClick={handleExportAll}
-                  className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider text-cyan-400 border border-cyan-500/40 rounded-md hover:bg-cyan-500/10 transition-all"
-                >
-                  Export All Pending ({stats.pending})
-                </button>
+                <SvActionButton tone="cyan" onClick={handleExportAll}>
+                  Export all pending ({stats.pending})
+                </SvActionButton>
               </TooltipTrigger>
               <TooltipContent>Export all pending discs at once</TooltipContent>
             </Tooltip>
@@ -400,100 +460,113 @@ export default function ContributePage() {
           {selectedJobs.size >= 2 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
-                  onClick={handleGroupSelected}
-                  className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider text-magenta-400 border border-magenta-500/40 rounded-md hover:bg-magenta-500/10 transition-all flex items-center gap-2"
-                >
-                  <Link2 className="w-3.5 h-3.5" /> Group Selected ({selectedJobs.size})
-                </button>
+                <SvActionButton tone="magenta" onClick={handleGroupSelected}>
+                  <Link2 size={12} /> Group selected ({selectedJobs.size})
+                </SvActionButton>
               </TooltipTrigger>
               <TooltipContent>Link selected discs as a multi-disc set</TooltipContent>
             </Tooltip>
           )}
-
-          {/* Submit Group buttons for each release group with exported jobs */}
           {config?.discdb_api_key_set &&
-            (() => {
-              const groups = new Map<string, ContributionJob[]>();
-              for (const job of jobs) {
-                if (job.release_group_id) {
-                  const existing = groups.get(job.release_group_id) || [];
-                  existing.push(job);
-                  groups.set(job.release_group_id, existing);
-                }
-              }
-              return Array.from(groups.entries())
-                .filter(([, groupJobs]) =>
-                  groupJobs.every((j) => j.export_status === "exported") && groupJobs.length >= 2
-                )
-                .map(([groupId, groupJobs]) => (
-                  <button
-                    key={groupId}
-                    onClick={() => handleSubmitGroup(groupId)}
-                    disabled={groupSubmitting === groupId}
-                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider text-cyan-400 border border-cyan-500/40 rounded-md hover:bg-cyan-500/10 transition-all flex items-center gap-2 disabled:opacity-50"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    {groupSubmitting === groupId
-                      ? `Submitting ${groupJobs.length} discs...`
-                      : `Submit Group (${groupJobs.length} discs)`}
-                  </button>
-                ));
-            })()}
+            submittableGroups.map(([groupId, groupJobs]) => (
+              <SvActionButton
+                key={groupId}
+                tone="cyan"
+                onClick={() => handleSubmitGroup(groupId)}
+                disabled={groupSubmitting === groupId}
+              >
+                <Send size={12} />
+                {groupSubmitting === groupId
+                  ? `Submitting ${groupJobs.length} discs…`
+                  : `Submit group (${groupJobs.length} discs)`}
+              </SvActionButton>
+            ))}
         </div>
 
-        {/* Action error banner */}
+        {/* Banners */}
         {actionError && (
-          <div className="mb-6 px-4 py-3 border border-red-500/30 rounded-md bg-red-500/5">
-            <p className="text-red-400 font-mono text-xs">{actionError}</p>
+          <div style={{ marginBottom: 16 }}>
+            <SvNotice tone="error">{actionError}</SvNotice>
           </div>
         )}
-
-        {/* Group submission result */}
         {groupResult && (
-          <div className={`mb-6 px-4 py-3 border rounded-md ${groupResult.error ? "border-red-500/30 bg-red-500/5" : "border-cyan-500/30 bg-cyan-500/5"}`}>
-            <p className={`font-mono text-xs ${groupResult.error ? "text-red-400" : "text-cyan-400"}`}>
-              {groupResult.error
-                ? `Batch submit failed: ${groupResult.error}`
-                : `Batch submit complete: ${groupResult.submitted} submitted, ${groupResult.failed} failed.`}
-            </p>
-            {groupResult.contribute_url && (
-              <a
-                href={groupResult.contribute_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-cyan-400 font-mono text-xs mt-2 hover:underline"
-              >
-                <ExternalLink className="w-3 h-3" /> Continue on TheDiscDB
-              </a>
-            )}
+          <div style={{ marginBottom: 16 }}>
+            <SvNotice tone={groupResult.error ? "error" : "info"}>
+              <div>
+                {groupResult.error
+                  ? `Batch submit failed: ${groupResult.error}`
+                  : `Batch submit complete: ${groupResult.submitted} submitted, ${groupResult.failed} failed.`}
+              </div>
+              {groupResult.contribute_url && (
+                <a
+                  href={groupResult.contribute_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    marginTop: 6,
+                    color: sv.cyan,
+                    fontFamily: sv.mono,
+                    fontSize: 11,
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  <ExternalLink size={12} /> Continue on TheDiscDB
+                </a>
+              )}
+            </SvNotice>
           </div>
         )}
-
-        {/* API key warning */}
         {config && !config.discdb_api_key_set && (
-          <div className="mb-6 px-4 py-3 border border-amber-500/30 rounded-md bg-amber-500/5">
-            <p className="text-amber-400 font-mono text-xs">
+          <div style={{ marginBottom: 16 }}>
+            <SvNotice tone="warn">
               No TheDiscDB API key configured. You can export locally, but submission requires an API
               key. Click the gear icon in the header, then go to TheDiscDB Contributions.
-            </p>
+            </SvNotice>
           </div>
         )}
 
         {/* Job list */}
         {jobs.length === 0 ? (
-          <div className="text-center py-16">
-            <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-500 font-mono text-sm">
-              No completed jobs to contribute yet
-            </p>
-          </div>
+          <SvPanel pad={48}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <Package size={40} color={sv.inkFaint} />
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: sv.mono,
+                  fontSize: 12,
+                  letterSpacing: "0.06em",
+                  color: sv.inkDim,
+                }}
+              >
+                No completed jobs to contribute yet
+              </p>
+            </div>
+          </SvPanel>
         ) : (
-          <div className="space-y-2">
-            {/* Table header */}
-            <div className="grid grid-cols-[auto_auto_1fr_auto_auto_auto_auto] gap-4 px-4 py-2 text-xs font-mono font-bold text-slate-600 uppercase tracking-wider border-b border-navy-600">
-              <span className="w-5" />
-              <span className="w-5" />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Column headings */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "auto auto 1fr auto auto auto auto",
+                columnGap: 16,
+                alignItems: "center",
+                padding: "8px 16px",
+                fontFamily: sv.mono,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: sv.inkFaint,
+                borderBottom: `1px solid ${sv.line}`,
+              }}
+            >
+              <span style={{ width: 18 }} />
+              <span style={{ width: 18 }} />
               <span>Title</span>
               <span>Type</span>
               <span>Hash</span>
@@ -502,328 +575,406 @@ export default function ContributePage() {
             </div>
 
             <AnimatePresence mode="popLayout">
-              {jobs.map((job) => (
-                <motion.div
-                  key={job.id}
-                  layout
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="border border-navy-600/50 rounded-md bg-navy-800/40"
-                >
-                  {/* Main row */}
-                  <div className="grid grid-cols-[auto_auto_1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-3 font-mono text-sm">
-                    {/* Checkbox */}
-                    <input
-                      type="checkbox"
-                      checked={selectedJobs.has(job.id)}
-                      onChange={() => toggleSelection(job.id)}
-                      className="w-4 h-4 accent-cyan-400"
-                    />
-
-                    {/* Details expand */}
-                    <button
-                      onClick={() => toggleDetails(job.id)}
-                      className="text-slate-500 hover:text-cyan-400 transition-colors"
+              {jobs.map((job) => {
+                const status = STATUS_BADGE[job.export_status];
+                return (
+                  <motion.div
+                    key={job.id}
+                    layout
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={{
+                      background: sv.bg1,
+                      border: `1px solid ${sv.line}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "auto auto 1fr auto auto auto auto",
+                        columnGap: 16,
+                        alignItems: "center",
+                        padding: "10px 16px",
+                        fontFamily: sv.mono,
+                        fontSize: 12,
+                      }}
                     >
-                      <ChevronRight
-                        className={`w-4 h-4 transition-transform ${
-                          detailsExpanded.has(job.id) ? "rotate-90" : ""
-                        }`}
+                      <input
+                        type="checkbox"
+                        checked={selectedJobs.has(job.id)}
+                        onChange={() => toggleSelection(job.id)}
+                        style={{ width: 14, height: 14, accentColor: sv.cyan }}
+                        aria-label={`Select disc ${job.detected_title || job.volume_label}`}
                       />
-                    </button>
-
-                    {/* Title */}
-                    <div className="flex items-center gap-2">
-                      {job.release_group_id && (
-                        <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: releaseGroupColor(job.release_group_id) }}
-                          title={`Release group: ${job.release_group_id.slice(0, 8)}...`}
+                      <button
+                        type="button"
+                        onClick={() => toggleDetails(job.id)}
+                        aria-label="Toggle title details"
+                        style={{
+                          width: 18,
+                          height: 18,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: "transparent",
+                          border: 0,
+                          color: sv.inkFaint,
+                          cursor: "pointer",
+                          transition: "color 120ms",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = sv.cyan; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = sv.inkFaint; }}
+                      >
+                        <ChevronRight
+                          size={14}
+                          style={{
+                            transform: detailsExpanded.has(job.id) ? "rotate(90deg)" : "none",
+                            transition: "transform 150ms",
+                          }}
                         />
-                      )}
-                      <span className="text-slate-300">
-                        {job.detected_title || job.volume_label}
-                      </span>
-                      {job.detected_season && (
-                        <span className="text-slate-500 text-xs">
-                          Season {job.detected_season}
+                      </button>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        {job.release_group_id && (
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              flexShrink: 0,
+                              background: releaseGroupColor(job.release_group_id),
+                              boxShadow: `0 0 6px ${releaseGroupColor(job.release_group_id)}88`,
+                            }}
+                            title={`Release group: ${job.release_group_id.slice(0, 8)}…`}
+                          />
+                        )}
+                        <span
+                          style={{
+                            color: sv.ink,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {job.detected_title || job.volume_label}
                         </span>
-                      )}
-                    </div>
+                        {job.detected_season != null && (
+                          <span style={{ color: sv.inkFaint, fontSize: 10 }}>Season {job.detected_season}</span>
+                        )}
+                      </div>
 
-                    {/* Type */}
-                    <span
-                      className={`text-xs font-bold uppercase ${
-                        job.content_type === "movie"
-                          ? "text-magenta-400"
-                          : job.content_type === "tv"
-                            ? "text-cyan-400"
-                            : "text-slate-500"
-                      }`}
-                    >
-                      {job.content_type}
-                    </span>
+                      <span
+                        style={{
+                          color: TYPE_TONE[job.content_type] ?? sv.inkFaint,
+                          fontWeight: 700,
+                          fontSize: 10,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.20em",
+                        }}
+                      >
+                        {job.content_type}
+                      </span>
 
-                    {/* Hash */}
-                    <span className="text-xs text-slate-600 font-mono">
-                      {job.content_hash ? job.content_hash.slice(0, 8) + "..." : "N/A"}
-                    </span>
+                      <span style={{ color: sv.inkFaint, fontSize: 11 }}>
+                        {job.content_hash ? `${job.content_hash.slice(0, 8)}…` : "N/A"}
+                      </span>
 
-                    {/* Status */}
-                    <span
-                      className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${
-                        job.export_status === "submitted"
-                          ? "text-cyan-300 bg-cyan-500/10 border border-cyan-500/20"
-                          : job.export_status === "exported"
-                            ? "text-green-400 bg-green-500/10 border border-green-500/20"
-                            : job.export_status === "skipped"
-                              ? "text-slate-400 bg-slate-500/10 border border-slate-500/20"
-                              : "text-amber-400 bg-amber-500/10 border border-amber-500/20"
-                      }`}
-                    >
-                      {job.export_status}
-                    </span>
+                      <SvBadge state={status.state} size="sm" dot={false}>{status.label}</SvBadge>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-1">
-                      {job.export_status === "pending" && (
-                        <>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                onClick={() => handleExport(job.id)}
-                                disabled={actionInProgress === job.id}
-                                className="text-xs text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1"
-                              >
-                                <Upload className="w-3 h-3" /> Export
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>Generate disc metadata for local review</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                onClick={() => {
-                                  setExpandedJob(expandedJob === job.id ? null : job.id);
-                                  if (expandedJob !== job.id) fetchTitles(job.id);
-                                }}
-                                className="text-xs text-magenta-400 border border-magenta-500/30 px-2.5 py-1 rounded hover:bg-magenta-500/10 flex items-center gap-1"
-                              >
-                                {expandedJob === job.id ? (
-                                  <ChevronUp className="w-3 h-3" />
-                                ) : (
-                                  <ChevronDown className="w-3 h-3" />
-                                )}
-                                Enhance
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>Add UPC, ASIN, cover art, and extras info</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                onClick={() => handleSkip(job.id)}
-                                disabled={actionInProgress === job.id}
-                                className="text-xs text-slate-500 border border-slate-500/30 px-2.5 py-1 rounded hover:bg-slate-500/10 disabled:opacity-50 flex items-center gap-1"
-                              >
-                                <SkipForward className="w-3 h-3" /> Skip
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>Mark this disc as not for contribution</TooltipContent>
-                          </Tooltip>
-                        </>
-                      )}
-                      {job.export_status === "exported" && (
-                        <>
-                          {config?.discdb_api_key_set && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {job.export_status === "pending" && (
+                          <>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => handleSubmit(job.id)}
+                                <SvActionButton
+                                  tone="cyan"
+                                  size="sm"
+                                  onClick={() => handleExport(job.id)}
                                   disabled={actionInProgress === job.id}
-                                  className="text-xs text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1"
                                 >
-                                  <Send className="w-3 h-3" /> Submit
-                                </button>
+                                  <Upload size={11} /> Export
+                                </SvActionButton>
                               </TooltipTrigger>
-                              <TooltipContent>Send disc metadata to TheDiscDB</TooltipContent>
+                              <TooltipContent>Generate disc metadata for local review</TooltipContent>
                             </Tooltip>
-                          )}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <SvActionButton
+                                  tone="magenta"
+                                  size="sm"
+                                  onClick={() => {
+                                    setExpandedJob(expandedJob === job.id ? null : job.id);
+                                    if (expandedJob !== job.id) fetchTitles(job.id);
+                                  }}
+                                >
+                                  {expandedJob === job.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                                  Enhance
+                                </SvActionButton>
+                              </TooltipTrigger>
+                              <TooltipContent>Add UPC, ASIN, cover art, and extras info</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <SvActionButton
+                                  tone="neutral"
+                                  size="sm"
+                                  onClick={() => handleSkip(job.id)}
+                                  disabled={actionInProgress === job.id}
+                                >
+                                  <SkipForward size={11} /> Skip
+                                </SvActionButton>
+                              </TooltipTrigger>
+                              <TooltipContent>Mark this disc as not for contribution</TooltipContent>
+                            </Tooltip>
+                          </>
+                        )}
+                        {job.export_status === "exported" && (
+                          <>
+                            {config?.discdb_api_key_set && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <SvActionButton
+                                    tone="cyan"
+                                    size="sm"
+                                    onClick={() => handleSubmit(job.id)}
+                                    disabled={actionInProgress === job.id}
+                                  >
+                                    <Send size={11} /> Submit
+                                  </SvActionButton>
+                                </TooltipTrigger>
+                                <TooltipContent>Send disc metadata to TheDiscDB</TooltipContent>
+                              </Tooltip>
+                            )}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <SvActionButton
+                                  tone="magenta"
+                                  size="sm"
+                                  onClick={() => {
+                                    setExpandedJob(expandedJob === job.id ? null : job.id);
+                                    if (expandedJob !== job.id) fetchTitles(job.id);
+                                  }}
+                                >
+                                  {expandedJob === job.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                                  Enhance
+                                </SvActionButton>
+                              </TooltipTrigger>
+                              <TooltipContent>Add UPC, ASIN, cover art, and extras info</TooltipContent>
+                            </Tooltip>
+                          </>
+                        )}
+                        {job.export_status === "submitted" && job.contribute_url && (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button
-                                onClick={() => {
-                                  setExpandedJob(expandedJob === job.id ? null : job.id);
-                                  if (expandedJob !== job.id) fetchTitles(job.id);
-                                }}
-                                className="text-xs text-magenta-400 border border-magenta-500/30 px-2.5 py-1 rounded hover:bg-magenta-500/10 flex items-center gap-1"
+                              <SvActionButton
+                                tone="cyan"
+                                size="sm"
+                                href={job.contribute_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
                               >
-                                {expandedJob === job.id ? (
-                                  <ChevronUp className="w-3 h-3" />
-                                ) : (
-                                  <ChevronDown className="w-3 h-3" />
-                                )}
-                                Enhance
-                              </button>
+                                <ExternalLink size={11} /> Continue on TheDiscDB
+                              </SvActionButton>
                             </TooltipTrigger>
-                            <TooltipContent>Add UPC, ASIN, cover art, and extras info</TooltipContent>
+                            <TooltipContent>Complete this contribution on TheDiscDB</TooltipContent>
                           </Tooltip>
-                        </>
-                      )}
-                      {job.export_status === "submitted" && job.contribute_url && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <a
-                              href={job.contribute_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded hover:bg-cyan-500/10 flex items-center gap-1"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Continue on TheDiscDB
-                            </a>
-                          </TooltipTrigger>
-                          <TooltipContent>Complete this contribution on TheDiscDB</TooltipContent>
-                        </Tooltip>
-                      )}
-                      {job.export_status === "submitted" && !job.contribute_url && (
-                        <span className="text-xs text-cyan-300 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Submitted
-                        </span>
-                      )}
-                      {job.release_group_id && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              onClick={() => handleUngroup(job.id)}
-                              className="text-xs text-slate-500 border border-slate-500/30 px-2 py-1 rounded hover:bg-slate-500/10 flex items-center gap-1"
-                            >
-                              <Unlink className="w-3 h-3" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent>Remove from release group</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Expandable title details */}
-                  <AnimatePresence>
-                    {detailsExpanded.has(job.id) && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden border-t border-navy-600/50"
-                      >
-                        <div className="px-4 py-3 bg-navy-900/30">
-                          {/* Enhanced metadata */}
-                          {(job.upc_code || job.asin || job.release_date) && (
-                            <div className="flex gap-4 mb-3 text-xs font-mono text-slate-400">
-                              {job.upc_code && (
-                                <span>UPC: <span className="text-slate-300">{job.upc_code}</span></span>
-                              )}
-                              {job.asin && (
-                                <span>ASIN: <span className="text-slate-300">{job.asin}</span></span>
-                              )}
-                              {job.release_date && (
-                                <span>Released: <span className="text-slate-300">{job.release_date}</span></span>
-                              )}
-                            </div>
-                          )}
-                          {titleCache.has(job.id) ? (
-                            <table className="w-full text-xs font-mono">
-                              <thead>
-                                <tr className="text-slate-600 uppercase">
-                                  <th className="text-left py-1 pr-3">#</th>
-                                  <th className="text-left py-1 pr-3">Episode</th>
-                                  <th className="text-left py-1 pr-3">Duration</th>
-                                  <th className="text-left py-1 pr-3">Source</th>
-                                  <th className="text-left py-1 pr-3">Conf.</th>
-                                  <th className="text-left py-1">Type</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {titleCache.get(job.id)!.map((t) => (
-                                  <tr key={t.id} className="text-slate-400 border-t border-navy-700/30">
-                                    <td className="py-1 pr-3 text-slate-600">{t.title_index}</td>
-                                    <td className="py-1 pr-3 text-slate-300">
-                                      {t.matched_episode || "\u2014"}
-                                    </td>
-                                    <td className="py-1 pr-3">{formatDuration(t.duration_seconds)}</td>
-                                    <td className="py-1 pr-3">
-                                      {t.match_source && (
-                                        <span className={`text-xs uppercase ${
-                                          t.match_source === "discdb" ? "text-blue-400"
-                                          : t.match_source === "engram" ? "text-purple-400"
-                                          : "text-green-400"
-                                        }`}>
-                                          {t.match_source}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="py-1 pr-3">
-                                      {t.match_confidence > 0
-                                        ? `${Math.round(t.match_confidence * 100)}%`
-                                        : "\u2014"}
-                                    </td>
-                                    <td className="py-1">
-                                      {t.is_extra ? (
-                                        <span className="text-amber-400">
-                                          Extra{t.extra_description ? `: ${t.extra_description}` : ""}
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-500">Episode</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          ) : titleErrors.has(job.id) ? (
-                            <span className="text-red-400 text-xs">Failed to load titles</span>
-                          ) : (
-                            <span className="text-slate-600 text-xs">Loading titles...</span>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Enhance wizard panel */}
-                  <AnimatePresence>
-                    {expandedJob === job.id && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden border-t border-navy-600/50"
-                      >
-                        <div className="px-4 py-3 bg-navy-900/50">
-                          <EnhanceWizard
-                            job={job}
-                            titles={titleCache.get(job.id) || []}
-                            onSave={() => {
-                              setExpandedJob(null);
-                              setTitleCache((prev) => {
-                                const next = new Map(prev);
-                                next.delete(job.id);
-                                return next;
-                              });
-                              fetchData();
+                        )}
+                        {job.export_status === "submitted" && !job.contribute_url && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontFamily: sv.mono,
+                              fontSize: 10,
+                              letterSpacing: "0.18em",
+                              color: sv.cyanHi,
                             }}
-                            onCancel={() => setExpandedJob(null)}
-                          />
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
+                          >
+                            <CheckCircle2 size={11} /> Submitted
+                          </span>
+                        )}
+                        {job.release_group_id && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <SvActionButton
+                                tone="neutral"
+                                size="sm"
+                                onClick={() => handleUngroup(job.id)}
+                                ariaLabel="Remove from release group"
+                              >
+                                <Unlink size={11} />
+                              </SvActionButton>
+                            </TooltipTrigger>
+                            <TooltipContent>Remove from release group</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Title detail expansion */}
+                    <AnimatePresence>
+                      {detailsExpanded.has(job.id) && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          style={{ overflow: "hidden", borderTop: `1px solid ${sv.line}` }}
+                        >
+                          <div style={{ padding: "12px 16px", background: sv.bg2 }}>
+                            {(job.upc_code || job.asin || job.release_date) && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 16,
+                                  marginBottom: 12,
+                                  fontFamily: sv.mono,
+                                  fontSize: 11,
+                                  color: sv.inkDim,
+                                }}
+                              >
+                                {job.upc_code && (
+                                  <span>UPC: <span style={{ color: sv.ink }}>{job.upc_code}</span></span>
+                                )}
+                                {job.asin && (
+                                  <span>ASIN: <span style={{ color: sv.ink }}>{job.asin}</span></span>
+                                )}
+                                {job.release_date && (
+                                  <span>Released: <span style={{ color: sv.ink }}>{job.release_date}</span></span>
+                                )}
+                              </div>
+                            )}
+                            {titleCache.has(job.id) ? (
+                              <TitleTable titles={titleCache.get(job.id)!} formatDuration={formatDuration} />
+                            ) : titleErrors.has(job.id) ? (
+                              <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.red }}>Failed to load titles</span>
+                            ) : (
+                              <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint }}>Loading titles…</span>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Enhance wizard panel */}
+                    <AnimatePresence>
+                      {expandedJob === job.id && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          style={{ overflow: "hidden", borderTop: `1px solid ${sv.line}` }}
+                        >
+                          <div style={{ padding: "12px 16px", background: sv.bg2 }}>
+                            <EnhanceWizard
+                              job={job}
+                              titles={titleCache.get(job.id) || []}
+                              onSave={() => {
+                                setExpandedJob(null);
+                                setTitleCache((prev) => {
+                                  const next = new Map(prev);
+                                  next.delete(job.id);
+                                  return next;
+                                });
+                                fetchData();
+                              }}
+                              onCancel={() => setExpandedJob(null)}
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           </div>
         )}
       </div>
-    </div>
+    </SvAtmosphere>
+  );
+}
+
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <SvPanel pad={14} accent={`${accent}33`}>
+      <SvLabel>{label}</SvLabel>
+      <div
+        style={{
+          marginTop: 8,
+          fontFamily: sv.display,
+          fontSize: 28,
+          fontWeight: 700,
+          color: accent,
+          letterSpacing: "0.04em",
+          fontVariantNumeric: "tabular-nums",
+          textShadow: `0 0 10px ${accent}55`,
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </div>
+    </SvPanel>
+  );
+}
+
+function TitleTable({
+  titles,
+  formatDuration,
+}: {
+  titles: TitleInfo[];
+  formatDuration: (s: number) => string;
+}) {
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: sv.mono, fontSize: 11 }}>
+      <thead>
+        <tr>
+          {["#", "Episode", "Duration", "Source", "Conf.", "Type"].map((h) => (
+            <th
+              key={h}
+              style={{
+                textAlign: "left",
+                padding: "6px 12px 6px 0",
+                color: sv.inkFaint,
+                fontWeight: 700,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                fontSize: 9,
+              }}
+            >
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {titles.map((t) => (
+          <tr key={t.id} style={{ borderTop: `1px solid ${sv.line}` }}>
+            <td style={{ padding: "6px 12px 6px 0", color: sv.inkFaint }}>{t.title_index}</td>
+            <td style={{ padding: "6px 12px 6px 0", color: sv.ink }}>{t.matched_episode || "—"}</td>
+            <td style={{ padding: "6px 12px 6px 0", color: sv.inkDim }}>{formatDuration(t.duration_seconds)}</td>
+            <td style={{ padding: "6px 12px 6px 0" }}>
+              {t.match_source && (
+                <SvBadge size="sm" tone={SOURCE_TONE[t.match_source] ?? sv.inkDim}>{t.match_source}</SvBadge>
+              )}
+            </td>
+            <td style={{ padding: "6px 12px 6px 0", color: sv.inkDim }}>
+              {t.match_confidence > 0 ? `${Math.round(t.match_confidence * 100)}%` : "—"}
+            </td>
+            <td style={{ padding: "6px 0" }}>
+              {t.is_extra ? (
+                <span style={{ color: sv.amber }}>
+                  Extra{t.extra_description ? `: ${t.extra_description}` : ""}
+                </span>
+              ) : (
+                <span style={{ color: sv.inkFaint }}>Episode</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

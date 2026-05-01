@@ -507,30 +507,26 @@ function MainDashboard() {
 
       {/* Onboarding Wizard (first run) */}
       {showOnboarding && (
-        <div className="fixed inset-0 z-50 bg-navy-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
-            <ConfigWizard
-              onClose={() => setShowOnboarding(false)}
-              onComplete={() => setShowOnboarding(false)}
-              isOnboarding={true}
-            />
-          </div>
-        </div>
+        <ModalScrim>
+          <ConfigWizard
+            onClose={() => setShowOnboarding(false)}
+            onComplete={() => setShowOnboarding(false)}
+            isOnboarding={true}
+          />
+        </ModalScrim>
       )}
 
       {/* Config Wizard Modal (settings) */}
       {showSettings && !showOnboarding && (
-        <div className="fixed inset-0 z-50 bg-navy-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
-            <ConfigWizard
-              onClose={() => setShowSettings(false)}
-              onComplete={() => {
-                setShowSettings(false);
-              }}
-              isOnboarding={false}
-            />
-          </div>
-        </div>
+        <ModalScrim>
+          <ConfigWizard
+            onClose={() => setShowSettings(false)}
+            onComplete={() => {
+              setShowSettings(false);
+            }}
+            isOnboarding={false}
+          />
+        </ModalScrim>
       )}
 
       <SvStatusBar
@@ -750,6 +746,29 @@ function CompactList({
           );
         })}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/** Modal backdrop with sv-token blur + sv.bg0 alpha overlay. */
+function ModalScrim({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        background: "rgba(5, 7, 12, 0.78)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 960, maxHeight: "90vh", overflow: "auto" }}>
+        {children}
+      </div>
     </div>
   );
 }
