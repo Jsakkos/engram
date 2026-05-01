@@ -63,6 +63,11 @@ export function SvBarChart({
     gap,
     height,
     width: "100%",
+    // Clip the bars (and their glow halo) to the chart's bounding box.
+    // Without this, the last-bar `box-shadow` and any browser-side
+    // rounding on percentage flex-child heights can spill above the
+    // container into the panel header's space — looks like overflow.
+    overflow: "hidden",
     ...style,
   };
 
@@ -111,9 +116,18 @@ export function SvBarChart({
             style={{
               flex: 1,
               minWidth: 2,
+              // `maxHeight: 100%` is belt-and-braces against the rare
+              // sub-pixel overshoot some browsers produce when computing
+              // a percentage height on a flex child with `align-items:
+              // flex-end`. Combined with `overflow: hidden` on the wrap,
+              // bars are guaranteed to stay inside the container.
               height: `${clamped * 100}%`,
+              maxHeight: "100%",
               background: `linear-gradient(180deg, ${color}, ${color}33)`,
-              boxShadow: highlightLast && isLast ? `0 0 8px ${color}` : "none",
+              // Glow only downward + sideways — never upward into the
+              // panel header. (Was `0 0 8px` which extends in all
+              // directions, producing visible overflow above the chart.)
+              boxShadow: highlightLast && isLast ? `0 4px 8px ${color}88` : "none",
               // Brief transition so the rightmost bar's "this just appeared"
               // moment isn't a hard pop. The previous 0.3s ease was long
               // enough to smear genuine throughput noise into a deceptively
