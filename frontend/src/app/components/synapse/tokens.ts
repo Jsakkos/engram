@@ -46,6 +46,11 @@ export const sv = {
   mono: '"JetBrains Mono", ui-monospace, monospace',
   sans: '"Chakra Petch", "Space Grotesk", sans-serif',
   display: '"Chakra Petch", sans-serif',
+
+  // Layout — single source of truth so Dashboard / Review / History
+  // Page chrome (max-width, content padding) all stay in sync.
+  layoutMaxWidth: 1600,
+  layoutPadX: 24,
 } as const;
 
 export type SvAccent = "cyan" | "magenta" | "yellow" | "amber" | "green" | "red";

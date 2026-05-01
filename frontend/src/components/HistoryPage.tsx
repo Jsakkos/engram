@@ -1138,7 +1138,7 @@ export default function HistoryPage() {
         }
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-8">
         <div
           data-testid="sv-history-grid"
           style={{

@@ -14,15 +14,13 @@ interface Props {
     onBack?: () => void;
     /** Right-side slot — typically actions like "Report Bug" buttons. */
     right?: ReactNode;
-    /** Inner max-width in px. Default 1200, shared across Dashboard/Review/History. */
+    /** Inner max-width in px. Defaults to `sv.layoutMaxWidth`. */
     maxWidth?: number;
     /** Override testid for E2E selectors. */
     testid?: string;
 }
 
-const HEADER_MAX_WIDTH = 1200;
 const HEADER_PADDING_Y = 18;
-const HEADER_PADDING_X = 24;
 
 /**
  * Shared sticky page header for Dashboard / Review / History.
@@ -38,7 +36,7 @@ export function SvPageHeader({
     icon,
     onBack,
     right,
-    maxWidth = HEADER_MAX_WIDTH,
+    maxWidth = sv.layoutMaxWidth,
     testid = "sv-page-header",
 }: Props) {
     const root: CSSProperties = {
@@ -54,7 +52,7 @@ export function SvPageHeader({
     const inner: CSSProperties = {
         maxWidth,
         margin: "0 auto",
-        padding: `${HEADER_PADDING_Y}px ${HEADER_PADDING_X}px`,
+        padding: `${HEADER_PADDING_Y}px ${sv.layoutPadX}px`,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",

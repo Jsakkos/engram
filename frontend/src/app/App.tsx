@@ -239,7 +239,7 @@ function MainDashboard() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="max-w-7xl mx-auto px-4 sm:px-6 mt-4"
+            className="max-w-[1600px] mx-auto px-4 sm:px-6 mt-4"
           >
             <div
               style={{
@@ -310,7 +310,7 @@ function MainDashboard() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-20 sm:pb-24 relative z-0">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-20 sm:pb-24 relative z-0">
         <div
           data-testid="sv-dashboard-grid"
           style={{
