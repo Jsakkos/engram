@@ -1,7 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
 import { CheckCircle2, Clock, Database, Disc } from "lucide-react";
-import { CyberpunkProgressBar } from "./CyberpunkProgressBar";
 import { StateIndicator } from "./StateIndicator";
 import { TrackGrid } from "./TrackGrid";
 import { usePosterImage } from "./DiscCard/hooks/usePosterImage";
@@ -9,7 +8,7 @@ import { MediaTypeBadge } from "./DiscCard/MediaTypeBadge";
 import { DiscMetadata } from "./DiscCard/DiscMetadata";
 import { ActionButtons } from "./DiscCard/ActionButtons";
 import { useElapsedTime } from "../hooks/useElapsedTime";
-import { sv, SvPanel, SvLabel, SvDiscInsert, type DiscInsertPhase } from "./synapse";
+import { sv, SvPanel, SvLabel, SvDiscInsert, SvProgressBar, type DiscInsertPhase } from "./synapse";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "review_needed" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
@@ -353,14 +352,14 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     <Database size={14} />
                     <span>› ARCHIVING TO ISO…</span>
                   </div>
-                  <CyberpunkProgressBar progress={disc.isoProgress} color="magenta" label="ISO ARCHIVE" />
+                  <SvProgressBar progress={disc.isoProgress} color="magenta" label="ISO ARCHIVE" />
                 </div>
               )}
 
               {/* Ripping */}
               {disc.state === "ripping" && disc.tracks && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <CyberpunkProgressBar progress={disc.progress} color="cyan" label="OVERALL PROGRESS" />
+                  <SvProgressBar progress={disc.progress} color="cyan" label="OVERALL PROGRESS" />
                   <div
                     style={{
                       display: "grid",

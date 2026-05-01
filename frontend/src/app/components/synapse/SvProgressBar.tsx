@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
-import { sv } from "./synapse";
+import { sv } from "./tokens";
 
-interface CyberpunkProgressBarProps {
+interface Props {
   progress: number;
   color: "cyan" | "magenta" | "yellow" | "green";
   label?: string;
@@ -11,7 +11,7 @@ interface CyberpunkProgressBarProps {
  * Map color name → Synapse v2 token. Centralizes the per-color glow /
  * gradient bookkeeping that was previously duplicated across screens.
  */
-const COLOR: Record<CyberpunkProgressBarProps["color"], { fg: string; secondary: string; glow: string }> = {
+const COLOR: Record<Props["color"], { fg: string; secondary: string; glow: string }> = {
   cyan:    { fg: sv.cyan,    secondary: sv.cyanHi,    glow: sv.cyan    },
   magenta: { fg: sv.magenta, secondary: sv.magentaHi, glow: sv.magenta },
   yellow:  { fg: sv.yellow,  secondary: sv.amber,     glow: sv.yellow  },
@@ -20,10 +20,10 @@ const COLOR: Record<CyberpunkProgressBarProps["color"], { fg: string; secondary:
 
 /**
  * Synapse v2 progress bar — sharp 90° corners, gradient fill, chunked
- * ticks, glow, and a sweep highlight while in-flight. Public prop
- * contract preserved so DiscCard / TrackGrid keep working unchanged.
+ * ticks, outer glow, and a sweep highlight while in-flight. Used by DiscCard
+ * for the per-job overall and ISO-archive progress lines.
  */
-export function CyberpunkProgressBar({ progress, color, label }: CyberpunkProgressBarProps) {
+export function SvProgressBar({ progress, color, label }: Props) {
   const c = COLOR[color];
   const value = Math.min(100, Math.max(0, progress));
 

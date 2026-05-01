@@ -26,3 +26,5 @@ export { SvErrorState } from "./SvErrorState";
 export type { SvErrorKind } from "./SvErrorState";
 export { SvDiscInsert } from "./SvDiscInsert";
 export type { DiscInsertPhase } from "./SvDiscInsert";
+export { SvPageHeader } from "./SvPageHeader";
+export { SvProgressBar } from "./SvProgressBar";

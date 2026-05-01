@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   Film,
@@ -21,7 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { FEATURES } from "../config/constants";
-import { SvAtmosphere, SvBarChart, SvLabel, SvPanel, sv } from "../app/components/synapse";
+import { SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
 
 interface HistoryJob {
   id: number;
@@ -175,27 +174,42 @@ function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-lg border border-cyan-500/20 bg-navy-800/80 p-4"
-      style={{
-        boxShadow: `0 0 15px ${color}22`,
-      }}
     >
-      <div className="flex items-center gap-3">
-        <div style={{ color }} className="opacity-80">
-          {icon}
-        </div>
-        <div>
-          <div
-            className="text-2xl font-bold font-mono"
-            style={{ color, textShadow: `0 0 8px ${color}88` }}
-          >
-            {value}
+      <SvPanel pad={14} accent={`${color}33`}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ color, filter: `drop-shadow(0 0 6px ${color}99)`, display: "inline-flex" }}>
+            {icon}
+          </span>
+          <div>
+            <div
+              style={{
+                fontFamily: sv.display,
+                fontSize: 24,
+                fontWeight: 700,
+                color,
+                letterSpacing: "0.04em",
+                textShadow: `0 0 8px ${color}66`,
+                lineHeight: 1,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {value}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontFamily: sv.mono,
+                fontSize: 9,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: sv.inkFaint,
+              }}
+            >
+              {label}
+            </div>
           </div>
-          <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">
-            {label}
-          </div>
         </div>
-      </div>
+      </SvPanel>
     </motion.div>
   );
 }
@@ -220,17 +234,17 @@ function ConfidenceBar({ value }: { value: number }) {
 }
 
 function TitleStateBadge({ state }: { state: string }) {
-  const config: Record<string, { color: string; label: string }> = {
-    completed: { color: "text-green-400", label: "OK" },
-    failed: { color: "text-red-400", label: "FAIL" },
-    matched: { color: "text-cyan-400", label: "MATCHED" },
-    review: { color: "text-amber-400", label: "REVIEW" },
-    pending: { color: "text-slate-500", label: "PENDING" },
-    ripping: { color: "text-magenta-400", label: "RIPPING" },
-    matching: { color: "text-violet-400", label: "MATCHING" },
+  const map: Record<string, { state: SvBadgeState; label: string }> = {
+    completed: { state: "complete", label: "OK" },
+    failed:    { state: "error",    label: "FAIL" },
+    matched:   { state: "matched",  label: "MATCHED" },
+    review:    { state: "review",   label: "REVIEW" },
+    pending:   { state: "queued",   label: "PENDING" },
+    ripping:   { state: "ripping",  label: "RIPPING" },
+    matching:  { state: "matching", label: "MATCHING" },
   };
-  const c = config[state] || { color: "text-slate-500", label: state.toUpperCase() };
-  return <span className={`text-[10px] font-mono uppercase ${c.color}`}>{c.label}</span>;
+  const m = map[state] ?? { state: "idle" as SvBadgeState, label: state.toUpperCase() };
+  return <SvBadge state={m.state} size="sm" dot={false}>{m.label}</SvBadge>;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -293,24 +307,73 @@ function JobDetailPanel({
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="fixed top-0 right-0 h-full w-full sm:w-[560px] bg-navy-900 border-l border-cyan-500/20 z-50 overflow-y-auto"
       style={{
-        boxShadow: "-4px 0 30px rgba(6, 182, 212, 0.1)",
+        position: "fixed",
+        top: 0,
+        right: 0,
+        height: "100vh",
+        width: "min(560px, 100vw)",
+        background: sv.bg1,
+        borderLeft: `1px solid ${sv.lineMid}`,
+        boxShadow: `-4px 0 30px ${sv.cyan}1a`,
+        zIndex: 50,
+        overflowY: "auto",
       }}
     >
-      {/* Panel Header */}
-      <div className="sticky top-0 z-10 bg-navy-900/95 backdrop-blur-sm border-b border-cyan-500/20 px-5 py-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-mono font-bold text-cyan-400 uppercase tracking-wider">
-            &gt; Job Detail
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-cyan-400 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+      {/* Panel header — sticky, mirrors SvPageHeader vocabulary */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "rgba(10, 14, 24, 0.92)",
+          backdropFilter: "blur(8px)",
+          borderBottom: `1px solid ${sv.lineMid}`,
+          padding: "14px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: sv.mono,
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: "0.20em",
+            textTransform: "uppercase",
+            color: sv.cyanHi,
+          }}
+        >
+          › Job detail
+        </h2>
+        <button
+          onClick={onClose}
+          aria-label="Close detail panel"
+          style={{
+            width: 28,
+            height: 28,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "transparent",
+            border: `1px solid ${sv.line}`,
+            color: sv.inkDim,
+            cursor: "pointer",
+            transition: "border-color 120ms, color 120ms",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = sv.cyan;
+            e.currentTarget.style.color = sv.cyanHi;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = sv.line;
+            e.currentTarget.style.color = sv.inkDim;
+          }}
+        >
+          <X size={14} />
+        </button>
       </div>
 
       {loading ? (
@@ -915,54 +978,48 @@ export default function HistoryPage() {
 
   return (
     <SvAtmosphere>
-      {/* Header */}
-      <div
-        className="border-b border-cyan-500/20 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10"
-        style={{
-          boxShadow:
-            "0 0 20px rgba(6, 182, 212, 0.2), 0 0 40px rgba(236, 72, 153, 0.1)",
-        }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate("/")}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <div className="flex items-center gap-3">
-                <BarChart3
-                  className="w-6 h-6 text-cyan-400"
-                  style={{
-                    filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.8))",
-                  }}
-                />
-                <h1
-                  className="text-xl sm:text-2xl font-bold text-cyan-400 tracking-wider font-mono uppercase"
-                  style={{
-                    textShadow:
-                      "0 0 10px rgba(6, 182, 212, 1), 0 0 30px rgba(6, 182, 212, 0.6)",
-                  }}
-                >
-                  Job History & Analytics
-                </h1>
-              </div>
-            </div>
-            <button
-              onClick={handleReportBug}
-              disabled={reportLoading}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:border-red-500/60 hover:bg-red-500/10 transition-all font-mono text-xs uppercase tracking-wider disabled:opacity-50"
-            >
-              <Bug className="w-4 h-4" />
-              <span className="hidden sm:inline">
-                {reportLoading ? "Generating..." : "Report Bug"}
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
+      <SvPageHeader
+        title="Job History & Analytics"
+        icon={<BarChart3 size={20} />}
+        onBack={() => navigate("/")}
+        right={
+          <button
+            onClick={handleReportBug}
+            disabled={reportLoading}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              height: 32,
+              padding: "0 12px",
+              background: sv.bg0,
+              border: `1px solid ${sv.red}55`,
+              color: sv.red,
+              fontFamily: sv.mono,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.20em",
+              textTransform: "uppercase",
+              cursor: reportLoading ? "wait" : "pointer",
+              opacity: reportLoading ? 0.5 : 1,
+              boxShadow: `0 0 8px ${sv.red}33`,
+              transition: "border-color 120ms, color 120ms, box-shadow 120ms",
+            }}
+            onMouseEnter={(e) => {
+              if (reportLoading) return;
+              e.currentTarget.style.borderColor = sv.red;
+              e.currentTarget.style.boxShadow = `0 0 14px ${sv.red}66`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = `${sv.red}55`;
+              e.currentTarget.style.boxShadow = `0 0 8px ${sv.red}33`;
+            }}
+          >
+            <Bug size={14} />
+            <span>{reportLoading ? "Generating…" : "Report Bug"}</span>
+          </button>
+        }
+      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8">
         <div
@@ -978,45 +1035,16 @@ export default function HistoryPage() {
         {/* Stats Grid */}
         {stats && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <StatCard
-              label="Total Jobs"
-              value={stats.total_jobs}
-              icon={<BarChart3 className="w-5 h-5" />}
-              color="#06b6d4"
-            />
-            <StatCard
-              label="Completed"
-              value={stats.completed_jobs}
-              icon={<CheckCircle2 className="w-5 h-5" />}
-              color="#10b981"
-            />
-            <StatCard
-              label="Failed"
-              value={stats.failed_jobs}
-              icon={<XCircle className="w-5 h-5" />}
-              color="#ef4444"
-            />
-            <StatCard
-              label="TV Shows"
-              value={stats.tv_count}
-              icon={<Tv className="w-5 h-5" />}
-              color="#f59e0b"
-            />
-            <StatCard
-              label="Movies"
-              value={stats.movie_count}
-              icon={<Film className="w-5 h-5" />}
-              color="#ec4899"
-            />
+            <StatCard label="Total Jobs"  value={stats.total_jobs}      icon={<BarChart3 size={18} />}    color={sv.cyan} />
+            <StatCard label="Completed"   value={stats.completed_jobs}  icon={<CheckCircle2 size={18} />} color={sv.green} />
+            <StatCard label="Failed"      value={stats.failed_jobs}     icon={<XCircle size={18} />}      color={sv.red} />
+            <StatCard label="TV Shows"    value={stats.tv_count}        icon={<Tv size={18} />}           color={sv.amber} />
+            <StatCard label="Movies"      value={stats.movie_count}     icon={<Film size={18} />}         color={sv.magenta} />
             <StatCard
               label="Avg Time"
-              value={
-                stats.avg_processing_seconds
-                  ? formatDuration(stats.avg_processing_seconds)
-                  : "\u2014"
-              }
-              icon={<Clock className="w-5 h-5" />}
-              color="#8b5cf6"
+              value={stats.avg_processing_seconds ? formatDuration(stats.avg_processing_seconds) : "\u2014"}
+              icon={<Clock size={18} />}
+              color={sv.purple}
             />
           </div>
         )}

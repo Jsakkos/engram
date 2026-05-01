@@ -2,7 +2,7 @@ import React from "react";
 import { motion } from "motion/react";
 import { Loader2, CheckCircle2, AlertTriangle, Vote } from "lucide-react";
 import type { Track, TrackState } from "./DiscCard";
-import { sv, SvBar, SvLabel } from "./synapse";
+import { sv, SvBadge, SvBar, SvLabel } from "./synapse";
 
 interface TrackGridProps {
   tracks: Track[];
@@ -31,32 +31,6 @@ const STATE: Record<TrackState, StateConfig> = {
   failed:    { label: "FAILED",   color: sv.red,     border: `${sv.red}66`,        bg: `${sv.red}10`, Icon: AlertTriangle  },
   completed: { label: "DONE",     color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: CheckCircle2 },
 };
-
-interface BadgeProps {
-  color: string;
-  children: React.ReactNode;
-  testid?: string;
-}
-
-function MicroBadge({ color, children, testid }: BadgeProps) {
-  return (
-    <span
-      data-testid={testid}
-      style={{
-        padding: "1px 6px",
-        background: `${color}22`,
-        border: `1px solid ${color}55`,
-        fontFamily: sv.mono,
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: "0.16em",
-        color,
-      }}
-    >
-      {children}
-    </span>
-  );
-}
 
 const matchSourceColor = (source?: string): string => {
   if (source === "discdb") return "#60a5fa"; // blue
@@ -153,20 +127,21 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                   {(track.videoResolution || track.edition || track.isExtra || track.matchSource) && (
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
                       {track.matchSource && (
-                        <MicroBadge
-                          color={matchSourceColor(track.matchSource)}
+                        <SvBadge
+                          size="sm"
+                          tone={matchSourceColor(track.matchSource)}
                           testid={`source-badge-${track.matchSource}`}
                         >
                           {matchSourceLabel(track.matchSource)}
-                        </MicroBadge>
+                        </SvBadge>
                       )}
                       {track.videoResolution && (
-                        <MicroBadge color={sv.cyan}>{track.videoResolution}</MicroBadge>
+                        <SvBadge size="sm" tone={sv.cyan}>{track.videoResolution}</SvBadge>
                       )}
                       {track.edition && (
-                        <MicroBadge color={sv.magenta}>{track.edition}</MicroBadge>
+                        <SvBadge size="sm" tone={sv.magenta}>{track.edition}</SvBadge>
                       )}
-                      {track.isExtra && <MicroBadge color={sv.yellow}>EXTRA</MicroBadge>}
+                      {track.isExtra && <SvBadge size="sm" tone={sv.yellow}>EXTRA</SvBadge>}
                     </div>
                   )}
                 </div>

@@ -1,11 +1,97 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
 import { MATCHING_CONFIG, EPISODE_CONFIG, FEATURES } from '../config/constants';
-import { SvAtmosphere, sv } from '../app/components/synapse';
+import { SvAtmosphere, SvPageHeader, sv } from '../app/components/synapse';
+
+/**
+ * Inline notification banner — error / warning. Replaces the four ad-hoc
+ * border-red-500/50 + border-yellow-500/30 div patterns that appeared in
+ * both review branches.
+ */
+function NoticeBanner({ tone, children }: { tone: 'error' | 'warn'; children: ReactNode }) {
+    const c = tone === 'error' ? sv.red : sv.yellow;
+    return (
+        <div
+            style={{
+                marginBottom: 24,
+                padding: '12px 16px',
+                background: `${c}10`,
+                border: `1px solid ${c}55`,
+                color: tone === 'error' ? sv.red : sv.yellow,
+                fontFamily: sv.mono,
+                fontSize: 12,
+                letterSpacing: '0.06em',
+                lineHeight: 1.45,
+                boxShadow: `0 0 12px ${c}22`,
+            }}
+        >
+            {children}
+        </div>
+    );
+}
+
+/**
+ * Small uniform header-action button for the ReviewQueue. Inline-styled with
+ * sv tokens so it matches the `SvPageHeader` chrome and the dashboard's
+ * ActionButtons family.
+ */
+function HeaderButton({
+    color,
+    onClick,
+    disabled,
+    icon,
+    children,
+}: {
+    color: string;
+    onClick: () => void;
+    disabled?: boolean;
+    icon?: ReactNode;
+    children: ReactNode;
+}) {
+    const base: CSSProperties = {
+        height: 32,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '0 12px',
+        background: sv.bg0,
+        border: `1px solid ${color}55`,
+        color,
+        fontFamily: sv.mono,
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '0.20em',
+        textTransform: 'uppercase',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        boxShadow: `0 0 8px ${color}33`,
+        transition: 'border-color 120ms, box-shadow 120ms',
+    };
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            style={base}
+            onMouseEnter={(e) => {
+                if (disabled) return;
+                e.currentTarget.style.borderColor = color;
+                e.currentTarget.style.boxShadow = `0 0 14px ${color}66`;
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = `${color}55`;
+                e.currentTarget.style.boxShadow = `0 0 8px ${color}33`;
+            }}
+        >
+            {icon}
+            <span>{children}</span>
+        </button>
+    );
+}
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
@@ -314,40 +400,18 @@ function ReviewQueue() {
     if (job.content_type === 'movie') {
         return (
             <SvAtmosphere>
-                {/* Header */}
-                <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
-                    <div className="max-w-5xl mx-auto px-6 py-5">
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={() => navigate('/')}
-                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
-                                aria-label="Back to dashboard"
-                            >
-                                <ArrowLeft className="w-4 h-4" />
-                            </button>
-                            <div>
-                                <h1 className="text-xl font-bold text-cyan-400 font-mono uppercase tracking-wider" style={{ textShadow: '0 0 15px rgba(6, 182, 212, 0.6)' }}>
-                                    SELECT MOVIE VERSION
-                                </h1>
-                                <p className="text-sm text-slate-400 font-mono">
-                                    &gt; {job.detected_title || job.volume_label}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <SvPageHeader
+                    title="Select movie version"
+                    subtitle={`› ${job.detected_title || job.volume_label}`}
+                    onBack={() => navigate('/')}
+                />
 
                 {/* Content */}
                 <div className="max-w-5xl mx-auto px-6 py-8 relative z-0">
-                    {error && (
-                        <div className="mb-6 px-4 py-3 border-2 border-red-500/50 bg-red-500/10 text-red-400 font-mono text-sm">
-                            &gt; ERROR: {error}
-                        </div>
-                    )}
-
-                    <div className="mb-6 px-4 py-3 border-2 border-yellow-500/30 bg-yellow-500/5 text-yellow-400 font-mono text-sm">
-                        &gt; MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.
-                    </div>
+                    {error && <NoticeBanner tone="error">› ERROR: {error}</NoticeBanner>}
+                    <NoticeBanner tone="warn">
+                        › MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.
+                    </NoticeBanner>
 
                     <div className="space-y-4">
                         {titles.map(title => (
@@ -427,92 +491,63 @@ function ReviewQueue() {
     }
 
     // ==================== TV REVIEW ====================
+    const subtitleText = `› ${job.detected_title || job.volume_label}${job.detected_season ? ` / SEASON ${job.detected_season}` : ''}`;
     return (
         <SvAtmosphere>
-            {/* Header */}
-            <div className="border-b-2 border-cyan-500/30 backdrop-blur-xl bg-navy-900/80 sticky top-0 z-10" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
-                <div className="max-w-6xl mx-auto px-6 py-5">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={() => navigate('/')}
-                                className="px-3 py-2 font-mono font-bold text-sm uppercase tracking-wider border-2 bg-navy-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400 transition-all"
-                                aria-label="Back to dashboard"
-                            >
-                                <ArrowLeft className="w-4 h-4" />
-                            </button>
-                            <div>
-                                <h1 className="text-xl font-bold text-cyan-400 font-mono uppercase tracking-wider" style={{ textShadow: '0 0 15px rgba(6, 182, 212, 0.6)' }}>
-                                    REVIEW TITLES
-                                </h1>
-                                <p className="text-sm text-slate-400 font-mono">
-                                    &gt; {job.detected_title || job.volume_label}
-                                    {job.detected_season && ` / SEASON ${job.detected_season}`}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={handleStartRip}
+            <SvPageHeader
+                title="Review titles"
+                subtitle={subtitleText}
+                onBack={() => navigate('/')}
+                right={
+                    <>
+                        <HeaderButton
+                            color={sv.cyan}
+                            onClick={handleStartRip}
+                            disabled={isSaving || isProcessing}
+                            icon={<Play size={12} />}
+                        >
+                            Start rip
+                        </HeaderButton>
+                        {assignedCount > 0 && (
+                            <HeaderButton
+                                color={sv.yellow}
+                                onClick={handleSaveAll}
                                 disabled={isSaving || isProcessing}
-                                className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-cyan-400 border-cyan-500/50 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                                icon={<Save size={12} />}
                             >
-                                <Play className="w-3 h-3" />
-                                START RIP
-                            </button>
-                            {assignedCount > 0 && (
-                                <button
-                                    onClick={handleSaveAll}
-                                    disabled={isSaving || isProcessing}
-                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-yellow-400 border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_15px_rgba(250,204,21,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    <Save className="w-3 h-3" />
-                                    {isSaving ? 'SAVING...' : `SAVE ${assignedCount} ASSIGNMENTS`}
-                                </button>
-                            )}
-                            {assignedCount > 0 && (
-                                <button
-                                    onClick={handleProcessMatched}
-                                    disabled={isSaving || isProcessing}
-                                    className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-green-400 border-green-500/50 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    <Package className="w-3 h-3" />
-                                    {isProcessing ? 'PROCESSING...' : `PROCESS ${assignedCount} MATCHED`}
-                                </button>
-                            )}
-                            <button
-                                onClick={handleRematchAll}
-                                disabled={isSaving || isProcessing || isRematching}
-                                className="px-4 py-2 font-mono font-bold text-xs uppercase tracking-wider border-2 bg-navy-900 text-magenta-400 border-magenta-500/50 hover:border-magenta-400 hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] transition-all flex items-center gap-2 disabled:opacity-50"
+                                {isSaving ? 'Saving…' : `Save ${assignedCount}`}
+                            </HeaderButton>
+                        )}
+                        {assignedCount > 0 && (
+                            <HeaderButton
+                                color={sv.green}
+                                onClick={handleProcessMatched}
+                                disabled={isSaving || isProcessing}
+                                icon={<Package size={12} />}
                             >
-                                <RefreshCw className={`w-3 h-3 ${isRematching ? 'animate-spin' : ''}`} />
-                                {isRematching ? 'RE-MATCHING...' : 'RE-MATCH ALL'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                                {isProcessing ? 'Processing…' : `Process ${assignedCount}`}
+                            </HeaderButton>
+                        )}
+                        <HeaderButton
+                            color={sv.magenta}
+                            onClick={handleRematchAll}
+                            disabled={isSaving || isProcessing || isRematching}
+                            icon={<RefreshCw size={12} className={isRematching ? 'animate-spin' : ''} />}
+                        >
+                            {isRematching ? 'Re-matching…' : 'Re-match all'}
+                        </HeaderButton>
+                    </>
+                }
+            />
 
             {/* Content */}
             <div className="max-w-6xl mx-auto px-6 py-8 relative z-0 pb-24">
-                {error && (
-                    <div className="mb-6 px-4 py-3 border-2 border-red-500/50 bg-red-500/10 text-red-400 font-mono text-sm">
-                        &gt; ERROR: {error}
-                    </div>
-                )}
-
-                {job.error_message && (
-                    <div className="mb-6 px-4 py-3 border-2 border-yellow-500/30 bg-yellow-500/5 text-yellow-400 font-mono text-sm">
-                        &gt; {job.error_message}
-                    </div>
-                )}
-
+                {error && <NoticeBanner tone="error">› ERROR: {error}</NoticeBanner>}
+                {job.error_message && <NoticeBanner tone="warn">› {job.error_message}</NoticeBanner>}
                 {job.subtitle_status === 'failed' && !job.error_message?.includes('Subtitle') && (
-                    <div className="mb-6 px-4 py-3 border-2 border-yellow-500/30 bg-yellow-500/5 text-yellow-400 font-mono text-sm">
-                        &gt; SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
-                    </div>
+                    <NoticeBanner tone="warn">
+                        › SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
+                    </NoticeBanner>
                 )}
 
                 {/* Matched Section */}
