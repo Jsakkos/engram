@@ -378,9 +378,12 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
     )
     recent = recent_result.scalars().all()
 
-    # 14-day throughput: count of completions per day, oldest first.
-    now = datetime.now(UTC)
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # 14-day throughput: count of completions per day in server-local time, oldest first.
+    # Engram is self-hosted, so server local time matches the user's calendar day —
+    # bucketing by UTC would mis-attribute evening completions in negative-UTC timezones
+    # to the next day.
+    now_local = datetime.now().astimezone()
+    today = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     daily_throughput: list[int] = [0] * 14
     for j in completed:
         if not j.completed_at:
@@ -388,7 +391,8 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
         completed_at = j.completed_at
         if completed_at.tzinfo is None:
             completed_at = completed_at.replace(tzinfo=UTC)
-        day_start = completed_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        local_completed = completed_at.astimezone()
+        day_start = local_completed.replace(hour=0, minute=0, second=0, microsecond=0)
         days_ago = (today - day_start).days
         if 0 <= days_ago < 14:
             # Index 0 is 13 days ago, index 13 is today.
