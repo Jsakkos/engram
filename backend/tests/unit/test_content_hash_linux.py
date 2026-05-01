@@ -180,17 +180,13 @@ class TestPlatformDispatch:
     @patch("app.core.extractor.sys")
     def test_linux_calls_find_mount_point(self, mock_sys):
         mock_sys.platform = "linux"
-        with patch(
-            "app.core.extractor._find_linux_mount_point", return_value=None
-        ) as mock_find:
+        with patch("app.core.extractor._find_linux_mount_point", return_value=None) as mock_find:
             compute_content_hash("/dev/sr0")
         mock_find.assert_called_once_with("/dev/sr0")
 
     @patch("app.core.extractor.sys")
     def test_darwin_uses_linux_path(self, mock_sys):
         mock_sys.platform = "darwin"
-        with patch(
-            "app.core.extractor._find_linux_mount_point", return_value=None
-        ) as mock_find:
+        with patch("app.core.extractor._find_linux_mount_point", return_value=None) as mock_find:
             compute_content_hash("/dev/disk2")
         mock_find.assert_called_once_with("/dev/disk2")
