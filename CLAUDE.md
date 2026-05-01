@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Engram is a disc ripping and media organization tool with a reactive web dashboard. It automates the workflow from optical disc insertion to organized media library, with Human-in-the-Loop intervention for ambiguous content. Cross-platform backend (Python/FastAPI), with automatic drive detection on Windows. Linux/macOS can run the backend and dashboard but require manual job submission. Requires MakeMKV with a valid license.
+Engram is a disc ripping and media organization tool with a reactive web dashboard. It automates the workflow from optical disc insertion to organized media library, with Human-in-the-Loop intervention for ambiguous content. Cross-platform backend (Python/FastAPI), with automatic drive detection on Windows and Linux. macOS can run the backend and dashboard but requires manual job submission (no automatic drive detection on macOS). Requires MakeMKV with a valid license.
 
 ## Important Rules
 
@@ -16,8 +16,8 @@ Engram is a disc ripping and media organization tool with a reactive web dashboa
 ### Backend (from `backend/`)
 
 ```bash
-uv sync                              # Install/sync dependencies
-uv run uvicorn app.main:app --reload  # Start dev server (port 8000)
+uv sync                        # Install/sync dependencies
+uv run uvicorn app.main:app    # Start dev server (port 8000)
 uv run pytest                         # Run all tests
 uv run pytest test_file.py::test_name # Run a single test
 uv run ruff check .                   # Lint

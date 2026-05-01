@@ -9,6 +9,7 @@ import logging
 import re
 import struct
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -58,7 +59,20 @@ def _save_makemkv_log(log_path: Path, content: str) -> None:
         logger.warning(f"Failed to save MakeMKV log to {log_path}: {e}")
 
 
-def compute_content_hash(drive_letter: str) -> str | None:
+def _find_linux_mount_point(device: str) -> Path | None:
+    """Find the mount point for a block device on Linux by parsing /proc/mounts."""
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] == device:
+                    return Path(parts[1])
+    except (OSError, PermissionError) as e:
+        logger.debug(f"Could not read /proc/mounts: {e}")
+    return None
+
+
+def compute_content_hash(drive: str) -> str | None:
     """Compute TheDiscDB-compatible ContentHash for a disc.
 
     The hash is MD5 of concatenated Int64 file sizes from BDMV/STREAM/*.m2ts
@@ -66,14 +80,24 @@ def compute_content_hash(drive_letter: str) -> str | None:
     algorithm used by TheDiscDB's ImportBuddy tool.
 
     Args:
-        drive_letter: Drive letter (e.g., "E:" or "E")
+        drive: Drive letter (e.g., "E:" or "E") on Windows, or device path
+               (e.g., "/dev/sr0") on Linux. On Linux the disc must be mounted
+               for the hash to be computed; returns None if not mounted.
 
     Returns:
         Uppercase hex MD5 hash string, or None if disc structure not found
     """
-    drive = drive_letter.rstrip(":\\")
-    bdmv_path = Path(f"{drive}:\\BDMV\\STREAM")
-    dvd_path = Path(f"{drive}:\\VIDEO_TS")
+    if sys.platform != "win32":
+        mount_point = _find_linux_mount_point(drive)
+        if mount_point is None:
+            logger.debug(f"Device {drive} is not mounted; cannot compute ContentHash.")
+            return None
+        bdmv_path = mount_point / "BDMV" / "STREAM"
+        dvd_path = mount_point / "VIDEO_TS"
+    else:
+        clean_drive = drive.rstrip(":\\")
+        bdmv_path = Path(f"{clean_drive}:\\BDMV\\STREAM")
+        dvd_path = Path(f"{clean_drive}:\\VIDEO_TS")
 
     target_path = None
     pattern = "*"

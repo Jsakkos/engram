@@ -24,6 +24,8 @@ from app.models.disc_job import ContentType, DiscTitle
 
 logger = logging.getLogger(__name__)
 
+_SIM_DEFAULT_DRIVE = "/dev/sr0" if sys.platform != "win32" else "E:"
+
 router = APIRouter(prefix="/api", tags=["jobs"])
 
 
@@ -952,7 +954,7 @@ async def delete_job(job_id: int, session: AsyncSession = Depends(get_session)) 
 class SimulateDiscRequest(BaseModel):
     """Request model for simulating a disc insertion."""
 
-    drive_id: str = "E:"
+    drive_id: str = _SIM_DEFAULT_DRIVE
     volume_label: str = "SIMULATED_DISC"
     content_type: str = "tv"
     detected_title: str | None = None
@@ -983,7 +985,7 @@ async def simulate_insert_disc(req: SimulateDiscRequest) -> dict:
 
 
 @router.post("/simulate/remove-disc")
-async def simulate_remove_disc(drive_id: str = "E:") -> dict:
+async def simulate_remove_disc(drive_id: str = _SIM_DEFAULT_DRIVE) -> dict:
     """Simulate a disc removal. Only available in debug mode."""
     if not settings.debug:
         raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
@@ -997,7 +999,7 @@ async def simulate_remove_disc(drive_id: str = "E:") -> dict:
 
 
 @router.post("/simulate/trigger-real-scan")
-async def trigger_real_scan(drive_id: str = "F:") -> dict:
+async def trigger_real_scan(drive_id: str = _SIM_DEFAULT_DRIVE) -> dict:
     """Trigger a real disc scan and rip pipeline. Only available in debug mode.
 
     This fires the same event as a physical disc insertion, using the real
@@ -1113,7 +1115,7 @@ async def simulate_insert_disc_from_staging(
 
     # Create the simulation
     params = {
-        "drive_id": "E:",
+        "drive_id": _SIM_DEFAULT_DRIVE,
         "volume_label": volume_label,
         "content_type": content_type,
         "detected_title": detected_title or volume_label.replace("_", " ").title(),

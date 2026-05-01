@@ -58,8 +58,13 @@ Terminal 1 (backend):
 
 ```bash
 cd backend
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app
 ```
+
+!!! warning "Do not use --reload with an optical drive"
+    The `--reload` flag spawns a child process with its own drive sentinel,
+    causing duplicate disc insertion events. Omit it unless you are developing
+    without a disc drive connected.
 
 Terminal 2 (frontend):
 
