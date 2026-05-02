@@ -163,15 +163,16 @@ class MakeMKVExtractor:
 
     async def scan_disc(
         self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
-    ) -> list[TitleInfo]:
-        """Scan a disc and return title information.
+    ) -> tuple[list[TitleInfo], str]:
+        """Scan a disc and return title information and the disc display name.
 
         Args:
             drive: Drive letter (e.g., "E:") or disc index (e.g., "disc:0")
             log_dir: Optional directory for saving MakeMKV scan logs
 
         Returns:
-            List of titles found on the disc
+            (titles, disc_name) — list of titles and the CINFO:2 disc display name
+            (disc_name is empty string when not present in MakeMKV output)
         """
         lock = self._get_drive_lock(drive)
         if lock.locked():
@@ -185,7 +186,7 @@ class MakeMKVExtractor:
 
     async def _scan_disc_unlocked(
         self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
-    ) -> list[TitleInfo]:
+    ) -> tuple[list[TitleInfo], str]:
         """Internal scan implementation (caller must hold drive lock)."""
         # Normalize drive specification
         if not drive.startswith("disc:"):
@@ -234,27 +235,30 @@ class MakeMKVExtractor:
                     f"MakeMKV scan failed after {elapsed:.1f}s "
                     f"(exit code {result.returncode}): {result.stderr}"
                 )
-                return []
+                return [], ""
 
-            titles = self._parse_disc_info(result.stdout or "")
-            logger.info(f"Scan completed in {elapsed:.1f}s, found {len(titles)} titles")
+            titles, disc_name = self._parse_disc_info(result.stdout or "")
+            logger.info(
+                f"Scan completed in {elapsed:.1f}s, found {len(titles)} titles"
+                + (f", disc name: '{disc_name}'" if disc_name else "")
+            )
 
             # Save scan log for TheDiscDB contributions
             if log_dir and result.stdout:
                 _save_makemkv_log(log_dir / "scan.log", result.stdout)
 
-            return titles
+            return titles, disc_name
 
         except FileNotFoundError:
             logger.error(f"MakeMKV not found at: {self.makemkv_path}")
-            return []
+            return [], ""
         except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
             logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for drive {drive}")
             raise ScanTimeoutError(f"Disc scan timed out after 10 minutes on drive {drive}") from e
         except Exception as e:
             logger.exception(f"Error scanning disc: {e}")
-            return []
+            return [], ""
 
     async def rip_titles(
         self,
@@ -775,19 +779,32 @@ class MakeMKVExtractor:
             except (ProcessLookupError, PermissionError) as e:
                 logger.debug(f"Could not terminate MakeMKV process for job {job_id}: {e}")
 
-    def _parse_disc_info(self, output: str) -> list[TitleInfo]:
-        """Parse MakeMKV robot-mode output to extract title information.
+    def _parse_disc_info(self, output: str) -> tuple[list[TitleInfo], str]:
+        """Parse MakeMKV robot-mode output to extract title information and disc name.
 
         MakeMKV output format (robot mode):
+            CINFO:2,0,"Disc display name"   (disc-level title, attr 2)
             TINFO:0,2,0,"Title name"
             TINFO:0,9,0,"1:30:45"  (duration)
             TINFO:0,10,0,"12.5 GB"  (size)
             TINFO:0,8,0,"24"  (chapter count)
+            TINFO:0,27,0,"Show - Season 3_t00.mkv"  (suggested output filename)
+
+        Returns:
+            (titles, disc_name) where disc_name is the CINFO:2 value (empty string if absent)
         """
         titles: dict[int, TitleInfo] = {}
+        disc_name = ""
 
         for line in output.split("\n"):
             line = line.strip()
+
+            # Capture disc display name from CINFO attr 2
+            if line.startswith("CINFO:"):
+                match = re.match(r"CINFO:(\d+),\d+,\"(.*)\"", line)
+                if match and int(match.group(1)) == 2:
+                    disc_name = match.group(2)
+                continue
 
             # Parse TINFO lines
             if line.startswith("TINFO:"):
@@ -829,10 +846,12 @@ class MakeMKVExtractor:
                             pass
                     elif attr_id == 26:  # Segment map (e.g., "1,2,3,4,5")
                         title.segment_map = value
+                    elif attr_id == 27:  # Suggested output filename (e.g., "Show - S3_t00.mkv")
+                        title.disc_title = value
                     elif attr_id == 28:  # Language code - good for filtering later
                         pass
 
-        return list(titles.values())
+        return list(titles.values()), disc_name
 
     def _parse_resolution(self, res_str: str) -> str:
         """Parse resolution string to standard label."""

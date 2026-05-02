@@ -94,13 +94,13 @@ function MainDashboard() {
   // Browser notifications for job state changes
   useNotifications(jobs);
 
-  // Show name prompt modal for jobs that need a name (generic/unreadable volume label)
+  // Show name prompt modal for unreadable labels or TV shows where TMDB lookup failed
   useEffect(() => {
     const needsName = jobs.find(
       (j) =>
         j.state === 'review_needed' &&
-        j.review_reason?.includes('label unreadable') &&
-        !j.detected_title,
+        ((j.review_reason?.includes('label unreadable') && !j.detected_title) ||
+          (j.review_reason?.includes('merged without separators') && j.content_type === 'tv')),
     );
     setNamePromptJob(needsName ?? null);
   }, [jobs]);
@@ -482,6 +482,7 @@ function MainDashboard() {
         {namePromptJob && (
           <NamePromptModal
             job={namePromptJob}
+            initialTitle={namePromptJob.detected_title ?? ''}
             onSubmit={(name, contentType, season) => {
               setJobName(namePromptJob.id, name, contentType, season);
               setNamePromptJob(null);

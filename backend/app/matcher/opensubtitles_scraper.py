@@ -69,7 +69,7 @@ class OpenSubtitlesClient:
         """Make a rate-limited GET request."""
         self._rate_limit()
         logger.debug(f"GET {url}")
-        response = self.session.get(url, timeout=30, **kwargs)
+        response = self.session.get(url, timeout=8, **kwargs)
         response.raise_for_status()
         return response
 

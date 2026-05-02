@@ -168,14 +168,25 @@ class SimulationService:
             force_review = params.get("force_review_needed", False)
             if force_review:
                 job.state = JobState.REVIEW_NEEDED
-                job.detected_title = None
-                job.review_reason = params.get("review_reason", "Disc label unreadable")
+                # Only clear detected_title for the classic "unreadable label" case.
+                # For TMDB-failure simulation (review_reason contains "merged without separators"),
+                # keep detected_title so the NamePromptModal pre-fill can be tested.
+                custom_reason = params.get("review_reason", "")
+                if not custom_reason or "unreadable" in custom_reason.lower():
+                    job.detected_title = None
+                    job.review_reason = (
+                        custom_reason
+                        or "Disc label unreadable. Please enter the title to continue."
+                    )
+                else:
+                    job.review_reason = custom_reason
                 await session.commit()
                 await ws_manager.broadcast_job_update(
                     job.id,
                     JobState.REVIEW_NEEDED.value,
                     content_type=content_type.value,
-                    detected_title=None,
+                    detected_title=job.detected_title,
+                    detected_season=(detected_season if content_type == ContentType.TV else None),
                     review_reason=job.review_reason,
                     total_titles=len(title_params),
                 )

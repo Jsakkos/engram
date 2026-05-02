@@ -94,7 +94,7 @@ class IdentificationCoordinator:
                 try:
                     from app.core.discdb_exporter import get_makemkv_log_dir
 
-                    titles = await self._extractor.scan_disc(
+                    titles, disc_name = await self._extractor.scan_disc(
                         job.drive_id, log_dir=get_makemkv_log_dir(job_id), job_id=job_id
                     )
                 except ScanTimeoutError:
@@ -112,7 +112,9 @@ class IdentificationCoordinator:
                     return
 
                 # Run classification pipeline
-                analysis = await self._run_classification(job, job_id, titles, session)
+                analysis = await self._run_classification(
+                    job, job_id, titles, session, disc_name=disc_name
+                )
 
                 logger.info(f"Job {job_id} Analysis Result: {analysis}")
 
@@ -265,6 +267,37 @@ class IdentificationCoordinator:
                     logger.info(
                         f"Job {job_id}: no title detected (volume label: '{job.volume_label}'), "
                         f"waiting for user to supply name"
+                    )
+                    return
+
+                # TV show detected but TMDB lookup failed — name cannot be trusted for episode
+                # matching. Block ripping until the user confirms the correct show name.
+                # (Disc-name fallback already ran in _run_classification; if we reach here,
+                # neither the volume label nor the DINFO name resolved on TMDB.)
+                if job.content_type == ContentType.TV and not job.tmdb_id and job.detected_title:
+                    reason = (
+                        f'Could not find "{job.detected_title}" on TMDB — the disc label '
+                        f"may have words merged without separators. "
+                        f"Please enter the correct show title."
+                    )
+                    await self._state_machine.transition_to_review(
+                        job,
+                        session,
+                        reason=reason,
+                        broadcast=False,
+                    )
+                    await ws_manager.broadcast_job_update(
+                        job_id,
+                        JobState.REVIEW_NEEDED.value,
+                        content_type=job.content_type.value,
+                        detected_title=job.detected_title,
+                        detected_season=job.detected_season,
+                        total_titles=job.total_titles,
+                        review_reason=reason,
+                    )
+                    logger.info(
+                        f"Job {job_id}: TMDB lookup failed for '{job.detected_title}' "
+                        f"(volume label: '{job.volume_label}') — prompting user to supply correct show name"
                     )
                     return
 
@@ -701,7 +734,9 @@ class IdentificationCoordinator:
 
         return {"job_id": job_id, "has_ripped": has_ripped}
 
-    async def _run_classification(self, job, job_id, titles, session, is_staging=False):
+    async def _run_classification(
+        self, job, job_id, titles, session, is_staging=False, disc_name: str = ""
+    ):
         """Run the full classification pipeline (DiscDB, TMDB, AI, Analyst)."""
         from app.services.config_service import get_config
 
@@ -765,6 +800,28 @@ class IdentificationCoordinator:
                     else f"Job {job_id}: TMDB lookup failed, using heuristics only: {e}"
                 )
 
+        # DINFO disc-name TMDB fallback — when the volume label gives a garbled name
+        # (e.g. STRANGENEWWORLDS), try MakeMKV's disc display name from DINFO:6 instead.
+        disc_name_title: str | None = None
+        disc_name_season: int | None = None
+        if not tmdb_signal and disc_name and config.tmdb_api_key:
+            parsed_title, parsed_season = DiscAnalyst._parse_disc_name(disc_name)
+            if parsed_title:
+                try:
+                    from app.core.tmdb_classifier import classify_from_tmdb
+
+                    disc_tmdb_signal = classify_from_tmdb(parsed_title, config.tmdb_api_key)
+                    if disc_tmdb_signal:
+                        tmdb_signal = disc_tmdb_signal
+                        disc_name_title = parsed_title
+                        disc_name_season = parsed_season
+                        logger.info(
+                            f"Job {job_id}: TMDB fallback via disc name '{parsed_title}' succeeded "
+                            f"(label '{job.volume_label}' gave garbled name)"
+                        )
+                except Exception as e:
+                    logger.warning(f"Job {job_id}: TMDB disc-name fallback failed: {e}")
+
         # AI-powered identification fallback (not for staging)
         ai_identified_name = None
         if (
@@ -809,8 +866,18 @@ class IdentificationCoordinator:
             except Exception as e:
                 logger.warning(f"Job {job_id}: AI identification failed: {e}", exc_info=True)
 
-        # Analyze disc content
-        analysis = self._analyst.analyze(titles, job.volume_label, tmdb_signal=tmdb_signal)
+        # Analyze disc content — pass disc_name_title as name_hint when available so the
+        # analyst uses it directly instead of re-parsing the (potentially garbled) volume label.
+        analysis = self._analyst.analyze(
+            titles,
+            job.volume_label,
+            tmdb_signal=tmdb_signal,
+            name_hint=disc_name_title or None,
+        )
+
+        # If the disc-name fallback found a season the volume label didn't have, propagate it
+        if disc_name_title and disc_name_season and not analysis.detected_season:
+            analysis.detected_season = disc_name_season
 
         # If AI identified a name but TMDB re-query also failed
         if ai_identified_name and not analysis.detected_name:

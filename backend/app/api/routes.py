@@ -211,6 +211,10 @@ class ConfigResponse(BaseModel):
     discdb_export_path: str
     discdb_api_key_set: bool  # True if API key is configured (never expose the key)
     discdb_api_url: str
+    # OpenSubtitles.com
+    opensubtitles_api_key: str  # "***" if set
+    opensubtitles_username: str
+    opensubtitles_password: str  # "***" if set
     # Onboarding
     setup_complete: bool
 
@@ -263,6 +267,10 @@ class ConfigUpdate(BaseModel):
     discdb_export_path: str | None = None
     discdb_api_key: str | None = None
     discdb_api_url: str | None = None
+    # OpenSubtitles.com
+    opensubtitles_api_key: str | None = None
+    opensubtitles_username: str | None = None
+    opensubtitles_password: str | None = None
     # Onboarding
     setup_complete: bool | None = None
 
@@ -802,6 +810,10 @@ async def get_config() -> ConfigResponse:
         discdb_export_path=config.discdb_export_path,
         discdb_api_key_set=bool(config.discdb_api_key),
         discdb_api_url=config.discdb_api_url,
+        # OpenSubtitles.com
+        opensubtitles_api_key="***" if config.opensubtitles_api_key else "",  # Redacted
+        opensubtitles_username=config.opensubtitles_username,
+        opensubtitles_password="***" if config.opensubtitles_password else "",  # Redacted
         # Onboarding
         setup_complete=config.setup_complete,
     )
