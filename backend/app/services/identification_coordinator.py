@@ -274,11 +274,7 @@ class IdentificationCoordinator:
                 # matching. Block ripping until the user confirms the correct show name.
                 # (Disc-name fallback already ran in _run_classification; if we reach here,
                 # neither the volume label nor the DINFO name resolved on TMDB.)
-                if (
-                    job.content_type == ContentType.TV
-                    and not job.tmdb_id
-                    and job.detected_title
-                ):
+                if job.content_type == ContentType.TV and not job.tmdb_id and job.detected_title:
                     reason = (
                         f'Could not find "{job.detected_title}" on TMDB — the disc label '
                         f"may have words merged without separators. "

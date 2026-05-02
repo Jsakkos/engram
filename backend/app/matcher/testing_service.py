@@ -109,7 +109,11 @@ def download_subtitles(show_name: str, season: int) -> dict:
     # --- OpenSubtitles.com REST API (preferred when credentials are configured) ---
     # Pre-download the whole season at once; falls back to scrapers per-episode on failure.
     api_srt_map: dict[int, Path] = {}
-    if config.opensubtitles_api_key and config.opensubtitles_username and config.opensubtitles_password:
+    if (
+        config.opensubtitles_api_key
+        and config.opensubtitles_username
+        and config.opensubtitles_password
+    ):
         try:
             import shutil
 

@@ -174,7 +174,10 @@ class SimulationService:
                 custom_reason = params.get("review_reason", "")
                 if not custom_reason or "unreadable" in custom_reason.lower():
                     job.detected_title = None
-                    job.review_reason = custom_reason or "Disc label unreadable. Please enter the title to continue."
+                    job.review_reason = (
+                        custom_reason
+                        or "Disc label unreadable. Please enter the title to continue."
+                    )
                 else:
                     job.review_reason = custom_reason
                 await session.commit()

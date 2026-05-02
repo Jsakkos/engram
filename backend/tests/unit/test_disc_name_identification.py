@@ -11,8 +11,10 @@ from app.models.disc_job import ContentType
 # Extractor: DINFO parsing
 # ---------------------------------------------------------------------------
 
+
 def _make_extractor() -> MakeMKVExtractor:
     from pathlib import Path
+
     return MakeMKVExtractor(makemkv_path=Path("makemkvcon64"))
 
 
@@ -72,19 +74,23 @@ def test_parse_disc_info_no_cinfo_returns_empty_string():
 # DiscAnalyst._parse_disc_name
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("disc_name,expected_title,expected_season", [
-    (
-        "Star Trek: Strange New Worlds - Season 3 (Disc 1)",
-        "Star Trek: Strange New Worlds",
-        3,
-    ),
-    ("The Office - Season 2", "The Office", 2),
-    ("Arrested Development Season 4", "Arrested Development", 4),
-    ("Inception", "Inception", None),
-    ("Star Trek: Strange New Worlds - Season 3", "Star Trek: Strange New Worlds", 3),
-    ("", None, None),
-    ("  ", None, None),
-])
+
+@pytest.mark.parametrize(
+    "disc_name,expected_title,expected_season",
+    [
+        (
+            "Star Trek: Strange New Worlds - Season 3 (Disc 1)",
+            "Star Trek: Strange New Worlds",
+            3,
+        ),
+        ("The Office - Season 2", "The Office", 2),
+        ("Arrested Development Season 4", "Arrested Development", 4),
+        ("Inception", "Inception", None),
+        ("Star Trek: Strange New Worlds - Season 3", "Star Trek: Strange New Worlds", 3),
+        ("", None, None),
+        ("  ", None, None),
+    ],
+)
 def test_parse_disc_name(disc_name, expected_title, expected_season):
     title, season = DiscAnalyst._parse_disc_name(disc_name)
     assert title == expected_title
@@ -94,6 +100,7 @@ def test_parse_disc_name(disc_name, expected_title, expected_season):
 # ---------------------------------------------------------------------------
 # Analyst: name_hint bypasses _names_are_similar guard
 # ---------------------------------------------------------------------------
+
 
 def _tv_titles(count: int = 6, duration: int = 2870) -> list[TitleInfo]:
     return [
@@ -164,6 +171,7 @@ def test_analyst_name_hint_still_propagates_tmdb_id_on_type_conflict():
 # _run_classification integration: disc_name → TMDB fallback
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
     """When the volume label gives a garbled TMDB miss, disc_name gets a hit."""
@@ -223,10 +231,11 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
 
     mock_session = AsyncMock()
 
-    with patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)), \
-         patch("app.core.features.DISCDB_ENABLED", False), \
-         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb):
-
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+    ):
         analysis = await coordinator._run_classification(
             mock_job,
             job_id=1,

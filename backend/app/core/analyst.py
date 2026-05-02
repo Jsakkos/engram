@@ -184,8 +184,10 @@ class DiscAnalyst:
         # name_hint already comes from a trusted source (DINFO), so bypass the guard for it.
         effective_name = detected_name
         if tmdb_signal and tmdb_signal.tmdb_name:
-            if name_hint or detected_name is None or _names_are_similar(
-                detected_name, tmdb_signal.tmdb_name
+            if (
+                name_hint
+                or detected_name is None
+                or _names_are_similar(detected_name, tmdb_signal.tmdb_name)
             ):
                 effective_name = tmdb_signal.tmdb_name
             else:
