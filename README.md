@@ -29,21 +29,26 @@
   </tr>
   <tr>
     <td><img src="docs/screenshots/08-match-candidates.png" alt="Episode matching" /><br /><sub>Audio fingerprint matching with confidence scores</sub></td>
-    <td><img src="docs/screenshots/09-completed.png" alt="Completed" /><br /><sub>Completed job with poster art</sub></td>
+    <td><img src="docs/screenshots/09-completed.png" alt="Completed" /><br /><sub>Completed job with activity log</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/10-movie-card.png" alt="Movie disc" /><br /><sub>Movie disc detection</sub></td>
-    <td><img src="docs/screenshots/12-movie-completed.png" alt="Movie completed" /><br /><sub>Movie ripped and organized</sub></td>
+    <td><img src="docs/screenshots/10-movie-card.png" alt="Movie disc" /><br /><sub>Movie disc detection with MOVIE badge</sub></td>
+    <td><img src="docs/screenshots/24-history-page.png" alt="History & Analytics" /><br /><sub>Job history with stats dashboard and drill-down</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/26-review-page.png" alt="Review queue" /><br /><sub>Human-in-the-loop episode review queue</sub></td>
+    <td><img src="docs/screenshots/22-settings-step3-tmdb.png" alt="Settings wizard" /><br /><sub>Setup wizard — TMDB &amp; OpenSubtitles configuration</sub></td>
   </tr>
 </table>
 
 ## Features
 
 - **Automatic disc detection** — monitors optical drives and starts processing on insertion
-- **Smart classification** — distinguishes TV shows from movies using duration analysis, TMDB lookup, and TheDiscDB
+- **Smart classification** — distinguishes TV shows from movies using duration analysis, TMDB lookup, and TheDiscDB; uses MakeMKV disc name as a TMDB fallback for merged-word volume labels (e.g. `STRANGENEWWORLDS_SEASON3`)
 - **Audio fingerprint matching** — identifies TV episodes via ASR transcription matched against subtitles
+- **Subtitle downloads** — fetches subtitles via OpenSubtitles.com REST API (preferred, free tier available) with Addic7ed as fallback
 - **Real-time dashboard** — cyberpunk-themed web UI with WebSocket live updates, progress tracking, and notifications
-- **Human-in-the-loop** — review queue for low-confidence matches with competing candidate display
+- **Human-in-the-loop** — review queue for low-confidence matches, unreadable disc labels, and ambiguous content with pre-filled correction modal
 - **Job history & analytics** — searchable archive of all completed/failed jobs with drill-down detail panel, processing timeline, and TheDiscDB metadata
 - **TheDiscDB integration** — automatic disc identification via content hash fingerprinting with persisted title mappings
 - **Responsive design** — works on desktop and mobile with compact/expanded view modes
@@ -123,6 +128,8 @@ Open http://localhost:5173 in your browser.
 On first launch the Config Wizard walks you through setup: MakeMKV path, library paths, TMDB token, and more. Settings are stored in the database and editable from the Settings page.
 
 **TMDB**: The wizard asks for a **Read Access Token** (v4 auth) from your [TMDB API Settings](https://www.themoviedb.org/settings/api). This is the long JWT string starting with `eyJ...`, not the shorter v3 API Key.
+
+**OpenSubtitles** (optional): For more reliable subtitle downloads, configure an [OpenSubtitles.com](https://www.opensubtitles.com) account. Free tier allows 5 downloads/day; consumer API keys at [opensubtitles.com/consumers](https://www.opensubtitles.com/en/consumers). Without credentials, Engram falls back to scraping Addic7ed.
 
 An optional `backend/.env` file can override server-level defaults:
 

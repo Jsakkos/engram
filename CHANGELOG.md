@@ -2,6 +2,26 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [0.6.0] - 2026-05-02
+
+### Added
+- **OpenSubtitles.com REST API**: subtitle downloads now use the official `opensubtitlescom` REST API as the primary path (batch-downloads a whole season in one search call). Addic7ed and OpenSubtitles.org web scrapers remain as per-episode fallbacks. Configure API key, username, and password in Settings → TMDB & Subtitles.
+- **Disc name identification via MakeMKV CINFO codes**: extractor now captures the disc display name from `CINFO:2` (e.g. `"Star Trek: Strange New Worlds - Season 3 (Disc 1)"`). When the volume label produces a failed TMDB lookup, the disc name is parsed and tried as a second-chance TMDB query — silently resolving merged-word labels like `STRANGENEWWORLDS_SEASON3` without any user prompt.
+- **TMDB-failure review gate**: if both the volume label and disc name fail TMDB lookup for a TV show, the job now enters `REVIEW_NEEDED` state with the garbled name pre-filled in the correction modal (previously the job would silently start ripping with a wrong title).
+- **NamePromptModal pre-fill**: when a job enters review due to an unreadable or merged-word label, the modal opens with `detected_title`, content type, and season number pre-populated — the user only needs to correct the show name.
+- **Disc analyst static method** `_parse_disc_name()`: parses `"Show Title - Season N (Disc N)"` MakeMKV format into `(title, season)` tuple.
+- 14 new unit tests in `tests/unit/test_disc_name_identification.py` covering extractor CINFO parsing, analyst disc-name parsing, identification coordinator fallback logic, and review gate behavior.
+
+### Fixed
+- **CINFO vs DINFO**: extractor was reading `DINFO:6` (which doesn't exist in MakeMKV robot-mode output) instead of `CINFO:2`. This meant the disc display name was never captured, so the TMDB disc-name fallback never fired for any disc.
+- **Scraper timeouts**: Addic7ed and OpenSubtitles.org request timeouts reduced from 30 s to 8 s so failures are fast when those sites block requests.
+- **Simulation service**: `insert_disc_from_staging` no longer crashes when `staging_path` contains paths with non-standard separators.
+
+### Changed
+- Subtitle download strategy: OpenSubtitles.com REST API is tried first (entire season at once); only falls back to per-episode scraping if credentials are absent or the API call fails.
+- `SRT` validation (`is_valid_srt_file`) now deletes and re-downloads cached files that contain HTML (Cloudflare challenge pages) rather than surfacing them as valid subtitles.
+- `opensubtitlescom>=0.1.0` added to backend dependencies.
+
 ## [0.5.0] - 2026-04-05
 
 ### Changed

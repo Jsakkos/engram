@@ -32,9 +32,10 @@ backend/app/static/
 engram-windows-x64/
 engram-windows-*.zip
 
-# Ad-hoc debug screenshots
+# Ad-hoc debug screenshots (root-level only)
 /*.png
-screenshots/
+/screenshots/
+# docs/screenshots/ is intentionally tracked
 
 # MkDocs
 site/
