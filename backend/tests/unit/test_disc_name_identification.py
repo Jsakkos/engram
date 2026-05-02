@@ -7,7 +7,6 @@ from app.core.extractor import MakeMKVExtractor
 from app.core.tmdb_classifier import TmdbSignal
 from app.models.disc_job import ContentType
 
-
 # ---------------------------------------------------------------------------
 # Extractor: DINFO parsing
 # ---------------------------------------------------------------------------
@@ -170,9 +169,8 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
     """When the volume label gives a garbled TMDB miss, disc_name gets a hit."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from app.services.identification_coordinator import IdentificationCoordinator
-
     from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
 
     coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
     analyst = DiscAnalyst()
