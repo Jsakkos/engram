@@ -88,6 +88,7 @@ class TitleInfo:
     source_filename: str = ""  # e.g., "00001.m2ts" (MakeMKV TINFO attr 16)
     segment_count: int = 0  # MakeMKV TINFO attr 25
     segment_map: str = ""  # e.g., "1,2,3" (MakeMKV TINFO attr 26)
+    disc_title: str = ""  # e.g., "Show - Season 3_t00.mkv" (MakeMKV TINFO attr 27)
 
 
 @dataclass
@@ -136,6 +137,7 @@ class DiscAnalyst:
         titles: list[TitleInfo],
         volume_label: str = "",
         tmdb_signal=None,
+        name_hint: str | None = None,
     ) -> DiscAnalysisResult:
         """Analyze a list of titles to determine content type.
 
@@ -143,6 +145,9 @@ class DiscAnalyst:
             titles: List of title information from MakeMKV
             volume_label: The disc's volume label (e.g., "THE_OFFICE_S1")
             tmdb_signal: Optional TmdbSignal from TMDB lookup
+            name_hint: Override for detected_name when a better source than the volume
+                label is available (e.g., MakeMKV's DINFO disc name). Bypasses the
+                _names_are_similar guard so the TMDB name flows through cleanly.
 
         Returns:
             Analysis result with content type and confidence
@@ -166,17 +171,22 @@ class DiscAnalyst:
         logger.info(f"Title durations: {durations_str}")
 
         # Try to extract show name, season, and disc from volume label
-        detected_name, detected_season, detected_disc = self._parse_volume_label(volume_label)
+        label_name, detected_season, detected_disc = self._parse_volume_label(volume_label)
+        # name_hint (e.g. from MakeMKV DINFO) overrides the volume-label-parsed name
+        detected_name = name_hint if name_hint else label_name
 
         # If we found a season pattern (S01D02), it's very likely a TV show
         is_likely_tv = detected_season is not None
         if is_likely_tv:
             logger.info(f"Volume label indicates TV (season {detected_season})")
 
-        # Use TMDB name only if it's semantically related to the parsed name
+        # Use TMDB name only if it's semantically related to the parsed name.
+        # name_hint already comes from a trusted source (DINFO), so bypass the guard for it.
         effective_name = detected_name
         if tmdb_signal and tmdb_signal.tmdb_name:
-            if detected_name is None or _names_are_similar(detected_name, tmdb_signal.tmdb_name):
+            if name_hint or detected_name is None or _names_are_similar(
+                detected_name, tmdb_signal.tmdb_name
+            ):
                 effective_name = tmdb_signal.tmdb_name
             else:
                 logger.warning(
@@ -704,6 +714,43 @@ class DiscAnalyst:
         """
         normalized = re.sub(r"[_\s]", "", label).upper()
         return bool(DiscAnalyst._CATALOG_PATTERN.match(normalized))
+
+    @staticmethod
+    def _parse_disc_name(disc_name: str) -> tuple[str | None, int | None]:
+        """Parse MakeMKV's DINFO disc name into (show_title, season).
+
+        MakeMKV provides disc names like:
+          "Star Trek: Strange New Worlds - Season 3 (Disc 1)"
+          "The Office - Season 2"
+          "Inception"
+
+        Returns (show_title, season), either may be None if not found.
+        """
+        if not disc_name:
+            return None, None
+
+        name = disc_name.strip()
+        season: int | None = None
+
+        # Strip trailing " (Disc N)" or " (Disk N)"
+        name = re.sub(r"\s*\(Dis[ck]\s*\d+\)\s*$", "", name, flags=re.IGNORECASE).strip()
+
+        # Extract "- Season N" or "Season N" suffix
+        m = re.search(r"\s*[-–]\s*Season\s+(\d+)\s*$", name, re.IGNORECASE)
+        if m:
+            season = int(m.group(1))
+            name = name[: m.start()].strip()
+        else:
+            m = re.search(r"\s+Season\s+(\d+)\s*$", name, re.IGNORECASE)
+            if m:
+                season = int(m.group(1))
+                name = name[: m.start()].strip()
+
+        # Reject empty or clearly generic results
+        if not name or len(name) < 2:
+            return None, None
+
+        return name, season
 
     def _get_ambiguity_reason(self, titles: list[TitleInfo]) -> str:
         """Generate a human-readable reason for ambiguity."""

@@ -34,6 +34,9 @@ interface ConfigData {
     discdbExportPath: string;
     discdbApiKey: string;
     discdbApiUrl: string;
+    opensubtitlesApiKey: string;
+    opensubtitlesUsername: string;
+    opensubtitlesPassword: string;
 }
 
 interface ToolDetectionResult {
@@ -78,13 +81,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         discdbExportPath: '',
         discdbApiKey: '',
         discdbApiUrl: 'https://thediscdb.com',
+        opensubtitlesApiKey: '',
+        opensubtitlesUsername: '',
+        opensubtitlesPassword: '',
     });
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
-    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean}>({makemkv: false, tmdb: false});
+    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean}>({makemkv: false, tmdb: false, opensubtitles: false});
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
 
     const totalSteps = 4;
@@ -103,6 +109,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 setSavedKeys({
                     makemkv: data.makemkv_key === '***',
                     tmdb: data.tmdb_api_key === '***',
+                    opensubtitles: data.opensubtitles_api_key === '***',
                 });
                 // Note: API keys are redacted as "***" for security
                 setConfig({
@@ -131,6 +138,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     discdbExportPath: data.discdb_export_path || '',
                     discdbApiKey: '',  // Never populated from API (sensitive)
                     discdbApiUrl: data.discdb_api_url || 'https://thediscdb.com',
+                    opensubtitlesApiKey: data.opensubtitles_api_key === '***' ? '' : (data.opensubtitles_api_key || ''),
+                    opensubtitlesUsername: data.opensubtitles_username || '',
+                    opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -223,6 +233,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     discdb_export_path: config.discdbExportPath,
                     ...(config.discdbApiKey ? { discdb_api_key: config.discdbApiKey } : {}),
                     discdb_api_url: config.discdbApiUrl,
+                    ...(config.opensubtitlesApiKey ? { opensubtitles_api_key: config.opensubtitlesApiKey } : {}),
+                    opensubtitles_username: config.opensubtitlesUsername,
+                    ...(config.opensubtitlesPassword ? { opensubtitles_password: config.opensubtitlesPassword } : {}),
                     setup_complete: true,
                 }),
             });
@@ -515,6 +528,59 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             <span className="form-hint">
                                 The Read Access Token is a long JWT string starting with "eyJ...".
                                 Find it under API &rarr; Read Access Token in your TMDB account settings.
+                            </span>
+                        </div>
+
+                        <h4 style={{marginTop: '1.5rem', marginBottom: '0.25rem', fontSize: '1rem', fontWeight: 600}}>
+                            OpenSubtitles.com <span style={{fontWeight: 400, fontSize: '0.85rem', opacity: 0.7}}>(Optional)</span>
+                        </h4>
+                        <p className="step-description" style={{marginTop: 0}}>
+                            Enables automatic subtitle downloads for episode matching.{' '}
+                            Register a free account at{' '}
+                            <a href="https://www.opensubtitles.com" target="_blank" rel="noopener noreferrer">opensubtitles.com</a>,
+                            then create a consumer at{' '}
+                            <a href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">opensubtitles.com/consumers</a>{' '}
+                            to get an API key.
+                        </p>
+
+                        <div className="form-group">
+                            <label htmlFor="osApiKey">
+                                API Key
+                                {savedKeys.opensubtitles && (
+                                    <span className="ml-2 text-xs font-normal text-green-500">Key saved</span>
+                                )}
+                            </label>
+                            <input
+                                id="osApiKey"
+                                type="password"
+                                value={config.opensubtitlesApiKey}
+                                onChange={(e) => handleInputChange('opensubtitlesApiKey', e.target.value)}
+                                placeholder={savedKeys.opensubtitles ? 'Enter new key to replace existing' : 'API key from opensubtitles.com/consumers'}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="osUsername">Username</label>
+                            <input
+                                id="osUsername"
+                                type="text"
+                                value={config.opensubtitlesUsername}
+                                onChange={(e) => handleInputChange('opensubtitlesUsername', e.target.value)}
+                                placeholder="Your opensubtitles.com username"
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="osPassword">Password</label>
+                            <input
+                                id="osPassword"
+                                type="password"
+                                value={config.opensubtitlesPassword}
+                                onChange={(e) => handleInputChange('opensubtitlesPassword', e.target.value)}
+                                placeholder={savedKeys.opensubtitles ? 'Enter new password to replace existing' : 'Your opensubtitles.com password'}
+                            />
+                            <span className="form-hint">
+                                Free accounts get 5 subtitle downloads/day. Used only for TV episode matching; skipped if not configured.
                             </span>
                         </div>
                     </div>

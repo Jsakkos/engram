@@ -92,5 +92,10 @@ class AppConfig(SQLModel, table=True):
     discdb_api_key: str = ""  # API key for TheDiscDB submission
     discdb_api_url: str = "https://thediscdb.com"  # TheDiscDB API base URL
 
+    # OpenSubtitles.com REST API (for subtitle downloads)
+    opensubtitles_api_key: str = ""
+    opensubtitles_username: str = ""
+    opensubtitles_password: str = ""
+
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

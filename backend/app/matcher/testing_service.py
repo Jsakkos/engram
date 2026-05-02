@@ -106,7 +106,49 @@ def download_subtitles(show_name: str, season: int) -> dict:
 
     logger.info(f"Downloading subtitles for '{canonical_show_name}' to: {series_cache_dir}")
 
-    # Initialize both scrapers
+    # --- OpenSubtitles.com REST API (preferred when credentials are configured) ---
+    # Pre-download the whole season at once; falls back to scrapers per-episode on failure.
+    api_srt_map: dict[int, Path] = {}
+    if config.opensubtitles_api_key and config.opensubtitles_username and config.opensubtitles_password:
+        try:
+            import shutil
+
+            from opensubtitlescom import OpenSubtitles as _OSApi
+
+            _os_client = _OSApi("Engram", config.opensubtitles_api_key)
+            _os_client.login(config.opensubtitles_username, config.opensubtitles_password)
+            response = _os_client.search(
+                parent_tmdb_id=show_id,
+                season_number=season,
+                languages="en",
+                type="episode",
+            )
+            seen_api_eps: set[int] = set()
+            for subtitle in response.data or []:
+                ep_num = getattr(subtitle, "episode_number", None)
+                api_ep_season = getattr(subtitle, "season_number", None)
+                if ep_num and api_ep_season == season and ep_num not in seen_api_eps:
+                    episode_code_api = f"S{season:02d}E{ep_num:02d}"
+                    srt_target = series_cache_dir / f"{safe_show_name} - {episode_code_api}.srt"
+                    if not srt_target.exists():
+                        srt_file = _os_client.download_and_save(subtitle)
+                        if srt_file and is_valid_srt_file(Path(srt_file)):
+                            shutil.move(str(srt_file), srt_target)
+                            api_srt_map[ep_num] = srt_target
+                            seen_api_eps.add(ep_num)
+                    else:
+                        api_srt_map[ep_num] = srt_target
+                        seen_api_eps.add(ep_num)
+            logger.info(
+                f"OpenSubtitles API: {len(api_srt_map)}/{episode_count} subtitles "
+                f"for {canonical_show_name} S{season:02d}"
+            )
+        except ImportError:
+            logger.warning("opensubtitlescom package not installed — skipping API path")
+        except Exception as e:
+            logger.warning(f"OpenSubtitles API failed ({e}), falling back to scrapers")
+
+    # Initialize scraper clients (used as fallback when API is unavailable or misses episodes)
     addic7ed_client = Addic7edClient()
     opensubtitles_client = OpenSubtitlesClient()
     episodes = []
@@ -143,6 +185,18 @@ def download_subtitles(show_name: str, season: int) -> dict:
                     f"Cached file {existing_subtitle.name} is invalid (HTML?), deleting and re-downloading"
                 )
                 existing_subtitle.unlink(missing_ok=True)
+
+        # Use REST API result if available for this episode
+        if episode in api_srt_map:
+            episodes.append(
+                {
+                    "code": episode_code,
+                    "status": "downloaded",
+                    "path": str(api_srt_map[episode]),
+                    "source": "opensubtitles_api",
+                }
+            )
+            continue
 
         # Try Addic7ed first (faster, direct .srt downloads)
         try:

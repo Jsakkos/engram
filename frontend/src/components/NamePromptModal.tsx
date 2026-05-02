@@ -8,12 +8,15 @@ interface NamePromptModalProps {
     job: Job;
     onSubmit: (name: string, contentType: 'tv' | 'movie', season?: number) => void;
     onCancel: () => void;
+    initialTitle?: string;
 }
 
-export default function NamePromptModal({ job, onSubmit, onCancel }: NamePromptModalProps) {
-    const [title, setTitle] = useState('');
-    const [contentType, setContentType] = useState<'movie' | 'tv'>('movie');
-    const [season, setSeason] = useState<string>('1');
+export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle }: NamePromptModalProps) {
+    const [title, setTitle] = useState(initialTitle ?? '');
+    const [contentType, setContentType] = useState<'movie' | 'tv'>(
+        job.content_type === 'tv' ? 'tv' : 'movie',
+    );
+    const [season, setSeason] = useState<string>(String(job.detected_season ?? 1));
     const titleInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
