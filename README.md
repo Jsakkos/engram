@@ -16,6 +16,8 @@
   <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/github/v/release/Jsakkos/engram?style=flat-square&color=06b6d4" alt="Release" /></a>
   <a href="https://github.com/Jsakkos/engram/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Jsakkos/engram/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Jsakkos/engram?style=flat-square&color=ec4899" alt="License" /></a>
+  <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/main/docs/badges/windows-downloads.json&style=flat-square" alt="Windows Downloads" /></a>
+  <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/main/docs/badges/linux-downloads.json&style=flat-square" alt="Linux Downloads" /></a>
 </p>
 
 ---
@@ -40,6 +42,12 @@
     <td><img src="docs/screenshots/22-settings-step3-tmdb.png" alt="Settings wizard" /><br /><sub>Setup wizard — TMDB &amp; OpenSubtitles configuration</sub></td>
   </tr>
 </table>
+
+## Downloads
+
+<p align="center">
+  <img src="docs/downloads-chart.svg" alt="Downloads per release" />
+</p>
 
 ## Features
 
