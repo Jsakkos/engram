@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="524" font-family="system-ui,sans-serif">
+<rect width="800" height="524" fill="#0f172a" rx="8"/>
+<text x="400" y="26" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="bold">Downloads per Release</text>
+<rect x="610" y="36" width="12" height="12" fill="#06b6d4" rx="2"/>
+<text x="626" y="46" fill="#e2e8f0" font-size="11">Windows</text>
+<rect x="690" y="36" width="12" height="12" fill="#ec4899" rx="2"/>
+<text x="706" y="46" fill="#e2e8f0" font-size="11">Linux</text>
+<rect x="0" y="68" width="800" height="44" fill="#1e293b" opacity="0.5"/>
+<text x="84" y="87" text-anchor="end" fill="#e2e8f0" font-size="11">v0.6.0</text>
+<rect x="90" y="73" width="0" height="14" fill="#06b6d4" rx="2"/>
+<rect x="90" y="91" width="0" height="14" fill="#ec4899" rx="2"/>
+<text x="84" y="131" text-anchor="end" fill="#e2e8f0" font-size="11">v0.5.6</text>
+<rect x="90" y="117" width="52" height="14" fill="#06b6d4" rx="2"/>
+<text x="146" y="128" fill="#06b6d4" font-size="10">1</text>
+<rect x="90" y="135" width="0" height="14" fill="#ec4899" rx="2"/>
+<rect x="0" y="156" width="800" height="44" fill="#1e293b" opacity="0.5"/>
+<text x="84" y="175" text-anchor="end" fill="#e2e8f0" font-size="11">v0.5.5</text>
+<rect x="90" y="161" width="158" height="14" fill="#06b6d4" rx="2"/>
+<text x="252" y="172" fill="#06b6d4" font-size="10">3</text>
+<rect x="90" y="179" width="0" height="14" fill="#ec4899" rx="2"/>
+<text x="84" y="219" text-anchor="end" fill="#e2e8f0" font-size="11">v0.5.4</text>
+<rect x="90" y="205" width="686" height="14" fill="#06b6d4" rx="2"/>
+<text x="780" y="216" fill="#06b6d4" font-size="10">13</text>
+<rect x="90" y="223" width="0" height="14" fill="#ec4899" rx="2"/>
+<rect x="0" y="244" width="800" height="44" fill="#1e293b" opacity="0.5"/>
+<text x="84" y="263" text-anchor="end" fill="#e2e8f0" font-size="11">v0.5.3</text>
+<rect x="90" y="249" width="316" height="14" fill="#06b6d4" rx="2"/>
+<text x="410" y="260" fill="#06b6d4" font-size="10">6</text>
+<rect x="90" y="267" width="105" height="14" fill="#ec4899" rx="2"/>
+<text x="199" y="278" fill="#ec4899" font-size="10">2</text>
+<text x="84" y="307" text-anchor="end" fill="#e2e8f0" font-size="11">v0.5.2</text>
+<rect x="90" y="293" width="52" height="14" fill="#06b6d4" rx="2"/>
+<text x="146" y="304" fill="#06b6d4" font-size="10">1</text>
+<rect x="90" y="311" width="0" height="14" fill="#ec4899" rx="2"/>
+<rect x="0" y="332" width="800" height="44" fill="#1e293b" opacity="0.5"/>
+<text x="84" y="351" text-anchor="end" fill="#e2e8f0" font-size="11">v0.5.1</text>
+<rect x="90" y="337" width="105" height="14" fill="#06b6d4" rx="2"/>
+<text x="199" y="348" fill="#06b6d4" font-size="10">2</text>
+<rect x="90" y="355" width="0" height="14" fill="#ec4899" rx="2"/>
+<text x="84" y="395" text-anchor="end" fill="#e2e8f0" font-size="11">v0.5.0</text>
+<rect x="90" y="381" width="263" height="14" fill="#06b6d4" rx="2"/>
+<text x="357" y="392" fill="#06b6d4" font-size="10">5</text>
+<rect x="90" y="399" width="105" height="14" fill="#ec4899" rx="2"/>
+<text x="199" y="410" fill="#ec4899" font-size="10">2</text>
+<rect x="0" y="420" width="800" height="44" fill="#1e293b" opacity="0.5"/>
+<text x="84" y="439" text-anchor="end" fill="#e2e8f0" font-size="11">v0.4.5</text>
+<rect x="90" y="425" width="52" height="14" fill="#06b6d4" rx="2"/>
+<text x="146" y="436" fill="#06b6d4" font-size="10">1</text>
+<rect x="90" y="443" width="52" height="14" fill="#ec4899" rx="2"/>
+<text x="146" y="454" fill="#ec4899" font-size="10">1</text>
+<text x="84" y="483" text-anchor="end" fill="#e2e8f0" font-size="11">v0.4.4</text>
+<rect x="90" y="469" width="422" height="14" fill="#06b6d4" rx="2"/>
+<text x="516" y="480" fill="#06b6d4" font-size="10">8</text>
+<rect x="90" y="487" width="263" height="14" fill="#ec4899" rx="2"/>
+<text x="357" y="498" fill="#ec4899" font-size="10">5</text>
+</svg>
