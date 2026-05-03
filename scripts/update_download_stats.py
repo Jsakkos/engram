@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Update per-OS download badges and chart from GitHub release stats."""
 
+import html
 import json
 import os
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -31,8 +33,13 @@ def fetch_releases(token: str) -> list[dict]:
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         )
-        with urllib.request.urlopen(req) as resp:
-            page_data: list[dict] = json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(req) as resp:
+                page_data: list[dict] = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"GitHub API returned {e.code} for page {page}: {e.reason}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Network error fetching releases page {page}: {e.reason}") from e
         if not page_data:
             break
         releases.extend(page_data)
@@ -114,7 +121,7 @@ def generate_svg(per_release: list[tuple[str, int, int]]) -> str:
                 f'<rect x="0" y="{y}" width="{width}" height="{row_h}" fill="{GRID}" opacity="0.5"/>'
             )
         parts.append(
-            f'<text x="{label_w - 6}" y="{y + 19}" text-anchor="end" fill="{TEXT}" font-size="11">{tag}</text>'
+            f'<text x="{label_w - 6}" y="{y + 19}" text-anchor="end" fill="{TEXT}" font-size="11">{html.escape(tag)}</text>'
         )
         win_w = max(int((win / max_val) * bar_area), 2) if win else 0
         parts.append(
