@@ -3,6 +3,5 @@
   "label": "Linux",
   "message": "11 downloads",
   "color": "ec4899",
-  "logoColor": "white",
-  "logo": "linux"
+  "namedLogo": "linux"
 }

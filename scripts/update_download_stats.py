@@ -79,8 +79,7 @@ def write_badge_json(
         "label": label,
         "message": f"{count:,} downloads",
         "color": color,
-        "logoColor": "white",
-        "logo": logo,
+        "namedLogo": logo,
     }
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
