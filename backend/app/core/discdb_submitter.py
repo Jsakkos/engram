@@ -97,13 +97,13 @@ async def submit_scan_log(
 ) -> bool:
     """Submit MakeMKV scan log as text/plain to TheDiscDB API.
 
-    POST {base_url}/api/engram/{content_hash}/logs/scan
+    POST {base_url}/api/engram/disc/{content_hash}/logs/scan
     """
     if not log_path.exists():
         logger.debug(f"No scan log at {log_path}, skipping submission")
         return False
 
-    url = f"{base_url.rstrip('/')}/api/engram/{content_hash}/logs/scan"
+    url = f"{base_url.rstrip('/')}/api/engram/disc/{content_hash}/logs/scan"
     log_text = log_path.read_text(encoding="utf-8", errors="replace")
 
     try:
