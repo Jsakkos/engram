@@ -7,6 +7,7 @@ All functions are non-throwing — errors are captured in SubmissionResult.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -123,6 +124,82 @@ async def submit_scan_log(
         return False
 
 
+_IMAGE_KINDS = ("front", "back")
+_FRONT_PATTERNS = ("cover.jpg", "cover.jpeg", "cover.png")
+_BACK_PATTERNS = ("cover_back.jpg", "cover_back.jpeg", "cover_back.png")
+
+
+def _image_content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".png":
+        return "image/png"
+    return "image/jpeg"
+
+
+async def submit_release_image(
+    release_id: str,
+    kind: str,
+    image_path: Path,
+    api_key: str,
+    base_url: str,
+) -> bool:
+    """Upload a release-level cover image to TheDiscDB.
+
+    POST {base_url}/api/engram/{release_id}/images/{kind}
+    """
+    if kind not in _IMAGE_KINDS:
+        raise ValueError(f"kind must be one of {_IMAGE_KINDS}, got {kind!r}")
+    if not image_path.exists():
+        logger.debug(f"No image at {image_path}, skipping {kind} upload")
+        return False
+
+    url = f"{base_url.rstrip('/')}/api/engram/{release_id}/images/{kind}"
+    content_type = _image_content_type(image_path)
+    body = image_path.read_bytes()
+
+    try:
+        async with httpx.AsyncClient(timeout=SUBMIT_TIMEOUT) as client:
+            resp = await client.post(
+                url,
+                content=body,
+                headers={
+                    **_auth_headers(api_key),
+                    "Content-Type": content_type,
+                },
+            )
+            resp.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        logger.warning(f"Release {kind} image upload failed for {release_id}: {e}")
+        return False
+
+
+def _find_release_image_files(export_dirs: Iterable[Path]) -> dict[str, Path | None]:
+    """Find front/back cover images across the export dirs of a release group.
+
+    Returns the first match in iteration order, or None for kinds not found.
+    """
+    found: dict[str, Path | None] = {"front": None, "back": None}
+    for export_dir in export_dirs:
+        if not export_dir.is_dir():
+            continue
+        if found["front"] is None:
+            for name in _FRONT_PATTERNS:
+                candidate = export_dir / name
+                if candidate.exists():
+                    found["front"] = candidate
+                    break
+        if found["back"] is None:
+            for name in _BACK_PATTERNS:
+                candidate = export_dir / name
+                if candidate.exists():
+                    found["back"] = candidate
+                    break
+        if found["front"] is not None and found["back"] is not None:
+            break
+    return found
+
+
 async def submit_job(
     job: DiscJob,
     titles: list[DiscTitle],
@@ -171,6 +248,7 @@ class BatchSubmissionResult:
     failed: int = 0
     results: list[dict] = field(default_factory=list)
     contribute_url: str | None = None
+    images_uploaded: dict[str, bool] = field(default_factory=dict)
 
 
 async def submit_release_group(
@@ -233,6 +311,24 @@ async def submit_release_group(
             session.add(job)
         else:
             result.failed += 1
+
+    if result.submitted > 0:
+        from app.core.discdb_exporter import get_export_directory
+
+        export_base = get_export_directory(config)
+        export_dirs = [export_base / j.content_hash for j in jobs if j.content_hash]
+        images = _find_release_image_files(export_dirs)
+        for kind, path in images.items():
+            if path is None:
+                continue
+            ok = await submit_release_image(
+                release_group_id,
+                kind,
+                path,
+                config.discdb_api_key,
+                config.discdb_api_url,
+            )
+            result.images_uploaded[kind] = ok
 
     await session.commit()
     return result
