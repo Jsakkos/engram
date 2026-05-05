@@ -7,8 +7,10 @@ import httpx
 import pytest
 
 from app.core.discdb_submitter import (
+    _find_release_image_files,
     submit_disc,
     submit_job,
+    submit_release_image,
     submit_scan_log,
 )
 from app.models.app_config import AppConfig
@@ -235,3 +237,131 @@ class TestSubmitJob:
         result = await submit_job(job, titles, config)
         assert result.success is False
         assert "No content hash" in result.error
+
+
+class TestSubmitReleaseImage:
+    @pytest.mark.anyio
+    async def test_uploads_front_image(self, api_key, base_url, tmp_path):
+        cover = tmp_path / "cover.jpg"
+        cover.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg-bytes")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = _mock_response(200)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await submit_release_image("rel-uuid-1", "front", cover, api_key, base_url)
+
+        assert ok is True
+        call_kwargs = mock_client.post.call_args
+        assert call_kwargs.args[0] == "https://thediscdb.com/api/engram/rel-uuid-1/images/front"
+        assert call_kwargs.kwargs["headers"]["Content-Type"] == "image/jpeg"
+        assert call_kwargs.kwargs["headers"]["Authorization"] == f"ApiKey {api_key}"
+        assert call_kwargs.kwargs["content"] == cover.read_bytes()
+
+    @pytest.mark.anyio
+    async def test_uploads_back_image(self, api_key, base_url, tmp_path):
+        cover = tmp_path / "cover_back.jpg"
+        cover.write_bytes(b"back-bytes")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = _mock_response(200)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await submit_release_image("rel-2", "back", cover, api_key, base_url)
+
+        assert ok is True
+        call_kwargs = mock_client.post.call_args
+        assert call_kwargs.args[0] == "https://thediscdb.com/api/engram/rel-2/images/back"
+
+    @pytest.mark.anyio
+    async def test_png_content_type(self, api_key, base_url, tmp_path):
+        cover = tmp_path / "cover.png"
+        cover.write_bytes(b"\x89PNGfake")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = _mock_response(200)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await submit_release_image("rel-3", "front", cover, api_key, base_url)
+
+        assert ok is True
+        call_kwargs = mock_client.post.call_args
+        assert call_kwargs.kwargs["headers"]["Content-Type"] == "image/png"
+
+    @pytest.mark.anyio
+    async def test_missing_file_returns_false(self, api_key, base_url, tmp_path):
+        missing = tmp_path / "nope.jpg"
+        ok = await submit_release_image("rel-4", "front", missing, api_key, base_url)
+        assert ok is False
+
+    @pytest.mark.anyio
+    async def test_invalid_kind_raises(self, api_key, base_url, tmp_path):
+        cover = tmp_path / "cover.jpg"
+        cover.write_bytes(b"x")
+        with pytest.raises(ValueError):
+            await submit_release_image("rel-5", "side", cover, api_key, base_url)
+
+    @pytest.mark.anyio
+    async def test_http_error_returns_false(self, api_key, base_url, tmp_path):
+        cover = tmp_path / "cover.jpg"
+        cover.write_bytes(b"x")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = _mock_response(500)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await submit_release_image("rel-6", "front", cover, api_key, base_url)
+
+        assert ok is False
+
+
+class TestFindReleaseImageFiles:
+    def test_finds_front_cover(self, tmp_path):
+        disc_a = tmp_path / "HASH_A"
+        disc_a.mkdir()
+        (disc_a / "cover.jpg").write_bytes(b"front")
+
+        result = _find_release_image_files([disc_a])
+        assert result["front"] == disc_a / "cover.jpg"
+        assert result["back"] is None
+
+    def test_finds_back_cover(self, tmp_path):
+        disc_a = tmp_path / "HASH_A"
+        disc_a.mkdir()
+        (disc_a / "cover_back.png").write_bytes(b"back")
+
+        result = _find_release_image_files([disc_a])
+        assert result["back"] == disc_a / "cover_back.png"
+        assert result["front"] is None
+
+    def test_first_disc_with_image_wins(self, tmp_path):
+        disc_a = tmp_path / "A"
+        disc_b = tmp_path / "B"
+        disc_a.mkdir()
+        disc_b.mkdir()
+        (disc_b / "cover.jpg").write_bytes(b"front-b")
+
+        result = _find_release_image_files([disc_a, disc_b])
+        assert result["front"] == disc_b / "cover.jpg"
+
+    def test_no_images_returns_none(self, tmp_path):
+        disc_a = tmp_path / "A"
+        disc_a.mkdir()
+        result = _find_release_image_files([disc_a])
+        assert result == {"front": None, "back": None}
+
+    def test_skips_missing_dirs(self, tmp_path):
+        result = _find_release_image_files([tmp_path / "does-not-exist"])
+        assert result == {"front": None, "back": None}
