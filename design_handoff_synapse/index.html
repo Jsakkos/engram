@@ -1,0 +1,1914 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/design_handoff_synapse/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Handoff: Engram — Synapse UI Refresh - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#handoff-engram-synapse-ui-refresh" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Handoff: Engram — Synapse UI Refresh
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#about-the-design-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        About the Design Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#screen-previews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screen previews
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Screen previews">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-disc-insert-classification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Disc insert / classification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-dashboard-ripping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Dashboard — ripping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2b-dashboard-complete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2b. Dashboard — complete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-review-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Review queue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Library
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. History
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-error-no-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Error — no match
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fidelity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fidelity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#files-in-this-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files in this bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-tokens-from-synapse-v2corejsx-the-sv-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design tokens (from synapse-v2/core.jsx, the sv object)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design tokens (from synapse-v2/core.jsx, the sv object)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#color" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Color
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lines-borders-cyan-at-varying-alpha-gives-the-screen-its-tint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lines / borders (cyan at varying alpha — gives the screen its tint)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typography" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typography
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type-scale-medium-density" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type scale (medium density)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spacing-medium-density-from-usedensity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spacing (medium density, from useDensity())
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#borders-corners-glow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Borders, corners, glow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#atmosphere-overlays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atmosphere overlays
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#screens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screens
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Screens">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shell-top-bar-status-bar-shelljsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell — Top bar + Status bar (shell.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-disc-insert-classification-svdiscinsert-screensjsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Disc insert / classification (SvDiscInsert, screens.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-dashboard-svdashboard-dashboardjsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Dashboard (SvDashboard, dashboard.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-review-queue-svreviewqueue-screensjsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Review queue (SvReviewQueue, screens.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-library-svlibrary-screensjsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Library (SvLibrary, screens.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-history-svhistory-screensjsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. History (SvHistory, screens.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-error-empty-states-sverrorstate-screensjsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Error / empty states (SvErrorState, screens.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Components
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Components">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#atomic-in-corejsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atomic (in core.jsx)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#density-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Density / context
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interactions-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactions &amp; behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-not-in-this-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (not in this handoff)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="handoff-engram-synapse-ui-refresh">Handoff: Engram — Synapse UI Refresh</h1>
+<h2 id="overview">Overview</h2>
+<p>Full UI refresh for <strong>Engram</strong>, a disc ripping &amp; media organization tool that automates the workflow from disc insertion → ripping → metadata matching → archive. This handoff covers the <strong>Synapse v2</strong> direction: a Neo-Tokyo / Blade Runner cyberpunk aesthetic — deep blue-black canvas, cyan + magenta accents, Chakra Petch + JetBrains Mono, with light atmospheric chrome (scanlines, distant skyline, scrolling telemetry).</p>
+<p>The design is medium-density (the production target). Min/dense variants and color-balance toggles exist in the prototype but are exploratory; ship <code>density: 'med'</code> and <code>colorBalance: 'balanced'</code> (cyan-primary, magenta-secondary) as defaults.</p>
+<h2 id="about-the-design-files">About the Design Files</h2>
+<p>The files in this bundle are <strong>design references created in HTML</strong> — interactive prototypes showing the intended look and behavior. They are not production code to copy directly. The task is to <strong>recreate these designs in Engram's existing frontend codebase</strong> (React + TypeScript + Vite, see <code>frontend/</code>) using the existing patterns, component library, and state stores. Lift exact tokens, typography, spacing, and interaction details from the prototype, but implement them as proper TypeScript React components in <code>frontend/src</code>.</p>
+<h2 id="screen-previews">Screen previews</h2>
+<p>Reference renders of each artboard at 1280×820 (medium density, balanced color, scanlines + skyline on):</p>
+<h3 id="1-disc-insert-classification">1. Disc insert / classification</h3>
+<p><img alt="Disc insert — classify phase" src="screenshots/01-disc-classify.png" /></p>
+<h3 id="2-dashboard-ripping">2. Dashboard — ripping</h3>
+<p><img alt="Dashboard — ripping" src="screenshots/02-dashboard-ripping.png" /></p>
+<h3 id="2b-dashboard-complete">2b. Dashboard — complete</h3>
+<p><img alt="Dashboard — complete" src="screenshots/02b-dashboard-complete.png" /></p>
+<h3 id="3-review-queue">3. Review queue</h3>
+<p><img alt="Review queue with candidate picker" src="screenshots/03-review-queue.png" /></p>
+<h3 id="4-library">4. Library</h3>
+<p><img alt="Library — poster grid" src="screenshots/04-library.png" /></p>
+<h3 id="5-history">5. History</h3>
+<p><img alt="Activity log" src="screenshots/05-history.png" /></p>
+<h3 id="6-error-no-match">6. Error — no match</h3>
+<p><img alt="No-match takeover" src="screenshots/06-error-no-match.png" /></p>
+<blockquote>
+<p>Each PNG is the screen rendered standalone at the production target size; open the HTML prototype for hover, animation, and the disc-phase / state transitions.</p>
+</blockquote>
+<hr />
+<h2 id="fidelity">Fidelity</h2>
+<p><strong>High-fidelity.</strong> Colors, typography, spacing, and most interactions are final. The bar/grid charts, scanline overlay, skyline silhouette, and animated radar sweep are intentional and should be reproduced. Recreate pixel-accurately.</p>
+<h2 id="files-in-this-bundle">Files in this bundle</h2>
+<ul>
+<li><code>Engram Synapse v2.html</code> — entry point. Loads React via CDN + Babel and mounts the canvas.</li>
+<li><code>design-canvas.jsx</code> — (presentation only) Pan/zoom canvas hosting all 6 artboards. Not part of the production UI.</li>
+<li><code>tweaks-panel.jsx</code> — (presentation only) the in-prototype Tweaks panel. Not part of the production UI.</li>
+<li><code>shared.jsx</code> — small dataset shared with sibling directions (titles, tracks, sample state). Useful as a fixture reference.</li>
+<li><code>synapse-v2/data.jsx</code> — extended sample data for Library, Review queue, History, candidate matching.</li>
+<li><code>synapse-v2/core.jsx</code> — <strong>design tokens, primitives, and atmosphere</strong>. Read this first.</li>
+<li><code>synapse-v2/shell.jsx</code> — top bar (logo, nav, status pill) + bottom status bar.</li>
+<li><code>synapse-v2/dashboard.jsx</code> — main dashboard (job header, drive panel, track grid, byte progress, log feed).</li>
+<li><code>synapse-v2/screens.jsx</code> — disc-insert/classification, review queue, library, history, error states.</li>
+<li><code>synapse-v2/app-v2.jsx</code> — composes the artboards + tweaks panel; not needed in production.</li>
+</ul>
+<p>To run the prototype locally: open <code>Engram Synapse v2.html</code> in any modern browser.</p>
+<h2 id="design-tokens-from-synapse-v2corejsx-the-sv-object">Design tokens (from <code>synapse-v2/core.jsx</code>, the <code>sv</code> object)</h2>
+<h3 id="color">Color</h3>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Hex</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bg0</code></td>
+<td><code>#05070c</code></td>
+<td>Page bg, deepest layer</td>
+</tr>
+<tr>
+<td><code>bg1</code></td>
+<td><code>#0a0e18</code></td>
+<td>Card bg layer 1</td>
+</tr>
+<tr>
+<td><code>bg2</code></td>
+<td><code>#121827</code></td>
+<td>Card bg layer 2 (panels)</td>
+</tr>
+<tr>
+<td><code>bg3</code></td>
+<td><code>#1a2234</code></td>
+<td>Bg layer 3 (hover, active row)</td>
+</tr>
+<tr>
+<td><code>ink</code></td>
+<td><code>#e6ecf5</code></td>
+<td>Primary text</td>
+</tr>
+<tr>
+<td><code>inkDim</code></td>
+<td><code>#8893a8</code></td>
+<td>Secondary text, labels</td>
+</tr>
+<tr>
+<td><code>inkFaint</code></td>
+<td><code>#4a5369</code></td>
+<td>Tertiary text, ticks</td>
+</tr>
+<tr>
+<td><code>inkGhost</code></td>
+<td><code>#2a3147</code></td>
+<td>Disabled, separators on dark</td>
+</tr>
+<tr>
+<td><code>cyan</code></td>
+<td><code>#5eead4</code></td>
+<td><strong>Primary accent</strong> (active, success, primary action)</td>
+</tr>
+<tr>
+<td><code>cyanHi</code></td>
+<td><code>#9ff8e8</code></td>
+<td>Hover/glow on cyan</td>
+</tr>
+<tr>
+<td><code>cyanDim</code></td>
+<td><code>#2dd4bf</code></td>
+<td>Cyan at lower emphasis</td>
+</tr>
+<tr>
+<td><code>magenta</code></td>
+<td><code>#ff3d7f</code></td>
+<td><strong>Secondary accent</strong> (ripping, in-progress, magenta-forward color balance)</td>
+</tr>
+<tr>
+<td><code>magentaHi</code></td>
+<td><code>#ff7aa5</code></td>
+<td>Hover on magenta</td>
+</tr>
+<tr>
+<td><code>magentaDim</code></td>
+<td><code>#d63171</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>yellow</code></td>
+<td><code>#fde047</code></td>
+<td>Notification badges, scanning state</td>
+</tr>
+<tr>
+<td><code>amber</code></td>
+<td><code>#fcd34d</code></td>
+<td>Matching state</td>
+</tr>
+<tr>
+<td><code>green</code></td>
+<td><code>#86efac</code></td>
+<td>Complete / live status</td>
+</tr>
+<tr>
+<td><code>greenDim</code></td>
+<td><code>#4ade80</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>red</code></td>
+<td><code>#ff5555</code></td>
+<td>Errors</td>
+</tr>
+<tr>
+<td><code>purple</code></td>
+<td><code>#a78bfa</code></td>
+<td>Reserved (unused currently)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="lines-borders-cyan-at-varying-alpha-gives-the-screen-its-tint">Lines / borders (cyan at varying alpha — gives the screen its tint)</h3>
+<ul>
+<li><code>line</code> — <code>rgba(94,234,212,0.14)</code> — default 1px borders</li>
+<li><code>lineMid</code> — <code>rgba(94,234,212,0.24)</code> — section dividers</li>
+<li><code>lineHi</code> — <code>rgba(94,234,212,0.42)</code> — corner ticks, focused state</li>
+</ul>
+<h3 id="typography">Typography</h3>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Stack</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mono</code></td>
+<td><code>"JetBrains Mono", ui-monospace, monospace</code></td>
+</tr>
+<tr>
+<td><code>sans</code></td>
+<td><code>"Chakra Petch", "Space Grotesk", sans-serif</code></td>
+</tr>
+<tr>
+<td><code>display</code></td>
+<td><code>"Chakra Petch", sans-serif</code></td>
+</tr>
+</tbody>
+</table>
+<p>Load from Google Fonts:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>JetBrains+Mono:wght@300;400;500;600;700
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Chakra+Petch:wght@400;500;600;700
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Space+Grotesk:wght@400;500;600;700
+</code></pre></div></p>
+<h3 id="type-scale-medium-density">Type scale (medium density)</h3>
+<table>
+<thead>
+<tr>
+<th>Use</th>
+<th>Family</th>
+<th>Size</th>
+<th>Weight</th>
+<th>Letter-spacing</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Big numeric (progress %)</td>
+<td>display</td>
+<td>56–96px</td>
+<td>700</td>
+<td>0.04em</td>
+<td>Use cyan with <code>text-shadow: 0 0 24px &lt;cyan&gt;55</code></td>
+</tr>
+<tr>
+<td>Section title</td>
+<td>display</td>
+<td>24–30px</td>
+<td>700</td>
+<td>0.04em</td>
+<td></td>
+</tr>
+<tr>
+<td>Card title</td>
+<td>display</td>
+<td>18–22px</td>
+<td>600</td>
+<td>0.04em</td>
+<td></td>
+</tr>
+<tr>
+<td>Body</td>
+<td>sans</td>
+<td>14–16px</td>
+<td>400</td>
+<td>normal</td>
+<td></td>
+</tr>
+<tr>
+<td>Mono numbers (sizes, IDs)</td>
+<td>mono</td>
+<td>11–14px</td>
+<td>400–500</td>
+<td>0.06–0.10em</td>
+<td></td>
+</tr>
+<tr>
+<td>Label (›  UPPERCASE)</td>
+<td>mono</td>
+<td>10–11px</td>
+<td>400</td>
+<td>0.20em</td>
+<td>Always uppercase, prefixed with <code>›</code> caret</td>
+</tr>
+<tr>
+<td>Tiny tag</td>
+<td>mono</td>
+<td>9–10px</td>
+<td>400</td>
+<td>0.22em</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="spacing-medium-density-from-usedensity">Spacing (medium density, from <code>useDensity()</code>)</h3>
+<ul>
+<li><code>pad: 22</code> (outer page padding)</li>
+<li><code>gap: 14</code> (default flex gap)</li>
+<li><code>cardPad: 14</code></li>
+<li><code>rowHeight: 40</code></li>
+<li><code>headerPad: 18</code></li>
+<li>Top bar padding: <code>18px 28px</code></li>
+<li>Status bar padding: <code>8px 20px</code></li>
+<li>Section divider gap: <code>28px</code></li>
+</ul>
+<h3 id="borders-corners-glow">Borders, corners, glow</h3>
+<ul>
+<li>1px solid borders, color from line tokens (mostly <code>lineMid</code> for panels)</li>
+<li><strong>Corner ticks</strong> are signature — every panel gets 8px L-shaped tick marks at all 4 corners (<code>SvCorners</code>). Implement as 4 absolutely-positioned divs with 1.5px borders.</li>
+<li>Cards do <strong>not</strong> use border-radius. Sharp 90° corners throughout.</li>
+<li>Glow: <code>box-shadow: 0 0 24px &lt;accent&gt;22, inset 0 0 32px rgba(94,234,212,0.03)</code> for emphasized panels</li>
+<li>Active/primary buttons: <code>box-shadow: 0 0 14px &lt;accent&gt;55</code></li>
+</ul>
+<h3 id="atmosphere-overlays">Atmosphere overlays</h3>
+<ul>
+<li><strong>Ambient haze</strong> — two large radial gradients in the bg layer (cyan top-left, magenta bottom-right at ~7-10% alpha)</li>
+<li><strong>Scanlines</strong> — <code>repeating-linear-gradient(0deg, rgba(94,234,212,0.05) 0 1px, transparent 1px 3px)</code> at <code>opacity: 0.35</code>. User-toggleable in Settings.</li>
+<li><strong>SVG grain</strong> — <code>feTurbulence baseFrequency="0.85"</code> at <code>opacity: 0.08, mix-blend-mode: overlay</code></li>
+<li><strong>Vignette</strong> — radial gradient transparent → <code>rgba(0,0,0,0.5)</code> at corners</li>
+<li><strong>Distant skyline</strong> — bottom 180px SVG silhouette with cyan/magenta window-light flickers. Toggleable.</li>
+</ul>
+<h2 id="screens">Screens</h2>
+<p>There are 6 screens. Routes are <code>dashboard</code>, <code>review</code>, <code>library</code>, <code>history</code>. Disc-insert is a state of <code>dashboard</code>. Errors are full-screen takeovers within <code>dashboard</code>.</p>
+<h3 id="shell-top-bar-status-bar-shelljsx">Shell — Top bar + Status bar (<code>shell.jsx</code>)</h3>
+<p><strong>Top bar</strong> (always present): 76px tall, bottom-bordered with <code>sv.line</code>.
+- Left: 38px logo mark (<code>SvMark</code> — concentric rings + axon), wordmark "ENGRAM" 22px Chakra Petch 700, <code>letter-spacing: 0.18em</code>, color <code>cyanHi</code>, <code>text-shadow: 0 0 12px &lt;cyan&gt;55</code>. Subline: <code>› MEMORY · ARCHIVAL · v0.6.0</code> 9px mono, 0.24em, <code>inkFaint</code>.
+- Center: nav (<code>DASHBOARD | REVIEW [3] | LIBRARY | HISTORY</code>). Active item gets a 2px underline at <code>cyan</code> with glow. Yellow badge for unread Review count.
+- Right: green <code>LIVE</code> pill (animated dot), settings cog button.</p>
+<p><strong>Status bar</strong> (always present): 36px tall, top-bordered.
+- Left: <code>● 1 ACTIVE</code>, <code>● 0 ARCHIVED</code>, <code>DRIVE E: READY</code>
+- Center: scrolling telemetry strip (<code>SvTelemetryBand</code>) — horizontal infinite scroll of strings like <code>UNIT 07</code>, <code>WS·CONNECTED</code>, <code>BUFFER 1.2/8.0 GB</code>, <code>THERMAL NOMINAL</code>. Use a CSS <code>@keyframes svScroll</code> translating from 0 to -50% over ~100s, with a side mask gradient for fade-in/out.
+- Right: <code>WS · CONNECTED</code>, version pill.</p>
+<h3 id="1-disc-insert-classification-svdiscinsert-screensjsx">1. Disc insert / classification (<code>SvDiscInsert</code>, <code>screens.jsx</code>)</h3>
+<p>Two-column grid (1fr 1.2fr).</p>
+<p><strong>Left — animated disc panel.</strong> Bordered panel with corner ticks. Centered SVG (400×400):
+- 6 concentric rings at radii 30/60/90/120/150/180, cyan at 0.2–0.6 opacity
+- Crosshair lines (vertical+horizontal) at 0.3 opacity
+- During <code>scan</code>/<code>classify</code>: rotating sweep wedge — <code>&lt;path d="M 200 200 L 380 200 A 180 180 0 0 0 200 20 Z" fill="url(#sweep)"&gt;</code> inside a <code>&lt;g style="transform-origin: 200px 200px; animation: svSpin 3s linear infinite"&gt;</code>
+- Center hub: 8px filled cyan circle + 3px bg cutout
+- 36 chapter ticks on the outer ring, lit cyan as the phase progresses
+- During <code>classify</code>/<code>ready</code>: 8 pulsing dots at the 150-radius mark for detected titles
+- Top-left overlay: drive label + capacity (<code>Drive E:\</code> / <code>BD50 · 46.2 GB</code>)
+- Bottom: 4-step phase breadcrumb (DETECT/SCAN/CLASSIFY/READY) with top-border highlight</p>
+<p><strong>Right — classification panel.</strong>
+- Header: <code>› Disc · classification</code> label + <code>ANALYZING</code> scanning badge
+- Best match block: yellow label "Best match · 0.94 confidence", title in 38px display 700 cyan with <code>text-shadow: 0 0 18px &lt;cyan&gt;55</code>, then mono meta line <code>TV · SEASON 01 · DISC 1 · 2003 · FOX · TMDB #4589</code>
+- "Detected signals" 2-col grid: Runtime pattern, Volume label, Audio fingerprint, Chapter markers — each shows label/confidence percent + 2px bar + value text
+- "Other candidates" list — 3 alternative matches with confidence percent
+- Footer actions: <code>EJECT</code> (ghost), <code>EDIT · MANUAL</code> (ghost), <code>CONFIRM · BEGIN RIP</code> (cyan filled, primary)</p>
+<h3 id="2-dashboard-svdashboard-dashboardjsx">2. Dashboard (<code>SvDashboard</code>, <code>dashboard.jsx</code>)</h3>
+<p>Three states: <code>ripping</code>, <code>matching</code>, <code>complete</code>. All share the same chrome; the body region swaps.</p>
+<p><strong>Job header strip</strong> (top of body):
+- Left: badge for current state, then job title in 30px display 700, then mono meta row (BD50 · 46.2 GB · DRIVE E:)
+- Right: live elapsed timer (mono 14px), runtime estimate</p>
+<p><strong>Body grid</strong> (medium density: 1.4fr 1fr):</p>
+<p>Left — <strong>track grid</strong> (<code>SvTrackGrid</code>):
+- 8 cards in a 4-col grid (or 3 on min, 6 on dense)
+- Each card: corner ticks, type badge (FEATURE/EPISODE/EXTRA), title + chapter count, runtime, byte progress bar (per-track), state badge
+- Hover: lift 2px, border to cyan, glow shadow <code>0 8px 24px &lt;cyan&gt;33</code>
+- Active track (currently ripping): magenta border, magenta <code>RIPPING</code> badge with pulsing dot, animated bar with sweep highlight</p>
+<p>Right — <strong>side rail</strong> (vertical stack):
+- Big numeric: aggregate progress percent in 64px+ display, cyan with glow
+- Byte progress: filled bar, MB ripped / total, MB/s readout
+- Mini chart: throughput sparkline (last 60s), <code>SvBarChart</code>
+- Activity log: last 6 events streamed in (<code>SV_HISTORY</code> style), terminal-styled with timestamp/tag/message</p>
+<h3 id="3-review-queue-svreviewqueue-screensjsx">3. Review queue (<code>SvReviewQueue</code>, <code>screens.jsx</code>)</h3>
+<p>Header strip with yellow <code>Needs attention</code> label, big number + headline, filter/sort pills.</p>
+<p>Two-column body (1.1fr 1.4fr):
+- <strong>Left — queue list</strong>: stacked cards from <code>SV_REVIEW_QUEUE</code>. Each card: state badge (REVIEW/ERROR), type, flagged ratio, title, "↳ {need}" subline. Active card has cyan border + glow.
+- <strong>Right — detail / candidate picker</strong>: track header (Title 3 · 00:22:14 · CHAPTER COUNT 8) + warn badge. Then <code>Candidate episodes</code> list — clickable rows from <code>SV_CANDIDATES</code>, each showing match score, score bar, source breakdown (<code>Audio FP · 0.82</code>, <code>Runtime · 0.74</code>, <code>Chapter count · 0.78</code>). Selected row gets <code>▸ SELECTED</code> marker + cyan border. Footer: <code>SKIP · LATER</code> / <code>MARK UNMATCHED</code> / <code>CONFIRM MATCH</code> (cyan primary).</p>
+<h3 id="4-library-svlibrary-screensjsx">4. Library (<code>SvLibrary</code>, <code>screens.jsx</code>)</h3>
+<p>Header strip with <code>Library</code> label, "23 titles · 142 GB archived", filter pills (ALL · 23 / MOVIES · 15 / TV · 8 / UHD · 4).</p>
+<p>Body:
+- <strong>Poster grid</strong> — 4 cols (med) / 6 cols (dense). Each card has 2:3 aspect-ratio poster panel with big colored letters (BR / AD / AK etc.), grid overlay, type pill, NEW badge for <code>added: 'just now'</code>. Below: title, subtitle, year, size in mono. Hover lifts and glows.
+- <strong>Add card</strong> — dashed border, big <code>+</code> button, <code>Insert disc to add</code> label
+- Below grid: <strong>recent archives table</strong> — 5-col grid (date / title / year / quality / size) with bottom-border rows, all mono.</p>
+<h3 id="5-history-svhistory-screensjsx">5. History (<code>SvHistory</code>, <code>screens.jsx</code>)</h3>
+<p>Header strip with <code>Activity log</code> label + filter pills (ALL/INFO/WARN/ERROR/DONE).</p>
+<p>Body grid (1fr 320px):
+- <strong>Left — log stream</strong>: panel with 4-col header (TIME/LEVEL/SUBJECT/MESSAGE) + rows from <code>SV_HISTORY</code>. Most-recent row tinted cyan. Time mono, level color-coded (green/yellow/cyan/red), subject in ink, message in inkDim — all monospaced.
+- <strong>Right — stats rail</strong>: stacked panels.
+  - Last 14 days: 2x2 stat grid (Archived/Volume/Matched/Flagged)
+  - Throughput: 14-day bar chart (<code>SvBarChart</code>)
+  - Distribution: Movies (15) cyan bar, TV seasons (8) magenta bar</p>
+<h3 id="6-error-empty-states-sverrorstate-screensjsx">6. Error / empty states (<code>SvErrorState</code>, <code>screens.jsx</code>)</h3>
+<p>Three variants: <code>no-match</code>, <code>no-drive</code>, <code>empty-library</code>.</p>
+<p>Two-column 1.2fr/1fr at 60px padding, vertically centered.</p>
+<p><strong>Left — message:</strong>
+- Tag label <code>— NO MATCH FOUND —</code> (red for errors, cyan for empty)
+- Massive headline 64px display 700, color matches the tag, <code>text-shadow: 0 0 24px &lt;c&gt;44</code>, <code>text-wrap: balance</code>, max ~520px wide
+- Subtitle 18px sans, inkDim
+- Two action buttons (ghost + primary)</p>
+<p><strong>Right — diagnostics panel:</strong> corner-ticked, shows label + tag badge, ruler, key/value details grid (mono 11px), trace ID footer.</p>
+<h2 id="components">Components</h2>
+<h3 id="atomic-in-corejsx">Atomic (in <code>core.jsx</code>)</h3>
+<ul>
+<li><code>&lt;SvAtmosphere&gt;</code> — wraps a screen with the layered haze + scanlines + grain + vignette + skyline</li>
+<li><code>&lt;SvPanel&gt;</code> — bordered panel with corner ticks, optional glow</li>
+<li><code>&lt;SvCorners&gt;</code> — 4 corner tick marks</li>
+<li><code>&lt;SvLabel&gt;</code> — uppercase mono caret label (<code>›  TEXT</code>)</li>
+<li><code>&lt;SvBar value={0..1}&gt;</code> — gradient progress bar with chunked tick overlay</li>
+<li><code>&lt;SvBadge state="ripping|matching|complete|queued|error|live|scanning|warn"&gt;</code> — pill with colored dot</li>
+<li><code>&lt;SvRuler ticks={40}&gt;</code> — horizontal ruler with major/minor ticks</li>
+<li><code>&lt;SvTelemetryBand items speed&gt;</code> — scrolling marquee of mono strings</li>
+<li><code>&lt;SvScramble text&gt;</code> — text mount-in scramble effect</li>
+<li><code>&lt;SvMark&gt;</code> — logo (concentric rings + axon)</li>
+<li><code>&lt;SvAnimValue target&gt;</code> — slowly-creeping animated percent value</li>
+</ul>
+<h3 id="density-context">Density / context</h3>
+<p>A small React context (<code>SvCtx</code>) carries <code>density</code>, <code>colorBalance</code>, <code>scanlines</code>, <code>skyline</code>. <code>useDensity()</code> returns sizing tokens; <code>useAccent()</code> returns <code>{primary, primaryHi, secondary, secondaryHi}</code> based on balance. <strong>For production: hard-wire to <code>med</code> density and <code>balanced</code> color balance</strong> — those are the targets. Scanlines + skyline can be user prefs in Settings.</p>
+<h2 id="interactions-behavior">Interactions &amp; behavior</h2>
+<ul>
+<li><strong>Live updates</strong> — dashboard subscribes to a websocket (<code>WS · CONNECTED</code> is real). Aggregate progress, byte progress, MB/s, active track, and log feed all update in real time. Use <code>requestAnimationFrame</code> only for animation; data updates can be at 1–4Hz.</li>
+<li><strong>Track card hover</strong> — <code>transform: translateY(-2px)</code>, border to cyan, glow on. Use <code>transition: all 0.18s</code>.</li>
+<li><strong>Disc-insert phases</strong> — 4 phases auto-advance: detect (instant) → scan (3–8s, sweep visible) → classify (1–2s, dots appear) → ready (waits for user confirmation). Cancel/eject available at any point.</li>
+<li><strong>Match candidate selection</strong> — clicking a candidate row highlights it; CONFIRM MATCH commits via API. Keyboard: ↑/↓ to move, Enter to confirm.</li>
+<li><strong>Telemetry band</strong> — pure CSS animation, no JS.</li>
+<li><strong>Animated radar sweep</strong> — pure CSS rotation on the SVG <code>&lt;g&gt;</code>. Don't try to drive it from React state.</li>
+</ul>
+<h2 id="state-management">State management</h2>
+<p>Add to existing Zustand stores in <code>frontend/src/lib/</code>:
+- <code>useRipStore</code> — adds <code>aggregate progress</code>, <code>bytesRipped</code>, <code>bytesTotal</code>, <code>mbPerSec</code>, <code>activeTrackId</code>, <code>tracks[]</code>, <code>elapsed</code>, <code>eta</code>, <code>state</code>
+- <code>useDiscStore</code> — adds <code>phase: 'detect'|'scan'|'classify'|'ready'</code>, <code>bestMatch</code>, <code>candidates</code>, <code>signals[]</code>
+- <code>useReviewStore</code> — adds <code>queue[]</code>, <code>selectedItemId</code>, <code>candidates[]</code>, <code>selectedCandidateIdx</code>
+- <code>useLibraryStore</code> — adds <code>items[]</code>, <code>filter</code>, <code>recentArchives[]</code>
+- <code>useHistoryStore</code> — adds <code>events[]</code>, <code>filter</code>
+- <code>useUiStore</code> — adds <code>scanlines: bool</code>, <code>skyline: bool</code> (user prefs, persist to localStorage)</p>
+<h2 id="implementation-notes">Implementation notes</h2>
+<ul>
+<li><strong>No rounded corners</strong> anywhere. Sharp 90° throughout.</li>
+<li><strong>Corners ticks</strong> are the recurring motif — apply liberally to any bordered container.</li>
+<li>All caps labels use <code>letter-spacing: 0.20em</code> minimum.</li>
+<li>Mono numerics use tabular figures; add <code>font-variant-numeric: tabular-nums</code> so progress percentages don't jitter.</li>
+<li>Border alpha is intentional — avoid solid <code>#fff1</code> style; use the cyan-tinted line tokens so the whole screen reads as a unified palette.</li>
+<li>Don't draw the skyline silhouette as PNG/JPG — keep it SVG so it scales and the window-light flickers stay crisp.</li>
+<li>Animations use <code>cubic-bezier</code> only when feel matters; default to <code>ease</code>/<code>linear</code>. The pulse is <code>1.2s infinite</code>, sweep is <code>3s linear infinite</code>, scroll is <code>~100s linear infinite</code>.</li>
+</ul>
+<h2 id="assets">Assets</h2>
+<p>None — all visuals are SVG/CSS. Logo mark is in <code>core.jsx</code> as <code>&lt;SvMark&gt;</code>. No imagery needed; placeholder posters are colored letters.</p>
+<h2 id="out-of-scope-not-in-this-handoff">Out of scope (not in this handoff)</h2>
+<ul>
+<li>The 5 sibling directions (Synapse 2049, Nostromo, Wetware, Terminal, Prism) — see the main <code>Engram Refresh.html</code> if interested</li>
+<li>Settings/wizard screen (covered by sibling Synapse direction; if reusing those, the chrome maps 1:1 — same panels, same tokens)</li>
+<li>Light mode (out of scope; this aesthetic is dark-only by design)</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
