@@ -197,8 +197,8 @@ class TestSubmitScanLog:
 
         assert result is True
 
-        # Verify content type
         call_kwargs = mock_client.post.call_args
+        assert call_kwargs.args[0] == "https://thediscdb.com/api/engram/disc/ABC123/logs/scan"
         assert call_kwargs.kwargs["headers"]["Content-Type"] == "text/plain"
 
     @pytest.mark.anyio
