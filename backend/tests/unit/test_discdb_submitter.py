@@ -8,6 +8,8 @@ import pytest
 
 from app.core.discdb_submitter import (
     _find_release_image_files,
+    _upload_release_images,
+    ensure_release_group_id,
     submit_disc,
     submit_job,
     submit_release_image,
@@ -365,3 +367,92 @@ class TestFindReleaseImageFiles:
     def test_skips_missing_dirs(self, tmp_path):
         result = _find_release_image_files([tmp_path / "does-not-exist"])
         assert result == {"front": None, "back": None}
+
+
+class TestEnsureReleaseGroupId:
+    def test_returns_existing_id(self):
+        job = DiscJob(
+            id=1,
+            drive_id="E:",
+            volume_label="X",
+            state=JobState.COMPLETED,
+            release_group_id="existing-uuid",
+        )
+        assert ensure_release_group_id(job) == "existing-uuid"
+        assert job.release_group_id == "existing-uuid"
+
+    def test_mints_new_uuid_when_missing(self):
+        job = DiscJob(
+            id=1,
+            drive_id="E:",
+            volume_label="X",
+            state=JobState.COMPLETED,
+            release_group_id=None,
+        )
+        assigned = ensure_release_group_id(job)
+        assert assigned
+        assert job.release_group_id == assigned
+        # Standard UUID4 string format: 8-4-4-4-12
+        parts = assigned.split("-")
+        assert len(parts) == 5
+        assert [len(p) for p in parts] == [8, 4, 4, 4, 12]
+
+    def test_treats_empty_string_as_missing(self):
+        job = DiscJob(
+            id=1,
+            drive_id="E:",
+            volume_label="X",
+            state=JobState.COMPLETED,
+            release_group_id="",
+        )
+        assigned = ensure_release_group_id(job)
+        assert assigned != ""
+        assert job.release_group_id == assigned
+
+
+class TestUploadReleaseImages:
+    @pytest.mark.anyio
+    async def test_uploads_when_image_present(self, api_key, base_url, tmp_path):
+        export_dir = tmp_path / "HASH"
+        export_dir.mkdir()
+        (export_dir / "cover.jpg").write_bytes(b"front-bytes")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = _mock_response(200)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await _upload_release_images("rel-x", [export_dir], api_key, base_url)
+
+        assert results == {"front": True}
+        assert mock_client.post.call_args.args[0] == (
+            "https://thediscdb.com/api/engram/rel-x/images/front"
+        )
+
+    @pytest.mark.anyio
+    async def test_skip_when_no_images(self, api_key, base_url, tmp_path):
+        export_dir = tmp_path / "HASH"
+        export_dir.mkdir()
+        results = await _upload_release_images("rel-x", [export_dir], api_key, base_url)
+        assert results == {}
+
+    @pytest.mark.anyio
+    async def test_uploads_front_and_back(self, api_key, base_url, tmp_path):
+        export_dir = tmp_path / "HASH"
+        export_dir.mkdir()
+        (export_dir / "cover.jpg").write_bytes(b"f")
+        (export_dir / "cover_back.png").write_bytes(b"b")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = _mock_response(200)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await _upload_release_images("rel-y", [export_dir], api_key, base_url)
+
+        assert results == {"front": True, "back": True}
+        assert mock_client.post.call_count == 2

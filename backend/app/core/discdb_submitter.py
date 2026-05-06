@@ -7,6 +7,7 @@ All functions are non-throwing — errors are captured in SubmissionResult.
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -174,6 +175,18 @@ async def submit_release_image(
         return False
 
 
+def ensure_release_group_id(job: DiscJob) -> str:
+    """Mint a UUID4 release_group_id on the job if missing; return the value.
+
+    A single-disc movie is its own "release" — every contribution needs a
+    release_id so the contribute UI and image-upload endpoints have something
+    to attach to. The caller persists the change (e.g. via session.add(job)).
+    """
+    if not job.release_group_id:
+        job.release_group_id = str(uuid.uuid4())
+    return job.release_group_id
+
+
 def _find_release_image_files(export_dirs: Iterable[Path]) -> dict[str, Path | None]:
     """Find front/back cover images across the export dirs of a release group.
 
@@ -198,6 +211,22 @@ def _find_release_image_files(export_dirs: Iterable[Path]) -> dict[str, Path | N
         if found["front"] is not None and found["back"] is not None:
             break
     return found
+
+
+async def _upload_release_images(
+    release_id: str,
+    export_dirs: list[Path],
+    api_key: str,
+    base_url: str,
+) -> dict[str, bool]:
+    """Find and upload release-level cover images from the given export dirs."""
+    results: dict[str, bool] = {}
+    images = _find_release_image_files(export_dirs)
+    for kind, path in images.items():
+        if path is None:
+            continue
+        results[kind] = await submit_release_image(release_id, kind, path, api_key, base_url)
+    return results
 
 
 async def submit_job(
@@ -235,6 +264,15 @@ async def submit_job(
         config.discdb_api_key,
         config.discdb_api_url,
     )
+
+    # Upload release-level cover images (best-effort)
+    if job.release_group_id:
+        await _upload_release_images(
+            job.release_group_id,
+            [export_dir],
+            config.discdb_api_key,
+            config.discdb_api_url,
+        )
 
     logger.info(f"Job {job.id}: Submitted to TheDiscDB (submission_id={result.submission_id})")
     return result
@@ -317,18 +355,12 @@ async def submit_release_group(
 
         export_base = get_export_directory(config)
         export_dirs = [export_base / j.content_hash for j in jobs if j.content_hash]
-        images = _find_release_image_files(export_dirs)
-        for kind, path in images.items():
-            if path is None:
-                continue
-            ok = await submit_release_image(
-                release_group_id,
-                kind,
-                path,
-                config.discdb_api_key,
-                config.discdb_api_url,
-            )
-            result.images_uploaded[kind] = ok
+        result.images_uploaded = await _upload_release_images(
+            release_group_id,
+            export_dirs,
+            config.discdb_api_key,
+            config.discdb_api_url,
+        )
 
     await session.commit()
     return result
