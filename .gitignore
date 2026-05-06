@@ -91,3 +91,6 @@ backend/~/
 
 # Git worktrees
 .worktrees/
+
+# Superpowers brainstorm session files
+.superpowers/

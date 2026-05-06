@@ -24,7 +24,7 @@ const TONES: Record<SvNoticeTone, { color: string }> = {
 /**
  * Inline notification banner — error / warning / info / success.
  * Replaces the ad-hoc `border-{color}/30 bg-{color}/5 text-{color}-400` divs
- * that appeared in ReviewQueue, ContributePage, EnhanceWizard, and HistoryPage.
+ * that appeared in ReviewQueue, ContributePage, and HistoryPage.
  *
  * Synapse v2 vocabulary: 1px tinted border, low-alpha background, soft glow,
  * mono body text.

@@ -41,6 +41,9 @@ class CleanupService:
         from app.core.features import DISCDB_ENABLED
 
         if DISCDB_ENABLED and state == JobState.COMPLETED and config.discdb_contributions_enabled:
+            from app.services.grouping_coordinator import auto_assign_release_group_for_job
+
+            await auto_assign_release_group_for_job(job_id)
             await self.auto_export_for_discdb(job_id, config)
 
     async def delete_staging(self, job_id: int) -> None:

@@ -1524,6 +1524,53 @@ class ReleaseGroupAssignRequest(BaseModel):
     release_group_id: str | None = None
 
 
+class DeckDiscEntry(BaseModel):
+    """One disc within a deck (release group)."""
+
+    job_id: int
+    volume_label: str
+    content_hash: str | None
+    disc_number: int
+    title_count: int
+    matched_count: int
+    runtime_seconds: int
+    episode_range: str | None  # e.g. "S1E1-S1E3" if matched
+    has_extras: bool
+    export_status: str  # "pending" | "exported" | "skipped" | "submitted"
+    submitted_at: datetime | None
+    contribute_url: str | None
+    completed_at: datetime | None
+
+
+class DeckSubmissionStatus(BaseModel):
+    """Aggregate submission status across discs in a deck."""
+
+    pending: int
+    exported: int
+    skipped: int
+    submitted: int
+
+
+class DeckResponse(BaseModel):
+    """A release group surfaced as a deck on the Contribute page."""
+
+    release_group_id: str  # synthetic "solo-<job_id>" for ungrouped discs
+    is_solo: bool  # True when there is no shared release_group_id
+    title: str | None
+    season: int | None
+    year: int | None
+    tmdb_id: int | None
+    content_type: str
+    upc_code: str | None
+    asin: str | None
+    release_date: str | None
+    total_runtime_seconds: int
+    matched_episodes: str  # e.g. "10/10" or "0/12"
+    discs: list[DeckDiscEntry]
+    submission_status: DeckSubmissionStatus
+    most_recent_completed_at: datetime | None  # for sorting client-side
+
+
 @router.get("/contributions", response_model=list[ContributionJobResponse])
 async def list_contributions(session: AsyncSession = Depends(get_session)):
     """List completed jobs with their export status."""
@@ -1594,6 +1641,171 @@ async def contribution_stats(session: AsyncSession = Depends(get_session)):
     return ContributionStatsResponse(
         pending=pending, exported=exported, skipped=skipped, submitted=submitted
     )
+
+
+def _job_export_status(job: DiscJob) -> str:
+    """Mirror the status logic from list_contributions; one source of truth."""
+    if job.submitted_at:
+        return "submitted"
+    if job.exported_at is None:
+        return "pending"
+    if job.exported_at.year == 1970:
+        return "skipped"
+    return "exported"
+
+
+def _episode_range(matched: list[str]) -> str | None:
+    """Compact representation of matched episode codes within a single disc.
+
+    Best-effort: returns "S1E1-S1E3", "S1E1, S1E5, S1E9", or None when nothing matched.
+    """
+    if not matched:
+        return None
+    if len(matched) == 1:
+        return matched[0]
+    sorted_codes = sorted(matched)
+    return f"{sorted_codes[0]}-{sorted_codes[-1]}"
+
+
+@router.get("/contributions/decks", response_model=list[DeckResponse])
+async def list_contribution_decks(session: AsyncSession = Depends(get_session)):
+    """List release groups ("decks") for the Contribute page.
+
+    Each completed job is bucketed by its release_group_id; jobs without a
+    shared release_group_id appear as solo decks keyed by a synthetic
+    "solo-<job_id>" id so the UI can render them through the same component.
+    """
+    job_rows = await session.execute(
+        select(DiscJob)
+        .where(DiscJob.state == JobState.COMPLETED)
+        .order_by(DiscJob.completed_at.desc())
+    )
+    jobs = list(job_rows.scalars().all())
+    if not jobs:
+        return []
+
+    job_ids = [j.id for j in jobs]
+    title_rows = await session.execute(
+        select(DiscTitle).where(DiscTitle.job_id.in_(job_ids))
+    )
+    titles_by_job: dict[int, list[DiscTitle]] = {}
+    for t in title_rows.scalars().all():
+        titles_by_job.setdefault(t.job_id, []).append(t)
+
+    # Bucket jobs by group key (real release_group_id or synthetic solo key)
+    buckets: dict[str, list[DiscJob]] = {}
+    for job in jobs:
+        key = job.release_group_id or f"solo-{job.id}"
+        buckets.setdefault(key, []).append(job)
+
+    decks: list[DeckResponse] = []
+    for group_id, group_jobs in buckets.items():
+        is_solo = group_id.startswith("solo-")
+        group_jobs.sort(key=lambda j: (j.disc_number or 0, j.id))
+        anchor = next(
+            (j for j in group_jobs if j.detected_title and j.tmdb_id),
+            group_jobs[0],
+        )
+
+        # Aggregate fields
+        year: int | None = None
+        if anchor.release_date and len(anchor.release_date) >= 4:
+            try:
+                year = int(anchor.release_date[:4])
+            except ValueError:
+                year = None
+
+        upc_code = next((j.upc_code for j in group_jobs if j.upc_code), None)
+        asin = next((j.asin for j in group_jobs if j.asin), None)
+        release_date = next((j.release_date for j in group_jobs if j.release_date), None)
+
+        total_runtime = 0
+        total_matched = 0
+        total_titles_for_match = 0
+        most_recent: datetime | None = None
+
+        disc_entries: list[DeckDiscEntry] = []
+        for job in group_jobs:
+            titles = titles_by_job.get(job.id, [])
+            disc_runtime = sum(t.duration_seconds for t in titles)
+            total_runtime += disc_runtime
+
+            matched_codes = [t.matched_episode for t in titles if t.matched_episode]
+            disc_match_count = len(matched_codes)
+            disc_match_total = sum(1 for t in titles if t.is_selected)
+            total_matched += disc_match_count
+            total_titles_for_match += disc_match_total
+
+            contribute_url = job.discdb_contribute_url
+            if not contribute_url and job.discdb_submission_id:
+                contribute_url = (
+                    f"https://thediscdb.com/contribute/engram/{job.discdb_submission_id}"
+                )
+
+            if job.completed_at and (most_recent is None or job.completed_at > most_recent):
+                most_recent = job.completed_at
+
+            disc_entries.append(
+                DeckDiscEntry(
+                    job_id=job.id,
+                    volume_label=job.volume_label,
+                    content_hash=job.content_hash,
+                    disc_number=job.disc_number or 1,
+                    title_count=len(titles),
+                    matched_count=disc_match_count,
+                    runtime_seconds=disc_runtime,
+                    episode_range=_episode_range(matched_codes),
+                    has_extras=any(t.is_extra for t in titles),
+                    export_status=_job_export_status(job),
+                    submitted_at=job.submitted_at,
+                    contribute_url=contribute_url,
+                    completed_at=job.completed_at,
+                )
+            )
+
+        # Submission status counts
+        sub_status = DeckSubmissionStatus(pending=0, exported=0, skipped=0, submitted=0)
+        for entry in disc_entries:
+            if entry.export_status == "pending":
+                sub_status.pending += 1
+            elif entry.export_status == "exported":
+                sub_status.exported += 1
+            elif entry.export_status == "skipped":
+                sub_status.skipped += 1
+            elif entry.export_status == "submitted":
+                sub_status.submitted += 1
+
+        matched_episodes = (
+            f"{total_matched}/{total_titles_for_match}"
+            if total_titles_for_match
+            else "0/0"
+        )
+
+        decks.append(
+            DeckResponse(
+                release_group_id=group_id,
+                is_solo=is_solo,
+                title=anchor.detected_title or anchor.volume_label or None,
+                season=anchor.detected_season,
+                year=year,
+                tmdb_id=anchor.tmdb_id,
+                content_type=str(anchor.content_type),
+                upc_code=upc_code,
+                asin=asin,
+                release_date=release_date,
+                total_runtime_seconds=total_runtime,
+                matched_episodes=matched_episodes,
+                discs=disc_entries,
+                submission_status=sub_status,
+                most_recent_completed_at=most_recent,
+            )
+        )
+
+    decks.sort(
+        key=lambda d: d.most_recent_completed_at or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
+    return decks
 
 
 @router.post("/contributions/{job_id}/export")
@@ -1749,7 +1961,17 @@ async def enhance_contribution(
     request: EnhanceRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Add tier-3 data (UPC) and re-export."""
+    """Add tier-3 data and re-export.
+
+    When ``upc_code`` is supplied without an explicit ``asin``, the backend
+    runs the UPC lookup server-side and automatically attaches the
+    highest-ranked ASIN from the result. Saves an extra round-trip for
+    callers that don't have lookup state of their own.
+
+    UPC, ASIN, and release_date propagate to every job sharing the target
+    job's ``release_group_id`` so deck-level metadata stays consistent.
+    Per-title extra_descriptions only apply to the target job.
+    """
     from app.core.discdb_exporter import generate_export, mark_exported
     from app.services.config_service import get_config as get_db_config
 
@@ -1759,26 +1981,42 @@ async def enhance_contribution(
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
 
-    # Update job-level fields
-    updated = False
-    if request.upc_code is not None:
-        job.upc_code = request.upc_code
-        updated = True
-    if request.asin is not None:
-        job.asin = request.asin
-        updated = True
-    if request.release_date is not None:
-        job.release_date = request.release_date
-        updated = True
-    if updated:
-        session.add(job)
-        await session.commit()
-        await session.refresh(job)
+    # Auto-fill ASIN if UPC supplied without one
+    asin_to_save = request.asin
+    asin_auto_filled = False
+    if request.upc_code and not request.asin:
+        from app.core.upc_lookup import lookup_upc
+
+        lookup_result = await lookup_upc(request.upc_code)
+        if lookup_result.success and lookup_result.asins:
+            asin_to_save = lookup_result.asins[0]
+            asin_auto_filled = True
+            logger.info(
+                f"Job {job_id}: auto-filled ASIN={asin_to_save} from UPC {request.upc_code}"
+            )
+
+    # Determine target jobs: whole release group when grouped, else this job alone.
+    if job.release_group_id:
+        group_stmt = select(DiscJob).where(DiscJob.release_group_id == job.release_group_id)
+        target_jobs = list((await session.execute(group_stmt)).scalars().all())
+    else:
+        target_jobs = [job]
+
+    for target in target_jobs:
+        if request.upc_code is not None:
+            target.upc_code = request.upc_code
+        if asin_to_save is not None:
+            target.asin = asin_to_save
+        if request.release_date is not None:
+            target.release_date = request.release_date
+        session.add(target)
+    await session.commit()
+    await session.refresh(job)
 
     titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
     titles = list(titles_result.scalars().all())
 
-    # Update per-title extra descriptions
+    # Per-title extras only apply to the target job
     if request.extra_descriptions:
         for title in titles:
             if title.id in request.extra_descriptions:
@@ -1788,7 +2026,6 @@ async def enhance_contribution(
 
     config = await get_db_config()
     # In-memory override only — forces tier 3 for this single export call
-    # without persisting the change to the database
     config.discdb_contribution_tier = 3
 
     from app import __version__
@@ -1798,7 +2035,12 @@ async def enhance_contribution(
         raise HTTPException(status_code=400, detail="Cannot export — no content hash")
 
     await mark_exported(job_id, session)
-    return {"status": "enhanced", "export_path": str(export_dir)}
+    return {
+        "status": "enhanced",
+        "export_path": str(export_dir),
+        "asin_auto_filled": asin_auto_filled,
+        "applied_to_group_size": len(target_jobs),
+    }
 
 
 @router.post("/jobs/{job_id}/flag-discdb")
