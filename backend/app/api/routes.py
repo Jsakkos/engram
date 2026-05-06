@@ -2879,10 +2879,17 @@ async def export_contribution(
 ):
     """Manually trigger export for a specific job."""
     from app.core.discdb_exporter import generate_export, mark_exported
+    from app.core.discdb_submitter import ensure_release_group_id
     from app.services.config_service import get_config as get_db_config
 
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
+
+    if not job.release_group_id:
+        ensure_release_group_id(job)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
 
     config = await get_db_config()
     titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
@@ -3380,13 +3387,19 @@ async def submit_contribution(
     session: AsyncSession = Depends(get_session),
 ):
     """Submit a job's disc data to TheDiscDB API."""
-    from app.core.discdb_submitter import submit_job
+    from app.core.discdb_submitter import ensure_release_group_id, submit_job
     from app.services.config_service import get_config as get_db_config
 
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
     if not job.exported_at or job.exported_at.year == 1970:
         raise HTTPException(status_code=400, detail="Job must be exported before submission")
+
+    if not job.release_group_id:
+        ensure_release_group_id(job)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
 
     config = await get_db_config()
 
