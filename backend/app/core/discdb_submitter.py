@@ -222,6 +222,12 @@ async def _upload_release_images(
     """Find and upload release-level cover images from the given export dirs."""
     results: dict[str, bool] = {}
     images = _find_release_image_files(export_dirs)
+    if not any(images.values()):
+        logger.info(
+            f"No release cover images found for release {release_id} "
+            f"(searched {len(export_dirs)} dir(s)); skipping image upload"
+        )
+        return results
     for kind, path in images.items():
         if path is None:
             continue

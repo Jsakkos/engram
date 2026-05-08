@@ -30,6 +30,7 @@ export function EnhancePanel({ deck, onClose, onSaved }: EnhancePanelProps) {
   const [lookup, setLookup] = useState<UpcLookupResponse | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   // Use the first disc as the lookup target — UPC enrichment in B3
@@ -67,6 +68,7 @@ export function EnhancePanel({ deck, onClose, onSaved }: EnhancePanelProps) {
     if (!anchorJobId) return;
     setSaving(true);
     setError(null);
+    setCoverError(null);
     try {
       const body: Record<string, string | undefined> = { upc_code: upc.trim() };
       // F4 will move ASIN + release_date selection into the backend; for
@@ -84,12 +86,23 @@ export function EnhancePanel({ deck, onClose, onSaved }: EnhancePanelProps) {
       }
       setSaved(true);
       // Best-effort cover fetch using the first image returned by lookup.
+      // Failures are surfaced inline but do not block save success.
       if (lookup?.images && lookup.images.length > 0) {
-        await fetch(`/api/contributions/${anchorJobId}/fetch-cover`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_url: lookup.images[0] }),
-        }).catch(() => undefined);
+        try {
+          const coverRes = await fetch(`/api/contributions/${anchorJobId}/fetch-cover`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: lookup.images[0] }),
+          });
+          if (!coverRes.ok) {
+            const coverBody = await coverRes
+              .json()
+              .catch(() => ({ detail: `HTTP ${coverRes.status}` }));
+            setCoverError(coverBody.detail || "Cover fetch failed");
+          }
+        } catch (e) {
+          setCoverError(e instanceof Error ? e.message : "Cover fetch failed");
+        }
       }
       onSaved();
     } catch (e) {
@@ -198,6 +211,10 @@ export function EnhancePanel({ deck, onClose, onSaved }: EnhancePanelProps) {
 
         {error && (
           <div style={{ color: sv.red, fontSize: 11 }}>{error}</div>
+        )}
+
+        {coverError && (
+          <div style={{ color: sv.red, fontSize: 11 }}>Cover fetch failed: {coverError}</div>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>

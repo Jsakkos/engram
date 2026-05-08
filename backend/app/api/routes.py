@@ -1685,9 +1685,7 @@ async def list_contribution_decks(session: AsyncSession = Depends(get_session)):
         return []
 
     job_ids = [j.id for j in jobs]
-    title_rows = await session.execute(
-        select(DiscTitle).where(DiscTitle.job_id.in_(job_ids))
-    )
+    title_rows = await session.execute(select(DiscTitle).where(DiscTitle.job_id.in_(job_ids)))
     titles_by_job: dict[int, list[DiscTitle]] = {}
     for t in title_rows.scalars().all():
         titles_by_job.setdefault(t.job_id, []).append(t)
@@ -1776,9 +1774,7 @@ async def list_contribution_decks(session: AsyncSession = Depends(get_session)):
                 sub_status.submitted += 1
 
         matched_episodes = (
-            f"{total_matched}/{total_titles_for_match}"
-            if total_titles_for_match
-            else "0/0"
+            f"{total_matched}/{total_titles_for_match}" if total_titles_for_match else "0/0"
         )
 
         decks.append(
@@ -1911,6 +1907,7 @@ async def fetch_cover(
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
+    from app.core.discdb_exporter import get_export_directory
     from app.services.config_service import get_config as get_db_config
 
     job = await session.get(DiscJob, job_id)
@@ -1920,11 +1917,7 @@ async def fetch_cover(
         raise HTTPException(status_code=400, detail="No content hash")
 
     config = await get_db_config()
-    export_base = Path(config.discdb_export_path) if config.discdb_export_path else None
-    if not export_base:
-        raise HTTPException(status_code=400, detail="No export path configured")
-
-    export_dir = export_base / job.content_hash
+    export_dir = get_export_directory(config) / job.content_hash
     export_dir.mkdir(parents=True, exist_ok=True)
 
     max_size = 10 * 1024 * 1024  # 10 MB
