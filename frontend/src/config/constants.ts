@@ -9,7 +9,7 @@
  */
 export const FEATURES = {
   /** TheDiscDB integration — contribute page, match-source badges, settings toggle. */
-  DISCDB: false,
+  DISCDB: true,
 } as const;
 
 /**
