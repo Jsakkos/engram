@@ -4,14 +4,21 @@ import { TV_DISC_ARRESTED_DEVELOPMENT } from './fixtures/disc-scenarios';
 import { SELECTORS } from './fixtures/selectors';
 
 /**
- * Visual regression baselines. SKIPPED until baselines are seeded.
+ * Visual regression baselines. SKIPPED until baselines are seeded *on
+ * the CI runner platform* (Linux). Generating baselines on a developer
+ * Windows box produces `*-chromium-win32.png` files that CI ignores;
+ * CI looks for `*-chromium-linux.png`.
  *
- * To enable:
- *   1. Run: `npx playwright test visual-regression --update-snapshots`
- *   2. Commit the generated PNGs in `visual-regression.spec.ts-snapshots/`
- *   3. Change `test.describe.skip` below to `test.describe`
+ * To enable from a Linux machine (or via the CI runner):
+ *   1. Start backend (DEBUG=true uv run uvicorn app.main:app --port 8000)
+ *   2. Start frontend (npm run dev)
+ *   3. npx playwright test visual-regression --update-snapshots
+ *   4. Commit the generated PNGs in visual-regression.spec.ts-snapshots/
+ *   5. Change `test.describe.skip` below to `test.describe`
  *
- * Snapshots are chromium-only; font rendering varies across platforms.
+ * From a Windows dev box: push a temporary commit with the describe
+ * enabled, let CI generate the Linux PNGs in the playwright-report
+ * artifact, download and commit them, then enable the describe.
  */
 test.describe.skip('Visual regression', () => {
   test.beforeEach(async ({ page }) => {
