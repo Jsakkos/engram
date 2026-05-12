@@ -70,3 +70,21 @@ ignore = ["E501"]  # Line length handled by ruff format; remaining E501 are stri
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+    "app/matcher/*",
+    "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
