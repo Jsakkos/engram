@@ -108,9 +108,6 @@ def make_titles(durations: list[int]) -> list[TitleInfo]:
     ]
 
 
-@pytest.mark.skip(
-    reason="pre-existing failure: DiscAnalyst → get_config_sync() bypasses the unit conftest's async_session monkeypatch. See CONTRIBUTING.md → 'Known broken tests'."
-)
 class TestAnalystPropertyBased:
     """Property-based tests for DiscAnalyst classification."""
 

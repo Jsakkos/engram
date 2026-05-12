@@ -3,8 +3,6 @@
 Tests movie/TV naming conventions, conflict resolution, and filename sanitization.
 """
 
-import pytest
-
 from app.core.organizer import (
     clean_movie_name,
     organize_movie,
@@ -53,9 +51,6 @@ class TestSanitizeFilename:
         assert result == "Movie Name (2023)"
 
 
-@pytest.mark.skip(
-    reason="pre-existing failure: organize_movie() → get_config_sync() bypasses the unit conftest's async_session monkeypatch and hits real engram.db. See CONTRIBUTING.md → 'Known broken tests'."
-)
 class TestMovieOrganization:
     """Test movie file organization and naming."""
 
@@ -152,9 +147,6 @@ class TestMovieOrganization:
         assert "?" not in filename
 
 
-@pytest.mark.skip(
-    reason="pre-existing failure: organize_tv_episode() → get_config_sync() bypasses the unit conftest's async_session monkeypatch and hits real engram.db. See CONTRIBUTING.md → 'Known broken tests'."
-)
 class TestTVOrganization:
     """Test TV episode organization and naming."""
 
