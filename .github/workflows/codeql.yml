@@ -18,6 +18,10 @@ concurrency:
   group: codeql-${{ github.ref }}
   cancel-in-progress: true
 
+# See ci.yml for context on the Node 24 opt-in.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
