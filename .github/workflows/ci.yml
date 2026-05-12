@@ -190,7 +190,8 @@ jobs:
         env:
           DATABASE_URL: "sqlite+aiosqlite:///./engram_alembic.db"
       - name: Check that current models match migration state
-        run: uv run alembic check || echo "WARNING: alembic check reported drift (non-fatal — see https://alembic.sqlalchemy.org/en/latest/autogenerate.html)"
+        run: |
+          uv run alembic check || echo "WARNING: alembic check reported drift (non-fatal)"
         env:
           DATABASE_URL: "sqlite+aiosqlite:///./engram_alembic.db"
 
