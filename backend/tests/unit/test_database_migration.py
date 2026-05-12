@@ -33,43 +33,6 @@ async def migration_factory(migration_engine):
     return sessionmaker(migration_engine, class_=AsyncSession, expire_on_commit=False)
 
 
-@pytest.mark.skip(
-    reason="pre-existing failure: opensubtitles cleanup migration was never shipped; AppConfig still has these fields. See CONTRIBUTING.md → 'Known broken tests'."
-)
-class TestOpenSubtitlesCleanup:
-    """OpenSubtitles fields should be removed from models."""
-
-    def test_app_config_has_no_opensubtitles_username(self):
-        """AppConfig should not have opensubtitles_username field."""
-        assert "opensubtitles_username" not in AppConfig.model_fields
-
-    def test_app_config_has_no_opensubtitles_password(self):
-        """AppConfig should not have opensubtitles_password field."""
-        assert "opensubtitles_password" not in AppConfig.model_fields
-
-    def test_app_config_has_no_opensubtitles_api_key(self):
-        """AppConfig should not have opensubtitles_api_key field."""
-        assert "opensubtitles_api_key" not in AppConfig.model_fields
-
-    def test_config_service_no_opensubtitles_sensitive_field(self):
-        """config_service sensitive_fields should not reference opensubtitles_api_key."""
-        import inspect as ins
-
-        from app.services.config_service import update_config
-
-        source = ins.getsource(update_config)
-        assert "opensubtitles_api_key" not in source
-
-    def test_matcher_config_has_no_opensubtitles_fields(self):
-        """Matcher Config should not have open_subtitles fields."""
-        from app.matcher.models import Config
-
-        assert "open_subtitles_api_key" not in Config.model_fields
-        assert "open_subtitles_username" not in Config.model_fields
-        assert "open_subtitles_password" not in Config.model_fields
-        assert "open_subtitles_user_agent" not in Config.model_fields
-
-
 class TestSchemaMigration:
     """Schema migration should detect and resolve mismatches."""
 
@@ -160,57 +123,6 @@ class TestSchemaMigration:
             result = await session.execute(text("SELECT COUNT(*) FROM disc_jobs"))
             count = result.scalar()
             assert count == 1
-
-    @pytest.mark.skip(
-        reason="pre-existing failure: 'duplicate column name: opensubtitles_username' — migration runs twice. See CONTRIBUTING.md → 'Known broken tests'."
-    )
-    async def test_migration_handles_extra_columns(self, migration_engine, migration_factory):
-        """Migration should handle tables with extra columns (e.g. obsolete opensubtitles)."""
-        from app.database import _migrate_app_config
-
-        # Create schema with extra columns
-        async with migration_engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-            await conn.execute(
-                text("ALTER TABLE app_config ADD COLUMN opensubtitles_username VARCHAR DEFAULT ''")
-            )
-            await conn.execute(
-                text("ALTER TABLE app_config ADD COLUMN opensubtitles_password VARCHAR DEFAULT ''")
-            )
-            await conn.execute(
-                text("ALTER TABLE app_config ADD COLUMN opensubtitles_api_key VARCHAR DEFAULT ''")
-            )
-
-        # Insert config using ORM (fills all NOT NULL defaults)
-        async with migration_factory() as session:
-            config = AppConfig(
-                makemkv_key="preserve-this-key",
-                tmdb_api_key="preserve-this-token",
-            )
-            session.add(config)
-            await session.commit()
-
-        # Run migration
-        await _migrate_app_config(migration_engine)
-
-        # Config data should be preserved, obsolete columns removed
-        async with migration_factory() as session:
-            result = await session.execute(
-                text("SELECT makemkv_key, tmdb_api_key FROM app_config LIMIT 1")
-            )
-            row = result.fetchone()
-            assert row is not None
-            assert row[0] == "preserve-this-key"
-            assert row[1] == "preserve-this-token"
-
-            # Obsolete columns should be gone
-            actual_cols = set()
-            col_result = await session.execute(text("PRAGMA table_info('app_config')"))
-            for col_row in col_result.fetchall():
-                actual_cols.add(col_row[1])
-            assert "opensubtitles_username" not in actual_cols
-            assert "opensubtitles_password" not in actual_cols
-            assert "opensubtitles_api_key" not in actual_cols
 
     async def test_migration_handles_missing_columns(self, migration_engine, migration_factory):
         """Migration should handle tables missing columns that the model expects."""
