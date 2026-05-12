@@ -123,32 +123,6 @@ A failing smoke test blocks the release. Do not bypass.
 - Reference the issue number in the message (e.g., `fix: correct DiscDB scan log URL (#124)`)
 - Conventional-commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`
 
-## Known broken tests
-
-These pre-existing unit tests fail in CI and are explicitly deselected in
-`.github/workflows/ci.yml` (Backend Tests (unit) job). They surfaced when
-the `| tee` shell-pipe bug was fixed and stopped masking pytest's exit
-code. They are tracked for follow-up:
-
-| Test | Root cause |
-|---|---|
-| `test_coverage_improvements.py::TestAnalystPropertyBased` (4 tests) | `get_config_sync()` uses a cached sync engine that bypasses the unit conftest's `async_session` monkeypatch |
-| `test_database_migration.py::TestOpenSubtitlesCleanup` (3 tests) | Tests assert `opensubtitles_*` fields are removed from `AppConfig`; the cleanup migration was never shipped |
-| `test_database_migration.py::TestSchemaMigration::test_migration_handles_extra_columns` | Migration runs twice → `duplicate column name` |
-| `test_disc_name_identification.py` (3 tests) | Same `get_config_sync()` root cause as `TestAnalystPropertyBased` |
-| `test_mime_types.py::TestMimeTypeRegistration::test_app_main_registers_types_on_import` | `mimetypes.init()` reverts the explicit `.mjs` registration between import and test |
-| `test_organizer.py::TestMovieOrganization` + `TestTVOrganization` (6 tests) | Same `get_config_sync()` root cause |
-
-**To fix the largest group**, refactor the unit test conftest at
-`backend/tests/unit/conftest.py` to:
-1. Use a single shared SQLite file (not `:memory:`) for both sync and async engines.
-2. Patch `_get_sync_engine()` (or reset its `_sync_engine` cache) to point at
-   that file.
-3. Run `create_all()` against both engines before yielding.
-
-Once a group's root cause is fixed, remove the matching `--deselect`
-line in `.github/workflows/ci.yml`.
-
 ## Visual regression baselines
 
 `frontend/e2e/visual-regression.spec.ts` snapshots key pages. To generate or update baselines:
