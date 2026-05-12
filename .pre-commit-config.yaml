@@ -1,6 +1,8 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    # Keep this in sync with the ruff version uvx resolves in CI
+    # (.github/workflows/ci.yml → Backend Lint job).
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: [--fix]

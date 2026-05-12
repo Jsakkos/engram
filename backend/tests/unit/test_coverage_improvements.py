@@ -41,9 +41,9 @@ class TestExhaustiveTransitionMatrix:
         """Every transition in VALID_TRANSITIONS should be accepted."""
         for from_state, valid_targets in JobStateMachine.VALID_TRANSITIONS.items():
             for to_state in valid_targets:
-                assert state_machine.can_transition(
-                    from_state, to_state
-                ), f"Expected {from_state.value} -> {to_state.value} to be valid"
+                assert state_machine.can_transition(from_state, to_state), (
+                    f"Expected {from_state.value} -> {to_state.value} to be valid"
+                )
 
     def test_all_invalid_transitions_rejected(self, state_machine):
         """Every transition NOT in VALID_TRANSITIONS should be rejected (except self-loops)."""
@@ -52,9 +52,9 @@ class TestExhaustiveTransitionMatrix:
             valid_targets = JobStateMachine.VALID_TRANSITIONS.get(from_state, set())
             invalid_targets = all_states - valid_targets - {from_state}
             for to_state in invalid_targets:
-                assert not state_machine.can_transition(
-                    from_state, to_state
-                ), f"Expected {from_state.value} -> {to_state.value} to be invalid"
+                assert not state_machine.can_transition(from_state, to_state), (
+                    f"Expected {from_state.value} -> {to_state.value} to be invalid"
+                )
 
     def test_self_loops_always_valid(self, state_machine):
         """Every state should allow transitioning to itself."""
@@ -71,9 +71,9 @@ class TestExhaustiveTransitionMatrix:
         terminal = {JobState.COMPLETED, JobState.FAILED}
         for state in JobState:
             if state not in terminal:
-                assert state_machine.can_transition(
-                    state, JobState.FAILED
-                ), f"{state.value} should be able to reach FAILED"
+                assert state_machine.can_transition(state, JobState.FAILED), (
+                    f"{state.value} should be able to reach FAILED"
+                )
 
     def test_happy_path_reachable(self, state_machine):
         """The happy path IDLE → IDENTIFYING → RIPPING → MATCHING → ORGANIZING → COMPLETED
