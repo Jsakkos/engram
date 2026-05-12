@@ -38,8 +38,6 @@ describe("mapTitleStateToTrackState", () => {
     ["matching", "matching"],
     ["matched", "matched"],
     ["review", "matched"],
-    // NOTE: TDD intent (issue #16) was completed → matched. Current source
-    // returns 'completed'. Test reflects shipped behavior; triage pending.
     ["completed", "completed"],
     ["failed", "failed"],
   ];

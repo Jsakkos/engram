@@ -52,8 +52,6 @@ describe('Issue #16: Processing state visibility', () => {
     });
 
     it('should map "completed" to "completed"', () => {
-      // NOTE: original TDD intent (issue #16) was 'matched', but current adapters.ts
-      // maps completed → completed. Tracked for triage; keep test in sync with shipped behavior.
       expect(mapTitleStateToTrackState('completed')).toBe('completed');
     });
 
