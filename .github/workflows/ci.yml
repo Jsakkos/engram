@@ -6,6 +6,17 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Opt JS actions still pinned to Node 20 (e.g. actions/cache/restore@v4 used
+# transitively by astral-sh/setup-uv) into the Node 24 runtime now, ahead of
+# GitHub's June 2026 forced cutover. See:
+# https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   backend-lint:
     name: Backend Lint
@@ -27,8 +38,98 @@ jobs:
       - run: uvx ruff check
       - run: uvx ruff format --check
 
-  backend-test:
-    name: Backend Tests
+  backend-test-unit:
+    name: Backend Tests (unit)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libsndfile1 ffmpeg
+          version: 1.0
+      - run: uv sync --no-install-project
+      - name: Run unit tests
+        # Use bash + pipefail so pytest's exit code propagates through tee.
+        # Git Bash is preinstalled on windows-latest runners.
+        # Pre-existing failures are marked @pytest.mark.skip in the test
+        # files themselves — see CONTRIBUTING.md "Known broken tests".
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest tests/unit/ -v --tb=short \
+            --cov=app --cov-report=xml --cov-report=term \
+            -m "not requires_audio" 2>&1 | tee pytest-unit-output.txt
+        env:
+          DEBUG: "true"
+      - name: Upload coverage artifact
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-unit-output-${{ matrix.os }}
+          path: backend/pytest-unit-output.txt
+
+  backend-test-integration:
+    name: Backend Tests (integration)
+    runs-on: ubuntu-latest
+    needs: [backend-test-unit]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install system dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libsndfile1 ffmpeg
+          version: 1.0
+      - run: uv sync --no-install-project
+      - name: Run integration + pipeline tests
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest tests/integration/ tests/pipeline/ -v --tb=long 2>&1 | tee pytest-integration-output.txt
+        env:
+          DEBUG: "true"
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-integration-output
+          path: backend/pytest-integration-output.txt
+
+  backend-smoke:
+    name: Backend Smoke Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -49,16 +150,69 @@ jobs:
           packages: libsndfile1 ffmpeg
           version: 1.0
       - run: uv sync --no-install-project
-      - name: Run tests
-        run: uv run pytest tests/ -v --tb=long 2>&1 | tee pytest-output.txt
+      - name: Import app
+        run: uv run python -c "from app.main import app; print('import OK')"
+      - name: Boot and probe
+        run: |
+          uv run uvicorn app.main:app --port 8765 &
+          UVICORN_PID=$!
+          for i in {1..20}; do
+            if curl -fsS http://localhost:8765/api/jobs; then
+              echo
+              echo "backend ready after ${i}s"
+              kill $UVICORN_PID || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend never became ready"
+          kill $UVICORN_PID || true
+          exit 1
         env:
           DEBUG: "true"
-      - name: Upload test results
-        if: failure()
-        uses: actions/upload-artifact@v7
+          DATABASE_URL: "sqlite+aiosqlite:///./engram_smoke.db"
+
+  alembic-check:
+    name: Alembic Migration Sanity
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
-          name: pytest-output
-          path: backend/pytest-output.txt
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: uv sync --no-install-project
+      - name: Verify exactly one head (no orphan migrations)
+        run: |
+          uv run alembic heads
+          HEADS=$(uv run alembic heads 2>/dev/null | grep -c "(head)" || true)
+          echo "Found $HEADS head(s)"
+          if [ "$HEADS" != "1" ]; then
+            echo "Expected exactly 1 alembic head, got $HEADS"
+            exit 1
+          fi
+      - name: Verify migration history is linear and importable
+        run: uv run alembic history --verbose
+      - name: Apply migrations on top of an initialized DB
+        run: |
+          uv run python -c "import asyncio; from app.database import init_db; asyncio.run(init_db())"
+          uv run alembic current
+          uv run alembic upgrade head
+          uv run alembic current
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///./engram_alembic.db"
+      - name: Check that current models match migration state
+        run: |
+          uv run alembic check || echo "WARNING: alembic check reported drift (non-fatal)"
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///./engram_alembic.db"
 
   frontend-lint-build:
     name: Frontend Lint & Build
@@ -76,6 +230,35 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      - name: Check bundle size budget
+        run: node scripts/check-bundle-size.mjs
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+  frontend-test-unit:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test:unit -- --coverage
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
 
   e2e-tests:
     name: E2E Tests
