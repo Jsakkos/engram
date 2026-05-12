@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdirSync, statSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { resolve, join } from "node:path";
 
@@ -10,22 +10,24 @@ const BUDGETS_KB = {
 };
 
 const distDir = resolve(import.meta.dirname, "../dist/assets");
-let files;
+let entries;
 try {
-    files = readdirSync(distDir);
-} catch (err) {
+    entries = readdirSync(distDir, { withFileTypes: true });
+} catch {
     console.error(`Could not read ${distDir}. Did "npm run build" run first?`);
     process.exit(1);
 }
 
 const sizes = { js: [], css: [] };
-for (const name of files) {
-    const path = join(distDir, name);
-    if (!statSync(path).isFile()) continue;
-    const buf = readFileSync(path);
+for (const entry of entries) {
+    // Use dirent metadata to avoid a TOCTOU race between stat and read
+    if (!entry.isFile()) continue;
+    const { name } = entry;
+    if (!name.endsWith(".js") && !name.endsWith(".css")) continue;
+    const buf = readFileSync(join(distDir, name));
     const gzKb = gzipSync(buf).length / 1024;
     if (name.endsWith(".js")) sizes.js.push({ name, gzKb });
-    else if (name.endsWith(".css")) sizes.css.push({ name, gzKb });
+    else sizes.css.push({ name, gzKb });
 }
 
 const totalJs = sizes.js.reduce((s, x) => s + x.gzKb, 0);
