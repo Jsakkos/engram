@@ -4,16 +4,16 @@ import { TV_DISC_ARRESTED_DEVELOPMENT } from './fixtures/disc-scenarios';
 import { SELECTORS } from './fixtures/selectors';
 
 /**
- * Visual regression baseline. Run once with --update-snapshots to generate
- * baseline PNGs in frontend/e2e/visual-regression.spec.ts-snapshots/. Commit
- * those. Subsequent CI runs diff against them.
+ * Visual regression baselines. SKIPPED until baselines are seeded.
  *
- * Skipped outside Linux because font rendering varies across platforms.
+ * To enable:
+ *   1. Run: `npx playwright test visual-regression --update-snapshots`
+ *   2. Commit the generated PNGs in `visual-regression.spec.ts-snapshots/`
+ *   3. Change `test.describe.skip` below to `test.describe`
+ *
+ * Snapshots are chromium-only; font rendering varies across platforms.
  */
-test.describe('Visual regression', () => {
-  // eslint-disable-next-line no-empty-pattern
-  test.skip(({}, testInfo) => testInfo.project.name !== 'chromium', 'baselines are chromium-only');
-
+test.describe.skip('Visual regression', () => {
   test.beforeEach(async ({ page }) => {
     await resetAllJobs().catch(() => {});
     await page.goto('/');
