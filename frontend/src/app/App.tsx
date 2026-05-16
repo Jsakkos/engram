@@ -19,6 +19,7 @@ import {
   SvAtmosphere,
   SvTopBar,
   SvStatusBar,
+  SvRipAnimation,
   sv,
 } from "./components/synapse";
 import { DashboardSideRail } from "./components/DashboardSideRail";
@@ -326,7 +327,7 @@ function MainDashboard() {
             alignItems: "stretch",
           }}
         >
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
         {filteredDiscs.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -470,6 +471,14 @@ function MainDashboard() {
             </AnimatePresence>
           </div>
         )}
+        {/* Falling-code animation — fills the slack below the active job
+            card while a rip is in progress (expanded view only). */}
+        <AnimatePresence>
+          {viewMode === "expanded" &&
+            filteredDiscs.some((d: DiscData) => d.state === "ripping") && (
+              <SvRipAnimation />
+            )}
+        </AnimatePresence>
         </div>
         {filteredDiscs.length > 0 && viewMode === "expanded" && (
           <DashboardSideRail jobs={jobs} titlesMap={titlesMap} />
