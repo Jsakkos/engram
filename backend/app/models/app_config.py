@@ -23,9 +23,6 @@ class AppConfig(SQLModel, table=True):
     library_movies_path: str = ""
     library_tv_path: str = ""
 
-    # Feature Flags
-    transcoding_enabled: bool = False
-
     # Episode Matcher Settings
     subtitles_cache_path: str = "~/.engram/cache"
     matcher_min_confidence: float = 0.6

@@ -52,7 +52,6 @@ class DiscJob(SQLModel, table=True):
     content_type: ContentType = ContentType.UNKNOWN
     detected_title: str | None = None  # e.g., "The Office"
     detected_season: int | None = None
-    is_transcoding_enabled: bool = False
 
     # Classification metadata (persisted from DiscAnalysisResult)
     classification_confidence: float = Field(

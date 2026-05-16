@@ -40,7 +40,6 @@ async def test_config():
             staging_path="/tmp/staging",
             library_movies_path="/media/movies",
             library_tv_path="/media/tv",
-            transcoding_enabled=False,
             tmdb_api_key="eyJhbGciOiJIUzI1NiJ9.test",
             max_concurrent_matches=2,
             ffmpeg_path="/usr/bin/ffmpeg",
