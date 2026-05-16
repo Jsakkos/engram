@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { sv } from "./tokens";
+import { SvRipAnimation } from "./SvRipAnimation";
 
 interface Props {
   children: ReactNode;
@@ -7,6 +9,8 @@ interface Props {
   scanlines?: boolean;
   /** Toggle the distant skyline silhouette. Default: true. */
   skyline?: boolean;
+  /** When true, render the ambient falling-code layer behind all content. */
+  ripActive?: boolean;
   className?: string;
   style?: CSSProperties;
 }
@@ -28,6 +32,7 @@ export function SvAtmosphere({
   children,
   scanlines = true,
   skyline = true,
+  ripActive = false,
   className,
   style,
 }: Props) {
@@ -158,6 +163,11 @@ export function SvAtmosphere({
           <rect width="1280" height="180" fill="url(#sv-skyline-fade)" opacity="0.6" />
         </svg>
       )}
+      {/* Ambient falling-code layer — sits above the atmosphere gradients
+          (z-index 0) but below the content (z-index 1). */}
+      <AnimatePresence>
+        {ripActive && <SvRipAnimation key="rip" />}
+      </AnimatePresence>
       <div style={content}>{children}</div>
     </div>
   );
