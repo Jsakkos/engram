@@ -28,6 +28,7 @@ export { SvDiscInsert } from "./SvDiscInsert";
 export type { DiscInsertPhase } from "./SvDiscInsert";
 export { SvPageHeader } from "./SvPageHeader";
 export { SvProgressBar } from "./SvProgressBar";
+export { SvRipAnimation } from "./SvRipAnimation";
 export { SvActionButton } from "./SvActionButton";
 export type { SvActionButtonTone, SvActionButtonSize } from "./SvActionButton";
 export { SvNotice } from "./SvNotice";

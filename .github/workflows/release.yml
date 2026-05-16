@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+# See ci.yml for context on the Node 24 opt-in.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build-windows:
     name: Build Windows Executable
@@ -47,6 +51,36 @@ jobs:
       - name: Build executable
         working-directory: backend
         run: uv run pyinstaller engram.spec
+
+      - name: Smoke test built executable
+        shell: pwsh
+        env:
+          PORT: "8765"
+          HOST: "127.0.0.1"
+        run: |
+          $exe = "backend/dist/engram/engram.exe"
+          if (-not (Test-Path $exe)) { throw "executable not found at $exe" }
+          $proc = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput smoke-stdout.log -RedirectStandardError smoke-stderr.log
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              try {
+                $r = Invoke-WebRequest -Uri "http://127.0.0.1:8765/api/jobs" -UseBasicParsing -TimeoutSec 2
+                if ($r.StatusCode -eq 200) { $ready = $true; break }
+              } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $ready) {
+              Write-Host "===== stdout ====="
+              Get-Content smoke-stdout.log -ErrorAction SilentlyContinue
+              Write-Host "===== stderr ====="
+              Get-Content smoke-stderr.log -ErrorAction SilentlyContinue
+              throw "executable never became ready"
+            }
+            Write-Host "smoke test passed"
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Package
         run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-windows-x64.zip
         shell: pwsh
@@ -94,6 +128,33 @@ jobs:
       - name: Build executable
         working-directory: backend
         run: uv run pyinstaller engram.spec
+
+      - name: Smoke test built executable
+        env:
+          PORT: "8765"
+          HOST: "127.0.0.1"
+        run: |
+          ./backend/dist/engram/engram > smoke-stdout.log 2> smoke-stderr.log &
+          BACKEND_PID=$!
+          trap "kill $BACKEND_PID 2>/dev/null || true" EXIT
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8765/api/jobs > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            echo "===== stdout ====="
+            cat smoke-stdout.log || true
+            echo "===== stderr ====="
+            cat smoke-stderr.log || true
+            echo "executable never became ready"
+            exit 1
+          fi
+          echo "smoke test passed"
+
       - name: Package
         run: tar -czf engram-linux-x64.tar.gz -C backend/dist engram
       - uses: actions/upload-artifact@v7
@@ -101,9 +162,80 @@ jobs:
           name: engram-linux-x64
           path: engram-linux-x64.tar.gz
 
+  build-macos:
+    name: Build macOS Executable
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Build frontend
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Bundle frontend
+        run: cp -r frontend/dist backend/app/static
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install system dependencies
+        run: brew install libsndfile ffmpeg
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --no-install-project
+          uv pip install pyinstaller
+      - name: Build executable
+        working-directory: backend
+        run: uv run pyinstaller engram.spec
+
+      - name: Smoke test built executable
+        env:
+          PORT: "8765"
+          HOST: "127.0.0.1"
+        run: |
+          ./backend/dist/engram/engram > smoke-stdout.log 2> smoke-stderr.log &
+          BACKEND_PID=$!
+          trap "kill $BACKEND_PID 2>/dev/null || true" EXIT
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8765/api/jobs > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            echo "===== stdout ====="
+            cat smoke-stdout.log || true
+            echo "===== stderr ====="
+            cat smoke-stderr.log || true
+            echo "executable never became ready"
+            exit 1
+          fi
+          echo "smoke test passed"
+
+      - name: Package
+        run: tar -czf engram-macos-x64.tar.gz -C backend/dist engram
+      - uses: actions/upload-artifact@v7
+        with:
+          name: engram-macos-x64
+          path: engram-macos-x64.tar.gz
+
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-linux]
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -112,6 +244,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: engram-linux-x64
+      - uses: actions/download-artifact@v8
+        with:
+          name: engram-macos-x64
       - uses: softprops/action-gh-release@v3
         with:
           draft: false
@@ -119,3 +254,4 @@ jobs:
           files: |
             engram-windows-x64.zip
             engram-linux-x64.tar.gz
+            engram-macos-x64.tar.gz

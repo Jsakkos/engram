@@ -14,8 +14,12 @@ interface Props {
 }
 
 /**
- * Bottom status bar — fixed-height (36px) telemetry strip.
+ * Bottom status bar — fixed-height (44px) telemetry strip.
  * Layout: [active/archived counts + drive] [scrolling telemetry] [WS pill + version].
+ *
+ * `marginTop: auto` pins the bar to the bottom of `SvAtmosphere`'s flex
+ * column even when the page is shorter than the viewport; `position: sticky`
+ * keeps it docked while the page scrolls.
  */
 export function SvStatusBar({
   activeCount,
@@ -26,7 +30,7 @@ export function SvStatusBar({
   telemetry,
 }: Props) {
   const root: CSSProperties = {
-    height: 36,
+    height: 44,
     padding: "0 20px",
     display: "flex",
     alignItems: "center",
@@ -41,6 +45,7 @@ export function SvStatusBar({
     color: sv.inkDim,
     position: "sticky",
     bottom: 0,
+    marginTop: "auto",
     zIndex: 20,
   };
 

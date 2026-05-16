@@ -51,8 +51,8 @@ describe('Issue #16: Processing state visibility', () => {
       expect(mapTitleStateToTrackState('matched')).toBe('matched');
     });
 
-    it('should map "completed" to "matched"', () => {
-      expect(mapTitleStateToTrackState('completed')).toBe('matched');
+    it('should map "completed" to "completed"', () => {
+      expect(mapTitleStateToTrackState('completed')).toBe('completed');
     });
 
     it('should map "review" to "matched"', () => {

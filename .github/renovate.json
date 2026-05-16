@@ -1,0 +1,65 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "schedule": ["before 6am on monday"],
+  "timezone": "America/Chicago",
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "description": "Auto-merge patch and pin updates across all managers",
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true,
+      "automergeType": "branch"
+    },
+    {
+      "description": "Auto-merge minor updates for npm (excluding 0.x packages)",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor"],
+      "matchCurrentVersion": "!/^0\\./",
+      "automerge": true,
+      "automergeType": "branch"
+    },
+    {
+      "description": "Group Radix UI packages together",
+      "matchPackagePatterns": ["^@radix-ui/"],
+      "groupName": "radix-ui"
+    },
+    {
+      "description": "Group all Playwright + testing-library updates",
+      "matchPackageNames": [
+        "@playwright/test",
+        "@testing-library/jest-dom",
+        "@testing-library/react",
+        "@testing-library/user-event"
+      ],
+      "groupName": "frontend-testing"
+    },
+    {
+      "description": "Group pytest ecosystem",
+      "matchPackagePatterns": ["^pytest"],
+      "groupName": "pytest-ecosystem"
+    },
+    {
+      "description": "Major updates require manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major-update"]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"],
+    "automerge": true
+  }
+}

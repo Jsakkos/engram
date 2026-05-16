@@ -122,9 +122,10 @@ class TestAnalystPropertyBased:
         analyst = DiscAnalyst()
         titles = make_titles(durations)
         result = analyst.analyze(titles, volume_label="TEST_SHOW_S1D1")
-        assert result.content_type in (ContentType.TV, ContentType.UNKNOWN), (
-            f"Expected TV or UNKNOWN for durations {durations}, got {result.content_type}"
-        )
+        assert result.content_type in (
+            ContentType.TV,
+            ContentType.UNKNOWN,
+        ), f"Expected TV or UNKNOWN for durations {durations}, got {result.content_type}"
 
     @given(duration=movie_duration)
     @settings(max_examples=30)

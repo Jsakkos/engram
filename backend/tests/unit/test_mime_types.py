@@ -59,7 +59,15 @@ class TestMimeTypeRegistration:
 
     def test_app_main_registers_types_on_import(self):
         """Importing app.main leaves all critical MIME types correctly set."""
-        import app.main  # noqa: F401 — imported for side effects
+        # app.main is already in sys.modules from test collection, so a plain
+        # `import` is a no-op and the module-level mimetypes.add_type() side
+        # effects don't re-run. Reload to force re-execution after the fixture's
+        # mimetypes.init() reset the types_map.
+        import importlib
+
+        import app.main
+
+        importlib.reload(app.main)
 
         assert mimetypes.guess_type("styles.css")[0] == "text/css"
         assert mimetypes.guess_type("bundle.js")[0] == "application/javascript"
