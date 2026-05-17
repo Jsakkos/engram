@@ -280,7 +280,6 @@ Components use updated settings
 - **Paths**: `staging_path`, `library_movies_path`, `library_tv_path`, `makemkv_path`, `ffmpeg_path`
 - **API Keys**: `makemkv_key`, `tmdb_api_key` (redacted in responses)
 - **Matching**: `max_concurrent_matches` (default: 3), threshold constants in Analyst
-- **Transcoding**: `transcoding_enabled` (default: false)
 - **Conflict resolution**: `conflict_resolution_default` ("skip" | "overwrite" | "ask")
 
 ### Configuration Validation

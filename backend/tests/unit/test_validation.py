@@ -122,12 +122,12 @@ class TestConfigurationValidation:
     def test_boolean_flags_validation(self):
         """Test boolean configuration flags."""
         config = AppConfig(
-            transcoding_enabled=True,
+            ai_identification_enabled=True,
         )
-        assert config.transcoding_enabled is True
+        assert config.ai_identification_enabled is True
 
-        config2 = AppConfig(transcoding_enabled=False)
-        assert config2.transcoding_enabled is False
+        config2 = AppConfig(ai_identification_enabled=False)
+        assert config2.ai_identification_enabled is False
 
     def test_conflict_resolution_values(self):
         """Test conflict_resolution_default has valid values."""
@@ -244,8 +244,8 @@ class TestDefaultValues:
         assert config.max_concurrent_matches is not None
         assert config.max_concurrent_matches > 0
 
-        assert config.transcoding_enabled is not None
-        assert isinstance(config.transcoding_enabled, bool)
+        assert config.ai_identification_enabled is not None
+        assert isinstance(config.ai_identification_enabled, bool)
 
         assert config.conflict_resolution_default is not None
         assert config.conflict_resolution_default in ["ask", "skip", "rename", "overwrite"]

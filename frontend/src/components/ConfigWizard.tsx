@@ -14,7 +14,6 @@ interface ConfigData {
     makemkvKey: string;
     libraryMoviesPath: string;
     libraryTvPath: string;
-    transcodingEnabled: boolean;
     tmdbApiKey: string;
     maxConcurrentMatches: number;
     ffmpegPath: string;
@@ -61,7 +60,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         makemkvKey: '',
         libraryMoviesPath: '',
         libraryTvPath: '',
-        transcodingEnabled: false,
         tmdbApiKey: '',
         maxConcurrentMatches: 2,
         ffmpegPath: '',
@@ -118,7 +116,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     makemkvKey: data.makemkv_key === '***' ? '' : (data.makemkv_key || ''),
                     libraryMoviesPath: data.library_movies_path || '',
                     libraryTvPath: data.library_tv_path || '',
-                    transcodingEnabled: data.transcoding_enabled || false,
                     tmdbApiKey: data.tmdb_api_key === '***' ? '' : (data.tmdb_api_key || ''),
                     maxConcurrentMatches: data.max_concurrent_matches ?? 2,
                     ffmpegPath: data.ffmpeg_path || '',
@@ -213,7 +210,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     makemkv_key: config.makemkvKey,
                     library_movies_path: config.libraryMoviesPath,
                     library_tv_path: config.libraryTvPath,
-                    transcoding_enabled: config.transcodingEnabled,
                     tmdb_api_key: config.tmdbApiKey,
                     max_concurrent_matches: config.maxConcurrentMatches,
                     ffmpeg_path: config.ffmpegPath,
@@ -594,22 +590,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             Configure additional options for your workflow.
                         </p>
 
-                        <div className="form-group checkbox-group">
-                            <label className="checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={config.transcodingEnabled}
-                                    onChange={(e) => handleInputChange('transcodingEnabled', e.target.checked)}
-                                />
-                                <span className="checkbox-text">
-                                    <strong>Enable Transcoding</strong>
-                                    <span className="checkbox-hint">
-                                        Compress files after ripping using HandBrake (slower, smaller files)
-                                    </span>
-                                </span>
-                            </label>
-                        </div>
-
                         {FEATURES.DISCDB && (
                             <div className="form-group checkbox-group">
                                 <label className="checkbox-label">
@@ -904,8 +884,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 <dd>{config.makemkvKey ? 'New key entered' : (savedKeys.makemkv ? 'Configured' : 'Not set')}</dd>
                                 <dt>TMDB Token:</dt>
                                 <dd>{config.tmdbApiKey ? 'New token entered' : (savedKeys.tmdb ? 'Configured' : 'Not set')}</dd>
-                                <dt>Transcoding:</dt>
-                                <dd>{config.transcodingEnabled ? 'Enabled' : 'Disabled (Passthrough)'}</dd>
                             </dl>
                         </div>
                     </div>

@@ -30,7 +30,6 @@ async def _seed_config(
             staging_path=staging_path,
             library_movies_path="/media/movies",
             library_tv_path="/media/tv",
-            transcoding_enabled=False,
             tmdb_api_key=tmdb_api_key,
             max_concurrent_matches=4,
             ffmpeg_path="/usr/bin/ffmpeg",
@@ -171,7 +170,6 @@ class TestConfigEndpoints:
         assert config["makemkv_path"] == "/usr/bin/makemkvcon"
         assert config["staging_path"] == "/tmp/staging"
         assert config["library_movies_path"] == "/media/movies"
-        assert config["transcoding_enabled"] is False
 
     async def test_get_config_creates_default_when_empty(self, client):
         response = await client.get("/api/config")
@@ -181,7 +179,6 @@ class TestConfigEndpoints:
         await _seed_config()
         update_data = {
             "staging_path": "/new/staging/path",
-            "transcoding_enabled": True,
             "max_concurrent_matches": 8,
         }
         response = await client.put("/api/config", json=update_data)
@@ -190,7 +187,6 @@ class TestConfigEndpoints:
         verify = await client.get("/api/config")
         config = verify.json()
         assert config["staging_path"] == "/new/staging/path"
-        assert config["transcoding_enabled"] is True
         assert config["max_concurrent_matches"] == 8
 
     async def test_update_config_with_new_api_keys(self, client):

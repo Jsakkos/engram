@@ -108,8 +108,8 @@ class TestSchemaMigration:
                     "INSERT INTO disc_jobs (drive_id, volume_label, state, content_type, "
                     "current_speed, eta_seconds, progress_percent, current_title, total_titles, "
                     "subtitles_downloaded, subtitles_total, subtitles_failed, disc_number, "
-                    "is_transcoding_enabled, created_at, updated_at) VALUES "
-                    "('E:', 'TEST', 'ripping', 'tv', '0', 0, 0, 0, 0, 0, 0, 0, 1, 0, "
+                    "created_at, updated_at) VALUES "
+                    "('E:', 'TEST', 'ripping', 'tv', '0', 0, 0, 0, 0, 0, 0, 0, 1, "
                     "datetime('now'), datetime('now'))"
                 )
             )
@@ -208,7 +208,6 @@ class TestSchemaMigration:
                             content_type VARCHAR DEFAULT 'unknown',
                             detected_title VARCHAR,
                             detected_season INTEGER,
-                            is_transcoding_enabled BOOLEAN DEFAULT 0,
                             staging_path VARCHAR,
                             final_path VARCHAR,
                             state VARCHAR DEFAULT 'idle',
