@@ -156,6 +156,5 @@ export interface Config {
     staging_path: string;
     library_movies_path: string;
     library_tv_path: string;
-    transcoding_enabled: boolean;
     tmdb_api_key: string;
 }

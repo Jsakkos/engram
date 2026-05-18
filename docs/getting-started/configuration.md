@@ -82,7 +82,6 @@ Configuration is resolved in this priority order:
 | Field | Description | Default |
 |-------|-------------|---------|
 | `max_concurrent_matches` | Parallel episode matching jobs | `3` |
-| `transcoding_enabled` | Enable post-rip transcoding | `false` |
 | `conflict_resolution_default` | File conflict handling | `"skip"` |
 
 The `conflict_resolution_default` field accepts one of three values:

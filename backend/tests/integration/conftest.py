@@ -87,7 +87,6 @@ async def integration_config(async_session):
         staging_path="/tmp/integration-staging",
         library_movies_path="/tmp/integration-movies",
         library_tv_path="/tmp/integration-tv",
-        transcoding_enabled=False,
         tmdb_api_key="eyJhbGciOiJIUzI1NiJ9.integration_test_token",
         max_concurrent_matches=2,
         ffmpeg_path="/usr/bin/ffmpeg",

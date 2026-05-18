@@ -171,7 +171,6 @@ class ConfigResponse(BaseModel):
     staging_path: str
     library_movies_path: str
     library_tv_path: str
-    transcoding_enabled: bool
     tmdb_api_key: str
     max_concurrent_matches: int
     ffmpeg_path: str
@@ -227,7 +226,6 @@ class ConfigUpdate(BaseModel):
     staging_path: str | None = None
     library_movies_path: str | None = None
     library_tv_path: str | None = None
-    transcoding_enabled: bool | None = None
     tmdb_api_key: str | None = None
     max_concurrent_matches: int | None = None
     ffmpeg_path: str | None = None
@@ -770,7 +768,6 @@ async def get_config() -> ConfigResponse:
         staging_path=config.staging_path,
         library_movies_path=config.library_movies_path,
         library_tv_path=config.library_tv_path,
-        transcoding_enabled=config.transcoding_enabled,
         tmdb_api_key="***" if config.tmdb_api_key else "",  # Redacted
         max_concurrent_matches=config.max_concurrent_matches,
         ffmpeg_path=config.ffmpeg_path,
@@ -1384,7 +1381,6 @@ async def generate_bug_report(
         "staging_path": str(config.staging_path).replace(_HOME_PATH, "~"),
         "library_movies_path": str(config.library_movies_path).replace(_HOME_PATH, "~"),
         "library_tv_path": str(config.library_tv_path).replace(_HOME_PATH, "~"),
-        "transcoding_enabled": config.transcoding_enabled,
         "max_concurrent_matches": config.max_concurrent_matches,
         "conflict_resolution_default": config.conflict_resolution_default,
         "extras_policy": config.extras_policy,
