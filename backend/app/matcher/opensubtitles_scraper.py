@@ -16,6 +16,8 @@ import requests
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from app.matcher.subtitle_utils import parse_season_episode_numbers
+
 
 @dataclass
 class SubtitleEntry:
@@ -199,17 +201,9 @@ class OpenSubtitlesClient:
         # Try to extract season/episode from text
         season = 0
         episode = 0
-        text = row.get_text()
-        se_match = re.search(r"S(\d+)E(\d+)", text, re.IGNORECASE)
-        if se_match:
-            season = int(se_match.group(1))
-            episode = int(se_match.group(2))
-        else:
-            # Try "Season X Episode Y" pattern
-            se_match = re.search(r"Season\s*(\d+).*Episode\s*(\d+)", text, re.IGNORECASE)
-            if se_match:
-                season = int(se_match.group(1))
-                episode = int(se_match.group(2))
+        parsed = parse_season_episode_numbers(row.get_text())
+        if parsed:
+            season, episode = parsed
 
         # Extract download count
         downloads = 0

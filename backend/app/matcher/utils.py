@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from app.matcher.config_manager import get_config_manager
-from app.matcher.subtitle_utils import sanitize_filename
+from app.matcher.subtitle_utils import parse_season_episode_numbers, sanitize_filename
 
 console = Console()
 
@@ -217,7 +217,7 @@ def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
     return downloaded
 
 
-def clean_text(text):
+def clean_title_text(text):
     # Remove brackets and curly braces with their content
     cleaned_text = re.sub(r"\[.*?\]|\{.*?\}", "", text)
     # Remove parentheses content EXCEPT for those containing exactly 4 digits (years)
@@ -309,21 +309,12 @@ def extract_season_episode(filename):
         filename (str): Filename to parse
 
     Returns:
-        tuple: (season_number, episode_number)
+        tuple: (season_number, episode_number), or (None, None) if no match
     """
-    # List of patterns to try
-    patterns = [
-        r"S(\d+)E(\d+)",  # S01E01
-        r"(\d+)x(\d+)",  # 1x01 or 01x01
-        r"Season\s*(\d+).*?(\d+)",  # Season 1 - 01
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, filename, re.IGNORECASE)
-        if match:
-            return int(match.group(1)), int(match.group(2))
-
-    return None, None
+    result = parse_season_episode_numbers(filename)
+    if result is None:
+        return None, None
+    return result
 
 
 def process_srt_files(show_dir):
