@@ -194,8 +194,7 @@ def main() -> int:
     if args.keep_srt:
         if args.clean_srt:
             logger.warning(
-                "--keep-srt is deprecated (no-op); --clean-srt takes precedence — "
-                "SRTs will be deleted after the build."
+                "--keep-srt is deprecated (no-op); SRTs will be deleted because --clean-srt is set."
             )
         else:
             logger.warning(
@@ -222,7 +221,8 @@ def main() -> int:
             "opensubtitles_username and opensubtitles_password to enable it."
         )
     if not config.tmdb_api_key:
-        logger.warning("TMDB API key not configured — show lookups will fail")
+        logger.error("TMDB API key not configured — show lookups require it; aborting")
+        return 1
 
     cache_dir = Path(config.subtitles_cache_path).expanduser()
     precomputed_dir = cache_dir / "precomputed"
