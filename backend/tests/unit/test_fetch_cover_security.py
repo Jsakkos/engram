@@ -23,10 +23,12 @@ async def client():
     saved = dict(app.dependency_overrides)
     app.dependency_overrides[get_session] = override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-    app.dependency_overrides.clear()
-    app.dependency_overrides.update(saved)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(saved)
 
 
 class TestFetchCoverSsrfGuard:

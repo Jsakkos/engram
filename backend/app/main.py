@@ -187,10 +187,10 @@ if os.path.isdir(_static_dir):
     app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
 
     # Root-level static files emitted by the Vite build (favicon, SVGs, etc.).
-    # Built once at startup by listing the static dir, so new frontend/public/
-    # assets are picked up automatically. Maps URL path -> on-disk path; the
-    # catch-all uses the request path only as a dict key, so user input is
-    # never interpolated into a filesystem path.
+    # Built once at server startup by listing the static dir — no manual
+    # enumeration needed, but files added later are not seen until a restart.
+    # Maps URL path -> on-disk path; the catch-all uses the request path only
+    # as a dict key, so user input is never interpolated into a filesystem path.
     _ROOT_STATIC_FILES = {
         _name: os.path.join(_static_dir, _name)
         for _name in os.listdir(_static_dir)

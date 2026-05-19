@@ -63,6 +63,11 @@ class TestIsAllowedImageUrl:
         assert not is_allowed_image_url("http://[::1bad]/cover.jpg")
         assert not is_allowed_image_url("http://[:::]/cover.jpg")
 
+    def test_rejects_userinfo_host_confusion(self):
+        # urlparse treats the part before "@" as userinfo — the real host is
+        # evil.com, which must be rejected despite the allowlisted prefix.
+        assert not is_allowed_image_url("https://m.media-amazon.com@evil.com/cover.jpg")
+
 
 class TestExecutableBasenameAllowed:
     """Exact-basename allowlist guard for the tool-validation subprocess calls."""
