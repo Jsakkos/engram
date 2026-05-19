@@ -91,10 +91,22 @@ async def lifespan(app: FastAPI):
     await job_manager.start()
     logger.info("Job manager started")
 
+    # Download/refresh the precomputed subtitle-vector cache in the background.
+    # Fire-and-forget: a slow or failed download must never block startup, and
+    # subtitle scraping remains the fallback until the cache lands.
+    import asyncio
+
+    from app.services.precomputed_cache_service import ensure_precomputed_cache
+
+    app.state.precomputed_cache_task = asyncio.create_task(ensure_precomputed_cache())
+
     yield
 
     # Shutdown
     logger.info("Shutting down Engram Backend...")
+    cache_task = getattr(app.state, "precomputed_cache_task", None)
+    if cache_task and not cache_task.done():
+        cache_task.cancel()
     await job_manager.stop()
     logger.info("Shutdown complete")
 
