@@ -1743,7 +1743,15 @@ async def fetch_cover(
 
         return {"status": "saved", "filename": filename}
     except httpx.HTTPError as e:
-        logger.warning("fetch_cover download failed for job %s: %s", job_id, e, exc_info=True)
+        # Log the exception type only — the message embeds the user-supplied
+        # URL (log-injection risk). exc_info=True still records the full
+        # traceback for diagnosis.
+        logger.warning(
+            "fetch_cover download failed for job %s (%s)",
+            job_id,
+            type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=502, detail=f"Failed to download image: {e}") from e
 
 
