@@ -131,6 +131,16 @@ class TestOsApiCall:
         assert callable_.call_count == 1
         sleep.assert_not_called()
 
+    def test_zero_max_attempts_raises_immediately(self):
+        """Precondition check fires before the callable is even invoked.
+
+        Catches caller bugs early instead of silently returning None.
+        """
+        callable_ = Mock()
+        with pytest.raises(ValueError, match="max_attempts must be >= 1"):
+            os_api_call(callable_, max_attempts=0)
+        callable_.assert_not_called()
+
 
 @pytest.mark.unit
 class TestParseRetryAfter:

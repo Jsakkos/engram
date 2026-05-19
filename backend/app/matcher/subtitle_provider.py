@@ -194,7 +194,10 @@ class OpenSubtitlesProvider(SubtitleProvider):
             else:
                 logger.debug("Initialized OpenSubtitles (no login)")
         except Exception as e:
-            logger.error(f"Failed to initialize OpenSubtitles: {e}")
+            # CLAUDE.md: always log with exc_info=True inside except blocks.
+            # A bare str(e) hides AttributeError / ImportError surprises that
+            # may sneak through ``os_api_call``'s retry loop.
+            logger.error(f"Failed to initialize OpenSubtitles: {e}", exc_info=True)
             self.client = None
 
     def _search_with_retry(
@@ -220,9 +223,10 @@ class OpenSubtitlesProvider(SubtitleProvider):
             signal.alarm(self.network_timeout)
 
         try:
-            # Original retry cadence: 4 attempts, 1s base delay (1, 2, 4, 8).
-            # Tight schedule — sufficient for transient network errors; a
-            # genuine 429 still gets four chances.
+            # Retry cadence: 4 attempts with 1s base delay → 3 sleeps of
+            # 1s, 2s, 4s (the 4th attempt re-raises without sleeping). Tight
+            # schedule — sufficient for transient network errors; a genuine
+            # 429 still gets four chances.
             return os_api_call(
                 self.client.search,
                 query=query,
@@ -240,9 +244,10 @@ class OpenSubtitlesProvider(SubtitleProvider):
     def _download_with_retry(self, subtitle):
         """Download subtitle file with 429-aware retry.
 
-        Uses 6 attempts with 3s base delay (3, 6, 12, 24, 48, ...) — generous
-        because the OpenSubtitles download quota check can be flaky and we'd
-        rather wait than burn the daily quota on transient failures.
+        Uses 6 attempts with 3s base delay → 5 sleeps of 3s, 6s, 12s, 24s, 48s
+        (the 6th attempt re-raises without sleeping). Generous because the
+        OpenSubtitles download quota check can be flaky and we'd rather wait
+        than burn the daily quota on transient failures.
         """
         if not self.client:
             raise RuntimeError("OpenSubtitles client not initialized")

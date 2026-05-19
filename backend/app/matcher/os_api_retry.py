@@ -97,6 +97,13 @@ def os_api_call(
     Raises:
         The original exception, after the final attempt has exhausted.
     """
+    # Precondition check at function entry rather than as a fall-through
+    # guard at the bottom — surfaces a bad caller (e.g., ``max_attempts=0``)
+    # immediately, before any argument-marshalling, and removes the implicit-
+    # None code path entirely so static analyzers stop flagging it.
+    if max_attempts < 1:
+        raise ValueError(f"os_api_call: max_attempts must be >= 1, got {max_attempts}")
+
     delay = base_delay
     for attempt in range(max_attempts):
         try:
@@ -108,9 +115,11 @@ def os_api_call(
             sleep_for = retry_after if retry_after is not None else delay
             is_rate_limit = "429" in str(exc) or retry_after is not None
             source = "Retry-After" if retry_after is not None else "exponential"
-            # CLAUDE.md: always log exceptions with exc_info=True for full
-            # tracebacks. Skip the trace for expected 429s so the log stays
-            # readable (the rate-limit case is fully described by the message).
+            # CLAUDE.md normally requires ``exc_info=True`` inside except
+            # blocks, but for expected 429 responses the rate-limit case is
+            # fully described by the log message — adding a stack frame for
+            # every retry makes long build logs unreadable. This is a
+            # conscious, documented deviation; keep it.
             logger.warning(
                 f"OS API attempt {attempt + 1}/{max_attempts} failed "
                 f"({'rate limited' if is_rate_limit else exc}); "
@@ -120,9 +129,3 @@ def os_api_call(
             time.sleep(sleep_for)
             if retry_after is None:
                 delay *= 2
-    # Unreachable in normal control flow — the final attempt either returns
-    # or re-raises inside the loop. This explicit guard silences static
-    # analyzers that warn about implicit None fall-through, and protects
-    # against a future caller passing max_attempts=0 (which would otherwise
-    # silently return None).
-    raise RuntimeError(f"os_api_call: max_attempts must be >= 1, got {max_attempts}")
