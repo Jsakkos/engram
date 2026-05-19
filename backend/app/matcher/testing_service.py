@@ -7,6 +7,7 @@ Provides three independent operations that can be called from CLI or API:
 """
 
 import tempfile
+import time
 from pathlib import Path
 
 from loguru import logger
@@ -55,6 +56,74 @@ def is_valid_srt_file(file_path: Path) -> bool:
     except Exception as e:
         logger.warning(f"Error validating {file_path}: {e}")
         return False
+
+
+# --- Cached OpenSubtitles API client ---------------------------------------
+# The OpenSubtitles bearer token is valid ~24h and is meant to be reused.
+# `download_subtitles()` is called once per season; logging in each time
+# hammers the `/login` endpoint (throttled harder than data endpoints) and
+# triggers 429s long before the daily download quota is touched. We log in
+# once per process and reuse the client.
+_OS_CLIENT: object | None = None
+_OS_CLIENT_LOGIN_TIME: float = 0.0
+_OS_CLIENT_FAILED: bool = False
+_OS_TOKEN_MAX_AGE: float = 12 * 60 * 60  # re-login after 12h, well within 24h
+
+
+def _get_os_client(config) -> object | None:
+    """Return a logged-in OpenSubtitles client, cached for the process.
+
+    Logs in once (with 429-aware backoff) and reuses the token across all
+    seasons/shows. Returns None on persistent failure so callers fall back to
+    scrapers.
+    """
+    global _OS_CLIENT, _OS_CLIENT_LOGIN_TIME, _OS_CLIENT_FAILED
+
+    if _OS_CLIENT_FAILED:
+        return None
+
+    if _OS_CLIENT is not None and (time.monotonic() - _OS_CLIENT_LOGIN_TIME) < _OS_TOKEN_MAX_AGE:
+        return _OS_CLIENT
+
+    try:
+        from opensubtitlescom import OpenSubtitles as _OSApi
+    except ImportError:
+        logger.warning("opensubtitlescom package not installed — skipping API path")
+        _OS_CLIENT_FAILED = True
+        return None
+
+    delay = 5.0
+    for attempt in range(4):
+        try:
+            client = _OSApi("Engram", config.opensubtitles_api_key)
+            login_response = client.login(
+                config.opensubtitles_username, config.opensubtitles_password
+            )
+            try:
+                remaining = login_response["user"]["allowed_downloads"]
+                logger.info(f"OpenSubtitles API login OK — {remaining} downloads remaining today")
+            except (KeyError, TypeError):
+                logger.info("OpenSubtitles API login OK")
+            _OS_CLIENT = client
+            _OS_CLIENT_LOGIN_TIME = time.monotonic()
+            return client
+        except Exception as e:
+            is_rate_limit = "429" in str(e)
+            if attempt == 3:
+                logger.warning(
+                    f"OpenSubtitles API login failed after retries ({e}); "
+                    "using scrapers for the rest of this run"
+                )
+                _OS_CLIENT_FAILED = True
+                return None
+            logger.warning(
+                f"OpenSubtitles API login attempt {attempt + 1}/4 failed "
+                f"({'rate limited' if is_rate_limit else e}), retrying in {delay:.0f}s..."
+            )
+            time.sleep(delay)
+            delay *= 2
+
+    return None
 
 
 def download_subtitles(show_name: str, season: int) -> dict:
@@ -109,48 +178,63 @@ def download_subtitles(show_name: str, season: int) -> dict:
     # --- OpenSubtitles.com REST API (preferred when credentials are configured) ---
     # Pre-download the whole season at once; falls back to scrapers per-episode on failure.
     api_srt_map: dict[int, Path] = {}
-    if (
+
+    # Skip the API entirely if every episode for this season is already cached on
+    # disk — otherwise the unconditional `search()` below burns API rate limit on
+    # resumed runs even when there's nothing left to download.
+    from app.matcher.subtitle_utils import find_existing_subtitle
+
+    cached_count = sum(
+        1
+        for ep in range(1, episode_count + 1)
+        if find_existing_subtitle(str(series_cache_dir), safe_show_name, season, ep)
+    )
+    season_fully_cached = cached_count >= episode_count
+
+    if season_fully_cached:
+        logger.info(
+            f"{canonical_show_name} S{season:02d}: all {episode_count} episodes "
+            f"cached; skipping API"
+        )
+
+    if not season_fully_cached and (
         config.opensubtitles_api_key
         and config.opensubtitles_username
         and config.opensubtitles_password
     ):
-        try:
-            import shutil
+        _os_client = _get_os_client(config)
+        if _os_client is not None:
+            try:
+                import shutil
 
-            from opensubtitlescom import OpenSubtitles as _OSApi
-
-            _os_client = _OSApi("Engram", config.opensubtitles_api_key)
-            _os_client.login(config.opensubtitles_username, config.opensubtitles_password)
-            response = _os_client.search(
-                parent_tmdb_id=show_id,
-                season_number=season,
-                languages="en",
-                type="episode",
-            )
-            seen_api_eps: set[int] = set()
-            for subtitle in response.data or []:
-                ep_num = getattr(subtitle, "episode_number", None)
-                api_ep_season = getattr(subtitle, "season_number", None)
-                if ep_num and api_ep_season == season and ep_num not in seen_api_eps:
-                    episode_code_api = f"S{season:02d}E{ep_num:02d}"
-                    srt_target = series_cache_dir / f"{safe_show_name} - {episode_code_api}.srt"
-                    if not srt_target.exists():
-                        srt_file = _os_client.download_and_save(subtitle)
-                        if srt_file and is_valid_srt_file(Path(srt_file)):
-                            shutil.move(str(srt_file), srt_target)
+                response = _os_client.search(
+                    parent_tmdb_id=show_id,
+                    season_number=season,
+                    languages="en",
+                    type="episode",
+                )
+                seen_api_eps: set[int] = set()
+                for subtitle in response.data or []:
+                    ep_num = getattr(subtitle, "episode_number", None)
+                    api_ep_season = getattr(subtitle, "season_number", None)
+                    if ep_num and api_ep_season == season and ep_num not in seen_api_eps:
+                        episode_code_api = f"S{season:02d}E{ep_num:02d}"
+                        srt_target = series_cache_dir / f"{safe_show_name} - {episode_code_api}.srt"
+                        if not srt_target.exists():
+                            srt_file = _os_client.download_and_save(subtitle)
+                            if srt_file and is_valid_srt_file(Path(srt_file)):
+                                shutil.move(str(srt_file), srt_target)
+                                api_srt_map[ep_num] = srt_target
+                                seen_api_eps.add(ep_num)
+                        else:
                             api_srt_map[ep_num] = srt_target
                             seen_api_eps.add(ep_num)
-                    else:
-                        api_srt_map[ep_num] = srt_target
-                        seen_api_eps.add(ep_num)
-            logger.info(
-                f"OpenSubtitles API: {len(api_srt_map)}/{episode_count} subtitles "
-                f"for {canonical_show_name} S{season:02d}"
-            )
-        except ImportError:
-            logger.warning("opensubtitlescom package not installed — skipping API path")
-        except Exception as e:
-            logger.warning(f"OpenSubtitles API failed ({e}), falling back to scrapers")
+                logger.info(
+                    f"OpenSubtitles API: {len(api_srt_map)}/{episode_count} subtitles "
+                    f"for {canonical_show_name} S{season:02d}"
+                )
+            except Exception as e:
+                logger.warning(f"OpenSubtitles API failed ({e}), falling back to scrapers")
 
     # Initialize scraper clients (used as fallback when API is unavailable or misses episodes)
     addic7ed_client = Addic7edClient()
