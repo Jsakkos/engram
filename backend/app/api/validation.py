@@ -10,6 +10,8 @@ import requests
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.core.security import executable_basename_allowed
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -188,6 +190,11 @@ async def validate_makemkv(request: ValidationRequest) -> ValidationResponse:
     """Validate MakeMKV installation by checking path and running without arguments."""
     makemkv_path = Path(request.path)
 
+    # Constrain to MakeMKV-looking executables before any filesystem or
+    # subprocess access — the endpoint must not run an arbitrary binary.
+    if not executable_basename_allowed(str(makemkv_path), ["makemkv"]):
+        return ValidationResponse(valid=False, error="Path does not point to a MakeMKV executable")
+
     # Check existence
     if not makemkv_path.exists():
         return ValidationResponse(valid=False, error="File not found at specified path")
@@ -225,6 +232,11 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
     """Validate FFmpeg installation. Empty path = check PATH."""
     if request.path:
         ffmpeg_cmd = Path(request.path)
+        # Constrain to FFmpeg-looking executables before filesystem/subprocess use.
+        if not executable_basename_allowed(str(ffmpeg_cmd), ["ffmpeg"]):
+            return ValidationResponse(
+                valid=False, error="Path does not point to an FFmpeg executable"
+            )
         if not ffmpeg_cmd.exists():
             return ValidationResponse(valid=False, error="File not found at specified path")
         ffmpeg_path_str = str(ffmpeg_cmd)

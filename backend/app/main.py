@@ -189,8 +189,12 @@ if os.path.isdir(_static_dir):
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the SPA frontend — catch-all for client-side routing."""
-        file_path = os.path.join(_static_dir, full_path)
-        if os.path.isfile(file_path):
+        from app.core.security import safe_static_path
+
+        # Confine the requested path to the static asset root — a catch-all
+        # route otherwise allows "../" traversal to arbitrary files on disk.
+        file_path = safe_static_path(_static_dir, full_path)
+        if file_path and os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(_static_dir, "index.html"))
 
