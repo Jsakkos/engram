@@ -37,6 +37,19 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
         if (e.key === 'Escape') onCancel();
     };
 
+    const inputStyle = (filled: boolean): React.CSSProperties => ({
+        width: '100%',
+        background: sv.bg1,
+        border: `1px solid ${filled ? sv.lineHi : sv.lineMid}`,
+        color: sv.cyanHi,
+        fontFamily: sv.mono,
+        fontSize: 13,
+        padding: '10px 12px',
+        outline: 'none',
+        boxShadow: filled ? `0 0 12px ${sv.cyan}33, inset 0 0 8px ${sv.cyan}0d` : 'none',
+        transition: 'border-color 0.18s',
+    });
+
     return (
         <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -186,18 +199,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
                                 onChange={(e) => setTitle(e.target.value)}
                                 placeholder="e.g. The Italian Job"
                                 aria-required="true"
-                                style={{
-                                    width: '100%',
-                                    background: sv.bg1,
-                                    border: `1px solid ${title ? sv.lineHi : sv.lineMid}`,
-                                    color: sv.cyanHi,
-                                    fontFamily: sv.mono,
-                                    fontSize: 13,
-                                    padding: '10px 12px',
-                                    outline: 'none',
-                                    boxShadow: title ? `0 0 12px ${sv.cyan}33, inset 0 0 8px ${sv.cyan}0d` : 'none',
-                                    transition: 'border-color 0.18s',
-                                }}
+                                style={inputStyle(!!title)}
                                 onFocus={(e) => (e.currentTarget.style.borderColor = sv.cyan)}
                                 onBlur={(e) =>
                                     (e.currentTarget.style.borderColor = title ? sv.lineHi : sv.lineMid)
