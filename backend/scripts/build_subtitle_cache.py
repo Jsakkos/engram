@@ -182,7 +182,13 @@ def main() -> int:
     parser.add_argument(
         "--content-version", type=str, default="", help="Cache content version (default: today)"
     )
-    parser.add_argument("--keep-srt", action="store_true", help="Do not delete harvested SRT files")
+    parser.add_argument(
+        "--clean-srt",
+        action="store_true",
+        help="Delete harvested SRTs after building (default: keep them so re-runs resume)",
+    )
+    # Deprecated: SRTs are now kept by default; --keep-srt is a no-op kept for compatibility.
+    parser.add_argument("--keep-srt", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     _ensure_db_schema()
@@ -190,7 +196,23 @@ def main() -> int:
 
     from app.services.config_service import get_config_sync
 
-    cache_dir = Path(get_config_sync().subtitles_cache_path).expanduser()
+    config = get_config_sync()
+    if (
+        config.opensubtitles_api_key
+        and config.opensubtitles_username
+        and config.opensubtitles_password
+    ):
+        logger.info("OpenSubtitles API: ACTIVE — bulk season downloads enabled")
+    else:
+        logger.warning(
+            "OpenSubtitles API: INACTIVE — credentials missing; falling back to "
+            "rate-limited scrapers (slow, flaky). Set opensubtitles_api_key, "
+            "opensubtitles_username and opensubtitles_password to enable it."
+        )
+    if not config.tmdb_api_key:
+        logger.warning("TMDB API key not configured — show lookups will fail")
+
+    cache_dir = Path(config.subtitles_cache_path).expanduser()
     precomputed_dir = cache_dir / "precomputed"
     if precomputed_dir.exists():
         shutil.rmtree(precomputed_dir)
@@ -290,11 +312,11 @@ def main() -> int:
     with open(release_manifest_path, "w", encoding="utf-8") as fh:
         json.dump(release_manifest, fh, indent=2)
 
-    if not args.keep_srt:
+    if args.clean_srt:
         data_dir = cache_dir / "data"
         if data_dir.exists():
             shutil.rmtree(data_dir)
-            logger.info("Deleted harvested SRT files (not shipped)")
+            logger.info("Deleted harvested SRT files (--clean-srt)")
 
     total_episodes = sum(len(c) for _, _, c, _ in blocks)
     size_mb = output_path.stat().st_size / (1024 * 1024)

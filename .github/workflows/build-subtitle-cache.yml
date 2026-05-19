@@ -62,9 +62,9 @@ jobs:
           OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
           OPENSUBTITLES_USERNAME: ${{ secrets.OPENSUBTITLES_USERNAME }}
           OPENSUBTITLES_PASSWORD: ${{ secrets.OPENSUBTITLES_PASSWORD }}
-        # --keep-srt preserves the harvested SRTs for the cache step above;
-        # they are excluded from the published tarball regardless.
-        run: uv run python scripts/build_subtitle_cache.py --limit ${{ inputs.limit }} --keep-srt
+        # Harvested SRTs are kept by default so the cache step above can persist
+        # them; they are excluded from the published tarball regardless.
+        run: uv run python scripts/build_subtitle_cache.py --limit ${{ inputs.limit }}
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v3
