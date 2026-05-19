@@ -12,6 +12,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from app import __version__
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.opensubtitles_scraper import OpenSubtitlesClient
@@ -19,6 +20,12 @@ from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
+
+# OpenSubtitles best-practices require the User-Agent be in the form
+# "AppName vX.Y.Z". A bare "Engram" (or worse, the upstream library default)
+# misidentifies us to OS and risks being lumped in with unidentified clients
+# for rate-limit purposes. __version__ is sourced from app/__init__.py.
+_USER_AGENT = f"Engram v{__version__}"
 
 
 def is_valid_srt_file(file_path: Path) -> bool:
@@ -69,6 +76,51 @@ _OS_CLIENT_LOGIN_TIME: float = 0.0
 _OS_CLIENT_FAILED: bool = False
 _OS_TOKEN_MAX_AGE: float = 12 * 60 * 60  # re-login after 12h, well within 24h
 
+# --- Daily download quota tracking ------------------------------------------
+# The opensubtitlescom library updates ``client.user_downloads_remaining`` as
+# a side effect of ``login()``, ``user_info()``, and ``download()`` (see
+# .venv/.../opensubtitlescom/opensubtitles.py:105,124,305). Reading the
+# attribute is free — no extra API call — so we snapshot it after each season
+# bulk-download and surface the latest value via ``get_last_quota()`` for the
+# build script's final summary.
+_OS_LAST_QUOTA: dict | None = None
+_OS_LAST_LOGGED_REMAINING: int | None = None
+
+
+def _snapshot_os_quota(client) -> None:
+    """Read ``client.user_downloads_remaining`` and stash it for later display.
+
+    Called after each season's API download block. Non-fatal on any error —
+    the quota counter is informational only.
+    """
+    global _OS_LAST_QUOTA, _OS_LAST_LOGGED_REMAINING
+    try:
+        remaining = getattr(client, "user_downloads_remaining", None)
+        if remaining is None:
+            return
+        remaining_int = int(remaining)
+        _OS_LAST_QUOTA = {"remaining": remaining_int, "as_of": time.monotonic()}
+        # Log on first read and whenever quota has dropped by >= 10 from the
+        # *last logged value* (not the previous snapshot). Comparing against
+        # the previous snapshot would silently swallow slow drips: dropping
+        # 5-per-season for 20 seasons would never cross the threshold from
+        # snapshot to snapshot.
+        if _OS_LAST_LOGGED_REMAINING is None or _OS_LAST_LOGGED_REMAINING - remaining_int >= 10:
+            logger.info(f"OS API quota: {remaining_int} downloads remaining today")
+            _OS_LAST_LOGGED_REMAINING = remaining_int
+    except Exception as exc:
+        logger.debug(f"Could not snapshot OS quota (non-fatal): {exc}")
+
+
+def get_last_quota() -> dict | None:
+    """Public read-only accessor for the most recent OS download-quota snapshot.
+
+    Returns a dict ``{"remaining": int, "as_of": float}`` or None if no API
+    call has succeeded yet this process. Used by the build script's final
+    summary so the user sees "downloads remaining today" at the end of a run.
+    """
+    return _OS_LAST_QUOTA
+
 
 def _get_os_client(config) -> object | None:
     """Return a logged-in OpenSubtitles client, cached for the process.
@@ -92,38 +144,35 @@ def _get_os_client(config) -> object | None:
         _OS_CLIENT_FAILED = True
         return None
 
-    delay = 5.0
-    for attempt in range(4):
-        try:
-            client = _OSApi("Engram", config.opensubtitles_api_key)
-            login_response = client.login(
-                config.opensubtitles_username, config.opensubtitles_password
-            )
-            try:
-                remaining = login_response["user"]["allowed_downloads"]
-                logger.info(f"OpenSubtitles API login OK — {remaining} downloads remaining today")
-            except (KeyError, TypeError):
-                logger.info("OpenSubtitles API login OK")
-            _OS_CLIENT = client
-            _OS_CLIENT_LOGIN_TIME = time.monotonic()
-            return client
-        except Exception as e:
-            is_rate_limit = "429" in str(e)
-            if attempt == 3:
-                logger.warning(
-                    f"OpenSubtitles API login failed after retries ({e}); "
-                    "using scrapers for the rest of this run"
-                )
-                _OS_CLIENT_FAILED = True
-                return None
-            logger.warning(
-                f"OpenSubtitles API login attempt {attempt + 1}/4 failed "
-                f"({'rate limited' if is_rate_limit else e}), retrying in {delay:.0f}s..."
-            )
-            time.sleep(delay)
-            delay *= 2
+    from app.matcher.os_api_retry import os_api_call
 
-    return None
+    client = _OSApi(_USER_AGENT, config.opensubtitles_api_key)
+    try:
+        login_response = os_api_call(
+            client.login,
+            config.opensubtitles_username,
+            config.opensubtitles_password,
+        )
+    except Exception as e:
+        logger.warning(
+            f"OpenSubtitles API login failed after retries ({e}); "
+            "using scrapers for the rest of this run"
+        )
+        _OS_CLIENT_FAILED = True
+        return None
+
+    try:
+        remaining = login_response["user"]["allowed_downloads"]
+        logger.info(f"OpenSubtitles API login OK — {remaining} downloads remaining today")
+    except (KeyError, TypeError):
+        logger.info("OpenSubtitles API login OK")
+    _OS_CLIENT = client
+    _OS_CLIENT_LOGIN_TIME = time.monotonic()
+    # Seed the quota snapshot from the login response — gives the build
+    # script's final summary a starting baseline even if no downloads happen
+    # this run (e.g., the whole cache is already populated).
+    _snapshot_os_quota(client)
+    return client
 
 
 def download_subtitles(show_name: str, season: int) -> dict:
@@ -233,6 +282,10 @@ def download_subtitles(show_name: str, season: int) -> dict:
                     f"OpenSubtitles API: {len(api_srt_map)}/{episode_count} subtitles "
                     f"for {canonical_show_name} S{season:02d}"
                 )
+                # Snapshot the daily download quota — the library has updated
+                # `user_downloads_remaining` for free as a side effect of the
+                # download_and_save() calls above.
+                _snapshot_os_quota(_os_client)
             except Exception as e:
                 logger.warning(f"OpenSubtitles API failed ({e}), falling back to scrapers")
 

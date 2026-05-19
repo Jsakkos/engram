@@ -381,3 +381,76 @@ class TestSubtitleFilenameFormat:
         cache_path = tmp_path / "data" / "The Office"
         assert (cache_path / "The Office - S01E01.srt").exists()
         assert (cache_path / "The Office - S01E02.srt").exists()
+
+
+@pytest.mark.unit
+class TestUserAgent:
+    """The User-Agent string sent to OpenSubtitles must include the app
+    version per their best-practices doc; the prior placeholder ``"Engram"``
+    (no version) and ``"Oz 1.0.0"`` (wrong app name) were both
+    non-compliant."""
+
+    def test_user_agent_constant_matches_version(self):
+        from app import __version__
+        from app.matcher.testing_service import _USER_AGENT
+
+        assert _USER_AGENT == f"Engram v{__version__}"
+        # Must satisfy the OS "AppName vX.Y.Z" pattern.
+        import re
+
+        assert re.match(r"^Engram v\d+\.\d+\.\d+$", _USER_AGENT)
+
+
+@pytest.mark.unit
+class TestQuotaSnapshot:
+    """Reading ``client.user_downloads_remaining`` after API activity is the
+    cheapest way to surface the daily quota — no extra /infos/user request."""
+
+    def setup_method(self):
+        # Reset module-scope state so tests don't bleed into each other.
+        import app.matcher.testing_service as ts
+
+        ts._OS_LAST_QUOTA = None
+        ts._OS_LAST_LOGGED_REMAINING = None
+
+    def test_snapshot_records_remaining_from_client_attribute(self):
+        from app.matcher.testing_service import _snapshot_os_quota, get_last_quota
+
+        client = Mock()
+        client.user_downloads_remaining = 87
+        _snapshot_os_quota(client)
+        snap = get_last_quota()
+        assert snap is not None
+        assert snap["remaining"] == 87
+        assert "as_of" in snap
+
+    def test_snapshot_handles_missing_attribute_gracefully(self):
+        """If the library version doesn't expose the attribute, we no-op."""
+        from app.matcher.testing_service import _snapshot_os_quota, get_last_quota
+
+        client = Mock(spec=[])  # spec=[] → no attributes
+        _snapshot_os_quota(client)
+        assert get_last_quota() is None
+
+    def test_snapshot_logs_only_on_drop_of_ten_or_more(self):
+        """Spammy log noise is the failure mode; one line per season would
+        bury everything else. We log on the first read and on big drops only."""
+        from app.matcher.testing_service import _snapshot_os_quota
+
+        client = Mock()
+        client.user_downloads_remaining = 100
+
+        with patch("app.matcher.testing_service.logger") as log:
+            _snapshot_os_quota(client)  # first read → logs
+            assert log.info.call_count == 1
+
+            # Tiny drop (8) → no log.
+            client.user_downloads_remaining = 92
+            _snapshot_os_quota(client)
+            assert log.info.call_count == 1
+
+            # Bigger drop crossing the 10-unit threshold from the LAST logged
+            # value (100) → logs.
+            client.user_downloads_remaining = 88
+            _snapshot_os_quota(client)
+            assert log.info.call_count == 2

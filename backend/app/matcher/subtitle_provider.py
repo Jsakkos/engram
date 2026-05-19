@@ -1,57 +1,19 @@
 import abc
 import re
 import shutil
-import time
-from collections.abc import Callable
-from functools import wraps
 from pathlib import Path
-from typing import Any, TypeVar
 
 from loguru import logger
 
 from app.matcher.config_manager import get_config_manager
 from app.matcher.models import EpisodeInfo, SubtitleFile
+from app.matcher.os_api_retry import os_api_call
 from app.matcher.subtitle_utils import sanitize_filename
 
-F = TypeVar("F", bound=Callable[..., Any])
-
-
-def retry_with_backoff(
-    max_retries: int = 3,
-    base_delay: float = 1.0,
-    max_delay: float = 60.0,
-    backoff_factor: float = 2.0,
-) -> Callable[[F], F]:
-    """Decorator for retrying operations with exponential backoff."""
-
-    def decorator(func: F) -> F:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            last_exception = None
-            delay = base_delay
-
-            for attempt in range(max_retries + 1):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_exception = e
-                    if attempt == max_retries:
-                        logger.error(
-                            f"Max retries ({max_retries}) exceeded for {func.__name__}: {e}"
-                        )
-                        raise e
-
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{max_retries + 1} failed for {func.__name__}: {e}, retrying in {delay:.1f}s..."
-                    )
-                    time.sleep(delay)
-                    delay = min(delay * backoff_factor, max_delay)
-
-            raise last_exception
-
-        return wrapper  # type: ignore
-
-    return decorator
+# NOTE: This module previously defined a generic ``retry_with_backoff``
+# decorator that was only used here, with hardcoded parameters that differed
+# from the inline login retry in ``testing_service.py``. Both call sites now
+# route through ``os_api_retry.os_api_call`` for consistent 429 handling.
 
 
 def parse_season_episode(filename: str) -> EpisodeInfo | None:
@@ -210,7 +172,15 @@ class OpenSubtitlesProvider(SubtitleProvider):
                 self.client = None
                 return
 
-            user_agent = getattr(self.config, "open_subtitles_user_agent", "Oz 1.0.0")
+            # OS best-practices: User-Agent must be "AppName vX.Y.Z". The prior
+            # "Oz 1.0.0" placeholder was a leftover from upstream and silently
+            # misidentified the app. Override via config only if a deployment
+            # has registered a custom UA with OpenSubtitles.
+            from app import __version__
+
+            user_agent = (
+                getattr(self.config, "open_subtitles_user_agent", None) or f"Engram v{__version__}"
+            )
             self.client = OpenSubtitlesClient(user_agent, api_key)
             username = getattr(self.config, "open_subtitles_username", None)
             password = getattr(self.config, "open_subtitles_password", None)
@@ -223,7 +193,6 @@ class OpenSubtitlesProvider(SubtitleProvider):
             logger.error(f"Failed to initialize OpenSubtitles: {e}")
             self.client = None
 
-    @retry_with_backoff(max_retries=3, base_delay=1.0)
     def _search_with_retry(
         self,
         query: str | None = None,
@@ -232,7 +201,7 @@ class OpenSubtitlesProvider(SubtitleProvider):
         season_number: int | None = None,
         type: str | None = None,
     ):
-        """Search for subtitles with retry logic."""
+        """Search for subtitles with 429-aware retry."""
         if not self.client:
             raise RuntimeError("OpenSubtitles client not initialized")
 
@@ -247,23 +216,29 @@ class OpenSubtitlesProvider(SubtitleProvider):
             signal.alarm(self.network_timeout)
 
         try:
-            return self.client.search(
+            # Original retry cadence: 4 attempts, 1s base delay (1, 2, 4, 8).
+            # Tight schedule — sufficient for transient network errors; a
+            # genuine 429 still gets four chances.
+            return os_api_call(
+                self.client.search,
                 query=query,
                 languages=languages,
                 parent_tmdb_id=parent_tmdb_id,
                 season_number=season_number,
                 type=type,
+                max_attempts=4,
+                base_delay=1.0,
             )
         finally:
             if hasattr(signal, "SIGALRM"):
                 signal.alarm(0)  # Cancel the alarm
 
-    @retry_with_backoff(max_retries=5, base_delay=3.0)
     def _download_with_retry(self, subtitle):
-        """Download subtitle file with retry logic.
+        """Download subtitle file with 429-aware retry.
 
-        Uses 5 retries with 3s base delay to handle rate limit issues,
-        as the OpenSubtitles download quota can be buggy.
+        Uses 6 attempts with 3s base delay (3, 6, 12, 24, 48, ...) — generous
+        because the OpenSubtitles download quota check can be flaky and we'd
+        rather wait than burn the daily quota on transient failures.
         """
         if not self.client:
             raise RuntimeError("OpenSubtitles client not initialized")
@@ -279,7 +254,12 @@ class OpenSubtitlesProvider(SubtitleProvider):
             signal.alarm(self.network_timeout)
 
         try:
-            return self.client.download_and_save(subtitle)
+            return os_api_call(
+                self.client.download_and_save,
+                subtitle,
+                max_attempts=6,
+                base_delay=3.0,
+            )
         finally:
             if hasattr(signal, "SIGALRM"):
                 signal.alarm(0)  # Cancel the alarm
