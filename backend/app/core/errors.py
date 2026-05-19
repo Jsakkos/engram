@@ -4,6 +4,7 @@ Provides custom exception types and decorators for standardized error handling
 across the application.
 """
 
+import inspect
 import logging
 from functools import wraps
 
@@ -100,39 +101,33 @@ def handle_errors(
     """
 
     def decorator(func):
+        def _handle(e: Exception) -> None:
+            """Log the caught error and either wrap or re-raise it."""
+            log_func = getattr(logger, log_level)
+            log_func(
+                f"{default_message}: {e}",
+                exc_info=(log_level == "error"),
+            )
+            if wrap_as:
+                raise wrap_as(f"{default_message}: {e}") from e
+            if reraise:
+                raise e
+
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             try:
                 return await func(*args, **kwargs)
             except error_types as e:
-                log_func = getattr(logger, log_level)
-                log_func(
-                    f"{default_message}: {e}",
-                    exc_info=(log_level == "error"),
-                )
-                if wrap_as:
-                    raise wrap_as(f"{default_message}: {e}") from e
-                if reraise:
-                    raise
+                _handle(e)
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
             except error_types as e:
-                log_func = getattr(logger, log_level)
-                log_func(
-                    f"{default_message}: {e}",
-                    exc_info=(log_level == "error"),
-                )
-                if wrap_as:
-                    raise wrap_as(f"{default_message}: {e}") from e
-                if reraise:
-                    raise
+                _handle(e)
 
         # Return appropriate wrapper based on function type
-        import inspect
-
         if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
