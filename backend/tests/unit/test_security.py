@@ -42,6 +42,14 @@ class TestIsAllowedImageUrl:
     def test_rejects_empty_url(self):
         assert not is_allowed_image_url("")
 
+    def test_rejects_ipv6_loopback(self):
+        # [::1] is the IPv6 loopback — must be blocked by the IP guard.
+        assert not is_allowed_image_url("http://[::1]/cover.jpg")
+
+    def test_rejects_ipv4_mapped_ipv6_loopback(self):
+        # ::ffff:127.0.0.1 is the IPv4-mapped form of 127.0.0.1.
+        assert not is_allowed_image_url("http://[::ffff:127.0.0.1]/cover.jpg")
+
 
 class TestExecutableBasenameAllowed:
     """Exact-basename allowlist guard for the tool-validation subprocess calls."""

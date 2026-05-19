@@ -195,6 +195,9 @@ if os.path.isdir(_static_dir):
         _name: os.path.join(_static_dir, _name)
         for _name in os.listdir(_static_dir)
         if _name != "index.html" and os.path.isfile(os.path.join(_static_dir, _name))
+        # isfile() intentionally excludes subdirectories — nested assets belong
+        # under /assets (the StaticFiles mount above). A new root-level subdir
+        # from the Vite build would need its own mount.
     }
     _INDEX_HTML = os.path.join(_static_dir, "index.html")
 

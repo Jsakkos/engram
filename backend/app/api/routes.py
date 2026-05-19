@@ -1716,6 +1716,10 @@ async def fetch_cover(
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             resp = await client.get(request.image_url)
             resp.raise_for_status()
+            # raise_for_status() only catches 4xx/5xx; with redirects disabled
+            # a 3xx would otherwise save the redirect's HTML body as the cover.
+            if resp.is_redirect:
+                raise HTTPException(status_code=502, detail="Image server returned a redirect")
 
             content_length = resp.headers.get("content-length")
             if content_length and int(content_length) > max_size:
