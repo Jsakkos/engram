@@ -1,18 +1,11 @@
-"""Unit tests for app.core.security — SSRF and path-traversal hardening helpers.
+"""Unit tests for app.core.security — SSRF and command-injection guard helpers.
 
 These cover the CodeQL-flagged sinks:
 - is_allowed_image_url: py/full-ssrf in the fetch_cover endpoint
-- is_within_directory: py/path-injection in the SPA catch-all route
 - executable_basename_allowed: py/command-line-injection in validate_makemkv/ffmpeg
 """
 
-import os
-
-from app.core.security import (
-    executable_basename_allowed,
-    is_allowed_image_url,
-    is_within_directory,
-)
+from app.core.security import executable_basename_allowed, is_allowed_image_url
 
 
 class TestIsAllowedImageUrl:
@@ -48,35 +41,6 @@ class TestIsAllowedImageUrl:
 
     def test_rejects_empty_url(self):
         assert not is_allowed_image_url("")
-
-
-class TestIsWithinDirectory:
-    """Path-traversal containment for the SPA static-file route."""
-
-    def test_allows_normal_nested_file(self, tmp_path):
-        root = str(tmp_path)
-        assert is_within_directory(root, os.path.join(root, "assets", "app.js"))
-
-    def test_allows_root_itself(self, tmp_path):
-        root = str(tmp_path)
-        assert is_within_directory(root, root)
-
-    def test_rejects_dotdot_traversal(self, tmp_path):
-        root = str(tmp_path / "static")
-        os.makedirs(root, exist_ok=True)
-        assert not is_within_directory(root, os.path.join(root, "..", "..", "etc", "passwd"))
-
-    def test_rejects_absolute_path_outside_root(self, tmp_path):
-        root = str(tmp_path / "static")
-        os.makedirs(root, exist_ok=True)
-        outside = "C:\\Windows\\win.ini" if os.name == "nt" else "/etc/passwd"
-        assert not is_within_directory(root, outside)
-
-    def test_rejects_sibling_directory_with_shared_prefix(self, tmp_path):
-        root = str(tmp_path / "static")
-        os.makedirs(root, exist_ok=True)
-        # A prefix-collision sibling (static_evil) must not be treated as inside.
-        assert not is_within_directory(root, root + "_evil")
 
 
 class TestExecutableBasenameAllowed:

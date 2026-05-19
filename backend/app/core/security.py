@@ -1,4 +1,4 @@
-"""Security helpers: SSRF URL validation and path-traversal containment.
+"""Security helpers: SSRF URL validation and executable allowlisting.
 
 These back the hardening of CodeQL-flagged sinks. Each helper is a boolean
 *predicate* — it returns ``True``/``False`` rather than raising or returning a
@@ -6,7 +6,6 @@ sanitized value, so the validation is recognised as a barrier guard by static
 analysis at the call site (``if not guard(x): ...``):
 
 - ``is_allowed_image_url`` — guards the ``fetch_cover`` outbound HTTP request.
-- ``is_within_directory`` — confines the SPA catch-all route to its asset root.
 - ``executable_basename_allowed`` — constrains the tool-validation subprocess
   calls to executables that actually look like the expected tool.
 """
@@ -71,19 +70,6 @@ def is_allowed_image_url(url: str) -> bool:
     return any(
         host == suffix or host.endswith("." + suffix) for suffix in _ALLOWED_IMAGE_HOST_SUFFIXES
     )
-
-
-def is_within_directory(root: str, candidate: str) -> bool:
-    """Return True if ``candidate`` resolves to a path inside ``root``.
-
-    Guards the static-file path-injection sink. Both paths are symlink-
-    resolved, then ``candidate`` must equal ``root`` or sit beneath it.
-    Prefix-collision siblings (``static`` vs ``static_evil``) are rejected
-    because the comparison requires a trailing separator.
-    """
-    root_real = os.path.realpath(root)
-    candidate_real = os.path.realpath(candidate)
-    return candidate_real == root_real or candidate_real.startswith(root_real + os.sep)
 
 
 def executable_basename_allowed(path: str, keywords: Sequence[str]) -> bool:
