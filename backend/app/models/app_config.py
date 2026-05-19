@@ -4,6 +4,7 @@ This model stores user-configurable settings that persist across restarts
 and can be modified via the UI.
 """
 
+from sqlalchemy import text
 from sqlmodel import Field, SQLModel
 
 
@@ -26,6 +27,13 @@ class AppConfig(SQLModel, table=True):
     # Episode Matcher Settings
     subtitles_cache_path: str = "~/.engram/cache"
     matcher_min_confidence: float = 0.6
+
+    # Precomputed subtitle-vector cache (downloaded from GitHub Releases on first run).
+    # server_default="1" so the column is added enabled for pre-existing databases.
+    precomputed_cache_enabled: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )
+    precomputed_cache_version: str = ""  # content version of the installed cache
 
     # TMDB API (for show metadata)
     tmdb_api_key: str = ""
