@@ -47,6 +47,23 @@ from app.matcher.vectorizer_config import (
 _VALID_STATUSES = {"cached", "downloaded"}
 
 
+def _ensure_db_schema() -> None:
+    """Create DB tables — the standalone script has no app lifespan to do it.
+
+    The running app creates the schema in ``database.init_db()``. This script
+    runs without that lifespan, so a fresh ``engram.db`` (e.g. on a CI runner)
+    has no tables. ``create_all`` is idempotent, so this is safe against an
+    existing dev database too.
+    """
+    from sqlmodel import SQLModel
+
+    # Importing app.database registers AppConfig/DiscJob on SQLModel.metadata.
+    import app.database  # noqa: F401
+    from app.services.config_service import _get_sync_engine
+
+    SQLModel.metadata.create_all(_get_sync_engine())
+
+
 def _bootstrap_config_from_env() -> None:
     """Populate the AppConfig DB row with credentials from env vars (for CI)."""
     env_map = {
@@ -160,6 +177,7 @@ def main() -> int:
     parser.add_argument("--keep-srt", action="store_true", help="Do not delete harvested SRT files")
     args = parser.parse_args()
 
+    _ensure_db_schema()
     _bootstrap_config_from_env()
 
     from app.services.config_service import get_config_sync
