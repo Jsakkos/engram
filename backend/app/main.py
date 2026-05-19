@@ -186,13 +186,34 @@ if os.path.isdir(_static_dir):
     # Mount static assets (JS, CSS, images)
     app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
 
+    # Root-level static files emitted by the Vite build (favicon, SVGs, etc.).
+    # Built once at server startup by listing the static dir — no manual
+    # enumeration needed, but files added later are not seen until a restart.
+    # Maps URL path -> on-disk path; the catch-all uses the request path only
+    # as a dict key, so user input is never interpolated into a filesystem path.
+    _ROOT_STATIC_FILES = {
+        _name: os.path.join(_static_dir, _name)
+        for _name in os.listdir(_static_dir)
+        if _name != "index.html" and os.path.isfile(os.path.join(_static_dir, _name))
+        # isfile() intentionally excludes subdirectories — nested assets belong
+        # under /assets (the StaticFiles mount above). A new root-level subdir
+        # from the Vite build would need its own mount.
+    }
+    _INDEX_HTML = os.path.join(_static_dir, "index.html")
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the SPA frontend — catch-all for client-side routing."""
-        file_path = os.path.join(_static_dir, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(_static_dir, "index.html"))
+        # full_path is used only as a dict key — the served path is a value
+        # from the startup listing, so no user input is interpolated into a
+        # filesystem path. Nested assets are served by the /assets mount
+        # above; any other path is a client-side route -> index.html.
+        static_file = _ROOT_STATIC_FILES.get(full_path)
+        # isfile() is a runtime safety net — a file present at startup could
+        # have been removed since; fall through to index.html, never a 500.
+        if static_file is not None and os.path.isfile(static_file):
+            return FileResponse(static_file)
+        return FileResponse(_INDEX_HTML)
 
 else:
 
