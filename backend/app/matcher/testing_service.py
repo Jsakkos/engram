@@ -8,6 +8,7 @@ Provides three independent operations that can be called from CLI or API:
 
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
@@ -16,6 +17,7 @@ from app import __version__
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.opensubtitles_scraper import OpenSubtitlesClient
+from app.matcher.os_api_retry import os_api_call
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
 from app.matcher.subtitle_utils import sanitize_filename
@@ -65,26 +67,37 @@ def is_valid_srt_file(file_path: Path) -> bool:
         return False
 
 
-# --- Cached OpenSubtitles API client ---------------------------------------
+# --- Cached OpenSubtitles API client + quota state -------------------------
 # The OpenSubtitles bearer token is valid ~24h and is meant to be reused.
 # `download_subtitles()` is called once per season; logging in each time
 # hammers the `/login` endpoint (throttled harder than data endpoints) and
 # triggers 429s long before the daily download quota is touched. We log in
-# once per process and reuse the client.
-_OS_CLIENT: object | None = None
-_OS_CLIENT_LOGIN_TIME: float = 0.0
-_OS_CLIENT_FAILED: bool = False
+# once per process and reuse the client. Quota tracking lives alongside
+# because the library updates ``client.user_downloads_remaining`` as a side
+# effect of ``login()``, ``user_info()``, and ``download()`` — reading the
+# attribute is free, no extra API call.
+#
+# All this state lives on a single ``_OS`` dataclass instance instead of
+# loose module globals. ``global`` declarations confuse static analyzers
+# (CodeQL flagged the writes as "unused global variable" because it does
+# not track read-then-write-across-calls through the ``global`` keyword);
+# attribute access on a single object reads as a plain "is referenced" and
+# also reduces top-of-module noise.
 _OS_TOKEN_MAX_AGE: float = 12 * 60 * 60  # re-login after 12h, well within 24h
 
-# --- Daily download quota tracking ------------------------------------------
-# The opensubtitlescom library updates ``client.user_downloads_remaining`` as
-# a side effect of ``login()``, ``user_info()``, and ``download()`` (see
-# .venv/.../opensubtitlescom/opensubtitles.py:105,124,305). Reading the
-# attribute is free — no extra API call — so we snapshot it after each season
-# bulk-download and surface the latest value via ``get_last_quota()`` for the
-# build script's final summary.
-_OS_LAST_QUOTA: dict | None = None
-_OS_LAST_LOGGED_REMAINING: int | None = None
+
+@dataclass
+class _OSState:
+    """Process-wide OpenSubtitles API client + quota state."""
+
+    client: object | None = None
+    login_time: float = 0.0
+    failed: bool = False
+    last_quota: dict | None = None
+    last_logged_remaining: int | None = None
+
+
+_OS = _OSState()
 
 
 def _snapshot_os_quota(client) -> None:
@@ -93,21 +106,20 @@ def _snapshot_os_quota(client) -> None:
     Called after each season's API download block. Non-fatal on any error —
     the quota counter is informational only.
     """
-    global _OS_LAST_QUOTA, _OS_LAST_LOGGED_REMAINING
     try:
         remaining = getattr(client, "user_downloads_remaining", None)
         if remaining is None:
             return
         remaining_int = int(remaining)
-        _OS_LAST_QUOTA = {"remaining": remaining_int, "as_of": time.monotonic()}
+        _OS.last_quota = {"remaining": remaining_int, "as_of": time.monotonic()}
         # Log on first read and whenever quota has dropped by >= 10 from the
         # *last logged value* (not the previous snapshot). Comparing against
         # the previous snapshot would silently swallow slow drips: dropping
         # 5-per-season for 20 seasons would never cross the threshold from
         # snapshot to snapshot.
-        if _OS_LAST_LOGGED_REMAINING is None or _OS_LAST_LOGGED_REMAINING - remaining_int >= 10:
+        if _OS.last_logged_remaining is None or _OS.last_logged_remaining - remaining_int >= 10:
             logger.info(f"OS API quota: {remaining_int} downloads remaining today")
-            _OS_LAST_LOGGED_REMAINING = remaining_int
+            _OS.last_logged_remaining = remaining_int
     except Exception as exc:
         logger.debug(f"Could not snapshot OS quota (non-fatal): {exc}")
 
@@ -119,7 +131,7 @@ def get_last_quota() -> dict | None:
     call has succeeded yet this process. Used by the build script's final
     summary so the user sees "downloads remaining today" at the end of a run.
     """
-    return _OS_LAST_QUOTA
+    return _OS.last_quota
 
 
 def _get_os_client(config) -> object | None:
@@ -129,22 +141,18 @@ def _get_os_client(config) -> object | None:
     seasons/shows. Returns None on persistent failure so callers fall back to
     scrapers.
     """
-    global _OS_CLIENT, _OS_CLIENT_LOGIN_TIME, _OS_CLIENT_FAILED
-
-    if _OS_CLIENT_FAILED:
+    if _OS.failed:
         return None
 
-    if _OS_CLIENT is not None and (time.monotonic() - _OS_CLIENT_LOGIN_TIME) < _OS_TOKEN_MAX_AGE:
-        return _OS_CLIENT
+    if _OS.client is not None and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE:
+        return _OS.client
 
     try:
         from opensubtitlescom import OpenSubtitles as _OSApi
     except ImportError:
         logger.warning("opensubtitlescom package not installed — skipping API path")
-        _OS_CLIENT_FAILED = True
+        _OS.failed = True
         return None
-
-    from app.matcher.os_api_retry import os_api_call
 
     client = _OSApi(_USER_AGENT, config.opensubtitles_api_key)
     try:
@@ -156,9 +164,10 @@ def _get_os_client(config) -> object | None:
     except Exception as e:
         logger.warning(
             f"OpenSubtitles API login failed after retries ({e}); "
-            "using scrapers for the rest of this run"
+            "using scrapers for the rest of this run",
+            exc_info=True,
         )
-        _OS_CLIENT_FAILED = True
+        _OS.failed = True
         return None
 
     try:
@@ -166,8 +175,8 @@ def _get_os_client(config) -> object | None:
         logger.info(f"OpenSubtitles API login OK — {remaining} downloads remaining today")
     except (KeyError, TypeError):
         logger.info("OpenSubtitles API login OK")
-    _OS_CLIENT = client
-    _OS_CLIENT_LOGIN_TIME = time.monotonic()
+    _OS.client = client
+    _OS.login_time = time.monotonic()
     # Seed the quota snapshot from the login response — gives the build
     # script's final summary a starting baseline even if no downloads happen
     # this run (e.g., the whole cache is already populated).

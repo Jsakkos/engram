@@ -355,7 +355,7 @@ def main() -> int:
             delta_dls = tally.downloaded - tally_snapshot[1]
             delta_nf = tally.not_found - tally_snapshot[2]
             console.log(
-                f"[green]✓[/] {show['name']} — "
+                f"[green]OK[/] {show['name']} — "
                 f"{delta_hits + delta_dls}/{delta_hits + delta_dls + delta_nf} episodes "
                 f"({delta_hits} cached, {delta_dls} new, {delta_nf} missing) "
                 f"in {int(time.monotonic() - show_start)}s"

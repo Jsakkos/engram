@@ -9,8 +9,18 @@ cap clamps a runaway header value.
 from unittest.mock import Mock, patch
 
 import pytest
+from opensubtitlescom.exceptions import OpenSubtitlesException
 
 from app.matcher.os_api_retry import _RETRY_AFTER_CAP_SECONDS, _parse_retry_after, os_api_call
+
+
+# All test exceptions inherit from OpenSubtitlesException so they match the
+# narrowed _RETRYABLE_EXCEPTIONS tuple — the helper deliberately does NOT
+# retry on bare Exception (would silently retry programming bugs in the
+# wrapped callable). Tests exercise the real contract: the OS library wraps
+# every request error in OpenSubtitlesException before raising.
+class _FakeOSError(OpenSubtitlesException):
+    pass
 
 
 @pytest.mark.unit
@@ -27,11 +37,7 @@ class TestOsApiCall:
     def test_honors_retry_after_header_when_present(self):
         """When the exception carries a Retry-After header, sleep for that long
         (clamped) and skip the exponential schedule."""
-
-        class FakeHTTPError(Exception):
-            pass
-
-        first_exc = FakeHTTPError("429 rate limited")
+        first_exc = _FakeOSError("429 rate limited")
         first_exc.response = Mock()
         first_exc.response.headers = {"Retry-After": "7"}
 
@@ -49,9 +55,9 @@ class TestOsApiCall:
         capped exponential 5, 10, 20, ..."""
         callable_ = Mock(
             side_effect=[
-                RuntimeError("transient 1"),
-                RuntimeError("transient 2"),
-                RuntimeError("transient 3"),
+                _FakeOSError("transient 1"),
+                _FakeOSError("transient 2"),
+                _FakeOSError("transient 3"),
                 "ok",
             ]
         )
@@ -65,21 +71,17 @@ class TestOsApiCall:
     def test_reraises_after_max_attempts(self):
         """After exhausting attempts the original exception bubbles up so
         callers (e.g., _get_os_client) can latch the failure state."""
-        boom = RuntimeError("persistent failure")
+        boom = _FakeOSError("persistent failure")
         callable_ = Mock(side_effect=boom)
 
         with patch("app.matcher.os_api_retry.time.sleep"):
-            with pytest.raises(RuntimeError, match="persistent failure"):
+            with pytest.raises(_FakeOSError, match="persistent failure"):
                 os_api_call(callable_, max_attempts=3, base_delay=1.0)
         assert callable_.call_count == 3
 
     def test_retry_after_capped_at_300s(self):
         """A bogus header like ``Retry-After: 99999`` must not hang a build."""
-
-        class FakeHTTPError(Exception):
-            pass
-
-        bad = FakeHTTPError("429")
+        bad = _FakeOSError("429")
         bad.response = Mock()
         bad.response.headers = {"Retry-After": "99999"}
 
@@ -93,11 +95,7 @@ class TestOsApiCall:
     def test_retry_after_nonnumeric_falls_back_to_exponential(self):
         """A garbage value in Retry-After must not crash; fall back to the
         exponential schedule."""
-
-        class FakeHTTPError(Exception):
-            pass
-
-        bad = FakeHTTPError("429")
+        bad = _FakeOSError("429")
         bad.response = Mock()
         bad.response.headers = {"Retry-After": "not-a-number"}
 
@@ -111,12 +109,27 @@ class TestOsApiCall:
     def test_no_response_attribute_skips_header_path(self):
         """Today's opensubtitlescom wraps exceptions without preserving the
         response — the helper must still work and use exponential backoff."""
-        callable_ = Mock(side_effect=[RuntimeError("bare exception"), "ok"])
+        callable_ = Mock(side_effect=[_FakeOSError("bare exception"), "ok"])
 
         with patch("app.matcher.os_api_retry.time.sleep") as sleep:
             os_api_call(callable_, max_attempts=4, base_delay=5.0)
 
         sleep.assert_called_once_with(5.0)
+
+    def test_non_retryable_exception_propagates_immediately(self):
+        """A bug in the wrapped callable (TypeError, AttributeError, ...)
+        must surface on the first attempt — not be silently retried. This
+        is the whole point of narrowing the retry tuple."""
+        callable_ = Mock(side_effect=TypeError("programming error"))
+
+        with patch("app.matcher.os_api_retry.time.sleep") as sleep:
+            with pytest.raises(TypeError, match="programming error"):
+                os_api_call(callable_, max_attempts=4, base_delay=5.0)
+
+        # No retries, no sleeps — the helper let the exception bubble out
+        # of the first attempt.
+        assert callable_.call_count == 1
+        sleep.assert_not_called()
 
 
 @pytest.mark.unit

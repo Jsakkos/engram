@@ -185,7 +185,11 @@ class OpenSubtitlesProvider(SubtitleProvider):
             username = getattr(self.config, "open_subtitles_username", None)
             password = getattr(self.config, "open_subtitles_password", None)
             if username and password:
-                self.client.login(username, password)
+                # Route through os_api_call so a transient 429 here gets the
+                # same retry treatment as login/search/download elsewhere —
+                # otherwise a single rate-limit response silently disables
+                # the entire provider for the rest of the job.
+                os_api_call(self.client.login, username, password)
                 logger.debug("Logged in to OpenSubtitles")
             else:
                 logger.debug("Initialized OpenSubtitles (no login)")

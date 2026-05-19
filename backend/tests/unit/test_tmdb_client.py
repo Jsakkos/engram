@@ -5,7 +5,12 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
+from app.matcher.tmdb_client import (
+    _fetch_show_id_cached,
+    clear_caches,
+    fetch_season_details,
+    fetch_show_id,
+)
 from tests.fixtures.tmdb_responses import (
     TMDB_SEARCH_ARRESTED_DEVELOPMENT,
     TMDB_SEARCH_BREAKING_BAD,
@@ -25,9 +30,7 @@ def _clear_tmdb_caches():
     test calling ``fetch_show_id("Arrested Development")`` would receive a
     None cached by an earlier test's mock instead of hitting the new mock.
     """
-    fetch_show_id.cache_clear()
-    fetch_show_details.cache_clear()
-    fetch_season_details.cache_clear()
+    clear_caches()
     yield
 
 
@@ -41,6 +44,7 @@ class TestLruCache:
     @patch("app.matcher.tmdb_client.requests.get")
     def test_repeat_call_with_same_arg_hits_cache(self, mock_get):
         mock_response = Mock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {"results": [{"id": "4589", "name": "X"}]}
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -52,19 +56,56 @@ class TestLruCache:
 
         assert a == b
         # First call hit the network exactly once; second call returned from
-        # the cache without re-invoking requests.get.
-        assert fetch_show_id.cache_info().hits == 1
+        # the cache (the *inner* cached function — the public wrapper itself
+        # is intentionally NOT @lru_cache'd so the no-key early-return
+        # cannot poison the cache).
+        assert _fetch_show_id_cached.cache_info().hits == 1
 
-    def test_cache_clear_resets_state(self):
-        """``cache_clear()`` is the contract test fixtures rely on; if it ever
-        stops working, every test that mutates config between calls breaks
-        silently with the wrong cached value."""
+    def test_no_api_key_does_not_poison_cache(self):
+        """First-boot regression guard.
+
+        Without the inner/outer split, ``fetch_show_id("X")`` called before
+        the user runs ConfigWizard would cache ``None`` keyed on ``"X"``.
+        After the key is set, subsequent calls for the same show would keep
+        returning the cached None until process restart — silently
+        disabling TMDB lookups for those shows. With the split, the no-key
+        path returns without consulting the cache, so a later call with a
+        valid key hits the network normally.
+        """
+        # No key → public wrapper short-circuits; cache must stay empty.
         with patch("app.services.config_service.get_config_sync") as cfg:
-            cfg.return_value.tmdb_api_key = ""  # forces early-return path
-            fetch_show_id("Anything")
-            assert fetch_show_id.cache_info().currsize >= 1
-            fetch_show_id.cache_clear()
-            assert fetch_show_id.cache_info().currsize == 0
+            cfg.return_value.tmdb_api_key = ""
+            assert fetch_show_id("Show With No Key") is None
+        assert _fetch_show_id_cached.cache_info().currsize == 0
+
+        # Key configured → cached path runs and stores the result.
+        with patch("app.matcher.tmdb_client.requests.get") as mock_get:
+            mock_response = Mock()
+            mock_response.status_code = 200  # branches in the impl gate on this
+            mock_response.json.return_value = {"results": [{"id": "42", "name": "X"}]}
+            mock_response.raise_for_status = Mock()
+            mock_get.return_value = mock_response
+            with patch("app.services.config_service.get_config_sync") as cfg:
+                cfg.return_value.tmdb_api_key = "test"
+                assert fetch_show_id("Show With No Key") == "42"
+        assert _fetch_show_id_cached.cache_info().currsize == 1
+
+    def test_clear_caches_resets_all_three(self):
+        """``clear_caches()`` is the contract test fixtures rely on; if it
+        stops working every test that mutates config between calls breaks
+        silently with the wrong cached value."""
+        with patch("app.matcher.tmdb_client.requests.get") as mock_get:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"results": [{"id": "42", "name": "X"}]}
+            mock_response.raise_for_status = Mock()
+            mock_get.return_value = mock_response
+            with patch("app.services.config_service.get_config_sync") as cfg:
+                cfg.return_value.tmdb_api_key = "test"
+                fetch_show_id("X")
+            assert _fetch_show_id_cached.cache_info().currsize >= 1
+            clear_caches()
+            assert _fetch_show_id_cached.cache_info().currsize == 0
 
 
 @pytest.mark.unit

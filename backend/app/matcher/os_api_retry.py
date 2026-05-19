@@ -27,7 +27,28 @@ parameters.
 
 import time
 
+import requests
 from loguru import logger
+
+try:
+    from opensubtitlescom.exceptions import OpenSubtitlesException
+except ImportError:
+    # Library not installed in this environment; define a stand-in so the
+    # retry tuple still type-checks. The actual call sites guard against
+    # ImportError at a higher level (see testing_service._get_os_client).
+    class OpenSubtitlesException(Exception):  # type: ignore[no-redef]
+        pass
+
+
+# Catch only the failure modes that are actually retryable. Catching bare
+# Exception would silently retry programming bugs (AttributeError,
+# TypeError) inside the callable — those should surface immediately.
+_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    OpenSubtitlesException,
+    requests.RequestException,
+    OSError,
+    TimeoutError,
+)
 
 # Cap any single sleep at 5 minutes. Protects against a misbehaving server
 # (or a stray ``Retry-After: 999999``) hanging a long build run.
@@ -80,18 +101,28 @@ def os_api_call(
     for attempt in range(max_attempts):
         try:
             return callable_(*args, **kwargs)
-        except Exception as exc:
+        except _RETRYABLE_EXCEPTIONS as exc:
             if attempt == max_attempts - 1:
                 raise
             retry_after = _parse_retry_after(exc)
             sleep_for = retry_after if retry_after is not None else delay
             is_rate_limit = "429" in str(exc) or retry_after is not None
             source = "Retry-After" if retry_after is not None else "exponential"
+            # CLAUDE.md: always log exceptions with exc_info=True for full
+            # tracebacks. Skip the trace for expected 429s so the log stays
+            # readable (the rate-limit case is fully described by the message).
             logger.warning(
                 f"OS API attempt {attempt + 1}/{max_attempts} failed "
                 f"({'rate limited' if is_rate_limit else exc}); "
-                f"sleeping {sleep_for:.1f}s ({source})"
+                f"sleeping {sleep_for:.1f}s ({source})",
+                exc_info=not is_rate_limit,
             )
             time.sleep(sleep_for)
             if retry_after is None:
                 delay *= 2
+    # Unreachable in normal control flow — the final attempt either returns
+    # or re-raises inside the loop. This explicit guard silences static
+    # analyzers that warn about implicit None fall-through, and protects
+    # against a future caller passing max_attempts=0 (which would otherwise
+    # silently return None).
+    raise RuntimeError(f"os_api_call: max_attempts must be >= 1, got {max_attempts}")

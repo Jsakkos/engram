@@ -4,6 +4,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+# Use the module-level import (`testing_service.X`) for everything in this
+# file. Mixing `import as` with `from … import …` of the same module
+# triggers CodeQL's duplicate-import-style warning and makes refactors that
+# rename symbols harder to follow.
+from app.matcher import testing_service
 from app.matcher.testing_service import download_subtitles
 
 
@@ -392,13 +397,12 @@ class TestUserAgent:
 
     def test_user_agent_constant_matches_version(self):
         from app import __version__
-        from app.matcher.testing_service import _USER_AGENT
 
-        assert _USER_AGENT == f"Engram v{__version__}"
+        assert testing_service._USER_AGENT == f"Engram v{__version__}"
         # Must satisfy the OS "AppName vX.Y.Z" pattern.
         import re
 
-        assert re.match(r"^Engram v\d+\.\d+\.\d+$", _USER_AGENT)
+        assert re.match(r"^Engram v\d+\.\d+\.\d+$", testing_service._USER_AGENT)
 
 
 @pytest.mark.unit
@@ -408,49 +412,41 @@ class TestQuotaSnapshot:
 
     def setup_method(self):
         # Reset module-scope state so tests don't bleed into each other.
-        import app.matcher.testing_service as ts
-
-        ts._OS_LAST_QUOTA = None
-        ts._OS_LAST_LOGGED_REMAINING = None
+        testing_service._OS.last_quota = None
+        testing_service._OS.last_logged_remaining = None
 
     def test_snapshot_records_remaining_from_client_attribute(self):
-        from app.matcher.testing_service import _snapshot_os_quota, get_last_quota
-
         client = Mock()
         client.user_downloads_remaining = 87
-        _snapshot_os_quota(client)
-        snap = get_last_quota()
+        testing_service._snapshot_os_quota(client)
+        snap = testing_service.get_last_quota()
         assert snap is not None
         assert snap["remaining"] == 87
         assert "as_of" in snap
 
     def test_snapshot_handles_missing_attribute_gracefully(self):
         """If the library version doesn't expose the attribute, we no-op."""
-        from app.matcher.testing_service import _snapshot_os_quota, get_last_quota
-
         client = Mock(spec=[])  # spec=[] → no attributes
-        _snapshot_os_quota(client)
-        assert get_last_quota() is None
+        testing_service._snapshot_os_quota(client)
+        assert testing_service.get_last_quota() is None
 
     def test_snapshot_logs_only_on_drop_of_ten_or_more(self):
         """Spammy log noise is the failure mode; one line per season would
         bury everything else. We log on the first read and on big drops only."""
-        from app.matcher.testing_service import _snapshot_os_quota
-
         client = Mock()
         client.user_downloads_remaining = 100
 
         with patch("app.matcher.testing_service.logger") as log:
-            _snapshot_os_quota(client)  # first read → logs
+            testing_service._snapshot_os_quota(client)  # first read → logs
             assert log.info.call_count == 1
 
             # Tiny drop (8) → no log.
             client.user_downloads_remaining = 92
-            _snapshot_os_quota(client)
+            testing_service._snapshot_os_quota(client)
             assert log.info.call_count == 1
 
             # Bigger drop crossing the 10-unit threshold from the LAST logged
             # value (100) → logs.
             client.user_downloads_remaining = 88
-            _snapshot_os_quota(client)
+            testing_service._snapshot_os_quota(client)
             assert log.info.call_count == 2

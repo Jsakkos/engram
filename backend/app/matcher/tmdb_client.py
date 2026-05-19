@@ -245,17 +245,30 @@ def generate_name_variations(name: str) -> list[str]:
     return variations
 
 
+def fetch_show_id(show_name: str) -> str | None:
+    """Fetch the TMDb ID for a given show name with fuzzy fallback.
+
+    Public entry point. The actual TMDB call is in ``_fetch_show_id_cached``;
+    this wrapper short-circuits BEFORE consulting the cache when no API key
+    is configured. Caching the ``None`` early-return would poison the cache
+    on the common first-boot path (user starts Engram, then sets the TMDB
+    key in ConfigWizard — later calls would keep returning the cached None
+    until process restart).
+    """
+    from app.services.config_service import get_config_sync
+
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured in Engram settings")
+        return None
+    return _fetch_show_id_cached(show_name)
+
+
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
 @retry_network_operation(max_retries=3, base_delay=1.0)
-def fetch_show_id(show_name: str) -> str | None:
-    """
-    Fetch the TMDb ID for a given show name with fuzzy fallback.
-
-    Args:
-        show_name (str): The name of the show.
-
-    Returns:
-        str: The TMDb ID of the show, or None if not found.
+def _fetch_show_id_cached(show_name: str) -> str | None:
+    """Cached implementation. Caller (the ``fetch_show_id`` wrapper)
+    guarantees an API key is present; the defensive ``if not api_key``
+    branch below is unreachable in normal flow.
     """
     # Try to get API key from Engram settings first, then fallback to matcher config
     from app.services.config_service import get_config_sync
@@ -363,19 +376,24 @@ def fetch_show_id(show_name: str) -> str | None:
     return None
 
 
+def fetch_show_details(show_id: int) -> dict | None:
+    """Public entry; short-circuits without caching when API key absent.
+
+    See ``fetch_show_id`` docstring for rationale on the no-cache early-return.
+    """
+    from app.services.config_service import get_config_sync
+
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return None
+    return _fetch_show_details_cached(show_id)
+
+
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
 @retry_network_operation(max_retries=3, base_delay=1.0)
-def fetch_show_details(show_id: int) -> dict | None:
-    """
-    Fetch show details from TMDB by ID.
-
-    Args:
-        show_id: The TMDB show ID
-
-    Returns:
-        dict: Show details including 'name', 'number_of_seasons', etc.
-        None: If request fails or API key not configured
-    """
+def _fetch_show_details_cached(show_id: int) -> dict | None:
+    """Cached implementation. Caller guarantees the API key is present;
+    the defensive branch below is unreachable in normal flow."""
     from app.services.config_service import get_config_sync
 
     config = get_config_sync()
@@ -495,19 +513,25 @@ def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
         return []
 
 
+def fetch_season_details(show_id: str, season_number: int) -> int:
+    """Public entry; short-circuits without caching when API key absent.
+
+    Returns 0 (not None) for the no-key path, matching the original
+    contract — callers check ``if episode_count == 0``. See ``fetch_show_id``
+    for rationale on bypassing the cache.
+    """
+    from app.services.config_service import get_config_sync
+
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return 0
+    return _fetch_season_details_cached(show_id, season_number)
+
+
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
 @retry_network_operation(max_retries=3, base_delay=1.0)
-def fetch_season_details(show_id: str, season_number: int) -> int:
-    """
-    Fetch the total number of episodes for a given show and season from the TMDb API.
-
-    Args:
-        show_id (str): The ID of the show on TMDb.
-        season_number (int): The season number to fetch details for.
-
-    Returns:
-        int: The total number of episodes in the season, or 0 if the API request failed.
-    """
+def _fetch_season_details_cached(show_id: str, season_number: int) -> int:
+    """Cached implementation. Caller guarantees the API key is present."""
     logger.info(f"Fetching season details for Season {season_number}...")
     from app.services.config_service import get_config_sync
 
@@ -684,3 +708,16 @@ def fetch_movie_id(movie_name: str) -> str | None:
 
     logger.warning(f"Could not find movie '{movie_name}' on TMDB")
     return None
+
+
+def clear_caches() -> None:
+    """Clear all in-process TMDB LRU caches.
+
+    Test fixtures call this to prevent one test's mocked ``requests.get``
+    results from leaking into another test. Production callers may use it
+    after a TMDB API key rotation to drop any results fetched with the old
+    credentials.
+    """
+    _fetch_show_id_cached.cache_clear()
+    _fetch_show_details_cached.cache_clear()
+    _fetch_season_details_cached.cache_clear()
