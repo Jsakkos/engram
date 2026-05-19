@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 import tempfile
@@ -10,6 +11,7 @@ import numpy as np
 from loguru import logger
 from rich import print
 from rich.console import Console
+from scipy.sparse import load_npz as scipy_load_npz
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
@@ -142,8 +144,28 @@ class TfidfMatcher:
     def __init__(self):
         self.vectorizer = None
         self.ref_matrix = None
-        self.ref_file_order = []  # ordered list of reference file paths
+        self.ref_file_order = []  # ordered list of reference file paths (or episode codes)
         self._prepared = False
+        self._precomputed = False  # True when loaded from the shipped vector cache
+        self._idf = None  # global IDF array, only set in precomputed mode
+
+    def load_precomputed(self, ref_matrix, ref_episode_codes, idf_array) -> None:
+        """Load a precomputed hashed TF-IDF cache instead of fitting from SRT.
+
+        Args:
+            ref_matrix: scipy CSR matrix, one L2-normalized TF-IDF row per episode.
+            ref_episode_codes: episode codes ("S01E03"), aligned to matrix rows.
+            idf_array: global IDF array used to project queries into the same space.
+        """
+        self.ref_matrix = ref_matrix
+        self.ref_file_order = list(ref_episode_codes)
+        self._idf = idf_array
+        self._precomputed = True
+        self._prepared = True
+        logger.info(
+            f"TF-IDF loaded from precomputed cache: {len(self.ref_file_order)} episodes, "
+            f"{self.ref_matrix.shape[1]} features"
+        )
 
     def prepare(self, reference_files, subtitle_cache: SubtitleCache):
         """
@@ -186,7 +208,12 @@ class TfidfMatcher:
         if not self._prepared:
             raise RuntimeError("TfidfMatcher.prepare() must be called before match()")
 
-        q_vec = self.vectorizer.transform([query_text])
+        if self._precomputed:
+            from app.matcher.vectorizer_config import transform_query
+
+            q_vec = transform_query(query_text, self._idf)
+        else:
+            q_vec = self.vectorizer.transform([query_text])
         sims = sklearn_cosine_similarity(q_vec, self.ref_matrix)[0]
 
         results = list(zip(self.ref_file_order, sims.tolist(), strict=False))
@@ -320,6 +347,9 @@ class EpisodeMatcher:
         self.audio_chunks = {}
         # Store reference files to avoid repeated glob operations
         self.reference_files_cache = {}
+        # Precomputed subtitle-vector cache (lazily loaded; False once known-absent)
+        self._precomputed_manifest = None
+        self._precomputed_idf = None
         # Ranked voting parameters
         self.min_vote_count = min_vote_count
         self.match_threshold = match_threshold
@@ -432,6 +462,96 @@ class EpisodeMatcher:
         except Exception as e:
             logger.error(f"Error loading reference chunk from {srt_file}: {e}")
             return ""
+
+    def _load_precomputed_manifest(self):
+        """Load and validate the precomputed-cache manifest once. Returns dict or None.
+
+        A missing, unreadable, or version/config-mismatched manifest is treated as
+        "no cache" -- the caller falls back to subtitle scraping.
+        """
+        if self._precomputed_manifest is not None:
+            return self._precomputed_manifest or None
+
+        from app.matcher.vectorizer_config import (
+            CACHE_FORMAT_VERSION,
+            vectorizer_config_hash,
+        )
+
+        manifest_path = self.cache_dir / "precomputed" / "manifest.json"
+        if not manifest_path.exists():
+            self._precomputed_manifest = False
+            return None
+
+        try:
+            with open(manifest_path, encoding="utf-8") as fh:
+                manifest = json.load(fh)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Precomputed cache manifest unreadable ({e}); using scraping")
+            self._precomputed_manifest = False
+            return None
+
+        if manifest.get("cache_format_version") != CACHE_FORMAT_VERSION:
+            logger.warning(
+                f"Precomputed cache format mismatch "
+                f"(manifest={manifest.get('cache_format_version')}, code={CACHE_FORMAT_VERSION}); "
+                f"ignoring cache"
+            )
+            self._precomputed_manifest = False
+            return None
+        if manifest.get("vectorizer_config_hash") != vectorizer_config_hash():
+            logger.warning("Precomputed cache vectorizer-config mismatch; ignoring cache")
+            self._precomputed_manifest = False
+            return None
+
+        self._precomputed_manifest = manifest
+        return manifest
+
+    def _load_precomputed_season(self, season_number):
+        """Load precomputed hashed TF-IDF vectors for this show/season.
+
+        Returns (ref_matrix, episode_codes, idf_array) when the shipped cache
+        covers the show+season, otherwise None (caller falls back to scraping).
+        """
+        manifest = self._load_precomputed_manifest()
+        if not manifest:
+            return None
+
+        show_entry = manifest.get("shows", {}).get(self.show_name)
+        if not show_entry or season_number not in show_entry.get("seasons", []):
+            return None
+
+        precomputed_dir = self.cache_dir / "precomputed"
+        show_dir = precomputed_dir / sanitize_filename(self.show_name)
+        npz_path = show_dir / f"S{season_number:02d}.npz"
+        index_path = show_dir / f"S{season_number:02d}.index.json"
+        if not npz_path.exists() or not index_path.exists():
+            logger.warning(
+                f"Precomputed cache lists {self.show_name} S{season_number:02d} "
+                f"but its files are missing; using scraping"
+            )
+            return None
+
+        try:
+            if self._precomputed_idf is None:
+                self._precomputed_idf = np.load(precomputed_dir / "idf.npy")
+            ref_matrix = scipy_load_npz(npz_path)
+            with open(index_path, encoding="utf-8") as fh:
+                episode_codes = json.load(fh)
+        except (OSError, ValueError) as e:
+            logger.warning(
+                f"Failed to load precomputed cache for {self.show_name} "
+                f"S{season_number:02d} ({e}); using scraping"
+            )
+            return None
+
+        if ref_matrix.shape[0] != len(episode_codes):
+            logger.warning(
+                f"Precomputed cache row/index mismatch for {self.show_name} "
+                f"S{season_number:02d}; using scraping"
+            )
+            return None
+
+        return ref_matrix, episode_codes, self._precomputed_idf
 
     def get_reference_files(self, season_number):
         """Get reference subtitle files with caching."""
@@ -697,17 +817,29 @@ class EpisodeMatcher:
             if progress_callback:
                 progress_callback("analyzing", 0.0)
 
-            # 1. Get Reference Files
-            reference_files = self.get_reference_files(season_number)
-            if not reference_files:
-                reference_dir = self.cache_dir / "data" / sanitize_filename(self.show_name)
-                logger.error(
-                    f"No reference subtitle files found for '{self.show_name}' season {season_number}. "
-                    f"Expected directory: {reference_dir}. "
-                    f"This usually means subtitle download failed. "
-                    f"Check subtitle download status and retry if needed."
+            # 1. Get References - shipped precomputed vectors, else scraped SRT
+            precomputed = self._load_precomputed_season(season_number)
+            using_precomputed = precomputed is not None
+
+            if using_precomputed:
+                ref_matrix, ref_episode_codes, idf_array = precomputed
+                reference_files = []  # no SRT files on disk in precomputed mode
+                logger.info(
+                    f"[Matcher] using precomputed subtitle-vector cache for "
+                    f"'{self.show_name}' season {season_number} "
+                    f"({len(ref_episode_codes)} episodes)"
                 )
-                return None
+            else:
+                reference_files = self.get_reference_files(season_number)
+                if not reference_files:
+                    reference_dir = self.cache_dir / "data" / sanitize_filename(self.show_name)
+                    logger.error(
+                        f"No reference subtitle files found for '{self.show_name}' "
+                        f"season {season_number}. Expected directory: {reference_dir}. "
+                        f"This usually means subtitle download failed. "
+                        f"Check subtitle download status and retry if needed."
+                    )
+                    return None
 
             if progress_callback:
                 progress_callback("analyzing", 5.0)
@@ -719,26 +851,31 @@ class EpisodeMatcher:
                 logger.error(f"Failed to get video duration for {video_file}: {e}")
                 return None
 
-            # 3. Get Reference Durations
-            ref_durations = {}
-            for rf in reference_files:
-                try:
-                    content = self.subtitle_cache.get_subtitle_content(rf)
-                    ref_durations[str(rf)] = SubtitleReader.get_duration(content)
-                except Exception as e:
-                    logger.warning(f"Could not get duration for reference {rf}: {e}")
-                    ref_durations[str(rf)] = 0.0
-
-            # 4. Initialize Coverages
+            # 3. Initialize Coverages
             coverages = {}
-            for rf in reference_files:
-                ref_dur = ref_durations.get(str(rf), video_duration)
-                # If ref duration is missing, assume same as video for penalty-free matching (fallback)
-                if ref_dur == 0:
-                    ref_dur = video_duration
+            if using_precomputed:
+                # No SRT durations are shipped; assume reference duration == video
+                # duration for penalty-free coverage (same as the ref_dur==0 fallback).
+                for code in ref_episode_codes:
+                    coverages[code] = MatchCoverage(code, video_duration, video_duration)
+            else:
+                ref_durations = {}
+                for rf in reference_files:
+                    try:
+                        content = self.subtitle_cache.get_subtitle_content(rf)
+                        ref_durations[str(rf)] = SubtitleReader.get_duration(content)
+                    except Exception as e:
+                        logger.warning(f"Could not get duration for reference {rf}: {e}")
+                        ref_durations[str(rf)] = 0.0
 
-                ep_name = Path(rf).stem
-                coverages[str(rf)] = MatchCoverage(ep_name, ref_dur, video_duration)
+                for rf in reference_files:
+                    ref_dur = ref_durations.get(str(rf), video_duration)
+                    # Missing ref duration -> assume video duration for penalty-free matching
+                    if ref_dur == 0:
+                        ref_dur = video_duration
+
+                    ep_name = Path(rf).stem
+                    coverages[str(rf)] = MatchCoverage(ep_name, ref_dur, video_duration)
 
             # 5. Scan Chunks - Evenly Spaced Strategy
             # Distribute scan points evenly across the episode (after skipping intro)
@@ -780,7 +917,10 @@ class EpisodeMatcher:
                 if progress_callback:
                     progress_callback("preparing_model", 10.0)
                 self.tfidf_matcher = TfidfMatcher()
-                self.tfidf_matcher.prepare(reference_files, self.subtitle_cache)
+                if using_precomputed:
+                    self.tfidf_matcher.load_precomputed(ref_matrix, ref_episode_codes, idf_array)
+                else:
+                    self.tfidf_matcher.prepare(reference_files, self.subtitle_cache)
 
             logger.info(
                 f"Scanning {len(scan_points)} chunks using {model_config['name']} + TF-IDF matching "
