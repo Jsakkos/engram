@@ -101,20 +101,21 @@ def os_api_call(
     Raises:
         The original exception, after the final attempt has exhausted.
     """
-    # Precondition check at function entry rather than as a fall-through
-    # guard at the bottom — surfaces a bad caller (e.g., ``max_attempts=0``)
-    # immediately, before any argument-marshalling, and removes the implicit-
-    # None code path entirely so static analyzers stop flagging it.
+    # Precondition check at function entry — surfaces a bad caller
+    # (e.g., ``max_attempts=0``) immediately, before any argument-marshalling.
     if max_attempts < 1:
         raise ValueError(f"os_api_call: max_attempts must be >= 1, got {max_attempts}")
 
+    # Structure: do (max_attempts - 1) retry-with-sleep attempts, then ONE
+    # final attempt outside the loop. The final attempt either returns its
+    # result or lets the exception bubble — neither requires a sentinel
+    # return at the bottom, so static analyzers don't flag a mixed-returns
+    # fall-through.
     delay = base_delay
-    for attempt in range(max_attempts):
+    for attempt in range(max_attempts - 1):
         try:
             return callable_(*args, **kwargs)
         except _RETRYABLE_EXCEPTIONS as exc:
-            if attempt == max_attempts - 1:
-                raise
             retry_after = _parse_retry_after(exc)
             sleep_for = retry_after if retry_after is not None else delay
             is_rate_limit = "429" in str(exc) or retry_after is not None
@@ -133,3 +134,6 @@ def os_api_call(
             time.sleep(sleep_for)
             if retry_after is None:
                 delay *= 2
+
+    # Final attempt: succeed or raise. No sleep follows; no fall-through.
+    return callable_(*args, **kwargs)
