@@ -43,17 +43,21 @@ interface Resolved {
   pulse: boolean;
 }
 
+// Shared tint backgrounds — reused across multiple states.
+const TINT_GREEN = "rgba(134, 239, 172, 0.10)"; // complete + live
+const TINT_YELLOW = "rgba(253, 224, 71, 0.10)"; // scanning + warn + review
+
 const STATES: Record<SvBadgeState, Resolved> = {
   ripping:  { fg: sv.magenta, bg: "rgba(255, 61, 127, 0.10)",  pulse: true  },
   matching: { fg: sv.amber,   bg: "rgba(252, 211, 77, 0.10)",  pulse: true  },
   matched:  { fg: sv.cyan,    bg: "rgba(94, 234, 212, 0.10)",  pulse: false },
-  complete: { fg: sv.green,   bg: "rgba(134, 239, 172, 0.10)", pulse: false },
+  complete: { fg: sv.green,   bg: TINT_GREEN,                  pulse: false },
   queued:   { fg: sv.inkDim,  bg: "rgba(136, 147, 168, 0.06)", pulse: false },
   error:    { fg: sv.red,     bg: "rgba(255, 85, 85, 0.10)",   pulse: false },
-  live:     { fg: sv.green,   bg: "rgba(134, 239, 172, 0.10)", pulse: true  },
-  scanning: { fg: sv.yellow,  bg: "rgba(253, 224, 71, 0.10)",  pulse: true  },
-  warn:     { fg: sv.yellow,  bg: "rgba(253, 224, 71, 0.10)",  pulse: true  },
-  review:   { fg: sv.yellow,  bg: "rgba(253, 224, 71, 0.10)",  pulse: false },
+  live:     { fg: sv.green,   bg: TINT_GREEN,                  pulse: true  },
+  scanning: { fg: sv.yellow,  bg: TINT_YELLOW,                 pulse: true  },
+  warn:     { fg: sv.yellow,  bg: TINT_YELLOW,                 pulse: true  },
+  review:   { fg: sv.yellow,  bg: TINT_YELLOW,                 pulse: false },
   idle:     { fg: sv.inkFaint, bg: "rgba(74, 83, 105, 0.06)",  pulse: false },
 };
 

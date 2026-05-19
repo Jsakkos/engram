@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { accentColor, sv, type SvAccent } from "./tokens";
+import { accentColor, monoLabelStyle, sv, type SvAccent } from "./tokens";
 
 interface Props {
   /** Series values. Normalized to [0, 1] using `max` (or the series max if omitted). */
@@ -86,15 +86,7 @@ export function SvBarChart({
         data-testid={testid}
         data-empty="true"
       >
-        <span
-          style={{
-            fontFamily: sv.mono,
-            fontSize: 9,
-            letterSpacing: "0.22em",
-            color: sv.inkFaint,
-            textTransform: "uppercase",
-          }}
-        >
+        <span style={monoLabelStyle({ size: 9, color: sv.inkFaint, letterSpacing: "0.22em" })}>
           › no data
         </span>
       </div>

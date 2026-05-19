@@ -14,7 +14,6 @@ interface Props {
  */
 export function SvMark({ size = 38, color = sv.cyan, accent = sv.magenta }: Props) {
   const id = `sv-mark-glow-${size}`;
-  const half = size / 2;
   return (
     <svg
       width={size}
@@ -38,8 +37,8 @@ export function SvMark({ size = 38, color = sv.cyan, accent = sv.magenta }: Prop
       {/* Axon — a short stroke from the center to the upper-right ring */}
       <line x1="16" y1="16" x2="26" y2="6" stroke={accent} strokeWidth="1.5" strokeLinecap="round" />
       <circle cx="26" cy="6" r="1.5" fill={accent} />
-      {/* Position-based size hint (unused visually, kept for accessibility) */}
-      <title>Engram · {half * 2}px</title>
+      {/* Accessible label */}
+      <title>Engram · {size}px</title>
     </svg>
   );
 }
