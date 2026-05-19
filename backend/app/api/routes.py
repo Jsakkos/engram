@@ -1715,17 +1715,22 @@ async def fetch_cover(
         # initial URL, so a redirect could otherwise reach an internal host.
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             resp = await client.get(request.image_url)
-            resp.raise_for_status()
-            # raise_for_status() only catches 4xx/5xx; with redirects disabled
-            # a 3xx would otherwise save the redirect's HTML body as the cover.
+            # Check redirects before raise_for_status(): the latter fires only
+            # for 4xx/5xx, and with follow_redirects disabled a 3xx would
+            # otherwise save the redirect's HTML body as the cover.
             if resp.is_redirect:
                 raise HTTPException(status_code=502, detail="Image server returned a redirect")
+            resp.raise_for_status()
 
-            # isdigit() guards a malformed Content-Length header — a
-            # non-numeric value would otherwise raise ValueError (a 500). The
-            # actual-size check below still catches oversized bodies.
+            # Parse Content-Length defensively — a malformed header must not
+            # raise (int() rejects Unicode digits that str.isdigit() accepts).
+            # The actual-size check below still catches oversized bodies.
             content_length = resp.headers.get("content-length")
-            if content_length and content_length.isdigit() and int(content_length) > max_size:
+            try:
+                declared_size = int(content_length) if content_length else None
+            except ValueError:
+                declared_size = None
+            if declared_size is not None and declared_size > max_size:
                 raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")
             if len(resp.content) > max_size:
                 raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")

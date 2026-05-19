@@ -58,6 +58,11 @@ class TestIsAllowedImageUrl:
         # A bare public IP is rejected too — allowlisted CDNs use DNS names.
         assert not is_allowed_image_url("http://8.8.8.8/cover.jpg")
 
+    def test_rejects_malformed_ipv6_url(self):
+        # A malformed bracketed literal must yield False, never raise.
+        assert not is_allowed_image_url("http://[::1bad]/cover.jpg")
+        assert not is_allowed_image_url("http://[:::]/cover.jpg")
+
 
 class TestExecutableBasenameAllowed:
     """Exact-basename allowlist guard for the tool-validation subprocess calls."""

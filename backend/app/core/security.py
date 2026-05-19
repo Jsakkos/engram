@@ -38,15 +38,17 @@ def is_allowed_image_url(url: str) -> bool:
     ``http``/``https`` scheme, a present host, no bare IP-literal host, and
     a host on the image-source allowlist.
     """
+    # .hostname is inside the try too: it parses the netloc lazily and can
+    # raise ValueError for some malformed literals, not just urlparse() itself.
     try:
         parsed = urlparse(url)
-    except ValueError:  # malformed URL (e.g. bad IPv6 literal)
+        host = (parsed.hostname or "").lower()
+    except ValueError:  # malformed URL or netloc (e.g. bad IPv6 literal)
         return False
 
     if parsed.scheme not in ("http", "https"):
         return False
 
-    host = (parsed.hostname or "").lower()
     if not host:
         return False
 
@@ -61,7 +63,9 @@ def is_allowed_image_url(url: str) -> bool:
         return False
 
     # Allowlist by dot-delimited host suffix (a bare endswith would let an
-    # attacker-registered "evilmedia-amazon.com" through).
+    # attacker-registered "evilmedia-amazon.com" through). Note: this is a
+    # hostname allowlist, so it does not defend against DNS rebinding — an
+    # acceptable boundary here, since the URL is a user-chosen CDN link.
     return any(
         host == suffix or host.endswith("." + suffix) for suffix in _ALLOWED_IMAGE_HOST_SUFFIXES
     )
