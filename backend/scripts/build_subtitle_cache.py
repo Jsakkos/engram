@@ -194,7 +194,8 @@ def main() -> int:
     if args.keep_srt:
         if args.clean_srt:
             logger.warning(
-                "--keep-srt is deprecated (no-op); SRTs will be deleted because --clean-srt is set."
+                "--keep-srt is deprecated and has no effect; SRTs will be "
+                "deleted because --clean-srt is set."
             )
         else:
             logger.warning(
