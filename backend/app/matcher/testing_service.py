@@ -7,6 +7,7 @@ Provides three independent operations that can be called from CLI or API:
 """
 
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -98,6 +99,13 @@ class _OSState:
 
 
 _OS = _OSState()
+# Guards _get_os_client's check-then-login window. Two coroutines on the
+# FastAPI side (or two threads via asyncio.to_thread) can otherwise both
+# observe _OS.client is None and both call client.login(), consuming two
+# /login quota slots and racing on the assignment to _OS.client.
+# threading.Lock works in both sync and asyncio.to_thread contexts; we
+# don't need an asyncio.Lock because the login itself is sync.
+_OS_LOGIN_LOCK = threading.Lock()
 
 
 def _snapshot_os_quota(client) -> None:
@@ -144,49 +152,58 @@ def _get_os_client(config) -> object | None:
 
     Logs in once (with 429-aware backoff) and reuses the token across all
     seasons/shows. Returns None on persistent failure so callers fall back to
-    scrapers.
+    scrapers. Thread-safe via ``_OS_LOGIN_LOCK``: concurrent callers wait on
+    the lock and observe the resulting client on the second check.
     """
+    # Fast path (no lock): a logged-in client with a fresh token.
     if _OS.failed:
         return None
-
     if _OS.client is not None and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE:
         return _OS.client
 
-    try:
-        from opensubtitlescom import OpenSubtitles as _OSApi
-    except ImportError:
-        logger.warning("opensubtitlescom package not installed — skipping API path")
-        _OS.failed = True
-        return None
+    with _OS_LOGIN_LOCK:
+        # Double-check after acquiring the lock — another thread may have
+        # completed the login (or flipped `failed`) while we were waiting.
+        if _OS.failed:
+            return None
+        if _OS.client is not None and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE:
+            return _OS.client
 
-    client = _OSApi(_USER_AGENT, config.opensubtitles_api_key)
-    try:
-        login_response = os_api_call(
-            client.login,
-            config.opensubtitles_username,
-            config.opensubtitles_password,
-        )
-    except Exception as e:
-        logger.warning(
-            f"OpenSubtitles API login failed after retries ({e}); "
-            "using scrapers for the rest of this run",
-            exc_info=True,
-        )
-        _OS.failed = True
-        return None
+        try:
+            from opensubtitlescom import OpenSubtitles as _OSApi
+        except ImportError:
+            logger.warning("opensubtitlescom package not installed — skipping API path")
+            _OS.failed = True
+            return None
 
-    try:
-        remaining = login_response["user"]["allowed_downloads"]
-        logger.info(f"OpenSubtitles API login OK — {remaining} downloads remaining today")
-    except (KeyError, TypeError):
-        logger.info("OpenSubtitles API login OK")
-    _OS.client = client
-    _OS.login_time = time.monotonic()
-    # Seed the quota snapshot from the login response — gives the build
-    # script's final summary a starting baseline even if no downloads happen
-    # this run (e.g., the whole cache is already populated).
-    _snapshot_os_quota(client)
-    return client
+        client = _OSApi(_USER_AGENT, config.opensubtitles_api_key)
+        try:
+            login_response = os_api_call(
+                client.login,
+                config.opensubtitles_username,
+                config.opensubtitles_password,
+            )
+        except Exception as e:
+            logger.warning(
+                f"OpenSubtitles API login failed after retries ({e}); "
+                "using scrapers for the rest of this run",
+                exc_info=True,
+            )
+            _OS.failed = True
+            return None
+
+        try:
+            remaining = login_response["user"]["allowed_downloads"]
+            logger.info(f"OpenSubtitles API login OK — {remaining} downloads remaining today")
+        except (KeyError, TypeError):
+            logger.info("OpenSubtitles API login OK")
+        _OS.client = client
+        _OS.login_time = time.monotonic()
+        # Seed the quota snapshot from the login response — gives the build
+        # script's final summary a starting baseline even if no downloads
+        # happen this run (e.g., the whole cache is already populated).
+        _snapshot_os_quota(client)
+        return client
 
 
 def download_subtitles(show_name: str, season: int) -> dict:

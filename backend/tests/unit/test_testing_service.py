@@ -411,9 +411,13 @@ class TestQuotaSnapshot:
     cheapest way to surface the daily quota — no extra /infos/user request."""
 
     def setup_method(self):
-        # Reset module-scope state so tests don't bleed into each other.
-        testing_service._OS.last_quota = None
-        testing_service._OS.last_logged_remaining = None
+        # Fully replace the dataclass so tests don't bleed into each other.
+        # Resetting only `last_quota` + `last_logged_remaining` left
+        # `failed` / `client` / `login_time` carrying values from previous
+        # tests, silently exercising the wrong code path inside
+        # `_get_os_client`'s short-circuit and making `get_last_quota()`
+        # return None for the wrong reason.
+        testing_service._OS = testing_service._OSState()
 
     def test_snapshot_records_remaining_from_client_attribute(self):
         client = Mock()

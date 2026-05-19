@@ -387,13 +387,22 @@ def fetch_show_details(show_id: int) -> dict | None:
     """Public entry; short-circuits without caching when API key absent.
 
     See ``fetch_show_id`` docstring for rationale on the no-cache early-return.
+    Network failures are caught HERE (not inside ``_fetch_show_details_cached``)
+    so an exhausted-retries exception doesn't get swallowed before
+    ``@retry_network_operation`` can see it AND so a transient failure isn't
+    cached by ``@lru_cache``. ``lru_cache`` does not cache exceptions; only
+    successful return values get stored.
     """
     from app.services.config_service import get_config_sync
 
     if not get_config_sync().tmdb_api_key:
         logger.warning("TMDB API key not configured")
         return None
-    return _fetch_show_details_cached(show_id)
+    try:
+        return _fetch_show_details_cached(show_id)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch show details for ID {show_id}: {e}", exc_info=True)
+        return None
 
 
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
@@ -429,13 +438,13 @@ def _fetch_show_details_cached(show_id: int) -> dict | None:
     else:
         params["api_key"] = api_key
 
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
-        return {**response.json()}
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch show details for ID {show_id}: {e}", exc_info=True)
-        return None
+    # Let RequestException propagate so @retry_network_operation can retry
+    # AND lru_cache does not cache a sentinel-None on transient failures.
+    # Caller (the public wrapper) catches the post-retry exception and
+    # surfaces None to satisfy the original contract.
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    return {**response.json()}
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)
@@ -533,15 +542,24 @@ def fetch_season_details(show_id: str, season_number: int) -> int:
     """Public entry; short-circuits without caching when API key absent.
 
     Returns 0 (not None) for the no-key path, matching the original
-    contract — callers check ``if episode_count == 0``. See ``fetch_show_id``
-    for rationale on bypassing the cache.
+    contract — callers check ``if episode_count == 0``. Also catches the
+    post-retry RequestException so a transient network failure doesn't get
+    cached as ``0`` by ``@lru_cache`` (which would silently treat a season
+    as empty for the rest of the process — a 12h build with no recovery).
     """
     from app.services.config_service import get_config_sync
 
     if not get_config_sync().tmdb_api_key:
         logger.warning("TMDB API key not configured")
         return 0
-    return _fetch_season_details_cached(show_id, season_number)
+    try:
+        return _fetch_season_details_cached(show_id, season_number)
+    except requests.exceptions.RequestException as e:
+        logger.error(
+            f"Failed to fetch season details for Season {season_number}: {e}",
+            exc_info=True,
+        )
+        return 0
 
 
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
@@ -569,15 +587,15 @@ def _fetch_season_details_cached(show_id: str, season_number: int) -> int:
     else:
         params["api_key"] = tmdb_api_key
 
+    # Let RequestException propagate so @retry_network_operation retries
+    # AND lru_cache doesn't cache 0 on transient failure. KeyError is kept
+    # as a return-0 path because malformed JSON isn't network-retryable —
+    # caching 0 there is correct (the response is structurally wrong).
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    season_data = response.json()
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
-        season_data = response.json()
-        total_episodes = len(season_data.get("episodes", []))
-        return total_episodes
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch season details for Season {season_number}: {e}")
-        return 0
+        return len(season_data.get("episodes", []))
     except KeyError:
         logger.error(f"Missing 'episodes' key in response JSON data for Season {season_number}")
         return 0

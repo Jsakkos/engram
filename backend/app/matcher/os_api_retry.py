@@ -87,6 +87,18 @@ def os_api_call(
 ) -> _T:
     """Invoke an OpenSubtitles API method with consistent 429-aware backoff.
 
+    .. warning::
+
+       This function calls ``time.sleep`` (up to ``_RETRY_AFTER_CAP_SECONDS``,
+       300s by default). Calling it directly from an ``async`` coroutine
+       blocks the event loop for the entire backoff window. Async callers
+       must wrap the call in ``asyncio.to_thread(os_api_call, ...)`` or
+       ``loop.run_in_executor(None, ...)``. The current callers
+       (``testing_service._get_os_client`` and
+       ``subtitle_provider._search_with_retry``/``_download_with_retry``)
+       are all reached via ``asyncio.to_thread`` in
+       ``matching_coordinator``, so this is safe today.
+
     Args:
         callable_: An ``opensubtitlescom.OpenSubtitles`` bound method
             (e.g. ``client.login``, ``client.search``, ``client.download_and_save``).
