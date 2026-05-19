@@ -19,6 +19,7 @@ from app.models import DiscJob
 from app.models.disc_job import DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.job_state_machine import JobStateMachine
+from app.services.ripping_helpers import find_staging_file
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,12 @@ class MatchingCoordinator:
         """Initialize the match semaphore with the given concurrency."""
         self._match_semaphore = asyncio.Semaphore(concurrency)
 
-    async def clear_job_caches(self, job_id: int, state) -> None:
-        """Clear per-job caches to prevent memory leaks. Called on terminal states."""
+    async def clear_job_caches(self, job_id: int, _state) -> None:
+        """Clear per-job caches to prevent memory leaks. Called on terminal states.
+
+        ``_state`` is unused but kept to satisfy the JobStateMachine
+        ``on_terminal_state`` callback signature.
+        """
         self._episode_runtimes.pop(job_id, None)
         self._discdb_mappings.pop(job_id, None)
 
@@ -219,7 +224,7 @@ class MatchingCoordinator:
                 return
 
             # Engram re-match: validate staging file exists
-            file_path = self._find_staging_file(job, title)
+            file_path = find_staging_file(job, title)
             if not file_path:
                 raise ValueError(
                     f"Staging file not found for title {title_id} "
@@ -243,18 +248,6 @@ class MatchingCoordinator:
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
         )
 
-    def _find_staging_file(self, job: DiscJob, title: DiscTitle) -> Path | None:
-        """Find the staging file for a title, trying output_filename then staging_path."""
-        if title.output_filename:
-            p = Path(title.output_filename)
-            if p.exists():
-                return p
-            if job.staging_path:
-                p2 = Path(job.staging_path) / p.name
-                if p2.exists():
-                    return p2
-        return None
-
     async def match_single_file(self, job_id: int, title_id: int, file_path: Path) -> None:
         """Run matching for a single ripped file."""
         logger.info(
@@ -262,7 +255,7 @@ class MatchingCoordinator:
         )
 
         # 1. Wait for subtitles to be ready before matching
-        logger.info(
+        logger.debug(
             f"[MATCH] Title {title_id} (Job {job_id}): _match_single_file entered. "
             f"subtitle_ready event exists: {job_id in self._subtitle_ready}"
         )
@@ -271,9 +264,6 @@ class MatchingCoordinator:
                 f"[MATCH] Title {title_id} (Job {job_id}): waiting for subtitle download..."
             )
             try:
-                logger.debug(
-                    f"[MATCH] Title {title_id} (Job {job_id}): entering wait_for(subtitle_ready)"
-                )
                 await asyncio.wait_for(self._subtitle_ready[job_id].wait(), timeout=300)
                 logger.info(f"[MATCH] Title {title_id} (Job {job_id}): subtitle event received")
             except TimeoutError:
@@ -286,7 +276,7 @@ class MatchingCoordinator:
                     f"[MATCH] Title {title_id} (Job {job_id}): error waiting for subtitles: {e}"
                 )
 
-        # 1b. Check subtitle status from database - BLOCK matching if failed
+        # 2. Check subtitle status from database - BLOCK matching if failed
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             subtitle_status = job.subtitle_status if job else None
@@ -337,7 +327,7 @@ class MatchingCoordinator:
                 f"attempting match anyway"
             )
 
-        # 2. Wait for the file to be fully written before matching
+        # 3. Wait for the file to be fully written before matching
         file_ready = await self._wait_for_file_ready(file_path, title_id, job_id)
         if not file_ready:
             logger.error(
@@ -353,7 +343,7 @@ class MatchingCoordinator:
                 await self._check_job_completion(session, job_id)
             return
 
-        # 1c. Duration pre-filter
+        # 4. Duration pre-filter
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             title = await session.get(DiscTitle, title_id)
@@ -400,13 +390,13 @@ class MatchingCoordinator:
                         f"Proceeding with matching normally."
                     )
 
-        # 3. Acquire semaphore to limit concurrent matching
+        # 5. Acquire semaphore to limit concurrent matching
         if self._match_semaphore is not None:
             logger.info(f"[MATCH] Title {title_id} (Job {job_id}): waiting for match semaphore...")
             await self._match_semaphore.acquire()
             logger.info(f"[MATCH] Title {title_id} (Job {job_id}): acquired match semaphore")
 
-        # 4. Transition title to MATCHING
+        # 6. Transition title to MATCHING
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)
             if title:
@@ -421,15 +411,9 @@ class MatchingCoordinator:
                     file_size_bytes=title.file_size_bytes,
                 )
 
-        # 5. Run matching
+        # 7. Run matching
         try:
-            logger.debug(
-                f"[MATCH] Title {title_id} (Job {job_id}): entering _match_single_file_inner"
-            )
             await self._match_single_file_inner(job_id, title_id, file_path)
-            logger.debug(
-                f"[MATCH] Title {title_id} (Job {job_id}): returned from _match_single_file_inner"
-            )
         except Exception as e:
             logger.exception(
                 f"[MATCH] Title {title_id} (Job {job_id}): error in _match_single_file_inner: {e}"
@@ -474,13 +458,12 @@ class MatchingCoordinator:
                     try:
                         details = None
                         if vote_data:
-                            best = vote_data[0] if vote_data else None
-                            target = best.get("target_votes", 5) if best else 5
+                            best = vote_data[0]
                             details = _json_dumps(
                                 {
-                                    "score": best["score"] if best else 0,
-                                    "vote_count": best["vote_count"] if best else 0,
-                                    "target_votes": target,
+                                    "score": best["score"],
+                                    "vote_count": best["vote_count"],
+                                    "target_votes": best.get("target_votes", 5),
                                     "runner_ups": vote_data,
                                 }
                             )
@@ -505,9 +488,6 @@ class MatchingCoordinator:
                     series_name=job.detected_title,
                     season=job.detected_season,
                     progress_callback=on_progress,
-                )
-                logger.info(
-                    f"[MATCH] Title {title_id} (Job {job_id}): episode_curator.match_single_file returned for {file_path.name}"
                 )
 
                 elapsed = time.monotonic() - match_start
@@ -967,29 +947,21 @@ class MatchingCoordinator:
                 failed_count=failed,
             )
 
-        except ValueError as e:
-            logger.error(f"Subtitle download ValueError for {show_name} S{season}: {e}")
-            async with async_session() as session:
-                await session.execute(
-                    update(DiscJob)
-                    .where(DiscJob.id == job_id)
-                    .values(subtitle_status="failed", error_message=str(e))
-                )
-                await session.commit()
-            await ws_manager.broadcast_subtitle_event(job_id, "failed")
-
         except Exception as e:
-            logger.exception(
-                f"Unexpected error in subtitle download for {show_name} S{season}: {e}"
-            )
+            if isinstance(e, ValueError):
+                logger.error(f"Subtitle download ValueError for {show_name} S{season}: {e}")
+                error_message = str(e)
+            else:
+                logger.exception(
+                    f"Unexpected error in subtitle download for {show_name} S{season}: {e}"
+                )
+                error_message = f"Download error: {str(e)}"
+
             async with async_session() as session:
                 await session.execute(
                     update(DiscJob)
                     .where(DiscJob.id == job_id)
-                    .values(
-                        subtitle_status="failed",
-                        error_message=f"Download error: {str(e)}",
-                    )
+                    .values(subtitle_status="failed", error_message=error_message)
                 )
                 await session.commit()
             await ws_manager.broadcast_subtitle_event(job_id, "failed")
