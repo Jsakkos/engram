@@ -1,6 +1,6 @@
 """Build the precomputed subtitle-vector cache shipped with Engram.
 
-Harvests subtitles for the most popular TV shows, reduces each episode to a
+Harvests subtitles for the most-voted TV shows on TMDB, reduces each episode to a
 HASHED TF-IDF vector (no readable vocabulary -- see app/matcher/vectorizer_config),
 discards the raw SRT, and packages the vectors into a `.tar.gz` plus a manifest
 for hosting on GitHub Releases.
@@ -34,7 +34,11 @@ from scipy import sparse
 from app.matcher.episode_identification import SubtitleCache
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.testing_service import download_subtitles
-from app.matcher.tmdb_client import fetch_popular_shows, fetch_show_details, fetch_show_id
+from app.matcher.tmdb_client import (
+    fetch_show_details,
+    fetch_show_id,
+    fetch_shows_by_vote_count,
+)
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
@@ -45,6 +49,23 @@ from app.matcher.vectorizer_config import (
 )
 
 _VALID_STATUSES = {"cached", "downloaded"}
+
+
+def _ensure_db_schema() -> None:
+    """Create DB tables — the standalone script has no app lifespan to do it.
+
+    The running app creates the schema in ``database.init_db()``. This script
+    runs without that lifespan, so a fresh ``engram.db`` (e.g. on a CI runner)
+    has no tables. ``create_all`` is idempotent, so this is safe against an
+    existing dev database too.
+    """
+    from sqlmodel import SQLModel
+
+    # Importing app.database registers AppConfig/DiscJob on SQLModel.metadata.
+    import app.database  # noqa: F401
+    from app.services.config_service import _get_sync_engine
+
+    SQLModel.metadata.create_all(_get_sync_engine())
 
 
 def _bootstrap_config_from_env() -> None:
@@ -81,13 +102,15 @@ def _select_shows(args) -> list[dict]:
         names = [s.strip() for s in args.shows.split(",") if s.strip()]
         candidates = [{"name": n, "id": fetch_show_id(n)} for n in names]
     else:
+        # Discover returns shows already ranked by vote_count desc; iterating
+        # pages in order and deduping preserves that ranking (dict is ordered).
         seen: dict[int, dict] = {}
         for page in range(1, args.pages + 1):
-            for show in fetch_popular_shows(page):
+            for show in fetch_shows_by_vote_count(page):
                 if show.get("id") and show["id"] not in seen:
                     seen[show["id"]] = show
             time.sleep(args.sleep)
-        ranked = sorted(seen.values(), key=lambda s: s.get("popularity", 0), reverse=True)
+        ranked = list(seen.values())
         candidates = [{"name": s["name"], "id": s["id"]} for s in ranked[: args.limit]]
 
     shows = []
@@ -142,8 +165,10 @@ def _harvest_show(show: dict, args) -> list[tuple[int, str, Path]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the Engram subtitle-vector cache")
-    parser.add_argument("--limit", type=int, default=300, help="Number of popular shows")
-    parser.add_argument("--pages", type=int, default=15, help="TMDB popular pages to scan")
+    parser.add_argument(
+        "--limit", type=int, default=300, help="Number of shows (top by TMDB vote count)"
+    )
+    parser.add_argument("--pages", type=int, default=15, help="TMDB discover pages to scan")
     parser.add_argument(
         "--shows", type=str, default="", help="Comma-separated show names (overrides popular)"
     )
@@ -160,6 +185,7 @@ def main() -> int:
     parser.add_argument("--keep-srt", action="store_true", help="Do not delete harvested SRT files")
     args = parser.parse_args()
 
+    _ensure_db_schema()
     _bootstrap_config_from_env()
 
     from app.services.config_service import get_config_sync

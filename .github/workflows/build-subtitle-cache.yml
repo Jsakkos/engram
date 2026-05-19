@@ -42,6 +42,19 @@ jobs:
         working-directory: backend
         run: uv sync --no-install-project
 
+      # Persist harvested SRTs across runs so repeat builds only scrape shows
+      # /episodes not already on disk (download_subtitles() reuses cached files).
+      # The key is unique per run (cache entries are immutable once written);
+      # restore-keys pulls in the most recent prior cache. SRTs are plain text
+      # and stay on the runner only — they are never added to the release tarball.
+      - name: Restore harvested-subtitle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.engram/cache/data
+          key: subtitle-srt-${{ github.run_id }}
+          restore-keys: |
+            subtitle-srt-
+
       - name: Build subtitle cache
         working-directory: backend
         env:
@@ -49,7 +62,9 @@ jobs:
           OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
           OPENSUBTITLES_USERNAME: ${{ secrets.OPENSUBTITLES_USERNAME }}
           OPENSUBTITLES_PASSWORD: ${{ secrets.OPENSUBTITLES_PASSWORD }}
-        run: uv run python scripts/build_subtitle_cache.py --limit ${{ inputs.limit }}
+        # --keep-srt preserves the harvested SRTs for the cache step above;
+        # they are excluded from the published tarball regardless.
+        run: uv run python scripts/build_subtitle_cache.py --limit ${{ inputs.limit }} --keep-srt
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v3
