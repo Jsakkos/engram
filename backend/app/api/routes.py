@@ -1688,14 +1688,12 @@ async def fetch_cover(
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
-    from app.core.security import validate_image_url
+    from app.core.security import is_allowed_image_url
     from app.services.config_service import get_config as get_db_config
 
     # SSRF guard: only fetch from allowlisted public image hosts.
-    try:
-        image_url = validate_image_url(request.image_url)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image URL: {e}") from None
+    if not is_allowed_image_url(request.image_url):
+        raise HTTPException(status_code=400, detail="Image URL host is not in the allowlist")
 
     job = await session.get(DiscJob, job_id)
     if not job:
@@ -1714,7 +1712,7 @@ async def fetch_cover(
     max_size = 10 * 1024 * 1024  # 10 MB
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(image_url)
+            resp = await client.get(request.image_url)
             resp.raise_for_status()
 
             content_length = resp.headers.get("content-length")
