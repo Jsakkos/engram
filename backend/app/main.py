@@ -209,6 +209,8 @@ if os.path.isdir(_static_dir):
         # filesystem path. Nested assets are served by the /assets mount
         # above; any other path is a client-side route -> index.html.
         static_file = _ROOT_STATIC_FILES.get(full_path)
+        # isfile() is a runtime safety net — a file present at startup could
+        # have been removed since; fall through to index.html, never a 500.
         if static_file is not None and os.path.isfile(static_file):
             return FileResponse(static_file)
         return FileResponse(_INDEX_HTML)
