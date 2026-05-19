@@ -46,5 +46,10 @@ class Settings(BaseSettings):
     # CORS (comma-separated origins, or leave empty for dev defaults)
     cors_origins: str = ""
 
+    # Precomputed subtitle-vector cache: base URL of the GitHub Release that hosts
+    # the artifact. The format-version tag and filenames are appended at runtime.
+    # Overridable (e.g. to point at a test release) via the env var of the same name.
+    precomputed_cache_base_url: str = "https://github.com/jsakkos/engram/releases/download"
+
 
 settings = Settings()

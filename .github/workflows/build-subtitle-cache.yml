@@ -1,0 +1,64 @@
+name: Build Subtitle Cache
+
+# Manually triggered. Harvesting subtitles for ~300 shows takes a long time and
+# hits rate-limited third-party scrapers, so this must NOT run on every release.
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Number of popular TV shows to include"
+        default: "300"
+      cache_tag:
+        description: "Release tag to publish the cache to"
+        default: "subtitle-cache-v1"
+
+permissions:
+  contents: write
+
+# See ci.yml for context on the Node 24 opt-in.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: build-subtitle-cache
+  cancel-in-progress: false
+
+jobs:
+  build-cache:
+    name: Build & publish subtitle-vector cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --no-install-project
+
+      - name: Build subtitle cache
+        working-directory: backend
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
+          OPENSUBTITLES_USERNAME: ${{ secrets.OPENSUBTITLES_USERNAME }}
+          OPENSUBTITLES_PASSWORD: ${{ secrets.OPENSUBTITLES_PASSWORD }}
+        run: uv run python scripts/build_subtitle_cache.py --limit ${{ inputs.limit }}
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.cache_tag }}
+          name: Subtitle Cache (${{ inputs.cache_tag }})
+          body: >
+            Precomputed subtitle-matching cache (hashed TF-IDF vectors).
+            Downloaded automatically by Engram on first run.
+          files: |
+            backend/engram-subtitle-cache.tar.gz
+            backend/manifest.json
