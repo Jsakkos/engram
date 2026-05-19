@@ -12,6 +12,9 @@ This module provides the core matching engine with:
 import hashlib
 import json
 import re
+import shutil
+import sys
+import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -28,7 +31,7 @@ from rich.progress import (
 
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.core.matcher import MultiSegmentMatcher
-from app.matcher.models import Config, MatchResult
+from app.matcher.models import Config, FailedMatch, MatchResult
 from app.matcher.subtitle_provider import (
     Addic7edProvider,
     CompositeSubtitleProvider,
@@ -52,12 +55,12 @@ class CacheManager:
 
     def _estimate_size(self, value) -> int:
         """Estimate memory usage of cached object."""
-        import sys
-
         if hasattr(value, "__sizeof__"):
             return value.__sizeof__()
-        elif isinstance(value, (str, bytes)):
-            return len(value) * (4 if isinstance(value, str) else 1)
+        elif isinstance(value, str):
+            return len(value) * 4
+        elif isinstance(value, bytes):
+            return len(value)
         elif isinstance(value, dict):
             return sum(self._estimate_size(k) + self._estimate_size(v) for k, v in value.items())
         elif isinstance(value, (list, tuple)):
@@ -86,8 +89,6 @@ class CacheManager:
 
     def get(self, key: str) -> Any | None:
         """Get item from memory cache with LRU tracking."""
-        import time
-
         if key in self.memory_cache:
             self.access_order[key] = time.time()
             return self.memory_cache[key]
@@ -95,8 +96,6 @@ class CacheManager:
 
     def set(self, key: str, value: Any, ttl: int = 3600) -> None:
         """Set item in memory cache with bounds checking."""
-        import time
-
         value_size = self._estimate_size(value)
 
         # Don't cache items that are too large
@@ -207,9 +206,10 @@ class MatchEngineV2:
         show_name = None
         season = None
 
+        parent_name = video_file.parent.name
+
         # Heuristic 1: Standard folder structure (Show/Season X/file.mkv)
         try:
-            parent_name = video_file.parent.name
             if "season" in parent_name.lower():
                 # Extract season number
                 s_match = re.search(r"(\d+)", parent_name)
@@ -222,7 +222,6 @@ class MatchEngineV2:
         # Heuristic 2: Season folder with S## pattern
         if not season:
             try:
-                parent_name = video_file.parent.name
                 s_match = re.search(r"[Ss](\d{1,2})", parent_name)
                 if s_match:
                     season = int(s_match.group(1))
@@ -369,8 +368,6 @@ class MatchEngineV2:
 
             if output_dir:
                 # Copy to output directory
-                import shutil
-
                 shutil.copy2(original_path, new_path)
             else:
                 # Rename in place
@@ -433,7 +430,7 @@ class MatchEngineV2:
         if not files:
             if not json_output:
                 self.console.print(f"[yellow]No MKV files found in {path}[/yellow]")
-            return []
+            return [], []
 
         # Group files by series for batch processing
         file_groups = self._group_files_by_series(files, season_override)
@@ -484,8 +481,6 @@ class MatchEngineV2:
                             f"[yellow]No subtitles found for {show_name} S{season:02d} - skipping {len(group_files)} files[/yellow]"
                         )
                     # Mark all files in group as failed
-                    from app.matcher.models import FailedMatch
-
                     for f in group_files:
                         failures.append(
                             FailedMatch(
@@ -564,8 +559,6 @@ class MatchEngineV2:
                                 self.console.print(
                                     f"[red]FAILED[/red] {video_file.name} - No match{conf_str}"
                                 )
-
-                            from app.matcher.models import FailedMatch
 
                             failures.append(
                                 FailedMatch(
