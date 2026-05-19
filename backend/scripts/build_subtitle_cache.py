@@ -192,10 +192,16 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.keep_srt:
-        logger.warning(
-            "--keep-srt is deprecated and has no effect; SRTs are kept by default. "
-            "Pass --clean-srt to delete them after the build."
-        )
+        if args.clean_srt:
+            logger.warning(
+                "--keep-srt is deprecated (no-op); --clean-srt takes precedence — "
+                "SRTs will be deleted after the build."
+            )
+        else:
+            logger.warning(
+                "--keep-srt is deprecated and has no effect; SRTs are kept by default. "
+                "Pass --clean-srt to delete them after the build."
+            )
 
     _ensure_db_schema()
     _bootstrap_config_from_env()
