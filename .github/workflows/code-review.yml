@@ -28,9 +28,20 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
             Review this pull request for code quality, correctness, and security.
             Follow the project conventions in CLAUDE.md.
             Focus on: bugs, race conditions in async code, WebSocket contract drift,
-            error-handling patterns (specific exceptions + exc_info=True), and adherence
-            to the JobState machine. Post findings as inline review comments.
-          claude_args: "--max-turns 5"
+            error-handling patterns (specific exceptions + exc_info=True), and
+            adherence to the JobState machine.
+
+            Note: The PR branch is already checked out in the current working directory.
+
+            Use `gh pr comment` for top-level feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` (with
+            `confirmed: true`) to flag specific lines of code.
+            Only post GitHub comments — do not submit review text as messages.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
