@@ -52,20 +52,22 @@ _VALID_STATUSES = {"cached", "downloaded"}
 
 
 def _ensure_db_schema() -> None:
-    """Create DB tables — the standalone script has no app lifespan to do it.
+    """Create and migrate the DB schema via the app's canonical ``init_db()``.
 
-    The running app creates the schema in ``database.init_db()``. This script
-    runs without that lifespan, so a fresh ``engram.db`` (e.g. on a CI runner)
-    has no tables. ``create_all`` is idempotent, so this is safe against an
-    existing dev database too.
+    The standalone script runs without the FastAPI lifespan that normally
+    calls ``database.init_db()``. A fresh ``engram.db`` (e.g. a CI runner)
+    needs its tables created; a pre-existing dev database needs any
+    recently-added columns applied. ``create_all`` alone does the former but
+    never the latter, so an older local ``engram.db`` ends up missing newer
+    columns such as ``app_config.precomputed_cache_enabled``. Delegating to
+    ``init_db()`` runs the same create-all + ``_add_missing_columns`` +
+    Alembic migration path the running app uses on startup.
     """
-    from sqlmodel import SQLModel
+    import asyncio
 
-    # Importing app.database registers AppConfig/DiscJob on SQLModel.metadata.
-    import app.database  # noqa: F401
-    from app.services.config_service import _get_sync_engine
+    from app.database import init_db
 
-    SQLModel.metadata.create_all(_get_sync_engine())
+    asyncio.run(init_db())
 
 
 def _bootstrap_config_from_env() -> None:
