@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from app.matcher.tmdb_client import fetch_season_details, fetch_show_id
+from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
 from tests.fixtures.tmdb_responses import (
     TMDB_SEARCH_ARRESTED_DEVELOPMENT,
     TMDB_SEARCH_BREAKING_BAD,
@@ -14,6 +14,57 @@ from tests.fixtures.tmdb_responses import (
     TMDB_SEARCH_STAR_TREK,
     TMDB_SEASON_DETAILS_S01_3EP,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_tmdb_caches():
+    """Reset the in-process TMDB lru_cache between tests.
+
+    Tests patch ``requests.get`` with different mocks but the cached fetch
+    functions persist across the test module — without this fixture, a later
+    test calling ``fetch_show_id("Arrested Development")`` would receive a
+    None cached by an earlier test's mock instead of hitting the new mock.
+    """
+    fetch_show_id.cache_clear()
+    fetch_show_details.cache_clear()
+    fetch_season_details.cache_clear()
+    yield
+
+
+@pytest.mark.unit
+class TestLruCache:
+    """The build script calls these fetches once per show during selection AND
+    again per season during download. ``@lru_cache`` collapses the duplicates
+    inside a single process; these tests guard against future refactors that
+    accidentally remove the decorator or change argument types."""
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_repeat_call_with_same_arg_hits_cache(self, mock_get):
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": [{"id": "4589", "name": "X"}]}
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        with patch("app.services.config_service.get_config_sync") as cfg:
+            cfg.return_value.tmdb_api_key = "test"
+            a = fetch_show_id("X")
+            b = fetch_show_id("X")
+
+        assert a == b
+        # First call hit the network exactly once; second call returned from
+        # the cache without re-invoking requests.get.
+        assert fetch_show_id.cache_info().hits == 1
+
+    def test_cache_clear_resets_state(self):
+        """``cache_clear()`` is the contract test fixtures rely on; if it ever
+        stops working, every test that mutates config between calls breaks
+        silently with the wrong cached value."""
+        with patch("app.services.config_service.get_config_sync") as cfg:
+            cfg.return_value.tmdb_api_key = ""  # forces early-return path
+            fetch_show_id("Anything")
+            assert fetch_show_id.cache_info().currsize >= 1
+            fetch_show_id.cache_clear()
+            assert fetch_show_id.cache_info().currsize == 0
 
 
 @pytest.mark.unit

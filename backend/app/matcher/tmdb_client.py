@@ -2,12 +2,26 @@
 import re
 import time
 from collections.abc import Callable
-from functools import wraps
+from functools import lru_cache, wraps
 from threading import Lock
 from typing import Any, TypeVar
 
 import requests
 from loguru import logger
+
+# In-process cache for TMDB lookups. The build script calls
+# fetch_show_id/fetch_show_details for every show during selection AND again
+# inside download_subtitles() for every season — a 300-show, 5-season run
+# would otherwise burn ~1800 TMDB requests on data that doesn't change within
+# a single run. The cache key is (function, *args), and all three wrapped
+# functions take only hashable primitives (str, int).
+#
+# Caveat: this cache persists for the lifetime of the Python process. If the
+# TMDB API key is rotated mid-process, callers must explicitly invoke the
+# corresponding .cache_clear(). Tests that mutate config between assertions
+# must do the same. In practice, the FastAPI process restarts on config
+# changes and standalone scripts exit when done — both safe.
+_TMDB_LRU_MAXSIZE = 4096
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -231,6 +245,7 @@ def generate_name_variations(name: str) -> list[str]:
     return variations
 
 
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
 @retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_show_id(show_name: str) -> str | None:
     """
@@ -348,6 +363,7 @@ def fetch_show_id(show_name: str) -> str | None:
     return None
 
 
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
 @retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_show_details(show_id: int) -> dict | None:
     """
@@ -479,6 +495,7 @@ def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
         return []
 
 
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
 @retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_season_details(show_id: str, season_number: int) -> int:
     """
