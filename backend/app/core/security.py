@@ -72,12 +72,13 @@ def is_allowed_image_url(url: str) -> bool:
     )
 
 
-def executable_basename_allowed(path: str, keywords: Sequence[str]) -> bool:
-    """Return True if the executable's filename contains one of ``keywords``.
+def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> bool:
+    """Return True if the executable's filename exactly matches an allowed name.
 
-    Used to constrain validation subprocess calls to executables that look
-    like the expected tool, so the endpoint cannot be coerced into running an
-    arbitrary binary (e.g. a shell) supplied as a config path.
+    Used to constrain validation subprocess calls to known tool executables,
+    so the endpoint cannot be coerced into running an arbitrary binary supplied
+    as a config path. Exact basename match (case-insensitive) — a substring
+    check would let ``makemkv-exploit.sh`` through.
     """
     name = os.path.basename(path).lower()
-    return any(keyword.lower() in name for keyword in keywords)
+    return name in {allowed.lower() for allowed in allowed_basenames}

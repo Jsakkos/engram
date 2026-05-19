@@ -20,11 +20,13 @@ async def client():
         async with _unit_session_factory() as session:
             yield session
 
+    saved = dict(app.dependency_overrides)
     app.dependency_overrides[get_session] = override_get_session
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+    app.dependency_overrides.update(saved)
 
 
 class TestFetchCoverSsrfGuard:
@@ -54,3 +56,16 @@ class TestFetchCoverSsrfGuard:
             json={"image_url": "file:///etc/passwd"},
         )
         assert resp.status_code == 400
+
+    async def test_allows_allowlisted_host(self, client: AsyncClient):
+        """An allowlisted host must pass the SSRF guard.
+
+        With a valid host the guard does not reject, so the request reaches
+        the job lookup — and a bogus job_id yields 404, not the 400 the
+        guard would raise. This catches an accidentally inverted guard.
+        """
+        resp = await client.post(
+            "/api/contributions/999/fetch-cover",
+            json={"image_url": "https://m.media-amazon.com/images/I/test.jpg"},
+        )
+        assert resp.status_code == 404

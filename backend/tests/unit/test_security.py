@@ -44,24 +44,31 @@ class TestIsAllowedImageUrl:
 
 
 class TestExecutableBasenameAllowed:
-    """Basename allowlist guard for the tool-validation subprocess calls."""
+    """Exact-basename allowlist guard for the tool-validation subprocess calls."""
+
+    _MAKEMKV = ["makemkvcon", "makemkvcon.exe", "makemkvcon64", "makemkvcon64.exe"]
+    _FFMPEG = ["ffmpeg", "ffmpeg.exe"]
 
     def test_accepts_makemkv_windows_exe(self):
         assert executable_basename_allowed(
-            "C:\\Program Files\\MakeMKV\\makemkvcon64.exe", ["makemkv"]
+            "C:\\Program Files\\MakeMKV\\makemkvcon64.exe", self._MAKEMKV
         )
 
     def test_accepts_makemkv_linux_binary(self):
-        assert executable_basename_allowed("/usr/bin/makemkvcon", ["makemkv"])
+        assert executable_basename_allowed("/usr/bin/makemkvcon", self._MAKEMKV)
 
     def test_accepts_ffmpeg_binary(self):
-        assert executable_basename_allowed("/usr/local/bin/ffmpeg", ["ffmpeg"])
+        assert executable_basename_allowed("/usr/local/bin/ffmpeg", self._FFMPEG)
 
     def test_rejects_arbitrary_shell(self):
-        assert not executable_basename_allowed("/bin/sh", ["makemkv"])
+        assert not executable_basename_allowed("/bin/sh", self._MAKEMKV)
 
     def test_rejects_powershell(self):
-        assert not executable_basename_allowed("C:\\Windows\\System32\\cmd.exe", ["ffmpeg"])
+        assert not executable_basename_allowed("C:\\Windows\\System32\\cmd.exe", self._FFMPEG)
+
+    def test_rejects_substring_lookalike_script(self):
+        # A substring check would let this through — exact match must reject it.
+        assert not executable_basename_allowed("/tmp/makemkv-exploit.sh", self._MAKEMKV)
 
     def test_match_is_case_insensitive(self):
-        assert executable_basename_allowed("/opt/MakeMKVcon", ["makemkv"])
+        assert executable_basename_allowed("/opt/MakeMKVcon", self._MAKEMKV)

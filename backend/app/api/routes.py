@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.config import settings
+from app.core.security import is_allowed_image_url
 from app.database import get_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
@@ -1688,7 +1689,6 @@ async def fetch_cover(
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
-    from app.core.security import is_allowed_image_url
     from app.services.config_service import get_config as get_db_config
 
     # SSRF guard: only fetch from allowlisted public image hosts.
@@ -1711,7 +1711,9 @@ async def fetch_cover(
 
     max_size = 10 * 1024 * 1024  # 10 MB
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        # follow_redirects stays off: the SSRF guard validates only the
+        # initial URL, so a redirect could otherwise reach an internal host.
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             resp = await client.get(request.image_url)
             resp.raise_for_status()
 

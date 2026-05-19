@@ -16,6 +16,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Known executable filenames for the tool validators. Validation runs the
+# binary, so it must be a real tool executable — never an arbitrary script
+# supplied as a config path.
+_MAKEMKV_EXE_NAMES = (
+    "makemkvcon",
+    "makemkvcon.exe",
+    "makemkvcon64",
+    "makemkvcon64.exe",
+    "com.makemkv.MakeMKV",
+)
+_FFMPEG_EXE_NAMES = ("ffmpeg", "ffmpeg.exe")
+
 
 class ValidationRequest(BaseModel):
     """Request model for validation endpoints."""
@@ -190,9 +202,9 @@ async def validate_makemkv(request: ValidationRequest) -> ValidationResponse:
     """Validate MakeMKV installation by checking path and running without arguments."""
     makemkv_path = Path(request.path)
 
-    # Constrain to MakeMKV-looking executables before any filesystem or
+    # Constrain to known MakeMKV executables before any filesystem or
     # subprocess access — the endpoint must not run an arbitrary binary.
-    if not executable_basename_allowed(str(makemkv_path), ["makemkv"]):
+    if not executable_basename_allowed(str(makemkv_path), _MAKEMKV_EXE_NAMES):
         return ValidationResponse(valid=False, error="Path does not point to a MakeMKV executable")
 
     # Check existence
@@ -232,8 +244,8 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
     """Validate FFmpeg installation. Empty path = check PATH."""
     if request.path:
         ffmpeg_cmd = Path(request.path)
-        # Constrain to FFmpeg-looking executables before filesystem/subprocess use.
-        if not executable_basename_allowed(str(ffmpeg_cmd), ["ffmpeg"]):
+        # Constrain to known FFmpeg executables before filesystem/subprocess use.
+        if not executable_basename_allowed(str(ffmpeg_cmd), _FFMPEG_EXE_NAMES):
             return ValidationResponse(
                 valid=False, error="Path does not point to an FFmpeg executable"
             )
