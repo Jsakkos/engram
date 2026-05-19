@@ -191,7 +191,11 @@ def _harvest_show(
         try:
             result = download_subtitles(canonical, season)
         except Exception as e:
-            logger.warning(f"  {canonical} S{season:02d}: harvest failed ({e})")
+            # exc_info=True per CLAUDE.md: the warning string alone (often
+            # just "429 Too Many Requests") doesn't say which provider in
+            # the OS/TMDB retry chain raised — the traceback is the only
+            # signal for diagnosing flaky seasons after the fact.
+            logger.warning(f"  {canonical} S{season:02d}: harvest failed ({e})", exc_info=True)
             tally.seasons_failed += 1
             if on_season_done is not None:
                 on_season_done()
@@ -350,6 +354,17 @@ def main() -> int:
             progress.remove_task(season_task)
             progress.advance(shows_task)
 
+            if not harvested:
+                # All seasons either failed or fell below the coverage
+                # threshold — emit a yellow SKIP banner instead of the green
+                # OK banner so the log line matches what actually happened.
+                console.log(
+                    f"[yellow]SKIP[/] {show['name']} — no usable seasons "
+                    f"(omitted from cache) in {int(time.monotonic() - show_start)}s"
+                )
+                logger.warning(f"  {show['name']}: no usable seasons; omitting from cache")
+                continue
+
             # Per-show summary — show what we did this iteration.
             delta_hits = tally.cache_hits - tally_snapshot[0]
             delta_dls = tally.downloaded - tally_snapshot[1]
@@ -360,10 +375,6 @@ def main() -> int:
                 f"({delta_hits} cached, {delta_dls} new, {delta_nf} missing) "
                 f"in {int(time.monotonic() - show_start)}s"
             )
-
-            if not harvested:
-                logger.warning(f"  {show['name']}: no usable seasons; omitting from cache")
-                continue
 
             by_season: dict[int, list[tuple[str, Path]]] = {}
             for season, code, path in harvested:

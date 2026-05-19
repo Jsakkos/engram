@@ -26,9 +26,13 @@ parameters.
 """
 
 import time
+from collections.abc import Callable
+from typing import TypeVar
 
 import requests
 from loguru import logger
+
+_T = TypeVar("_T")
 
 try:
     from opensubtitlescom.exceptions import OpenSubtitlesException
@@ -75,12 +79,12 @@ def _parse_retry_after(exc: Exception) -> float | None:
 
 
 def os_api_call(
-    callable_,
+    callable_: Callable[..., _T],
     *args,
     max_attempts: int = 4,
     base_delay: float = 5.0,
     **kwargs,
-):
+) -> _T:
     """Invoke an OpenSubtitles API method with consistent 429-aware backoff.
 
     Args:

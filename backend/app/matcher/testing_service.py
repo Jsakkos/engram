@@ -121,7 +121,12 @@ def _snapshot_os_quota(client) -> None:
             logger.info(f"OS API quota: {remaining_int} downloads remaining today")
             _OS.last_logged_remaining = remaining_int
     except Exception as exc:
-        logger.debug(f"Could not snapshot OS quota (non-fatal): {exc}")
+        # exc_info=True per CLAUDE.md. The quota path is best-effort, so
+        # this stays at DEBUG (won't spam production logs), but if a
+        # programming error sneaks in (e.g., an unexpected client shape →
+        # AttributeError) the traceback is the only thing that lets us
+        # diagnose it.
+        logger.debug(f"Could not snapshot OS quota (non-fatal): {exc}", exc_info=True)
 
 
 def get_last_quota() -> dict | None:
