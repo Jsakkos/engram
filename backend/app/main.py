@@ -187,21 +187,25 @@ if os.path.isdir(_static_dir):
     app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
 
     # Root-level static files emitted by the Vite build (mirrors
-    # frontend/public/). The SPA catch-all serves these by exact name only.
-    _ROOT_STATIC_FILES = {"disc.svg", "engram.svg"}
+    # frontend/public/). Maps each public URL path to its precomputed on-disk
+    # path so the SPA catch-all never builds a filesystem path from user input.
+    _ROOT_STATIC_FILES = {
+        "disc.svg": os.path.join(_static_dir, "disc.svg"),
+        "engram.svg": os.path.join(_static_dir, "engram.svg"),
+    }
+    _INDEX_HTML = os.path.join(_static_dir, "index.html")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the SPA frontend — catch-all for client-side routing."""
-        # Only serve a known root-level asset by exact name — membership in a
-        # fixed allowlist prevents "../" traversal out of the static dir.
+        # full_path is used only as a dict key — the served path is a constant
+        # value, so no user input is interpolated into a filesystem path.
         # Nested assets are served by the /assets mount above; any other path
         # is a client-side route and falls back to index.html.
-        if full_path in _ROOT_STATIC_FILES:
-            candidate = os.path.join(_static_dir, full_path)
-            if os.path.isfile(candidate):
-                return FileResponse(candidate)
-        return FileResponse(os.path.join(_static_dir, "index.html"))
+        static_file = _ROOT_STATIC_FILES.get(full_path)
+        if static_file is not None and os.path.isfile(static_file):
+            return FileResponse(static_file)
+        return FileResponse(_INDEX_HTML)
 
 else:
 
