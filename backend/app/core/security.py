@@ -78,7 +78,8 @@ def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> 
     Used to constrain validation subprocess calls to known tool executables,
     so the endpoint cannot be coerced into running an arbitrary binary supplied
     as a config path. Exact basename match (case-insensitive) — a substring
-    check would let ``makemkv-exploit.sh`` through.
+    check would let ``makemkv-exploit.sh`` through. Backslashes are normalised
+    to ``/`` first so a Windows-style path is parsed correctly on any platform.
     """
-    name = os.path.basename(path).lower()
+    name = os.path.basename(path.replace("\\", "/")).lower()
     return name in {allowed.lower() for allowed in allowed_basenames}
