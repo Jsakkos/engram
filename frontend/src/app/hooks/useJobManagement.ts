@@ -6,6 +6,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { Job, DiscTitle, WebSocketMessage } from '../../types';
 
+// Title state ordering used when merging REST snapshots with WebSocket-derived
+// state. WebSocket state (e.g. "ripping") is more current than a stale REST
+// snapshot still reporting "pending".
+const STATE_PRIORITY: Record<string, number> = {
+    pending: 0,
+    ripping: 1,
+    matching: 2,
+    matched: 3,
+    review: 3,
+    completed: 4,
+    failed: 4,
+};
+
+// Title states that indicate a title has finished processing.
+const TERMINAL_TITLE_STATES = ['matched', 'completed', 'review', 'failed'];
+
 export function useJobManagement(devMode: boolean = false) {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [titlesMap, setTitlesMap] = useState<Record<number, DiscTitle[]>>({});
@@ -21,7 +37,9 @@ export function useJobManagement(devMode: boolean = false) {
 
     const fetchJobsAndTitles = useCallback(async () => {
         try {
-            console.log('🔄 fetchJobsAndTitles called');
+            if (import.meta.env.DEV) {
+                console.log('🔄 fetchJobsAndTitles called');
+            }
             const jobsRes = await fetch('/api/jobs');
             const jobsData: Job[] = await jobsRes.json();
             setJobs(jobsData);
@@ -32,26 +50,17 @@ export function useJobManagement(devMode: boolean = false) {
                 const titlesData: DiscTitle[] = await titlesRes.json();
                 setTitlesMap(prev => {
                     const existing = prev[job.id];
-                    console.log('🔄 fetchJobsAndTitles merge:', {
-                        job_id: job.id,
-                        restTitleStates: titlesData.map(t => `${t.id}:${t.state}`),
-                        existingTitleStates: existing?.map(t => `${t.id}:${t.state}`) ?? 'NONE',
-                    });
+                    if (import.meta.env.DEV) {
+                        console.log('🔄 fetchJobsAndTitles merge:', {
+                            job_id: job.id,
+                            restTitleStates: titlesData.map(t => `${t.id}:${t.state}`),
+                            existingTitleStates: existing?.map(t => `${t.id}:${t.state}`) ?? 'NONE',
+                        });
+                    }
                     if (!existing) {
                         return { ...prev, [job.id]: titlesData };
                     }
                     // Merge: for each title, keep the more-recent state.
-                    // WebSocket-derived state (e.g. "ripping") is more current
-                    // than the REST snapshot if the REST state is "pending".
-                    const STATE_PRIORITY: Record<string, number> = {
-                        pending: 0,
-                        ripping: 1,
-                        matching: 2,
-                        matched: 3,
-                        review: 3,
-                        completed: 4,
-                        failed: 4,
-                    };
                     const merged = titlesData.map(restTitle => {
                         const wsTitle = existing.find(t => t.id === restTitle.id);
                         if (!wsTitle) return restTitle;
@@ -165,16 +174,18 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
 
                 case 'title_update':
-                    console.log('📡 WebSocket title_update:', {
-                        title_id: message.title_id,
-                        state: message.state,
-                        match_stage: message.match_stage,
-                        error: message.error,
-                    });
+                    if (import.meta.env.DEV) {
+                        console.log('📡 WebSocket title_update:', {
+                            title_id: message.title_id,
+                            state: message.state,
+                            match_stage: message.match_stage,
+                            error: message.error,
+                        });
+                    }
                     setTitlesMap(prev => {
                         const existingTitles = prev[message.job_id];
                         const found = existingTitles?.some(t => t.id === message.title_id);
-                        if (!found) {
+                        if (!found && import.meta.env.DEV) {
                             console.warn('⚠️ title_update for unknown title_id:', message.title_id,
                                 'existing ids:', existingTitles?.map(t => t.id) ?? 'NO_TITLES_FOR_JOB');
                         }
@@ -195,8 +206,7 @@ export function useJobManagement(devMode: boolean = false) {
                         // Check if all titles are terminal but job might still be active
                         const updatedTitles = updated[message.job_id];
                         if (updatedTitles && updatedTitles.length > 0) {
-                            const terminalStates = ['matched', 'completed', 'review', 'failed'];
-                            const allDone = updatedTitles.every(t => terminalStates.includes(t.state));
+                            const allDone = updatedTitles.every(t => TERMINAL_TITLE_STATES.includes(t.state));
                             if (allDone) {
                                 // Schedule a refresh to catch missed job_update messages
                                 setTimeout(() => fetchRef.current?.(), 3000);
@@ -208,11 +218,13 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
 
                 case 'titles_discovered':
-                    console.log('📡 titles_discovered:', {
-                        job_id: message.job_id,
-                        title_count: message.titles?.length,
-                        title_ids: message.titles?.map((t: { id: number }) => t.id),
-                    });
+                    if (import.meta.env.DEV) {
+                        console.log('📡 titles_discovered:', {
+                            job_id: message.job_id,
+                            title_count: message.titles?.length,
+                            title_ids: message.titles?.map((t: { id: number }) => t.id),
+                        });
+                    }
                     setTitlesMap(prev => ({
                         ...prev,
                         [message.job_id]: (message.titles as DiscTitle[]).map(t => ({
@@ -235,11 +247,13 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
 
                 case 'drive_event':
-                    console.log('🔵 Drive event received:', {
-                        event: message.event,
-                        drive_id: message.drive_id,
-                        volume_label: message.volume_label
-                    });
+                    if (import.meta.env.DEV) {
+                        console.log('🔵 Drive event received:', {
+                            event: message.event,
+                            drive_id: message.drive_id,
+                            volume_label: message.volume_label
+                        });
+                    }
                     fetchRef.current?.();
                     break;
 

@@ -22,8 +22,33 @@ import {
   sv,
 } from "./components/synapse";
 import { DashboardSideRail } from "./components/DashboardSideRail";
+import { formatEtaCompact } from "../utils/formatting";
 
 type ViewMode = "expanded" | "compact";
+
+/**
+ * Shared sv-token button base — mono uppercase typography with pointer cursor.
+ * Spread first so call-site overrides (padding, colors, fontSize) win.
+ */
+const svButtonBase: React.CSSProperties = {
+  fontFamily: sv.mono,
+  letterSpacing: "0.20em",
+  textTransform: "uppercase",
+  cursor: "pointer",
+};
+
+/** Empty-state copy keyed by the active dashboard filter. */
+const emptyHeading: Record<"all" | "active" | "completed", string> = {
+  active: "› No active operations",
+  completed: "› No completed archives",
+  all: "› No discs detected",
+};
+
+const emptyBody: Record<"all" | "active" | "completed", string> = {
+  active: "All operations complete. Insert a disc to start a new job.",
+  completed: "No archived media yet. Completed jobs will appear here.",
+  all: "Insert a disc into your optical drive to begin archiving.",
+};
 
 function MainDashboard() {
   const navigate = useNavigate();
@@ -139,34 +164,33 @@ function MainDashboard() {
         data-testid="sv-filter-strip"
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {(["all", "active", "completed"] as const).map((f) => {
+          {(() => {
             const counts = { all: discsData.length, active: activeCount, completed: completedCount };
             const labels = { all: "ALL", active: "ACTIVE", completed: "DONE" };
-            const active = filter === f;
-            return (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                data-testid={`sv-filter-${f}`}
-                data-active={active ? "true" : "false"}
-                style={{
-                  padding: "6px 14px",
-                  fontFamily: sv.mono,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  letterSpacing: "0.20em",
-                  textTransform: "uppercase",
-                  color: active ? sv.cyanHi : sv.inkDim,
-                  background: active ? "rgba(94,234,212,0.10)" : "transparent",
-                  border: `1px solid ${active ? sv.lineHi : sv.line}`,
-                  cursor: "pointer",
-                  transition: "all 0.18s",
-                }}
-              >
-                {labels[f]} [{counts[f]}]
-              </button>
-            );
-          })}
+            return (["all", "active", "completed"] as const).map((f) => {
+              const active = filter === f;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  data-testid={`sv-filter-${f}`}
+                  data-active={active ? "true" : "false"}
+                  style={{
+                    ...svButtonBase,
+                    padding: "6px 14px",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: active ? sv.cyanHi : sv.inkDim,
+                    background: active ? "rgba(94,234,212,0.10)" : "transparent",
+                    border: `1px solid ${active ? sv.lineHi : sv.line}`,
+                    transition: "all 0.18s",
+                  }}
+                >
+                  {labels[f]} [{counts[f]}]
+                </button>
+              );
+            });
+          })()}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -210,16 +234,13 @@ function MainDashboard() {
               data-testid="sv-clear-btn"
               title="Clear Completed"
               style={{
+                ...svButtonBase,
                 padding: "6px 12px",
-                fontFamily: sv.mono,
                 fontSize: 10,
                 fontWeight: 600,
-                letterSpacing: "0.20em",
-                textTransform: "uppercase",
                 color: sv.red,
                 background: "transparent",
                 border: `1px solid ${sv.red}55`,
-                cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
@@ -424,9 +445,7 @@ function MainDashboard() {
                 marginBottom: 10,
               }}
             >
-              {filter === "active" && "› No active operations"}
-              {filter === "completed" && "› No completed archives"}
-              {filter === "all" && "› No discs detected"}
+              {emptyHeading[filter]}
             </h2>
             <p
               style={{
@@ -439,9 +458,7 @@ function MainDashboard() {
                 lineHeight: 1.6,
               }}
             >
-              {filter === "active" && "All operations complete. Insert a disc to start a new job."}
-              {filter === "completed" && "No archived media yet. Completed jobs will appear here."}
-              {filter === "all" && "Insert a disc into your optical drive to begin archiving."}
+              {emptyBody[filter]}
             </p>
           </motion.div>
         ) : viewMode === "compact" ? (
@@ -726,11 +743,7 @@ function CompactList({
                   textAlign: "right",
                 }}
               >
-                {disc.etaSeconds
-                  ? disc.etaSeconds < 60
-                    ? "< 1m"
-                    : `${Math.ceil(disc.etaSeconds / 60)}m`
-                  : "—"}
+                {formatEtaCompact(disc.etaSeconds)}
               </span>
               {/* Actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -789,17 +802,14 @@ function CompactRowButton({
     <button
       onClick={onClick}
       style={{
+        ...svButtonBase,
         height: 22,
         padding: "0 8px",
         background: sv.bg0,
         border: `1px solid ${color}55`,
         color,
-        fontFamily: sv.mono,
         fontSize: 9,
         fontWeight: 700,
-        letterSpacing: "0.20em",
-        textTransform: "uppercase",
-        cursor: "pointer",
         transition: "border-color 120ms, box-shadow 120ms",
       }}
       onMouseEnter={(e) => {
