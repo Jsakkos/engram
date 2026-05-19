@@ -432,6 +432,53 @@ def fetch_popular_shows(page: int = 1) -> list[dict]:
         return []
 
 
+def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
+    """
+    Fetch TV shows ranked by total accumulated TMDB votes (descending).
+
+    Unlike ``/tv/popular`` (a rolling, recency-biased activity score), this
+    ranks by lifetime ``vote_count`` — a stable proxy for broadly-watched,
+    established shows. Used to seed the precomputed subtitle cache so the
+    selection is representative and reproducible across builds.
+
+    Args:
+        page (int): Page number (default: 1)
+
+    Returns:
+        list[dict]: List of show objects (id, name, etc.)
+    """
+    from app.services.config_service import get_config_sync
+
+    config = get_config_sync()
+    if not config.tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return []
+
+    api_key = config.tmdb_api_key.strip()
+    url = "https://api.themoviedb.org/3/discover/tv"
+
+    headers = {}
+    params = {"language": "en-US", "page": page, "sort_by": "vote_count.desc"}
+
+    if len(api_key) > 40:
+        headers["Authorization"] = f"Bearer {api_key}"
+    else:
+        params["api_key"] = api_key
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            logger.error(f"HTTP Error {response.status_code}: {response.text}")
+            raise e
+
+        return response.json().get("results", [])
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch shows by vote count: {e}")
+        return []
+
+
 @retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_season_details(show_id: str, season_number: int) -> int:
     """
