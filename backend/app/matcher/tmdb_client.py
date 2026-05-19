@@ -267,8 +267,13 @@ def fetch_show_id(show_name: str) -> str | None:
 @retry_network_operation(max_retries=3, base_delay=1.0)
 def _fetch_show_id_cached(show_name: str) -> str | None:
     """Cached implementation. Caller (the ``fetch_show_id`` wrapper)
-    guarantees an API key is present; the defensive ``if not api_key``
-    branch below is unreachable in normal flow.
+    guarantees an API key is present.
+
+    The api_key check below ``raise``s rather than returning ``None`` so a
+    misuse (e.g., a test calling the cached function directly without
+    mocking the config) fails loudly instead of caching ``None`` keyed on
+    the show name — which is exactly the failure mode the inner/outer
+    split was designed to prevent.
     """
     # Try to get API key from Engram settings first, then fallback to matcher config
     from app.services.config_service import get_config_sync
@@ -277,8 +282,10 @@ def _fetch_show_id_cached(show_name: str) -> str | None:
     api_key = config.tmdb_api_key
 
     if not api_key:
-        logger.warning("TMDB API key not configured in Engram settings")
-        return None
+        raise RuntimeError(
+            "_fetch_show_id_cached called without a TMDB API key; "
+            "use the public fetch_show_id wrapper which short-circuits the no-key path"
+        )
 
     logger.debug(
         f"Searching TMDB for '{show_name}' using API key ending in ...{api_key[-4:] if len(api_key) > 4 else '****'}"
@@ -392,16 +399,25 @@ def fetch_show_details(show_id: int) -> dict | None:
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
 @retry_network_operation(max_retries=3, base_delay=1.0)
 def _fetch_show_details_cached(show_id: int) -> dict | None:
-    """Cached implementation. Caller guarantees the API key is present;
-    the defensive branch below is unreachable in normal flow."""
+    """Cached implementation. Caller guarantees the API key is present.
+
+    Returns a shallow copy of the TMDB response so a caller who mutates
+    the returned dict (e.g., ``details["name"] = "override"``) doesn't
+    silently corrupt the cached entry for every subsequent caller in this
+    process. The shallow copy is cheap (TMDB show payloads are flat dicts
+    with strings/numbers); nested mutation of ``seasons``/``genres`` lists
+    can still poison the cache, but that's not a current usage pattern.
+    """
     from app.services.config_service import get_config_sync
 
     config = get_config_sync()
     api_key = config.tmdb_api_key
 
     if not api_key:
-        logger.warning("TMDB API key not configured")
-        return None
+        raise RuntimeError(
+            "_fetch_show_details_cached called without a TMDB API key; "
+            "use the public fetch_show_details wrapper"
+        )
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}"
 
@@ -416,9 +432,9 @@ def _fetch_show_details_cached(show_id: int) -> dict | None:
     try:
         response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
-        return response.json()
+        return {**response.json()}
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch show details for ID {show_id}: {e}")
+        logger.error(f"Failed to fetch show details for ID {show_id}: {e}", exc_info=True)
         return None
 
 
@@ -539,8 +555,10 @@ def _fetch_season_details_cached(show_id: str, season_number: int) -> int:
     tmdb_api_key = config.tmdb_api_key
 
     if not tmdb_api_key:
-        logger.warning("TMDB API key not configured")
-        return 0
+        raise RuntimeError(
+            "_fetch_season_details_cached called without a TMDB API key; "
+            "use the public fetch_season_details wrapper"
+        )
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
 

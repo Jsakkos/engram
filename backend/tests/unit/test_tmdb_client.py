@@ -107,6 +107,19 @@ class TestLruCache:
             clear_caches()
             assert _fetch_show_id_cached.cache_info().currsize == 0
 
+    def test_cached_inner_raises_when_called_without_key(self):
+        """Misuse guard: calling ``_fetch_show_id_cached`` directly (bypassing
+        the public wrapper) with no API key must raise loudly, not cache
+        ``None``. This is what the inner/outer split is for — silently
+        caching None here is the exact failure mode we're guarding against.
+        """
+        with patch("app.services.config_service.get_config_sync") as cfg:
+            cfg.return_value.tmdb_api_key = ""
+            with pytest.raises(RuntimeError, match="without a TMDB API key"):
+                _fetch_show_id_cached("Show")
+        # Confirm the exception didn't leak into the cache.
+        assert _fetch_show_id_cached.cache_info().currsize == 0
+
 
 @pytest.mark.unit
 class TestFetchShowIdVariations:

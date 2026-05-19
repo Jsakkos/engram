@@ -270,11 +270,20 @@ def download_subtitles(show_name: str, season: int) -> dict:
             try:
                 import shutil
 
-                response = _os_client.search(
+                # Route search/download through os_api_call so a transient
+                # 429 anywhere in the bulk-download path retries with the
+                # same backoff used by subtitle_provider.py — without this
+                # wrapping, the 12+ hour build script would fall through to
+                # the legacy scrapers on the very first rate-limit response
+                # at any of ~1800 season call sites.
+                response = os_api_call(
+                    _os_client.search,
                     parent_tmdb_id=show_id,
                     season_number=season,
                     languages="en",
                     type="episode",
+                    max_attempts=4,
+                    base_delay=1.0,
                 )
                 seen_api_eps: set[int] = set()
                 for subtitle in response.data or []:
@@ -284,7 +293,17 @@ def download_subtitles(show_name: str, season: int) -> dict:
                         episode_code_api = f"S{season:02d}E{ep_num:02d}"
                         srt_target = series_cache_dir / f"{safe_show_name} - {episode_code_api}.srt"
                         if not srt_target.exists():
-                            srt_file = _os_client.download_and_save(subtitle)
+                            # Shorter cadence on download than on search — a
+                            # 429 on download usually means the daily quota
+                            # is exhausted (not the per-minute limit), and
+                            # retrying same-day for 90s+ doesn't help; we'd
+                            # rather fall back to scrapers and move on.
+                            srt_file = os_api_call(
+                                _os_client.download_and_save,
+                                subtitle,
+                                max_attempts=2,
+                                base_delay=5.0,
+                            )
                             if srt_file and is_valid_srt_file(Path(srt_file)):
                                 shutil.move(str(srt_file), srt_target)
                                 api_srt_map[ep_num] = srt_target
@@ -301,7 +320,10 @@ def download_subtitles(show_name: str, season: int) -> dict:
                 # download_and_save() calls above.
                 _snapshot_os_quota(_os_client)
             except Exception as e:
-                logger.warning(f"OpenSubtitles API failed ({e}), falling back to scrapers")
+                logger.warning(
+                    f"OpenSubtitles API failed ({e}), falling back to scrapers",
+                    exc_info=True,
+                )
 
     # Initialize scraper clients (used as fallback when API is unavailable or misses episodes)
     addic7ed_client = Addic7edClient()
