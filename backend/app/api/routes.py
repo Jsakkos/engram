@@ -1721,8 +1721,11 @@ async def fetch_cover(
             if resp.is_redirect:
                 raise HTTPException(status_code=502, detail="Image server returned a redirect")
 
+            # isdigit() guards a malformed Content-Length header — a
+            # non-numeric value would otherwise raise ValueError (a 500). The
+            # actual-size check below still catches oversized bodies.
             content_length = resp.headers.get("content-length")
-            if content_length and int(content_length) > max_size:
+            if content_length and content_length.isdigit() and int(content_length) > max_size:
                 raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")
             if len(resp.content) > max_size:
                 raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")

@@ -35,8 +35,8 @@ def is_allowed_image_url(url: str) -> bool:
     """Return True if ``url`` is safe to fetch as a cover image.
 
     Guards the ``fetch_cover`` SSRF sink. Requires a parseable URL, an
-    ``http``/``https`` scheme, a present host, no IP-literal host in a
-    private/reserved range, and a host on the image-source allowlist.
+    ``http``/``https`` scheme, a present host, no bare IP-literal host, and
+    a host on the image-source allowlist.
     """
     try:
         parsed = urlparse(url)
@@ -50,19 +50,14 @@ def is_allowed_image_url(url: str) -> bool:
     if not host:
         return False
 
-    # Reject IP-literal hosts that point at private/reserved address space.
+    # Reject every IP-literal host — allowlisted CDNs are reached by DNS name,
+    # so a bare IP is never legitimate and rejecting all of them avoids any
+    # private/internal target slipping through.
     try:
-        ip = ipaddress.ip_address(host)
+        ipaddress.ip_address(host)
     except ValueError:
-        ip = None
-    if ip is not None and (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    ):
+        pass  # not an IP literal — a hostname, continue to the allowlist
+    else:
         return False
 
     # Allowlist by dot-delimited host suffix (a bare endswith would let an
