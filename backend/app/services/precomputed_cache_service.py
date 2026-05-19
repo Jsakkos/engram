@@ -136,7 +136,9 @@ async def _download_and_extract(
             shutil.rmtree(staging_dir, ignore_errors=True)
         staging_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(tarball_path, "r:gz") as tar:
-            _safe_extractall(tar, staging_dir)
+            # filter="data" (Python 3.11.4+) rejects members that escape the
+            # destination -- path traversal, absolute paths, unsafe links.
+            tar.extractall(staging_dir, filter="data")
 
         extracted = staging_dir / "precomputed"
         if not (extracted / _MANIFEST_NAME).exists():
@@ -152,13 +154,3 @@ async def _download_and_extract(
     finally:
         tarball_path.unlink(missing_ok=True)
         shutil.rmtree(staging_dir, ignore_errors=True)
-
-
-def _safe_extractall(tar: tarfile.TarFile, dest: Path) -> None:
-    """Extract a tar archive, rejecting members that escape the destination."""
-    dest = dest.resolve()
-    for member in tar.getmembers():
-        target = (dest / member.name).resolve()
-        if not str(target).startswith(str(dest)):
-            raise tarfile.TarError(f"unsafe path in archive: {member.name}")
-    tar.extractall(dest)
