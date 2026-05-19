@@ -191,6 +191,12 @@ def main() -> int:
     parser.add_argument("--keep-srt", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
+    if args.keep_srt:
+        logger.warning(
+            "--keep-srt is deprecated and has no effect; SRTs are kept by default. "
+            "Pass --clean-srt to delete them after the build."
+        )
+
     _ensure_db_schema()
     _bootstrap_config_from_env()
 
