@@ -454,3 +454,26 @@ class TestQuotaSnapshot:
             client.user_downloads_remaining = 88
             testing_service._snapshot_os_quota(client)
             assert log.info.call_count == 2
+
+    def test_snapshot_logs_on_quota_refill_at_midnight(self):
+        """A 12-hour build crossing midnight would otherwise silence quota
+        logs forever: when daily quota resets (e.g. 50 -> 1000), the
+        "drop" check sees a negative diff and never fires. The refill
+        branch keeps visibility live across the boundary."""
+        client = Mock()
+        client.user_downloads_remaining = 50
+
+        with patch("app.matcher.testing_service.logger") as log:
+            testing_service._snapshot_os_quota(client)  # first read → logs
+            assert log.info.call_count == 1
+
+            # Midnight reset: quota jumps from 50 to 1000.
+            client.user_downloads_remaining = 1000
+            testing_service._snapshot_os_quota(client)
+            assert log.info.call_count == 2, "refill must trigger a log"
+
+            # And the next ~50-drop after the refill should still log
+            # normally against the new baseline.
+            client.user_downloads_remaining = 988
+            testing_service._snapshot_os_quota(client)
+            assert log.info.call_count == 3, "post-refill drops still log"

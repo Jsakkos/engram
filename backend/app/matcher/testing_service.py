@@ -120,12 +120,18 @@ def _snapshot_os_quota(client) -> None:
             return
         remaining_int = int(remaining)
         _OS.last_quota = {"remaining": remaining_int, "as_of": time.monotonic()}
-        # Log on first read and whenever quota has dropped by >= 10 from the
-        # *last logged value* (not the previous snapshot). Comparing against
-        # the previous snapshot would silently swallow slow drips: dropping
-        # 5-per-season for 20 seasons would never cross the threshold from
-        # snapshot to snapshot.
-        if _OS.last_logged_remaining is None or _OS.last_logged_remaining - remaining_int >= 10:
+        # Log on first read, on a drop of >= 10 from the last LOGGED value
+        # (not the previous snapshot — slow drips of 5-per-season would
+        # never cross a snapshot-to-snapshot threshold), AND on any refill.
+        # The refill branch matters at midnight: when the daily quota
+        # resets (e.g. 50 -> 1000), the "drop" check sees 50 - 1000 = -950,
+        # never >= 10, so without it the log line would go silent for the
+        # rest of the run even though the counter is healthy.
+        if (
+            _OS.last_logged_remaining is None
+            or _OS.last_logged_remaining - remaining_int >= 10
+            or remaining_int > _OS.last_logged_remaining
+        ):
             logger.info(f"OS API quota: {remaining_int} downloads remaining today")
             _OS.last_logged_remaining = remaining_int
     except Exception as exc:

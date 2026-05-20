@@ -17,11 +17,15 @@ from loguru import logger
 # a single run. The cache key is (function, *args), and all three wrapped
 # functions take only hashable primitives (str, int).
 #
-# Caveat: this cache persists for the lifetime of the Python process. If the
-# TMDB API key is rotated mid-process, callers must explicitly invoke the
-# corresponding .cache_clear(). Tests that mutate config between assertions
-# must do the same. In practice, the FastAPI process restarts on config
-# changes and standalone scripts exit when done — both safe.
+# Cache lifetime: this cache persists for the lifetime of the Python process.
+# The FastAPI server does NOT restart on config changes (PUT /api/config just
+# writes the DB row), so a key rotation via ConfigWizard would otherwise leave
+# stale entries — successful lookups made with the now-revoked key — in the
+# cache until process restart. ``config_service.update_config`` calls
+# ``clear_caches()`` whenever ``tmdb_api_key`` is in the updated fields to
+# handle this; tests that mutate config between assertions should do the
+# same (the ``_clear_tmdb_caches`` autouse fixture in test_tmdb_client.py
+# is the canonical pattern).
 _TMDB_LRU_MAXSIZE = 4096
 
 F = TypeVar("F", bound=Callable[..., Any])
