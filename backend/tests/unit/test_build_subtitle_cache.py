@@ -10,8 +10,10 @@ produces and what the consumer expects (manifest schema, tarball layout,
 vectorizer config identity).
 """
 
+import hashlib
 import importlib.util
 import json
+import shutil
 import sys
 import tarfile
 from pathlib import Path
@@ -19,6 +21,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+
+import app.services.config_service as cfg_svc
+from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
+from app.matcher.vectorizer_config import (
+    CACHE_FORMAT_VERSION,
+    HASHING_N_FEATURES,
+    vectorizer_config_hash,
+)
 
 
 def _load_build_module():
@@ -204,8 +214,6 @@ class TestMainRoundTrip:
     """
 
     def test_main_produces_loadable_tarball(self, bsc, tmp_path, monkeypatch):
-        from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
-
         cache_dir = tmp_path / "cache"
         data_dir = cache_dir / "data" / _SHOW / "S01"
         srt_paths: dict[str, Path] = {}
@@ -251,8 +259,6 @@ class TestMainRoundTrip:
         monkeypatch.setattr(bsc, "download_subtitles", fake_download)
         # main() does `from app.services.config_service import get_config_sync`
         # at call time, so patching the source module is what main() sees.
-        import app.services.config_service as cfg_svc
-
         monkeypatch.setattr(cfg_svc, "get_config_sync", fake_config)
 
         output_tarball = tmp_path / "engram-subtitle-cache.tar.gz"
@@ -273,7 +279,7 @@ class TestMainRoundTrip:
         )
 
         exit_code = bsc.main()
-        assert exit_code == 0 or exit_code is None
+        assert exit_code == 0
 
         # Tarball + sibling release manifest both exist.
         assert output_tarball.exists()
@@ -281,11 +287,6 @@ class TestMainRoundTrip:
         assert release_manifest_path.exists()
 
         release_manifest = json.loads(release_manifest_path.read_text())
-        from app.matcher.vectorizer_config import (
-            CACHE_FORMAT_VERSION,
-            HASHING_N_FEATURES,
-            vectorizer_config_hash,
-        )
 
         # Manifest fields match the constants the consumer reads. If anyone
         # bumps CACHE_FORMAT_VERSION or HASHING_N_FEATURES without rebuilding
@@ -298,8 +299,6 @@ class TestMainRoundTrip:
         assert release_manifest["shows"][_SHOW]["seasons"] == [1]
 
         # sha256 in the release manifest matches the actual file.
-        import hashlib
-
         actual_sha = hashlib.sha256(output_tarball.read_bytes()).hexdigest()
         assert release_manifest["tarball_sha256"] == actual_sha
 
@@ -314,8 +313,6 @@ class TestMainRoundTrip:
         assert (precomputed / "manifest.json").exists()
 
         # Re-home the cache so EpisodeMatcher sees it under the expected layout.
-        import shutil
-
         install_dir = tmp_path / "installed"
         install_dir.mkdir()
         shutil.copytree(precomputed, install_dir / "precomputed")
