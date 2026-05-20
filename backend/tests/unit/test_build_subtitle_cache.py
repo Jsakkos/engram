@@ -304,6 +304,13 @@ class TestMainRoundTrip:
         shutil.copytree(precomputed, install_dir / "precomputed")
 
         matcher = EpisodeMatcher(cache_dir=install_dir, show_name=_SHOW)
+        # Calling the private _load_precomputed_season directly gives a
+        # specific failure message when a manifest/format mismatch causes the
+        # loader to short-circuit to None — distinct from "the matcher ran
+        # but matched the wrong episode" further down. This is also the
+        # established test seam: test_precomputed_cache_service.py and
+        # test_precomputed_cache.py exercise the loader the same way at
+        # 8 other sites.
         loaded = matcher._load_precomputed_season(1)
         assert loaded is not None, (
             "matcher refused to load the cache main() just produced — "
