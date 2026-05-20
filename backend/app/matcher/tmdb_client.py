@@ -51,9 +51,14 @@ def retry_network_operation(max_retries: int = 3, base_delay: float = 1.0) -> Ca
                         )
                         raise e
 
+                    # Intentionally NO ``exc_info=True`` here — emitting a
+                    # full stack trace on every retry attempt produces N
+                    # tracebacks per failure, which buries the rest of the
+                    # log on a 300-show build run. The terminal error log
+                    # above keeps the traceback for the failure that
+                    # actually sticks.
                     logger.warning(
-                        f"Network retry {attempt + 1}/{max_retries + 1} for {func.__name__}: {e}",
-                        exc_info=True,
+                        f"Network retry {attempt + 1}/{max_retries + 1} for {func.__name__}: {e}"
                     )
                     time.sleep(delay)
                     delay = min(delay * 2, 30)  # Cap at 30 seconds
@@ -270,7 +275,14 @@ def fetch_show_id(show_name: str) -> str | None:
         return None
     try:
         return _fetch_show_id_cached(show_name)
-    except requests.exceptions.RequestException as e:
+    # Match retry_network_operation's retry set exactly — it catches
+    # all three of (RequestException, ConnectionError, TimeoutError),
+    # the last two being Python builtins. After retries exhaust, the
+    # ORIGINAL exception is re-raised unchanged, so the catch here
+    # must cover the same set or a builtin ConnectionError (e.g., a
+    # socket-level DNS failure that requests didn't wrap) escapes
+    # the contract.
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to fetch show ID for '{show_name}': {e}", exc_info=True)
         return None
 
@@ -427,7 +439,9 @@ def fetch_show_details(show_id: int) -> dict | None:
         return None
     try:
         cached = _fetch_show_details_cached(show_id)
-    except requests.exceptions.RequestException as e:
+    # See fetch_show_id wrapper for why the catch widens to match the
+    # retry decorator's tuple (RequestException + builtin Connection/Timeout).
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to fetch show details for ID {show_id}: {e}", exc_info=True)
         return None
     return copy.deepcopy(cached) if cached is not None else None
@@ -582,7 +596,9 @@ def fetch_season_details(show_id: str, season_number: int) -> int:
         return 0
     try:
         return _fetch_season_details_cached(show_id, season_number)
-    except requests.exceptions.RequestException as e:
+    # See fetch_show_id wrapper for why the catch widens to match the
+    # retry decorator's tuple (RequestException + builtin Connection/Timeout).
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
         logger.error(
             f"Failed to fetch season details for Season {season_number}: {e}",
             exc_info=True,

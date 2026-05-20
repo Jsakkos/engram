@@ -5,6 +5,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from app import __version__
 from app.matcher.config_manager import get_config_manager
 from app.matcher.models import EpisodeInfo, SubtitleFile
 from app.matcher.os_api_retry import os_api_call
@@ -14,6 +15,12 @@ from app.matcher.subtitle_utils import sanitize_filename
 # decorator that was only used here, with hardcoded parameters that differed
 # from the inline login retry in ``testing_service.py``. Both call sites now
 # route through ``os_api_retry.os_api_call`` for consistent 429 handling.
+
+# OpenSubtitles best-practices require the User-Agent be in the form
+# "AppName vX.Y.Z". Mirrors testing_service._USER_AGENT — kept separate
+# only to avoid a cross-module import dependency between two matcher
+# files that share a parent module.
+_USER_AGENT = f"Engram v{__version__}"
 
 
 def parse_season_episode(filename: str) -> EpisodeInfo | None:
@@ -172,15 +179,11 @@ class OpenSubtitlesProvider(SubtitleProvider):
                 self.client = None
                 return
 
-            # OS best-practices: User-Agent must be "AppName vX.Y.Z". The prior
-            # "Oz 1.0.0" placeholder was a leftover from upstream and silently
-            # misidentified the app. Override via config only if a deployment
-            # has registered a custom UA with OpenSubtitles.
-            from app import __version__
-
-            user_agent = (
-                getattr(self.config, "open_subtitles_user_agent", None) or f"Engram v{__version__}"
-            )
+            # OS best-practices: User-Agent must be "AppName vX.Y.Z". The
+            # prior "Oz 1.0.0" placeholder was a leftover from upstream and
+            # silently misidentified the app. Override via config only if a
+            # deployment has registered a custom UA with OpenSubtitles.
+            user_agent = getattr(self.config, "open_subtitles_user_agent", None) or _USER_AGENT
             self.client = OpenSubtitlesClient(user_agent, api_key)
             username = getattr(self.config, "open_subtitles_username", None)
             password = getattr(self.config, "open_subtitles_password", None)

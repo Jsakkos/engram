@@ -156,7 +156,13 @@ def os_api_call(
             )
             time.sleep(sleep_for)
             if retry_after is None:
-                delay *= 2
+                # Cap the exponential growth using the same ceiling the
+                # Retry-After path uses, so both branches share a single
+                # documented maximum. Current call sites (max_attempts <= 6)
+                # never approach the cap, but a future caller with a larger
+                # max_attempts shouldn't be able to schedule multi-hour
+                # sleeps by accident.
+                delay = min(delay * 2, _RETRY_AFTER_CAP_SECONDS)
 
     # Final attempt: succeed or raise. No sleep follows; no fall-through.
     return callable_(*args, **kwargs)
