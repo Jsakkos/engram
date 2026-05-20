@@ -601,16 +601,15 @@ def _fetch_shows_by_vote_count_uncached(page: int) -> list[dict]:
     api_key = get_config_sync().tmdb_api_key.strip()
     url = "https://api.themoviedb.org/3/discover/tv"
 
-    headers = {}
-    params: dict[str, Any] = {
-        "language": "en-US",
-        "page": page,
-        "sort_by": "vote_count.desc",
-    }
-    if len(api_key) > 40:
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        params["api_key"] = api_key
+    # Route through the shared ``_tmdb_auth`` helper so the v3-vs-v4
+    # detection lives in exactly one place (using ``_V4_TOKEN_MIN_LEN``
+    # rather than a bare literal). The previous version inlined the
+    # length comparison and was a drift point if the threshold ever
+    # moves — the rest of the TMDB call sites already use this helper.
+    headers, params = _tmdb_auth(api_key)
+    params["language"] = "en-US"
+    params["page"] = page
+    params["sort_by"] = "vote_count.desc"
 
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
