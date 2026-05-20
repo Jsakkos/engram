@@ -1,0 +1,148 @@
+name: Subtitle Cache Smoke
+
+# Catches the case where a `gh release upload --clobber` to subtitle-cache-latest
+# (manual or via Build Subtitle Cache) pushed a tarball that's corrupt, malformed,
+# or out of sync with the format version current main expects. The signal is
+# loud and fast: a daily failure email instead of waiting for end-user reports.
+#
+# This is the consumer-side counterpart to build-subtitle-cache.yml — that one
+# produces the artifact, this one verifies it survives the round trip.
+on:
+  schedule:
+    - cron: "0 13 * * *"  # 13:00 UTC daily (after typical evening uploads in US tz)
+  workflow_dispatch:
+  # Also run when the cache plumbing itself changes — catches drift in the
+  # download/load path without waiting for the next daily run.
+  push:
+    branches: [main]
+    paths:
+      - "backend/app/services/precomputed_cache_service.py"
+      - "backend/app/matcher/episode_identification.py"
+      - "backend/app/matcher/vectorizer_config.py"
+      - "backend/scripts/build_subtitle_cache.py"
+      - ".github/workflows/subtitle-cache-smoke.yml"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  validate-live-release:
+    name: Validate live subtitle-cache-latest release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        working-directory: backend
+        run: uv sync --no-install-project
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/cache-smoke
+          gh release download subtitle-cache-latest \
+            --repo "${{ github.repository }}" \
+            --pattern "engram-subtitle-cache.tar.gz" \
+            --pattern "manifest.json" \
+            --dir /tmp/cache-smoke
+
+      # Validate everything that can be checked without running the actual
+      # download service: manifest JSON shape, sha256 matches, tarball is
+      # well-formed, and the format-version + vectorizer-config-hash in the
+      # release manifest match the constants compiled into current main.
+      - name: Validate manifest and tarball shape
+        working-directory: backend
+        run: |
+          uv run python -c "
+          import hashlib
+          import json
+          import sys
+          import tarfile
+          from pathlib import Path
+          from app.matcher.vectorizer_config import (
+              CACHE_FORMAT_VERSION,
+              HASHING_N_FEATURES,
+              vectorizer_config_hash,
+          )
+
+          smoke = Path('/tmp/cache-smoke')
+          tarball = smoke / 'engram-subtitle-cache.tar.gz'
+          manifest = json.loads((smoke / 'manifest.json').read_text())
+
+          failures = []
+
+          # 1. sha256 in release manifest matches actual file bytes.
+          actual_sha = hashlib.sha256(tarball.read_bytes()).hexdigest()
+          if manifest.get('tarball_sha256') != actual_sha:
+              failures.append(
+                  f'tarball_sha256 mismatch: manifest={manifest.get(\"tarball_sha256\")!r}, '
+                  f'actual={actual_sha!r}'
+              )
+
+          # 2. Format version matches what current main can load. A mismatch
+          # means new backend installs from this release will silently fall
+          # back to scraping for cached shows.
+          if manifest.get('cache_format_version') != CACHE_FORMAT_VERSION:
+              failures.append(
+                  f'cache_format_version mismatch: manifest={manifest.get(\"cache_format_version\")!r}, '
+                  f'current main={CACHE_FORMAT_VERSION!r}'
+              )
+
+          # 3. Same check for the vectorizer config hash — if these differ,
+          # matching against cached vectors produces wrong results.
+          if manifest.get('vectorizer_config_hash') != vectorizer_config_hash():
+              failures.append(
+                  f'vectorizer_config_hash mismatch: manifest={manifest.get(\"vectorizer_config_hash\")!r}, '
+                  f'current main={vectorizer_config_hash()!r}'
+              )
+
+          # 4. n_features matches HASHING_N_FEATURES.
+          if manifest.get('n_features') != HASHING_N_FEATURES:
+              failures.append(
+                  f'n_features mismatch: manifest={manifest.get(\"n_features\")!r}, '
+                  f'current main={HASHING_N_FEATURES!r}'
+              )
+
+          # 5. Tarball untars cleanly and contains the expected shape.
+          with tarfile.open(tarball, 'r:gz') as tar:
+              members = tar.getnames()
+          required_top_level = {'precomputed', 'precomputed/idf.npy', 'precomputed/manifest.json'}
+          missing = required_top_level - set(members)
+          if missing:
+              failures.append(f'tarball missing required entries: {sorted(missing)}')
+
+          # 6. shows dict is non-empty (catches the smoke-build-uploaded-by-mistake case).
+          n_shows = len(manifest.get('shows', {}))
+          if n_shows == 0:
+              failures.append('shows dict in manifest is empty — cache is unusable')
+
+          print(f'cache_format_version: {manifest.get(\"cache_format_version\")!r}')
+          print(f'vectorizer_config_hash: {manifest.get(\"vectorizer_config_hash\")!r}')
+          print(f'n_features: {manifest.get(\"n_features\")!r}')
+          print(f'n_shows: {n_shows}')
+          print(f'tarball size: {tarball.stat().st_size:,} bytes')
+          print(f'tarball sha256: {actual_sha}')
+
+          if failures:
+              print('VALIDATION FAILURES:')
+              for f in failures:
+                  print(f'  - {f}')
+              sys.exit(1)
+
+          print('OK — live release is consistent with current main.')
+          "
