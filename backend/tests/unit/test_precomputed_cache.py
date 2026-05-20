@@ -34,6 +34,17 @@ def _build_refs(docs=_DOCS):
     return apply_tfidf(counts, idf), idf
 
 
+def _build_counts(docs=_DOCS):
+    """Return (uint16 counts, idf) — the on-disk shape for cache v2."""
+    counts = build_hashing_vectorizer().transform(docs)
+    idf = compute_idf(counts)
+    counts_u16 = sparse.csr_matrix(
+        (counts.data.astype(np.uint16), counts.indices, counts.indptr),
+        shape=counts.shape,
+    )
+    return counts_u16, idf
+
+
 class TestVectorizerConfig:
     def test_config_hash_is_stable(self):
         assert vectorizer_config_hash() == vectorizer_config_hash()
@@ -78,9 +89,9 @@ class TestEpisodeMatcherCacheLoader:
         show_dir = precomputed / show  # sanitize_filename("Test Show") == "Test Show"
         show_dir.mkdir(parents=True)
 
-        ref, idf = _build_refs()
+        counts, idf = _build_counts()
         np.save(precomputed / "idf.npy", idf)
-        sparse.save_npz(show_dir / "S01.npz", ref)
+        sparse.save_npz(show_dir / "S01.npz", counts)
         (show_dir / "S01.index.json").write_text(json.dumps(["S01E01", "S01E02", "S01E03"]))
 
         manifest = {
@@ -151,12 +162,14 @@ class TestPrecomputedCacheService:
         from app.services import precomputed_cache_service as svc
 
         # The remote manifest reports an alien format version. The local
-        # code only understands `CACHE_FORMAT_VERSION` (currently 2).
+        # code only understands `CACHE_FORMAT_VERSION` (a string); use a value
+        # we know it will never match. Earlier this concatenated `+ 100`,
+        # which TypeErrored on a string and was silently swallowed by the
+        # safety wrapper — the test passed without actually exercising the
+        # format-version branch.
         async def fake_manifest():
-            from app.matcher.vectorizer_config import CACHE_FORMAT_VERSION
-
             return {
-                "cache_format_version": CACHE_FORMAT_VERSION + 100,
+                "cache_format_version": "999",
                 "content_version": "2099-01-01",
                 "shows": {},
             }

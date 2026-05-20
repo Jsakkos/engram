@@ -56,7 +56,6 @@ from app.matcher.tmdb_client import (
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
-    apply_tfidf,
     build_hashing_vectorizer,
     compute_idf,
     vectorizer_config_hash,
@@ -423,12 +422,29 @@ def main() -> int:
     np.save(precomputed_dir / "idf.npy", idf)
     logger.info(f"Global IDF fit over {all_counts.shape[0]} episodes")
 
-    # --- Write per-(show, season) L2-normalized TF-IDF matrices ----------------
+    # --- Write per-(show, season) raw hashed-count matrices --------------------
+    # Cache v2 stores uint16 counts on disk rather than the L2-normalized
+    # float64 TF-IDF rows v1 used. The loader applies apply_tfidf(counts, idf)
+    # at startup; the matcher sees the same matrix it always did. Integer
+    # counts cast to uint16 are ~4x smaller in nnz bytes, and DEFLATE in
+    # .npz collapses the long runs of 1s much better than it ever could on
+    # floats — net ~57% reduction on the published tarball.
+    u16_max = np.iinfo(np.uint16).max
     for show_name, season, codes, counts in blocks:
         show_dir = precomputed_dir / sanitize_filename(show_name)
         show_dir.mkdir(parents=True, exist_ok=True)
-        tfidf = apply_tfidf(counts, idf)
-        sparse.save_npz(show_dir / f"S{season:02d}.npz", tfidf)
+        # HashingVectorizer emits float64 counts even with alternate_sign=False;
+        # cast to uint16 (clipped defensively — real per-episode token counts
+        # are 1-10, but a pathological transcript shouldn't blow up the build).
+        counts_u16 = sparse.csr_matrix(
+            (
+                np.minimum(counts.data, u16_max).astype(np.uint16),
+                counts.indices,
+                counts.indptr,
+            ),
+            shape=counts.shape,
+        )
+        sparse.save_npz(show_dir / f"S{season:02d}.npz", counts_u16)
         with open(show_dir / f"S{season:02d}.index.json", "w", encoding="utf-8") as fh:
             json.dump(codes, fh)
 
