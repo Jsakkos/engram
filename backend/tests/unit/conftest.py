@@ -25,7 +25,14 @@ def _load_script_module(name: str) -> object:
     once per loader call site.
     """
     backend_root = Path(__file__).parent.parent.parent
-    spec = importlib.util.spec_from_file_location(name, backend_root / "scripts" / f"{name}.py")
+    script_path = backend_root / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, script_path)
+    # spec_from_file_location can return None for unresolvable paths and
+    # ModuleSpec.loader is typed Optional — guard both so a missing or
+    # renamed script surfaces as a clean ImportError rather than an
+    # AttributeError on the next line.
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load script module {name!r}: no loader for {script_path}")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
     spec.loader.exec_module(mod)
