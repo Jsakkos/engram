@@ -26,7 +26,11 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Idempotent — repeated importlib loads (e.g. one fixture per test file) would
+# otherwise accumulate duplicate entries in sys.path on every exec_module call.
+_backend_dir = str(Path(__file__).parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
 
 import numpy as np
 from loguru import logger

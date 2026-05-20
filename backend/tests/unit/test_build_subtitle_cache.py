@@ -326,6 +326,11 @@ class TestMainRoundTrip:
         # Unpack and load through the real matcher — the round-trip assertion.
         unpack_dir = tmp_path / "unpacked"
         with tarfile.open(output_tarball, "r:gz") as tar:
+            # filter= requires Python >= 3.11.4 (PEP 706 backport). CI's
+            # python-version: "3.11" resolves to the latest patch, and the
+            # project targets >= 3.11 — a local env pinned below 3.11.4
+            # would TypeError here. Acceptable tradeoff for CVE-2007-4559
+            # mitigation.
             tar.extractall(unpack_dir, filter="data")
         precomputed = unpack_dir / "precomputed"
         assert (precomputed / "idf.npy").exists()

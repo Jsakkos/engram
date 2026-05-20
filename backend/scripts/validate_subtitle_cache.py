@@ -27,7 +27,11 @@ import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Idempotent — repeated importlib loads (e.g. one fixture per test file) would
+# otherwise accumulate duplicate entries in sys.path on every exec_module call.
+_backend_dir = str(Path(__file__).parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
 
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
@@ -116,7 +120,7 @@ def validate(assets_dir: Path) -> ValidationResult:
         failures.append(f"tarball is not a valid gzip tarball: {exc}")
         members = set()
         tarball_readable = False
-    # Skip the membership check on unreadable tarballs — `members - REQUIRED_TARBALL_ENTRIES`
+    # Skip the membership check on unreadable tarballs — `REQUIRED_TARBALL_ENTRIES - members`
     # would just echo the required set and add noise to the failure list.
     missing = REQUIRED_TARBALL_ENTRIES - members
     if missing and tarball_readable:
