@@ -5,6 +5,25 @@ from unittest.mock import Mock
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_tmdb_persistent_cache(tmp_path, monkeypatch):
+    """Redirect the on-disk TMDB cache to a tmp_path-scoped SQLite file.
+
+    Without this, every test inherits the developer's real
+    ``~/.engram/cache/tmdb_cache.sqlite`` — a populated row for "Breaking
+    Bad" can silently satisfy ``fetch_show_id`` and consume zero of the
+    ``mock_requests.side_effect`` items the test queued, leaving later
+    ``requests.get`` calls without a mock and breaking the test for
+    reasons unrelated to the change under test.
+    """
+    from app.matcher import tmdb_persistent_cache
+
+    tmdb_persistent_cache.close()
+    monkeypatch.setattr(tmdb_persistent_cache, "CACHE_DB_PATH", tmp_path / "tmdb_cache.sqlite")
+    yield
+    tmdb_persistent_cache.close()
+
+
 @pytest.fixture
 def temp_cache_dir(tmp_path):
     """Isolated cache directory for each test."""

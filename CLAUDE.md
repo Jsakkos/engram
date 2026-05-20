@@ -108,7 +108,9 @@ Integrated from standalone `mkv-episode-matcher` project. Flattened directory st
 
 - **Top-level modules**: `asr_provider.py` (speech recognition), `subtitle_provider.py` (subtitle matching), `models.py`, `config_manager.py`, `model_registry.py`, `srt_utils.py`, `tmdb_client.py`, `episode_identification.py`
 - **Core**: `core/engine.py` and `core/matcher.py` — matching engine logic
-- **Subtitle sources**: `addic7ed_client.py`, `opensubtitles_scraper.py`, `subtitle_utils.py`
+- **Subtitle sources**: `addic7ed_client.py`, `tvsubtitles_client.py`, `subtitle_utils.py`
+- **Provider scheduler**: `provider_scheduler.py` — threaded fan-out across subtitle providers
+- **Persistent caches** (`~/.engram/cache/tmdb_cache.sqlite`): `tmdb_persistent_cache.py` (TMDB metadata), `coverage_tracker.py` (per-season low-coverage skip list)
 - Uses faster-whisper/onnxruntime for ASR
 
 ### API (`backend/app/api/`)

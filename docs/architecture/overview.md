@@ -90,7 +90,9 @@ Integrated from the standalone [mkv-episode-matcher](https://github.com/Jsakkos/
 - **ASR** (`asr_provider.py`) -- Speech recognition using faster-whisper/onnxruntime.
 - **Subtitle matching** (`subtitle_provider.py`) -- Matches transcribed audio against reference subtitles.
 - **Core engine** (`core/engine.py`, `core/matcher.py`) -- Matching engine logic.
-- **Subtitle sources** -- `addic7ed_client.py`, `opensubtitles_scraper.py`, `subtitle_utils.py`.
+- **Subtitle sources** -- `addic7ed_client.py`, `tvsubtitles_client.py`, `subtitle_utils.py`.
+- **Provider scheduler** -- `provider_scheduler.py` runs each provider in a dedicated thread so rate-limit cooldowns on one provider don't block requests to another.
+- **Persistent caches** -- `tmdb_persistent_cache.py` (SQLite-backed TMDB metadata cache at `~/.engram/cache/tmdb_cache.sqlite`) and `coverage_tracker.py` (per-`(tmdb_id, season)` skip list of seasons that fell below the coverage threshold).
 
 ### API (`backend/app/api/`)
 

@@ -9,6 +9,7 @@ Provides three independent operations that can be called from CLI or API:
 import tempfile
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,55 +18,19 @@ from loguru import logger
 from app import __version__
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
-from app.matcher.opensubtitles_scraper import OpenSubtitlesClient
 from app.matcher.os_api_retry import os_api_call
+from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
-from app.matcher.subtitle_utils import sanitize_filename
+from app.matcher.subtitle_utils import is_valid_srt_file, sanitize_filename
 from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
+from app.matcher.tvsubtitles_client import TVSubtitlesClient
 
 # OpenSubtitles best-practices require the User-Agent be in the form
 # "AppName vX.Y.Z". A bare "Engram" (or worse, the upstream library default)
 # misidentifies us to OS and risks being lumped in with unidentified clients
 # for rate-limit purposes. __version__ is sourced from app/__init__.py.
 _USER_AGENT = f"Engram v{__version__}"
-
-
-def is_valid_srt_file(file_path: Path) -> bool:
-    """
-    Validate that a file is a real SRT subtitle file, not HTML or other garbage.
-
-    Checks:
-    1. File exists and is not empty
-    2. First 500 bytes don't contain HTML markers
-    3. Contains SRT timestamp format (00:00:00,000 --> 00:00:00,000)
-
-    Returns:
-        bool: True if valid SRT file, False otherwise
-    """
-    try:
-        if not file_path.exists() or file_path.stat().st_size < 50:
-            return False
-
-        # Read first 500 bytes to check format
-        with open(file_path, encoding="utf-8", errors="ignore") as f:
-            header = f.read(500).lower()
-
-        # Check for HTML markers
-        if any(marker in header for marker in ["<!doctype", "<html", "<head", "<body", "<div"]):
-            logger.warning(f"Rejecting {file_path.name}: appears to be HTML, not SRT")
-            return False
-
-        # Check for SRT timestamp format
-        if "-->" not in header:
-            logger.warning(f"Rejecting {file_path.name}: no SRT timestamp markers found")
-            return False
-
-        return True
-
-    except Exception as e:
-        logger.warning(f"Error validating {file_path}: {e}")
-        return False
 
 
 # --- Cached OpenSubtitles API client + quota state -------------------------
@@ -218,12 +183,14 @@ def _get_os_client(config) -> object | None:
 
 
 def download_subtitles(show_name: str, season: int) -> dict:
-    """Download SRT subtitle files for a show/season using both Addic7ed and OpenSubtitles.
+    """Download SRT subtitle files for a show/season.
 
     Strategy:
-    1. Try Addic7ed first (faster, direct .srt downloads)
-    2. For episodes not found on Addic7ed, try OpenSubtitles
-    3. Track which scraper was used for each episode
+    1. Bulk-fetch the season via the OpenSubtitles.com REST API when credentials
+       are configured (fast path).
+    2. For episodes still missing, fan out across the threaded provider scheduler
+       (Addic7ed + TVsubtitles) so providers' rate-limit cooldowns
+       overlap instead of serializing.
 
     Args:
         show_name: Name of the TV show (e.g. "Breaking Bad")
@@ -231,7 +198,8 @@ def download_subtitles(show_name: str, season: int) -> dict:
 
     Returns:
         Dict with show_name, season, total_episodes, episodes list, and cache_dir.
-        Each episode dict includes 'source' field: "cache", "addic7ed", "opensubtitles", or None.
+        Each episode dict includes 'source' field: "cache", "opensubtitles_api",
+        "addic7ed", "tvsubtitles", or None.
     """
     # Get TMDB show ID to determine episode count
     show_id = fetch_show_id(show_name)
@@ -353,117 +321,86 @@ def download_subtitles(show_name: str, season: int) -> dict:
                     exc_info=True,
                 )
 
-    # Initialize scraper clients (used as fallback when API is unavailable or misses episodes)
-    addic7ed_client = Addic7edClient()
-    opensubtitles_client = OpenSubtitlesClient()
-    episodes = []
+    # Per-episode triage: separate cache hits + API hits from the residual
+    # work the scheduler will fan out across scrapers.
+    from app.matcher.subtitle_utils import find_existing_subtitle
+
+    pre_resolved: dict[int, dict] = {}
+    residual_jobs: list[EpisodeJob] = []
 
     for episode in range(1, episode_count + 1):
         episode_code = f"S{season:02d}E{episode:02d}"
         srt_path = series_cache_dir / f"{safe_show_name} - {episode_code}.srt"
 
-        # Check cache first - look for ANY naming variant
-        from app.matcher.subtitle_utils import find_existing_subtitle
-
         existing_subtitle = find_existing_subtitle(
             str(series_cache_dir), safe_show_name, season, episode
         )
-
         if existing_subtitle:
-            # Validate cached file is not HTML garbage
             if is_valid_srt_file(existing_subtitle):
-                episodes.append(
-                    {
-                        "code": episode_code,
-                        "status": "cached",
-                        "path": str(existing_subtitle),
-                        "source": "cache",
-                    }
-                )
-                logger.debug(
-                    f"Found cached subtitle for {episode_code}: {Path(existing_subtitle).name}"
-                )
-                continue
-            else:
-                # Delete invalid cached file and re-download
-                logger.warning(
-                    f"Cached file {existing_subtitle.name} is invalid (HTML?), deleting and re-downloading"
-                )
-                existing_subtitle.unlink(missing_ok=True)
-
-        # Use REST API result if available for this episode
-        if episode in api_srt_map:
-            episodes.append(
-                {
+                pre_resolved[episode] = {
                     "code": episode_code,
-                    "status": "downloaded",
-                    "path": str(api_srt_map[episode]),
-                    "source": "opensubtitles_api",
+                    "status": "cached",
+                    "path": str(existing_subtitle),
+                    "source": "cache",
                 }
+                continue
+            logger.warning(
+                f"Cached file {existing_subtitle.name} is invalid (HTML?), "
+                "deleting and re-downloading"
             )
+            existing_subtitle.unlink(missing_ok=True)
+
+        if episode in api_srt_map:
+            pre_resolved[episode] = {
+                "code": episode_code,
+                "status": "downloaded",
+                "path": str(api_srt_map[episode]),
+                "source": "opensubtitles_api",
+            }
             continue
 
-        # Try Addic7ed first (faster, direct .srt downloads)
-        try:
-            best_sub = addic7ed_client.get_best_subtitle(canonical_show_name, season, episode)
-            if best_sub:
-                result = addic7ed_client.download_subtitle(best_sub, srt_path)
-                if result:
-                    # Validate the downloaded file
-                    if is_valid_srt_file(Path(result)):
-                        episodes.append(
-                            {
-                                "code": episode_code,
-                                "status": "downloaded",
-                                "path": str(result),
-                                "source": "addic7ed",
-                            }
-                        )
-                        continue
-                    else:
-                        # Delete invalid file
-                        logger.warning(
-                            f"Downloaded invalid file for {episode_code} from Addic7ed, deleting"
-                        )
-                        Path(result).unlink(missing_ok=True)
-        except Exception as e:
-            logger.warning(f"Addic7ed failed for {episode_code}: {e}")
-
-        # Fallback to OpenSubtitles if Addic7ed didn't work
-        try:
-            best_sub = opensubtitles_client.get_best_subtitle(canonical_show_name, season, episode)
-            if best_sub:
-                result = opensubtitles_client.download_subtitle(best_sub, srt_path)
-                if result:
-                    # Validate the downloaded file
-                    if is_valid_srt_file(Path(result)):
-                        episodes.append(
-                            {
-                                "code": episode_code,
-                                "status": "downloaded",
-                                "path": str(result),
-                                "source": "opensubtitles",
-                            }
-                        )
-                        continue
-                    else:
-                        # Delete invalid file
-                        logger.warning(
-                            f"Downloaded invalid file for {episode_code} from OpenSubtitles, deleting"
-                        )
-                        Path(result).unlink(missing_ok=True)
-        except Exception as e:
-            logger.warning(f"OpenSubtitles failed for {episode_code}: {e}")
-
-        # Both scrapers failed
-        episodes.append(
-            {
-                "code": episode_code,
-                "status": "not_found",
-                "path": None,
-                "source": None,
-            }
+        residual_jobs.append(
+            EpisodeJob(
+                tmdb_id=int(show_id),
+                show_name=canonical_show_name,
+                season=season,
+                episode=episode,
+                episode_code=episode_code,
+                srt_target=srt_path,
+                pending_providers=deque(["addic7ed", "tvsubtitles"]),
+            )
         )
+
+    # Fan out the residual work across provider workers. While Addic7ed
+    # sits in its 3s cooldown, the TVsubtitles worker can be mid-flight on
+    # a different episode — total wall-time falls from the sum of
+    # per-provider times toward their max.
+    scheduler_results: dict[str, dict] = {}
+    if residual_jobs:
+        workers = {
+            "addic7ed": Addic7edClient(),
+            "tvsubtitles": TVSubtitlesClient(),
+        }
+        scheduler_results = run_jobs(residual_jobs, workers)
+
+    # Re-assemble episode results in episode order.
+    episodes = []
+    for episode in range(1, episode_count + 1):
+        episode_code = f"S{season:02d}E{episode:02d}"
+        if episode in pre_resolved:
+            episodes.append(pre_resolved[episode])
+        else:
+            episodes.append(
+                scheduler_results.get(
+                    episode_code,
+                    {
+                        "code": episode_code,
+                        "status": "not_found",
+                        "path": None,
+                        "source": None,
+                    },
+                )
+            )
 
     return {
         "show_name": canonical_show_name,

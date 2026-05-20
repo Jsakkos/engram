@@ -99,7 +99,16 @@ class TestHarvestShowAccumulatesTally:
 
         tally = bsc.RunTally()
         show = {"name": "X", "tmdb_id": 1, "seasons": 1}
-        args = type("Args", (), {"min_episodes_ratio": 0.5, "sleep": 0})()
+        args = type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.5,
+                "sleep": 0,
+                "retry_low_coverage": True,  # bypass the W3 skip-list fast-path
+                "skip_window_days": 30,
+            },
+        )()
 
         with patch.object(bsc, "download_subtitles", side_effect=fake_download):
             bsc._harvest_show(show, args, tally)
@@ -152,7 +161,16 @@ class TestHarvestShowAccumulatesTally:
 
         tally = bsc.RunTally()
         show = {"name": "X", "tmdb_id": 1, "seasons": 3}
-        args = type("Args", (), {"min_episodes_ratio": 0.5, "sleep": 0})()
+        args = type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.5,
+                "sleep": 0,
+                "retry_low_coverage": True,  # bypass the W3 skip-list fast-path
+                "skip_window_days": 30,
+            },
+        )()
         calls = []
 
         with patch.object(bsc, "download_subtitles", side_effect=downloads):
