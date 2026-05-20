@@ -47,11 +47,22 @@ except ImportError:
 # Catch only the failure modes that are actually retryable. Catching bare
 # Exception would silently retry programming bugs (AttributeError,
 # TypeError) inside the callable — those should surface immediately.
+#
+# Notable omissions:
+#
+# - ``OSError`` is the parent of ``FileNotFoundError`` and ``PermissionError``,
+#   which ``client.download_and_save`` can raise when the staging directory
+#   does not exist or is unwritable. Those are misconfiguration bugs, not
+#   transient errors — retrying for ~35s and burning download quota only
+#   delays the failure. Genuinely transient OS-level network failures
+#   already come through as ``requests.ConnectionError`` (a subclass of
+#   ``RequestException``).
+# - ``TimeoutError`` is a subclass of ``OSError`` since Python 3.3 and was
+#   therefore redundant with the dropped ``OSError`` entry; ``requests``
+#   timeouts come through as ``requests.Timeout`` (a ``RequestException``).
 _RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     OpenSubtitlesException,
     requests.RequestException,
-    OSError,
-    TimeoutError,
 )
 
 # Cap any single sleep at 5 minutes. Protects against a misbehaving server

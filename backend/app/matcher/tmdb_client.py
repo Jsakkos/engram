@@ -1,4 +1,5 @@
 # tmdb_client.py
+import copy
 import re
 import time
 from collections.abc import Callable
@@ -41,13 +42,18 @@ def retry_network_operation(max_retries: int = 3, base_delay: float = 1.0) -> Ca
                 except (requests.RequestException, ConnectionError, TimeoutError) as e:
                     last_exception = e
                     if attempt == max_retries:
+                        # exc_info=True per CLAUDE.md — preserves the
+                        # __cause__/__context__ chain pointing at the root
+                        # network failure, which a bare str(e) discards.
                         logger.error(
-                            f"Max retries ({max_retries}) exceeded for {func.__name__}: {e}"
+                            f"Max retries ({max_retries}) exceeded for {func.__name__}: {e}",
+                            exc_info=True,
                         )
                         raise e
 
                     logger.warning(
-                        f"Network retry {attempt + 1}/{max_retries + 1} for {func.__name__}: {e}"
+                        f"Network retry {attempt + 1}/{max_retries + 1} for {func.__name__}: {e}",
+                        exc_info=True,
                     )
                     time.sleep(delay)
                     delay = min(delay * 2, 30)  # Cap at 30 seconds
@@ -392,6 +398,13 @@ def fetch_show_details(show_id: int) -> dict | None:
     ``@retry_network_operation`` can see it AND so a transient failure isn't
     cached by ``@lru_cache``. ``lru_cache`` does not cache exceptions; only
     successful return values get stored.
+
+    Returns a ``deepcopy`` of the cached dict on every call so a caller
+    mutating any nested field can't corrupt the cached entry for every
+    subsequent caller. Doing the copy in the wrapper (rather than inside
+    the cached function) means cache HITS get a fresh copy too — copying
+    inside the cached function would only deep-copy the one-time miss and
+    then permanently return the same deep-copied object on hits.
     """
     from app.services.config_service import get_config_sync
 
@@ -399,10 +412,11 @@ def fetch_show_details(show_id: int) -> dict | None:
         logger.warning("TMDB API key not configured")
         return None
     try:
-        return _fetch_show_details_cached(show_id)
+        cached = _fetch_show_details_cached(show_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch show details for ID {show_id}: {e}", exc_info=True)
         return None
+    return copy.deepcopy(cached) if cached is not None else None
 
 
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
@@ -410,12 +424,12 @@ def fetch_show_details(show_id: int) -> dict | None:
 def _fetch_show_details_cached(show_id: int) -> dict | None:
     """Cached implementation. Caller guarantees the API key is present.
 
-    Returns a shallow copy of the TMDB response so a caller who mutates
-    the returned dict (e.g., ``details["name"] = "override"``) doesn't
-    silently corrupt the cached entry for every subsequent caller in this
-    process. The shallow copy is cheap (TMDB show payloads are flat dicts
-    with strings/numbers); nested mutation of ``seasons``/``genres`` lists
-    can still poison the cache, but that's not a current usage pattern.
+    Returns ``response.json()`` directly. Mutation protection lives in
+    the public ``fetch_show_details`` wrapper, which does a ``deepcopy``
+    on every call so cache hits also get a fresh, independent object.
+    Deep-copying here would protect only the rare cache-miss path while
+    permanently caching the same deep-copied object that subsequent
+    cache hits would all alias.
     """
     from app.services.config_service import get_config_sync
 
@@ -444,7 +458,7 @@ def _fetch_show_details_cached(show_id: int) -> dict | None:
     # surfaces None to satisfy the original contract.
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
-    return {**response.json()}
+    return response.json()
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)

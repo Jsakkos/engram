@@ -9,6 +9,7 @@ from app.matcher.tmdb_client import (
     _fetch_show_id_cached,
     clear_caches,
     fetch_season_details,
+    fetch_show_details,
     fetch_show_id,
 )
 from tests.fixtures.tmdb_responses import (
@@ -119,6 +120,40 @@ class TestLruCache:
                 _fetch_show_id_cached("Show")
         # Confirm the exception didn't leak into the cache.
         assert _fetch_show_id_cached.cache_info().currsize == 0
+
+    def test_fetch_show_details_returns_independent_dict_per_call(self):
+        """Cache-poisoning guard: a caller mutating the returned dict
+        (including nested lists) must not corrupt the cached entry for
+        subsequent callers. The public wrapper deep-copies the cached
+        value on every call, so each caller gets its own object graph.
+        """
+        with patch("app.matcher.tmdb_client.requests.get") as mock_get:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = Mock()
+            mock_response.json.return_value = {
+                "name": "Breaking Bad",
+                "number_of_seasons": 5,
+                "genres": [{"id": 18, "name": "Drama"}],
+            }
+            mock_get.return_value = mock_response
+            with patch("app.services.config_service.get_config_sync") as cfg:
+                cfg.return_value.tmdb_api_key = "test"
+                first = fetch_show_details(81189)
+                # Caller scribbles on both a top-level field AND a nested list.
+                first["name"] = "MUTATED"
+                first["genres"].append({"id": 999, "name": "POISON"})
+
+                second = fetch_show_details(81189)
+
+        # Network was only hit once — second call came from the cache.
+        assert mock_get.call_count == 1
+        # Mutation on the first object did NOT leak into the second.
+        assert second["name"] == "Breaking Bad"
+        assert second["genres"] == [{"id": 18, "name": "Drama"}]
+        # The two return values are distinct objects (deepcopy contract).
+        assert first is not second
+        assert first["genres"] is not second["genres"]
 
 
 @pytest.mark.unit
