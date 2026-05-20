@@ -9,6 +9,7 @@ import { DiscMetadata } from "./DiscCard/DiscMetadata";
 import { ActionButtons } from "./DiscCard/ActionButtons";
 import { useElapsedTime } from "../hooks/useElapsedTime";
 import { sv, SvPanel, SvLabel, SvDiscInsert, SvProgressBar, type DiscInsertPhase } from "./synapse";
+import { formatEta } from "../../utils/formatting";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "review_needed" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
@@ -76,13 +77,6 @@ interface DiscCardProps {
   onReIdentify?: () => void;
 }
 
-function formatEta(seconds?: number): string {
-  if (!seconds) return "—";
-  if (seconds < 60) return "< 1 min";
-  if (seconds < 3600) return `${Math.ceil(seconds / 60)} min`;
-  return `${Math.floor(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}m`;
-}
-
 /**
  * Compact stat block — caret label above, big mono value below.
  * Used by the ripping/matching/organizing state stat grids.
@@ -115,6 +109,64 @@ function SvStat({
   );
 }
 
+/**
+ * Animated mono-uppercase state caption (e.g. "› MATCHING EPISODES…").
+ * The caption text pulses; `extra` renders as a non-pulsing sibling.
+ */
+function PulseCaption({
+  color,
+  children,
+  extra,
+}: {
+  color: string;
+  children: React.ReactNode;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        fontFamily: sv.mono,
+        fontSize: 12,
+        color,
+        letterSpacing: "0.2em",
+        textTransform: "uppercase",
+      }}
+    >
+      <motion.span
+        animate={{ opacity: [0.4, 1, 0.4] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+      >
+        {children}
+      </motion.span>
+      {extra}
+    </div>
+  );
+}
+
+/**
+ * Full-cover overlay anchored over the disc cover art — dark scrim with a
+ * centered icon. Used by the active-state spinner and the completed checkmark.
+ */
+function CoverOverlay({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.35)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
   ({ disc, onCancel, onReview, onReIdentify }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
@@ -122,6 +174,11 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
     const elapsed = useElapsedTime(isActive ? disc.startedAt : undefined);
     const isRipping = disc.state === "ripping";
+
+    const totalTrackCount = disc.tracks?.length ?? 0;
+    const doneTrackCount =
+      disc.tracks?.filter(t => ["matched", "completed"].includes(t.state)).length ?? 0;
+    const failedTrackCount = disc.tracks?.filter(t => t.state === "failed").length ?? 0;
 
     return (
       <motion.div
@@ -197,16 +254,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
 
               {/* Active-state spinning disc overlay */}
               {["scanning", "archiving_iso", "ripping", "matching", "organizing", "processing"].includes(disc.state) && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0,0,0,0.35)",
-                  }}
-                >
+                <CoverOverlay>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
@@ -217,26 +265,17 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       style={{ filter: `drop-shadow(0 0 8px ${isRipping ? sv.magenta : sv.cyan}cc)` }}
                     />
                   </motion.div>
-                </div>
+                </CoverOverlay>
               )}
 
               {disc.state === "completed" && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0,0,0,0.35)",
-                  }}
-                >
+                <CoverOverlay>
                   <CheckCircle2
                     size={44}
                     color={sv.green}
                     style={{ filter: `drop-shadow(0 0 8px ${sv.green}cc)` }}
                   />
-                </div>
+                </CoverOverlay>
               )}
 
               {/* Media type badge anchored top-left */}
@@ -263,7 +302,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   discLabel={disc.discLabel}
                 />
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                  {disc.tracks && disc.tracks.filter(t => t.state === 'failed').length > 0 && (
+                  {failedTrackCount > 0 && (
                     <span
                       title="Some tracks failed during ripping"
                       style={{
@@ -274,7 +313,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                         color: sv.red,
                       }}
                     >
-                      {disc.tracks.filter(t => t.state === 'failed').length} FAILED
+                      {failedTrackCount} FAILED
                     </span>
                   )}
                   {disc.subtitleStatus === 'failed' && (
@@ -373,7 +412,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     )}
                     <SvStat
                       label="TRACKS"
-                      value={`${disc.tracks.filter(t => ["matched", "completed"].includes(t.state)).length}/${disc.tracks.length}`}
+                      value={`${doneTrackCount}/${totalTrackCount}`}
                       color={sv.yellow}
                     />
                   </div>
@@ -384,30 +423,18 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               {/* Matching */}
               {disc.state === "matching" && disc.tracks && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontFamily: sv.mono,
-                      fontSize: 12,
-                      color: sv.amber,
-                      letterSpacing: "0.2em",
-                      textTransform: "uppercase",
-                    }}
+                  <PulseCaption
+                    color={sv.amber}
+                    extra={
+                      disc.subtitleStatus === 'downloading' ? (
+                        <span style={{ color: sv.cyan, fontSize: 10 }}>
+                          (downloading subtitles)
+                        </span>
+                      ) : undefined
+                    }
                   >
-                    <motion.span
-                      animate={{ opacity: [0.4, 1, 0.4] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                    >
-                      › MATCHING EPISODES…
-                    </motion.span>
-                    {disc.subtitleStatus === 'downloading' && (
-                      <span style={{ color: sv.cyan, fontSize: 10 }}>
-                        (downloading subtitles)
-                      </span>
-                    )}
-                  </div>
+                    › MATCHING EPISODES…
+                  </PulseCaption>
                   <div
                     style={{
                       display: "grid",
@@ -417,7 +444,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   >
                     <SvStat
                       label="MATCHED"
-                      value={`${disc.tracks.filter(t => ["matched", "completed"].includes(t.state)).length}/${disc.tracks.length}`}
+                      value={`${doneTrackCount}/${totalTrackCount}`}
                       color={sv.green}
                     />
                     <SvStat
@@ -438,19 +465,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               {/* Organizing */}
               {disc.state === "organizing" && disc.tracks && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <motion.div
-                    animate={{ opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
-                    style={{
-                      fontFamily: sv.mono,
-                      fontSize: 12,
-                      color: sv.purple,
-                      letterSpacing: "0.2em",
-                      textTransform: "uppercase",
-                    }}
-                  >
+                  <PulseCaption color={sv.purple}>
                     › ORGANIZING TO LIBRARY…
-                  </motion.div>
+                  </PulseCaption>
                   <div
                     style={{
                       display: "grid",
@@ -476,19 +493,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               {/* Legacy processing fallback */}
               {disc.state === "processing" && disc.tracks && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <motion.div
-                    animate={{ opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
-                    style={{
-                      fontFamily: sv.mono,
-                      fontSize: 12,
-                      color: sv.amber,
-                      letterSpacing: "0.2em",
-                      textTransform: "uppercase",
-                    }}
-                  >
+                  <PulseCaption color={sv.amber}>
                     › PROCESSING…
-                  </motion.div>
+                  </PulseCaption>
                   <TrackGrid tracks={disc.tracks} />
                 </div>
               )}

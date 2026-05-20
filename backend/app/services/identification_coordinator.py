@@ -224,10 +224,9 @@ class IdentificationCoordinator:
                         stmt = select(DiscTitle).where(DiscTitle.job_id == job_id)
                         db_titles_for_select = (await session.execute(stmt)).scalars().all()
                         for dt in db_titles_for_select:
-                            if dt.title_index in extra_indices:
-                                dt.is_extra = True
-                            elif dt.title_index not in main_indices:
-                                dt.is_extra = True
+                            # extra_indices is disjoint from main_indices, so any
+                            # title not in main_indices is an extra.
+                            dt.is_extra = dt.title_index not in main_indices
                             session.add(dt)
                         logger.info(
                             f"Job {job_id}: TheDiscDB tagged MainMovie={main_indices}, "
@@ -356,33 +355,28 @@ class IdentificationCoordinator:
                         reason=analysis.review_reason,
                         broadcast=False,
                     )
-                    await ws_manager.broadcast_job_update(
-                        job_id,
-                        job.state.value,
-                        content_type=job.content_type.value,
-                        detected_title=job.detected_title,
-                        detected_season=job.detected_season,
-                        total_titles=job.total_titles,
-                    )
-                    logger.info(f"Job {job_id} needs review: {analysis.review_reason}")
                 else:
                     # High-confidence detection - auto-start ripping
                     job.state = JobState.RIPPING
                     await session.commit()
-                    await ws_manager.broadcast_job_update(
-                        job_id,
-                        job.state.value,
-                        content_type=job.content_type.value,
-                        detected_title=job.detected_title,
-                        detected_season=job.detected_season,
-                        total_titles=job.total_titles,
-                    )
 
+                # Both review and high-confidence paths broadcast the same job update.
+                await ws_manager.broadcast_job_update(
+                    job_id,
+                    job.state.value,
+                    content_type=job.content_type.value,
+                    detected_title=job.detected_title,
+                    detected_season=job.detected_season,
+                    total_titles=job.total_titles,
+                )
+
+                if analysis.needs_review:
+                    logger.info(f"Job {job_id} needs review: {analysis.review_reason}")
+                else:
                     logger.info(
                         f"Job {job_id} identified as {analysis.content_type.value} "
                         f"(confidence: {analysis.confidence:.1%}) - auto-starting rip"
                     )
-
                     await self._run_ripping(job_id)
                     return
 
@@ -443,7 +437,7 @@ class IdentificationCoordinator:
                 job.detected_title = analysis.detected_name or job.detected_title
                 job.detected_season = analysis.detected_season or job.detected_season
                 job.total_titles = len(titles)
-                job.updated_at = datetime.utcnow()
+                job.updated_at = datetime.now(UTC)
                 job.classification_confidence = analysis.confidence
                 job.classification_source = analysis.classification_source or "staging_import"
                 job.tmdb_id = analysis.tmdb_id
@@ -738,10 +732,25 @@ class IdentificationCoordinator:
         self, job, job_id, titles, session, is_staging=False, disc_name: str = ""
     ):
         """Run the full classification pipeline (DiscDB, TMDB, AI, Analyst)."""
+        from app.core.tmdb_classifier import classify_from_tmdb
         from app.services.config_service import get_config
 
         config = await get_config()
         self._analyst.set_config(config)
+
+        def _try_tmdb(name: str, context: str):
+            """Run a TMDB lookup, swallowing and logging failures.
+
+            ``context`` distinguishes the warning message between call sites.
+            Returns the TMDB signal, or None on failure / no API key.
+            """
+            if not config.tmdb_api_key:
+                return None
+            try:
+                return classify_from_tmdb(name, config.tmdb_api_key)
+            except Exception as e:
+                logger.warning(f"Job {job_id}: {context}: {e}")
+                return None
 
         # Attempt TheDiscDB lookup
         from app.core.features import DISCDB_ENABLED
@@ -781,23 +790,16 @@ class IdentificationCoordinator:
         tmdb_signal = None
         detected_name, _, _ = DiscAnalyst._parse_volume_label(job.volume_label)
         if detected_name:
-            try:
-                from app.core.tmdb_classifier import classify_from_tmdb
-
-                if config.tmdb_api_key:
-                    tmdb_signal = classify_from_tmdb(detected_name, config.tmdb_api_key)
-                    if tmdb_signal:
-                        logger.info(
-                            f"Job {job_id}: TMDB signal: "
-                            f"{tmdb_signal.content_type.value} "
-                            f"({tmdb_signal.confidence:.0%}) - "
-                            f"{tmdb_signal.tmdb_name}"
-                        )
-            except Exception as e:
-                logger.warning(
-                    f"Job {job_id}: TMDB lookup failed: {e}"
-                    if is_staging
-                    else f"Job {job_id}: TMDB lookup failed, using heuristics only: {e}"
+            tmdb_context = (
+                "TMDB lookup failed" if is_staging else "TMDB lookup failed, using heuristics only"
+            )
+            tmdb_signal = _try_tmdb(detected_name, tmdb_context)
+            if tmdb_signal:
+                logger.info(
+                    f"Job {job_id}: TMDB signal: "
+                    f"{tmdb_signal.content_type.value} "
+                    f"({tmdb_signal.confidence:.0%}) - "
+                    f"{tmdb_signal.tmdb_name}"
                 )
 
         # DINFO disc-name TMDB fallback — when the volume label gives a garbled name
@@ -807,20 +809,15 @@ class IdentificationCoordinator:
         if not tmdb_signal and disc_name and config.tmdb_api_key:
             parsed_title, parsed_season = DiscAnalyst._parse_disc_name(disc_name)
             if parsed_title:
-                try:
-                    from app.core.tmdb_classifier import classify_from_tmdb
-
-                    disc_tmdb_signal = classify_from_tmdb(parsed_title, config.tmdb_api_key)
-                    if disc_tmdb_signal:
-                        tmdb_signal = disc_tmdb_signal
-                        disc_name_title = parsed_title
-                        disc_name_season = parsed_season
-                        logger.info(
-                            f"Job {job_id}: TMDB fallback via disc name '{parsed_title}' succeeded "
-                            f"(label '{job.volume_label}' gave garbled name)"
-                        )
-                except Exception as e:
-                    logger.warning(f"Job {job_id}: TMDB disc-name fallback failed: {e}")
+                disc_tmdb_signal = _try_tmdb(parsed_title, "TMDB disc-name fallback failed")
+                if disc_tmdb_signal:
+                    tmdb_signal = disc_tmdb_signal
+                    disc_name_title = parsed_title
+                    disc_name_season = parsed_season
+                    logger.info(
+                        f"Job {job_id}: TMDB fallback via disc name '{parsed_title}' succeeded "
+                        f"(label '{job.volume_label}' gave garbled name)"
+                    )
 
         # AI-powered identification fallback (not for staging)
         ai_identified_name = None
@@ -847,22 +844,15 @@ class IdentificationCoordinator:
                     ai_identified_name = ai_result["title"]
                     logger.info(f"Job {job_id}: AI identified as '{ai_identified_name}'")
                     # Re-query TMDB with the AI-corrected name
-                    if config.tmdb_api_key:
-                        try:
-                            from app.core.tmdb_classifier import classify_from_tmdb
-
-                            tmdb_signal = classify_from_tmdb(
-                                ai_identified_name, config.tmdb_api_key
-                            )
-                            if tmdb_signal:
-                                logger.info(
-                                    f"Job {job_id}: TMDB re-query with AI name: "
-                                    f"{tmdb_signal.content_type.value} "
-                                    f"({tmdb_signal.confidence:.0%}) - "
-                                    f"{tmdb_signal.tmdb_name}"
-                                )
-                        except Exception as e:
-                            logger.warning(f"Job {job_id}: TMDB re-query after AI failed: {e}")
+                    ai_tmdb_signal = _try_tmdb(ai_identified_name, "TMDB re-query after AI failed")
+                    if ai_tmdb_signal:
+                        tmdb_signal = ai_tmdb_signal
+                        logger.info(
+                            f"Job {job_id}: TMDB re-query with AI name: "
+                            f"{tmdb_signal.content_type.value} "
+                            f"({tmdb_signal.confidence:.0%}) - "
+                            f"{tmdb_signal.tmdb_name}"
+                        )
             except Exception as e:
                 logger.warning(f"Job {job_id}: AI identification failed: {e}", exc_info=True)
 

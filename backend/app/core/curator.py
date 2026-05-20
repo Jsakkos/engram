@@ -51,7 +51,6 @@ class EpisodeCurator:
             from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
 
             # Get cache directory from config (sync version for non-async context)
-            # Get cache directory from config (sync version for non-async context)
             from app.services.config_service import get_config_sync
 
             # Resolve canonical show name
@@ -98,6 +97,29 @@ class EpisodeCurator:
             self._initialized = True
             return False
 
+    def _fallback_result(
+        self,
+        file_path: Path,
+        *,
+        parse_filename: bool = True,
+        match_details: dict | None = None,
+    ) -> MatchResult:
+        """Build an unmatched MatchResult that always needs review.
+
+        When parse_filename is True, attempts to recover an episode code from the
+        filename (confidence 0.3 if found, else 0.0). When False, the result is
+        always fully unmatched (confidence 0.0).
+        """
+        episode_code = self._parse_episode_from_filename(file_path.name) if parse_filename else None
+        return MatchResult(
+            file_path=file_path,
+            episode_code=episode_code,
+            episode_title=None,
+            confidence=0.3 if episode_code else 0.0,
+            needs_review=True,
+            match_details=match_details,
+        )
+
     async def match_files(
         self,
         files: list[Path],
@@ -123,16 +145,7 @@ class EpisodeCurator:
         if not series_name:
             logger.warning("No series name provided - falling back to filename parsing")
             for file_path in files:
-                episode_code = self._parse_episode_from_filename(file_path.name)
-                results.append(
-                    MatchResult(
-                        file_path=file_path,
-                        episode_code=episode_code,
-                        episode_title=None,
-                        confidence=0.3 if episode_code else 0.0,
-                        needs_review=True,
-                    )
-                )
+                results.append(self._fallback_result(file_path))
             return results
 
         if not self._ensure_initialized(series_name):
@@ -140,15 +153,7 @@ class EpisodeCurator:
             for i, file_path in enumerate(files):
                 if progress_callback:
                     progress_callback(i + 1, total_files)
-                results.append(
-                    MatchResult(
-                        file_path=file_path,
-                        episode_code=None,
-                        episode_title=None,
-                        confidence=0.0,
-                        needs_review=True,
-                    )
-                )
+                results.append(self._fallback_result(file_path, parse_filename=False))
             return results
 
         for i, file_path in enumerate(files):
@@ -157,15 +162,7 @@ class EpisodeCurator:
                 results.append(result)
             except Exception as e:
                 logger.error(f"Error matching {file_path}: {e}")
-                results.append(
-                    MatchResult(
-                        file_path=file_path,
-                        episode_code=None,
-                        episode_title=None,
-                        confidence=0.0,
-                        needs_review=True,
-                    )
-                )
+                results.append(self._fallback_result(file_path, parse_filename=False))
 
             if progress_callback:
                 progress_callback(i + 1, total_files)
@@ -186,7 +183,7 @@ class EpisodeCurator:
 
         if not file_path.exists():
             logger.error(f"File does not exist: {file_path}")
-            # fall through to fallback logic? or return early?
+            # non-fatal: fallback handles it
 
         # Ensure matcher is initialized for this show
         if series_name:
@@ -197,14 +194,7 @@ class EpisodeCurator:
 
         if not self._matcher or not season:
             # Fall back to filename parsing if matcher unavailable or no season
-            episode_code = self._parse_episode_from_filename(file_path.name)
-            return MatchResult(
-                file_path=file_path,
-                episode_code=episode_code,
-                episode_title=None,
-                confidence=0.3 if episode_code else 0.0,
-                needs_review=True,
-            )
+            return self._fallback_result(file_path)
 
         try:
             # Run the matcher in a thread to not block async loop
@@ -242,31 +232,14 @@ class EpisodeCurator:
                     match_details=details,
                 )
             else:
-                # No match found - fall back to filename
-                episode_code = self._parse_episode_from_filename(file_path.name)
-                # Preserve stats if available
+                # No match found - fall back to filename, preserving stats if available
                 details = match.get("match_details") if match else None
-
-                return MatchResult(
-                    file_path=file_path,
-                    episode_code=episode_code,
-                    episode_title=None,
-                    confidence=0.3 if episode_code else 0.0,
-                    needs_review=True,
-                    match_details=details,
-                )
+                return self._fallback_result(file_path, match_details=details)
 
         except Exception as e:
             logger.error(f"Matcher error for {file_path}: {e}")
             # Fall back to filename parsing
-            episode_code = self._parse_episode_from_filename(file_path.name)
-            return MatchResult(
-                file_path=file_path,
-                episode_code=episode_code,
-                episode_title=None,
-                confidence=0.3 if episode_code else 0.0,
-                needs_review=True,
-            )
+            return self._fallback_result(file_path)
 
     def _parse_episode_from_filename(self, filename: str) -> str | None:
         """Try to parse episode code from filename.

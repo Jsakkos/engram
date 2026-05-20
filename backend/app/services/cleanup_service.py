@@ -27,14 +27,9 @@ class CleanupService:
         config = await get_config()
         policy = config.staging_cleanup_policy
 
-        if policy == "manual":
-            pass
-        elif policy == "after_days":
-            # Timed cleanup handled by background task, not here
-            pass
-        elif policy == "on_success" and state == JobState.COMPLETED:
-            await self.delete_staging(job_id)
-        elif policy == "on_completion":
+        # "manual" and "after_days" need no action here ("after_days" is handled
+        # by a background task).
+        if policy == "on_completion" or (policy == "on_success" and state == JobState.COMPLETED):
             await self.delete_staging(job_id)
 
         # Auto-export for TheDiscDB contributions

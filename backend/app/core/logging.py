@@ -48,14 +48,6 @@ def setup_logging() -> None:
         logging.getLogger(name).handlers = []
         logging.getLogger(name).propagate = True
 
-        # specific tweaks
-        if "uvicorn.access" in name:
-            logging.getLogger(name).handlers = []
-            logging.getLogger(name).propagate = True
-        if "uvicorn" in name:
-            logging.getLogger(name).handlers = []
-            logging.getLogger(name).propagate = True
-
     # configure loguru
     logger.remove()  # Remove default handler
 

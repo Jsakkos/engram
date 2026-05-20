@@ -42,13 +42,10 @@ async def isolate_database(monkeypatch):
 
     _config_mod = importlib.import_module("app.services.config_service")
     _jm_mod = importlib.import_module("app.services.job_manager")
-    _rc_mod = importlib.import_module("app.services.ripping_coordinator")
 
     monkeypatch.setattr(_db_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_config_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_jm_mod, "async_session", _unit_session_factory)
-    # ripping_coordinator imports async_session locally; patch the source module
-    # so that any `from app.database import async_session` gets the patched one.
 
     # Redirect the cached sync engine in config_service so get_config_sync()
     # uses the in-memory test database instead of connecting to engram.db.

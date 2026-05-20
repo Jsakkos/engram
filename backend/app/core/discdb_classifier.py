@@ -10,6 +10,7 @@ Data: https://github.com/thediscdb/data (MIT license)
 
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 import requests
@@ -140,6 +141,24 @@ def _parse_duration(duration_str: str) -> int:
     return 0
 
 
+def _safe_int(value) -> int | None:
+    """Coerce a value to int, returning None on falsy input or conversion failure."""
+    if not value:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _iter_discs(nodes: list[dict]) -> Iterator[tuple[dict, dict]]:
+    """Yield (node, disc) pairs for every disc nested under the given mediaItem nodes."""
+    for node in nodes:
+        for release in node.get("releases", []):
+            for disc in release.get("discs", []):
+                yield node, disc
+
+
 def _graphql_request(query: str, variables: dict, timeout: float = 10.0) -> dict | None:
     """Execute a GraphQL query against TheDiscDB API."""
     try:
@@ -185,39 +204,21 @@ def _build_signal_from_match(
     mappings = []
     for title in matched_disc.get("titles", []):
         item = title.get("item") or {}
-        season = None
-        episode = None
-        if item.get("season"):
-            try:
-                season = int(item["season"])
-            except (ValueError, TypeError):
-                pass
-        if item.get("episode"):
-            try:
-                episode = int(item["episode"])
-            except (ValueError, TypeError):
-                pass
-
         mappings.append(
             DiscDbTitleMapping(
                 index=title.get("index", 0),
                 title_type=item.get("type", ""),
                 episode_title=item.get("title", ""),
-                season=season,
-                episode=episode,
+                season=_safe_int(item.get("season")),
+                episode=_safe_int(item.get("episode")),
                 duration_seconds=_parse_duration(title.get("duration", "0:00:00")),
                 size_bytes=title.get("size", 0),
             )
         )
 
     # Extract TMDB ID if available
-    tmdb_id = None
-    ext_ids = node.get("externalids")
-    if ext_ids and ext_ids.get("tmdb"):
-        try:
-            tmdb_id = int(ext_ids["tmdb"])
-        except (ValueError, TypeError):
-            pass
+    ext_ids = node.get("externalids") or {}
+    tmdb_id = _safe_int(ext_ids.get("tmdb"))
 
     confidence = 0.98 if source == "hash_match" else 0.70
 
@@ -239,11 +240,9 @@ def _find_matching_disc(
     content_hash: str,
 ) -> tuple[dict, dict] | None:
     """Find the specific disc matching the content hash within the results."""
-    for node in nodes:
-        for release in node.get("releases", []):
-            for disc in release.get("discs", []):
-                if disc.get("contentHash", "").upper() == content_hash.upper():
-                    return node, disc
+    for node, disc in _iter_discs(nodes):
+        if disc.get("contentHash", "").upper() == content_hash.upper():
+            return node, disc
     return None
 
 
@@ -262,37 +261,35 @@ def _find_best_disc_by_durations(
     best_match = None
     best_score = 0.0
 
-    for node in nodes:
-        for release in node.get("releases", []):
-            for disc in release.get("discs", []):
-                disc_titles = disc.get("titles", [])
-                if not disc_titles:
-                    continue
+    for node, disc in _iter_discs(nodes):
+        disc_titles = disc.get("titles", [])
+        if not disc_titles:
+            continue
 
-                db_durations = sorted(
-                    [_parse_duration(t.get("duration", "0:00:00")) for t in disc_titles],
-                    reverse=True,
-                )
+        db_durations = sorted(
+            [_parse_duration(t.get("duration", "0:00:00")) for t in disc_titles],
+            reverse=True,
+        )
 
-                # Compare title count and duration patterns
-                if len(scanned_durations) != len(db_durations):
-                    continue
+        # Compare title count and duration patterns
+        if len(scanned_durations) != len(db_durations):
+            continue
 
-                # Calculate duration match score
-                total_diff = 0
-                total_duration = 0
-                for s_dur, d_dur in zip(scanned_durations, db_durations, strict=True):
-                    total_diff += abs(s_dur - d_dur)
-                    total_duration += max(s_dur, d_dur)
+        # Calculate duration match score
+        total_diff = 0
+        total_duration = 0
+        for s_dur, d_dur in zip(scanned_durations, db_durations, strict=True):
+            total_diff += abs(s_dur - d_dur)
+            total_duration += max(s_dur, d_dur)
 
-                if total_duration == 0:
-                    continue
+        if total_duration == 0:
+            continue
 
-                # Score: 1.0 = perfect match, lower = worse
-                score = 1.0 - (total_diff / total_duration)
-                if score > best_score:
-                    best_score = score
-                    best_match = (node, disc, score)
+        # Score: 1.0 = perfect match, lower = worse
+        score = 1.0 - (total_diff / total_duration)
+        if score > best_score:
+            best_score = score
+            best_match = (node, disc, score)
 
     if best_match and best_match[2] >= 0.90:
         return best_match

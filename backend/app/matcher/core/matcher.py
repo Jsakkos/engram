@@ -210,18 +210,13 @@ class MultiSegmentMatcher:
                 score_sum[key] = 0.0
             score_sum[key] += c.confidence
 
-        # Winner is the one with most votes. Tie-break with avg confidence.
-        best_ep = None
-        max_votes = 0
-
-        for ep_key, votes in vote_counter.items():
-            if votes > max_votes:
-                max_votes = votes
-                best_ep = ep_key
-            elif votes == max_votes:
-                # Tie break
-                if best_ep and score_sum[ep_key] > score_sum[best_ep]:
-                    best_ep = ep_key
+        # Winner is the one with most votes. Tie-break with summed confidence,
+        # then first-seen on a full tie.
+        best_ep = max(
+            vote_counter,
+            key=lambda k: (vote_counter[k], score_sum[k]),
+            default=None,
+        )
 
         if best_ep:
             # Reconstruct result based on the episode key

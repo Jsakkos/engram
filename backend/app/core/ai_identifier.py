@@ -135,7 +135,7 @@ def _parse_response(text: str) -> dict | None:
     text = text.strip()
     if text.startswith("```"):
         lines = text.split("\n")
-        # Remove first and last lines (```json and ```)
+        # Drop every line that is a code fence (```json, ```, etc.)
         lines = [line for line in lines if not line.strip().startswith("```")]
         text = "\n".join(lines)
 

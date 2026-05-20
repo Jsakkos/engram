@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { sv } from "./tokens";
+import { chunkedTicks, sv } from "./tokens";
 
 interface Props {
   progress: number;
@@ -99,14 +99,7 @@ export function SvProgressBar({ progress, color, label }: Props) {
         </motion.div>
 
         {/* Chunked tick overlay (10% repeating, low alpha) */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: `repeating-linear-gradient(90deg, transparent 0 9%, ${sv.bg0}55 9% 10%)`,
-            pointerEvents: "none",
-          }}
-        />
+        <div style={chunkedTicks("55")} />
       </div>
 
       {/* Label + percentage */}
