@@ -227,3 +227,44 @@ class TestValidate:
         assert result.summary["tarball_size_bytes"] is None
         # tarfile.open did succeed, so no "could not be read" failure here.
         assert not any("could not be read" in f for f in result.failures)
+
+
+@pytest.mark.unit
+class TestMain:
+    """`main()` is the entry point the CI smoke workflow actually calls;
+    exit codes drive whether GitHub Actions reports a green or red job.
+    Cover the three return values plus the dir-listing else branch.
+    """
+
+    def test_exits_0_on_healthy_release(self, vsc, tmp_path, monkeypatch, capsys):
+        _make_assets(vsc, tmp_path)
+        monkeypatch.setattr("sys.argv", ["validate_subtitle_cache.py", str(tmp_path)])
+        assert vsc.main() == 0
+        assert "OK" in capsys.readouterr().out
+
+    def test_exits_1_on_validation_failure(self, vsc, tmp_path, monkeypatch, capsys):
+        _make_assets(vsc, tmp_path, corrupt_sha=True)
+        monkeypatch.setattr("sys.argv", ["validate_subtitle_cache.py", str(tmp_path)])
+        assert vsc.main() == 1
+        assert "VALIDATION FAILURES" in capsys.readouterr().out
+
+    def test_exits_2_on_wrong_argv(self, vsc, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["validate_subtitle_cache.py"])  # missing arg
+        assert vsc.main() == 2
+        assert "usage:" in capsys.readouterr().err
+
+    def test_lists_dir_on_missing_inputs(self, vsc, tmp_path, monkeypatch, capsys):
+        """The early-return path produces an empty .summary, so main() takes
+        the else branch and lists the dir contents to help the operator
+        distinguish "gh release download wrote nothing" from "the wrong file
+        landed there". This branch was previously untested.
+        """
+        # Stage an unrelated file so the listing branch has something to print.
+        (tmp_path / "unrelated.txt").write_text("hi", encoding="utf-8")
+        monkeypatch.setattr("sys.argv", ["validate_subtitle_cache.py", str(tmp_path)])
+        assert vsc.main() == 1  # missing manifest is a validation failure
+
+        captured = capsys.readouterr().out
+        assert f"assets dir: {tmp_path}" in captured
+        assert "unrelated.txt" in captured  # the dir-listing line itself
+        assert "manifest.json not found" in captured
