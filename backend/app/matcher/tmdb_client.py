@@ -1,29 +1,83 @@
 # tmdb_client.py
+import copy
 import re
+import time
 from collections.abc import Callable
+from functools import lru_cache, wraps
+from threading import Lock
 from typing import Any, TypeVar
 
 import requests
 from loguru import logger
 
-from app.matcher.retry import retry_with_backoff
+# In-process cache for TMDB lookups. The build script calls
+# fetch_show_id/fetch_show_details for every show during selection AND again
+# inside download_subtitles() for every season — a 300-show, 5-season run
+# would otherwise burn ~1800 TMDB requests on data that doesn't change within
+# a single run. The cache key is (function, *args), and all three wrapped
+# functions take only hashable primitives (str, int).
+#
+# Cache lifetime: this cache persists for the lifetime of the Python process.
+# The FastAPI server does NOT restart on config changes (PUT /api/config just
+# writes the DB row), so a key rotation via ConfigWizard would otherwise leave
+# stale entries — successful lookups made with the now-revoked key — in the
+# cache until process restart. ``config_service.update_config`` calls
+# ``clear_caches()`` whenever ``tmdb_api_key`` is in the updated fields to
+# handle this; tests that mutate config between assertions should do the
+# same (the ``_clear_tmdb_caches`` autouse fixture in test_tmdb_client.py
+# is the canonical pattern).
+_TMDB_LRU_MAXSIZE = 4096
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def retry_network_operation(max_retries: int = 3, base_delay: float = 1.0) -> Callable[[F], F]:
+    """Decorator for retrying network operations."""
+
+    def decorator(func: F) -> F:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_exception = None
+            delay = base_delay
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except (requests.RequestException, ConnectionError, TimeoutError) as e:
+                    last_exception = e
+                    if attempt == max_retries:
+                        # exc_info=True per CLAUDE.md — preserves the
+                        # __cause__/__context__ chain pointing at the root
+                        # network failure, which a bare str(e) discards.
+                        logger.error(
+                            f"Max retries ({max_retries}) exceeded for {func.__name__}: {e}",
+                            exc_info=True,
+                        )
+                        raise e
+
+                    # Intentionally NO ``exc_info=True`` here — emitting a
+                    # full stack trace on every retry attempt produces N
+                    # tracebacks per failure, which buries the rest of the
+                    # log on a 300-show build run. The terminal error log
+                    # above keeps the traceback for the failure that
+                    # actually sticks.
+                    logger.warning(
+                        f"Network retry {attempt + 1}/{max_retries + 1} for {func.__name__}: {e}"
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, 30)  # Cap at 30 seconds
+
+            raise last_exception
+
+        return wrapper  # type: ignore
+
+    return decorator
+
 
 BASE_IMAGE_URL = "https://image.tmdb.org/t/p/original"
 
 # TMDB v4 read-access tokens are long JWTs; v3 keys are short hex strings.
 _V4_TOKEN_MIN_LEN = 40
-
-
-def retry_network_operation(max_retries: int = 3, base_delay: float = 1.0) -> Callable[[F], F]:
-    """Decorator for retrying network operations (caps delay at 30s)."""
-    return retry_with_backoff(
-        max_retries=max_retries,
-        base_delay=base_delay,
-        max_delay=30.0,
-        exceptions=(requests.RequestException, ConnectionError, TimeoutError),
-    )
 
 
 def _tmdb_auth(api_key: str) -> tuple[dict, dict]:
@@ -211,16 +265,48 @@ def generate_name_variations(name: str) -> list[str]:
     return variations
 
 
-@retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_show_id(show_name: str) -> str | None:
+    """Fetch the TMDb ID for a given show name with fuzzy fallback.
+
+    Public entry point. The actual TMDB call is in ``_fetch_show_id_cached``;
+    this wrapper short-circuits BEFORE consulting the cache when no API key
+    is configured. Caching the ``None`` early-return would poison the cache
+    on the common first-boot path (user starts Engram, then sets the TMDB
+    key in ConfigWizard — later calls would keep returning the cached None
+    until process restart). Also catches post-retry RequestException so a
+    transient TMDB failure surfaces as None (preserving the external
+    contract) without being cached by @lru_cache as a permanent None.
     """
-    Fetch the TMDb ID for a given show name with fuzzy fallback.
+    from app.services.config_service import get_config_sync
 
-    Args:
-        show_name (str): The name of the show.
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured in Engram settings")
+        return None
+    try:
+        return _fetch_show_id_cached(show_name)
+    # Match retry_network_operation's retry set exactly — it catches
+    # all three of (RequestException, ConnectionError, TimeoutError),
+    # the last two being Python builtins. After retries exhaust, the
+    # ORIGINAL exception is re-raised unchanged, so the catch here
+    # must cover the same set or a builtin ConnectionError (e.g., a
+    # socket-level DNS failure that requests didn't wrap) escapes
+    # the contract.
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to fetch show ID for '{show_name}': {e}", exc_info=True)
+        return None
 
-    Returns:
-        str: The TMDb ID of the show, or None if not found.
+
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_show_id_cached(show_name: str) -> str | None:
+    """Cached implementation. Caller (the ``fetch_show_id`` wrapper)
+    guarantees an API key is present.
+
+    The api_key check below ``raise``s rather than returning ``None`` so a
+    misuse (e.g., a test calling the cached function directly without
+    mocking the config) fails loudly instead of caching ``None`` keyed on
+    the show name — which is exactly the failure mode the inner/outer
+    split was designed to prevent.
     """
     # Try to get API key from Engram settings first, then fallback to matcher config
     from app.services.config_service import get_config_sync
@@ -229,8 +315,10 @@ def fetch_show_id(show_name: str) -> str | None:
     api_key = config.tmdb_api_key
 
     if not api_key:
-        logger.warning("TMDB API key not configured in Engram settings")
-        return None
+        raise RuntimeError(
+            "_fetch_show_id_cached called without a TMDB API key; "
+            "use the public fetch_show_id wrapper which short-circuits the no-key path"
+        )
 
     logger.debug(
         f"Searching TMDB for '{show_name}' using API key ending in ...{api_key[-4:] if len(api_key) > 4 else '****'}"
@@ -243,40 +331,45 @@ def fetch_show_id(show_name: str) -> str | None:
     headers, params = _tmdb_auth(api_key)
     params["query"] = show_name
 
-    # Try exact match first
+    # Try exact match first.
+    # raise_for_status() turns non-200 responses (429/5xx, etc.) into
+    # HTTPError so @retry_network_operation can retry. Previously a 429
+    # silently fell through ``if response.status_code == 200:`` and the
+    # function eventually returned None — which @lru_cache would then
+    # permanently store for the show name, silently disabling TMDB
+    # lookups for that show until process restart.
     response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
 
-    results = []
-    if response.status_code == 200:
-        results = response.json().get("results", [])
-        logger.debug(f"TMDB search for '{show_name}': {len(results)} results")
+    results = response.json().get("results", [])
+    logger.debug(f"TMDB search for '{show_name}': {len(results)} results")
 
-        if results:
-            logger.debug(
-                f"Top result: {results[0].get('name')} ({results[0].get('first_air_date')}) ID: {results[0].get('id')}"
-            )
-            best_match = results[0]
-            logger.info(
-                f"Matched '{show_name}' to TMDB: '{best_match['name']}' (ID: {best_match['id']})"
-            )
-            return str(best_match["id"])
+    if results:
+        logger.debug(
+            f"Top result: {results[0].get('name')} ({results[0].get('first_air_date')}) ID: {results[0].get('id')}"
+        )
+        best_match = results[0]
+        logger.info(
+            f"Matched '{show_name}' to TMDB: '{best_match['name']}' (ID: {best_match['id']})"
+        )
+        return str(best_match["id"])
 
-        # Try common variations if exact match fails
-        for variation in variations:
-            if variation != show_name and variation:  # Skip if same or empty
-                variation_params = params.copy()
-                variation_params["query"] = variation
+    # Try common variations if exact match fails
+    for variation in variations:
+        if variation != show_name and variation:  # Skip if same or empty
+            variation_params = params.copy()
+            variation_params["query"] = variation
 
-                response = requests.get(url, headers=headers, params=variation_params, timeout=30)
-                if response.status_code == 200:
-                    results = response.json().get("results", [])
-                    if results:
-                        best_match = results[0]
-                        logger.info(
-                            f"Matched '{show_name}' (via '{variation}') to TMDB: "
-                            f"'{best_match['name']}' (ID: {best_match['id']})"
-                        )
-                        return str(best_match["id"])
+            response = requests.get(url, headers=headers, params=variation_params, timeout=30)
+            response.raise_for_status()
+            results = response.json().get("results", [])
+            if results:
+                best_match = results[0]
+                logger.info(
+                    f"Matched '{show_name}' (via '{variation}') to TMDB: "
+                    f"'{best_match['name']}' (ID: {best_match['id']})"
+                )
+                return str(best_match["id"])
 
     # Fallback: Fuzzy match against popular shows.
     # Handles cases like "Southpark" -> "South Park" (missing spaces).
@@ -308,22 +401,57 @@ def fetch_show_id(show_name: str) -> str | None:
     logger.warning(
         f"Could not find show '{show_name}' on TMDB (tried {num_variations} variations). API Key valid: {bool(api_key)}"
     )
-    if not results and response.status_code == 200:
+    # Reaching here means every requests.get() returned 200 (any non-200
+    # would have raised via raise_for_status() above) but no variation
+    # yielded a match — log the last response body for diagnostics.
+    if not results:
         logger.debug(f"TMDB Response: {response.text[:500]}")
     return None
 
 
-@retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_show_details(show_id: int) -> dict | None:
+    """Public entry; short-circuits without caching when API key absent.
+
+    See ``fetch_show_id`` docstring for rationale on the no-cache early-return.
+    Network failures are caught HERE (not inside ``_fetch_show_details_cached``)
+    so an exhausted-retries exception doesn't get swallowed before
+    ``@retry_network_operation`` can see it AND so a transient failure isn't
+    cached by ``@lru_cache``. ``lru_cache`` does not cache exceptions; only
+    successful return values get stored.
+
+    Returns a ``deepcopy`` of the cached dict on every call so a caller
+    mutating any nested field can't corrupt the cached entry for every
+    subsequent caller. Doing the copy in the wrapper (rather than inside
+    the cached function) means cache HITS get a fresh copy too — copying
+    inside the cached function would only deep-copy the one-time miss and
+    then permanently return the same deep-copied object on hits.
     """
-    Fetch show details from TMDB by ID.
+    from app.services.config_service import get_config_sync
 
-    Args:
-        show_id: The TMDB show ID
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return None
+    try:
+        cached = _fetch_show_details_cached(show_id)
+    # See fetch_show_id wrapper for why the catch widens to match the
+    # retry decorator's tuple (RequestException + builtin Connection/Timeout).
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to fetch show details for ID {show_id}: {e}", exc_info=True)
+        return None
+    return copy.deepcopy(cached) if cached is not None else None
 
-    Returns:
-        dict: Show details including 'name', 'number_of_seasons', etc.
-        None: If request fails or API key not configured
+
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_show_details_cached(show_id: int) -> dict | None:
+    """Cached implementation. Caller guarantees the API key is present.
+
+    Returns ``response.json()`` directly. Mutation protection lives in
+    the public ``fetch_show_details`` wrapper, which does a ``deepcopy``
+    on every call so cache hits also get a fresh, independent object.
+    Deep-copying here would protect only the rare cache-miss path while
+    permanently caching the same deep-copied object that subsequent
+    cache hits would all alias.
     """
     from app.services.config_service import get_config_sync
 
@@ -331,11 +459,24 @@ def fetch_show_details(show_id: int) -> dict | None:
     api_key = config.tmdb_api_key
 
     if not api_key:
-        logger.warning("TMDB API key not configured")
-        return None
+        raise RuntimeError(
+            "_fetch_show_details_cached called without a TMDB API key; "
+            "use the public fetch_show_details wrapper"
+        )
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}"
-    return _tmdb_get_json(url, api_key)
+
+    headers, params = _tmdb_auth(api_key)
+
+    # Let RequestException propagate so @retry_network_operation can retry
+    # AND lru_cache does not cache a sentinel-None on transient failures.
+    # Caller (the public wrapper) catches the post-retry exception and
+    # surfaces None to satisfy the original contract. (Do NOT route this
+    # through _tmdb_get_json — that helper swallows RequestException and
+    # would poison the cache with None.)
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    return response.json()
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)
@@ -413,18 +554,36 @@ def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
         return []
 
 
-@retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_season_details(show_id: str, season_number: int) -> int:
-    """
-    Fetch the total number of episodes for a given show and season from the TMDb API.
+    """Public entry; short-circuits without caching when API key absent.
 
-    Args:
-        show_id (str): The ID of the show on TMDb.
-        season_number (int): The season number to fetch details for.
-
-    Returns:
-        int: The total number of episodes in the season, or 0 if the API request failed.
+    Returns 0 (not None) for the no-key path, matching the original
+    contract — callers check ``if episode_count == 0``. Also catches the
+    post-retry RequestException so a transient network failure doesn't get
+    cached as ``0`` by ``@lru_cache`` (which would silently treat a season
+    as empty for the rest of the process — a 12h build with no recovery).
     """
+    from app.services.config_service import get_config_sync
+
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return 0
+    try:
+        return _fetch_season_details_cached(show_id, season_number)
+    # See fetch_show_id wrapper for why the catch widens to match the
+    # retry decorator's tuple (RequestException + builtin Connection/Timeout).
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(
+            f"Failed to fetch season details for Season {season_number}: {e}",
+            exc_info=True,
+        )
+        return 0
+
+
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_season_details_cached(show_id: str, season_number: int) -> int:
+    """Cached implementation. Caller guarantees the API key is present."""
     logger.info(f"Fetching season details for Season {season_number}...")
     from app.services.config_service import get_config_sync
 
@@ -432,13 +591,22 @@ def fetch_season_details(show_id: str, season_number: int) -> int:
     tmdb_api_key = config.tmdb_api_key
 
     if not tmdb_api_key:
-        logger.warning("TMDB API key not configured")
-        return 0
+        raise RuntimeError(
+            "_fetch_season_details_cached called without a TMDB API key; "
+            "use the public fetch_season_details wrapper"
+        )
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
-    season_data = _tmdb_get_json(url, tmdb_api_key)
-    if season_data is None:
-        return 0
+
+    headers, params = _tmdb_auth(tmdb_api_key)
+
+    # Let RequestException propagate so @retry_network_operation retries
+    # AND lru_cache doesn't cache 0 on transient failure. Do NOT route this
+    # through _tmdb_get_json — that helper swallows RequestException and
+    # would let lru_cache pin a sentinel 0 on the show/season key.
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    season_data = response.json()
     return len(season_data.get("episodes", []))
 
 
@@ -560,3 +728,16 @@ def fetch_movie_id(movie_name: str) -> str | None:
 
     logger.warning(f"Could not find movie '{movie_name}' on TMDB")
     return None
+
+
+def clear_caches() -> None:
+    """Clear all in-process TMDB LRU caches.
+
+    Test fixtures call this to prevent one test's mocked ``requests.get``
+    results from leaking into another test. Production callers may use it
+    after a TMDB API key rotation to drop any results fetched with the old
+    credentials.
+    """
+    _fetch_show_id_cached.cache_clear()
+    _fetch_show_details_cached.cache_clear()
+    _fetch_season_details_cached.cache_clear()

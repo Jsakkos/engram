@@ -126,6 +126,17 @@ async def update_config(**kwargs) -> AppConfig:
         # Ensure paths exist
         await ensure_paths_exist(config)
 
+        # If the TMDB key was rotated, blow away any results fetched with
+        # the old key. The TMDB ``@lru_cache``-wrapped fetchers cache by
+        # the function arguments alone (not the key), so a rotation
+        # would silently keep returning stale results — including
+        # successful lookups made with a now-revoked key — until process
+        # restart. ConfigWizard is the common rotation entry point.
+        if "tmdb_api_key" in kwargs:
+            from app.matcher.tmdb_client import clear_caches
+
+            clear_caches()
+
         logger.info(f"Updated configuration: {list(kwargs.keys())}")
         return config
 

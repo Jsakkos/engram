@@ -4,6 +4,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+# Use the module-level import (`testing_service.X`) for everything in this
+# file. Mixing `import as` with `from … import …` of the same module
+# triggers CodeQL's duplicate-import-style warning and makes refactors that
+# rename symbols harder to follow.
+from app.matcher import testing_service
 from app.matcher.testing_service import download_subtitles
 
 
@@ -381,3 +386,94 @@ class TestSubtitleFilenameFormat:
         cache_path = tmp_path / "data" / "The Office"
         assert (cache_path / "The Office - S01E01.srt").exists()
         assert (cache_path / "The Office - S01E02.srt").exists()
+
+
+@pytest.mark.unit
+class TestUserAgent:
+    """The User-Agent string sent to OpenSubtitles must include the app
+    version per their best-practices doc; the prior placeholder ``"Engram"``
+    (no version) and ``"Oz 1.0.0"`` (wrong app name) were both
+    non-compliant."""
+
+    def test_user_agent_constant_matches_version(self):
+        from app import __version__
+
+        assert testing_service._USER_AGENT == f"Engram v{__version__}"
+        # Must satisfy the OS "AppName vX.Y.Z" pattern.
+        import re
+
+        assert re.match(r"^Engram v\d+\.\d+\.\d+$", testing_service._USER_AGENT)
+
+
+@pytest.mark.unit
+class TestQuotaSnapshot:
+    """Reading ``client.user_downloads_remaining`` after API activity is the
+    cheapest way to surface the daily quota — no extra /infos/user request."""
+
+    def setup_method(self):
+        # Fully replace the dataclass so tests don't bleed into each other.
+        # Resetting only `last_quota` + `last_logged_remaining` left
+        # `failed` / `client` / `login_time` carrying values from previous
+        # tests, silently exercising the wrong code path inside
+        # `_get_os_client`'s short-circuit and making `get_last_quota()`
+        # return None for the wrong reason.
+        testing_service._OS = testing_service._OSState()
+
+    def test_snapshot_records_remaining_from_client_attribute(self):
+        client = Mock()
+        client.user_downloads_remaining = 87
+        testing_service._snapshot_os_quota(client)
+        snap = testing_service.get_last_quota()
+        assert snap is not None
+        assert snap["remaining"] == 87
+        assert "as_of" in snap
+
+    def test_snapshot_handles_missing_attribute_gracefully(self):
+        """If the library version doesn't expose the attribute, we no-op."""
+        client = Mock(spec=[])  # spec=[] → no attributes
+        testing_service._snapshot_os_quota(client)
+        assert testing_service.get_last_quota() is None
+
+    def test_snapshot_logs_only_on_drop_of_ten_or_more(self):
+        """Spammy log noise is the failure mode; one line per season would
+        bury everything else. We log on the first read and on big drops only."""
+        client = Mock()
+        client.user_downloads_remaining = 100
+
+        with patch("app.matcher.testing_service.logger") as log:
+            testing_service._snapshot_os_quota(client)  # first read → logs
+            assert log.info.call_count == 1
+
+            # Tiny drop (8) → no log.
+            client.user_downloads_remaining = 92
+            testing_service._snapshot_os_quota(client)
+            assert log.info.call_count == 1
+
+            # Bigger drop crossing the 10-unit threshold from the LAST logged
+            # value (100) → logs.
+            client.user_downloads_remaining = 88
+            testing_service._snapshot_os_quota(client)
+            assert log.info.call_count == 2
+
+    def test_snapshot_logs_on_quota_refill_at_midnight(self):
+        """A 12-hour build crossing midnight would otherwise silence quota
+        logs forever: when daily quota resets (e.g. 50 -> 1000), the
+        "drop" check sees a negative diff and never fires. The refill
+        branch keeps visibility live across the boundary."""
+        client = Mock()
+        client.user_downloads_remaining = 50
+
+        with patch("app.matcher.testing_service.logger") as log:
+            testing_service._snapshot_os_quota(client)  # first read → logs
+            assert log.info.call_count == 1
+
+            # Midnight reset: quota jumps from 50 to 1000.
+            client.user_downloads_remaining = 1000
+            testing_service._snapshot_os_quota(client)
+            assert log.info.call_count == 2, "refill must trigger a log"
+
+            # And the next ~50-drop after the refill should still log
+            # normally against the new baseline.
+            client.user_downloads_remaining = 988
+            testing_service._snapshot_os_quota(client)
+            assert log.info.call_count == 3, "post-refill drops still log"

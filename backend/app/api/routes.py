@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.config import settings
+from app.core.security import is_allowed_image_url
 from app.database import get_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
@@ -1587,6 +1588,10 @@ async def fetch_cover(
     """Download a cover image and save it to the export directory."""
     from app.services.config_service import get_config as get_db_config
 
+    # SSRF guard: only fetch from allowlisted public image hosts.
+    if not is_allowed_image_url(request.image_url):
+        raise HTTPException(status_code=400, detail="Image URL host is not in the allowlist")
+
     if not job.content_hash:
         raise HTTPException(status_code=400, detail="No content hash")
 
@@ -1600,10 +1605,27 @@ async def fetch_cover(
 
     max_size = 10 * 1024 * 1024  # 10 MB
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        # follow_redirects stays off: the SSRF guard validates only the
+        # initial URL, so a redirect could otherwise reach an internal host.
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             resp = await client.get(request.image_url)
+            # Check redirects before raise_for_status(): the latter fires only
+            # for 4xx/5xx, and with follow_redirects disabled a 3xx would
+            # otherwise save the redirect's HTML body as the cover.
+            if resp.is_redirect:
+                raise HTTPException(status_code=502, detail="Image server returned a redirect")
             resp.raise_for_status()
 
+            # Parse Content-Length defensively — a malformed header must not
+            # raise (int() rejects Unicode digits that str.isdigit() accepts).
+            # The actual-size check below still catches oversized bodies.
+            content_length = resp.headers.get("content-length")
+            try:
+                declared_size = int(content_length) if content_length else None
+            except ValueError:
+                declared_size = None
+            if declared_size is not None and declared_size > max_size:
+                raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")
             if len(resp.content) > max_size:
                 raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")
 
@@ -1620,7 +1642,11 @@ async def fetch_cover(
 
         return {"status": "saved", "filename": filename}
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Failed to download image: {e}") from None
+        # No user-derived value in the log args: the exception message embeds
+        # the URL and even job_id is a tainted path parameter (log-injection).
+        # exc_info=True still records the full exception and traceback.
+        logger.warning("fetch_cover download failed (%s)", type(e).__name__, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Failed to download image: {e}") from e
 
 
 @router.post("/contributions/{job_id}/enhance")

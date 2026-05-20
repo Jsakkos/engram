@@ -21,7 +21,15 @@ from loguru import logger
 from app.config import settings
 from app.matcher.vectorizer_config import CACHE_FORMAT_VERSION
 
-_CACHE_TAG = f"subtitle-cache-v{CACHE_FORMAT_VERSION}"
+# The workflow publishes to a single rolling `subtitle-cache-latest` tag and
+# overwrites assets on every run. Backwards-compat is handled via the
+# in-tarball manifest's `cache_format_version` field (validated below) — if
+# a future build bumps the format and an old backend pulls the new tarball,
+# we log + fall back to scraping rather than load incompatible vectors.
+# Previously the tag was derived from CACHE_FORMAT_VERSION (`subtitle-cache-v2`);
+# the switch removes per-format-version release clutter and matches the
+# rolling-release ops convention documented in docs/subtitle-cache.md.
+_CACHE_TAG = "subtitle-cache-latest"
 _MANIFEST_NAME = "manifest.json"
 _TARBALL_NAME = "engram-subtitle-cache.tar.gz"
 _MANIFEST_TIMEOUT = 30.0

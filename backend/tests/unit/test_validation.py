@@ -378,3 +378,33 @@ class TestTmdbValidation:
         result = asyncio.run(validate_tmdb(req))
         assert result.valid is False
         assert "connection" in result.error.lower()
+
+
+class TestExecutableValidationHardening:
+    """The tool validators must refuse to run a binary that isn't the tool."""
+
+    def test_validate_makemkv_rejects_non_makemkv_path(self):
+        """A path whose basename is not MakeMKV must not reach subprocess.run."""
+        import asyncio
+
+        from app.api.validation import ValidationRequest, validate_makemkv
+
+        with patch("app.api.validation.subprocess.run") as mock_run:
+            result = asyncio.run(validate_makemkv(ValidationRequest(path="/bin/sh")))
+
+        assert result.valid is False
+        assert "MakeMKV executable" in result.error
+        mock_run.assert_not_called()
+
+    def test_validate_ffmpeg_rejects_non_ffmpeg_path(self):
+        """A path whose basename is not FFmpeg must not reach subprocess.run."""
+        import asyncio
+
+        from app.api.validation import ValidationRequest, validate_ffmpeg
+
+        with patch("app.api.validation.subprocess.run") as mock_run:
+            result = asyncio.run(validate_ffmpeg(ValidationRequest(path="/bin/sh")))
+
+        assert result.valid is False
+        assert "FFmpeg executable" in result.error
+        mock_run.assert_not_called()

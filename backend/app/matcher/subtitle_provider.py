@@ -7,14 +7,25 @@ from pathlib import Path
 
 from loguru import logger
 
+from app import __version__
 from app.matcher.config_manager import get_config_manager
 from app.matcher.models import EpisodeInfo, SubtitleFile
-from app.matcher.retry import retry_with_backoff
+from app.matcher.os_api_retry import os_api_call
 from app.matcher.subtitle_utils import parse_season_episode_numbers, sanitize_filename
 
 # CompositeSubtitleProvider returns early once it has at least this many
 # cached subtitles, skipping slower download providers.
 _MIN_CACHED_SUBTITLES_TO_SKIP_DOWNLOAD = 3
+
+# NOTE: A generic ``retry_with_backoff`` decorator previously lived in this
+# module. The OpenSubtitles call sites now all route through
+# ``os_api_retry.os_api_call`` for consistent 429 / Retry-After handling.
+
+# OpenSubtitles best-practices require the User-Agent be in the form
+# "AppName vX.Y.Z". Mirrors testing_service._USER_AGENT — kept separate
+# only to avoid a cross-module import dependency between two matcher
+# files that share a parent module.
+_USER_AGENT = f"Engram v{__version__}"
 
 
 def parse_season_episode(filename: str) -> EpisodeInfo | None:
@@ -191,20 +202,30 @@ class OpenSubtitlesProvider(SubtitleProvider):
                 self.client = None
                 return
 
-            user_agent = getattr(self.config, "open_subtitles_user_agent", "Oz 1.0.0")
+            # OS best-practices: User-Agent must be "AppName vX.Y.Z". The
+            # prior "Oz 1.0.0" placeholder was a leftover from upstream and
+            # silently misidentified the app. Override via config only if a
+            # deployment has registered a custom UA with OpenSubtitles.
+            user_agent = getattr(self.config, "open_subtitles_user_agent", None) or _USER_AGENT
             self.client = OpenSubtitlesClient(user_agent, api_key)
             username = getattr(self.config, "open_subtitles_username", None)
             password = getattr(self.config, "open_subtitles_password", None)
             if username and password:
-                self.client.login(username, password)
+                # Route through os_api_call so a transient 429 here gets the
+                # same retry treatment as login/search/download elsewhere —
+                # otherwise a single rate-limit response silently disables
+                # the entire provider for the rest of the job.
+                os_api_call(self.client.login, username, password)
                 logger.debug("Logged in to OpenSubtitles")
             else:
                 logger.debug("Initialized OpenSubtitles (no login)")
         except Exception as e:
-            logger.error(f"Failed to initialize OpenSubtitles: {e}")
+            # CLAUDE.md: always log with exc_info=True inside except blocks.
+            # A bare str(e) hides AttributeError / ImportError surprises that
+            # may sneak through ``os_api_call``'s retry loop.
+            logger.error(f"Failed to initialize OpenSubtitles: {e}", exc_info=True)
             self.client = None
 
-    @retry_with_backoff(max_retries=3, base_delay=1.0)
     def _search_with_retry(
         self,
         query: str | None = None,
@@ -213,31 +234,44 @@ class OpenSubtitlesProvider(SubtitleProvider):
         season_number: int | None = None,
         type: str | None = None,
     ):
-        """Search for subtitles with retry logic."""
+        """Search for subtitles with 429-aware retry."""
         if not self.client:
             raise RuntimeError("OpenSubtitles client not initialized")
 
+        # Retry cadence: 4 attempts with 1s base delay → 3 sleeps of
+        # 1s, 2s, 4s (the 4th attempt re-raises without sleeping). Tight
+        # schedule — sufficient for transient network errors; a genuine
+        # 429 still gets four chances.
         with _alarm_timeout(self.network_timeout, "Search"):
-            return self.client.search(
+            return os_api_call(
+                self.client.search,
                 query=query,
                 languages=languages,
                 parent_tmdb_id=parent_tmdb_id,
                 season_number=season_number,
                 type=type,
+                max_attempts=4,
+                base_delay=1.0,
             )
 
-    @retry_with_backoff(max_retries=5, base_delay=3.0)
     def _download_with_retry(self, subtitle):
-        """Download subtitle file with retry logic.
+        """Download subtitle file with 429-aware retry.
 
-        Uses 5 retries with 3s base delay to handle rate limit issues,
-        as the OpenSubtitles download quota can be buggy.
+        Uses 6 attempts with 3s base delay → 5 sleeps of 3s, 6s, 12s, 24s, 48s
+        (the 6th attempt re-raises without sleeping). Generous because the
+        OpenSubtitles download quota check can be flaky and we'd rather wait
+        than burn the daily quota on transient failures.
         """
         if not self.client:
             raise RuntimeError("OpenSubtitles client not initialized")
 
         with _alarm_timeout(self.network_timeout, "Download"):
-            return self.client.download_and_save(subtitle)
+            return os_api_call(
+                self.client.download_and_save,
+                subtitle,
+                max_attempts=6,
+                base_delay=3.0,
+            )
 
     def _resolve_show_name(self, show_name: str, tmdb_id: int | None) -> str:
         """Resolve the show name to search with, preferring TMDB's name.
