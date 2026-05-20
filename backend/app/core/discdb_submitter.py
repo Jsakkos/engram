@@ -6,12 +6,15 @@ All functions are non-throwing — errors are captured in SubmissionResult.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+from sqlalchemy import select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +24,7 @@ from app.core.discdb_exporter import (
     get_makemkv_log_dir,
 )
 from app.models.app_config import AppConfig
-from app.models.disc_job import DiscJob, DiscTitle
+from app.models.disc_job import DiscJob, DiscTitle, JobState
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +142,6 @@ async def submit_job(
         return SubmissionResult(error="Export skipped (no data or all discdb-sourced)")
 
     # Read the generated JSON payload
-    import json
-
     json_path = export_dir / "disc_data.json"
     payload = json.loads(json_path.read_text(encoding="utf-8"))
 
@@ -180,12 +181,6 @@ async def submit_release_group(
     app_version: str = "unknown",
 ) -> BatchSubmissionResult:
     """Submit all completed jobs in a release group sequentially."""
-    from datetime import UTC, datetime
-
-    from sqlalchemy import select
-
-    from app.models.disc_job import JobState
-
     result = BatchSubmissionResult()
 
     jobs_query = await session.execute(

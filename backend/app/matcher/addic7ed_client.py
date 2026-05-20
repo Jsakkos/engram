@@ -304,57 +304,6 @@ class Addic7edClient:
             uploader=uploader,
         )
 
-    def _extract_download_count(self, parent_element) -> int:
-        """Extract download count from parent element (legacy method)."""
-        if parent_element is None:
-            return 0
-
-        text = parent_element.get_text()
-        match = re.search(r"(\d+)\s*(?:downloads?|times?)", text, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-
-        return 0
-
-    def _extract_version_info(self, parent_element, link) -> str:
-        """Extract version/release group info (legacy method)."""
-        if parent_element is None:
-            return "Unknown"
-
-        text = parent_element.get_text()
-        groups = [
-            "LOL",
-            "DIMENSION",
-            "KILLERS",
-            "FoV",
-            "IMMERSE",
-            "AVS",
-            "2HD",
-            "ASAP",
-            "EXCELLENCE",
-            "FLEET",
-            "TLA",
-            "PROPER",
-            "REPACK",
-        ]
-
-        for group in groups:
-            if group in text.upper():
-                return group
-
-        return "Original"
-
-    def _extract_uploader(self, parent_element) -> str:
-        """Extract uploader username (legacy method)."""
-        if parent_element is None:
-            return ""
-
-        user_link = parent_element.find("a", href=re.compile(r"/user/\d+"))
-        if user_link:
-            return user_link.get_text(strip=True)
-
-        return ""
-
     def download_subtitle(self, subtitle: SubtitleEntry, save_path: Path) -> Path | None:
         """Download a subtitle file.
 

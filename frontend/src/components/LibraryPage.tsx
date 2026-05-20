@@ -13,6 +13,7 @@ import { motion } from "motion/react";
 import { Plus } from "lucide-react";
 import { SvAtmosphere, SvPanel, SvLabel, SvTopBar, SvStatusBar, sv } from "../app/components/synapse";
 import { FEATURES } from "../config/constants";
+import { formatDateOnly } from "../utils/formatting";
 
 interface HistoryJob {
   id: number;
@@ -27,6 +28,8 @@ interface HistoryJob {
 }
 
 type Filter = "all" | "movie" | "tv";
+
+const FILTER_LABELS: Record<Filter, string> = { all: "ALL", movie: "MOVIES", tv: "TV" };
 
 const POSTER_PALETTE = [
   { bg: sv.cyan, text: sv.cyanHi, glow: sv.cyan },
@@ -55,19 +58,12 @@ function isRecent(completedAt: string | null): boolean {
   return Date.now() - t < 24 * 3600 * 1000;
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
-}
-
 export default function LibraryPage() {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<HistoryJob[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [isLoading, setIsLoading] = useState(true);
-  const [isConnected] = useState(true); // Library is read-only; live status not relevant
+  const isConnected = true; // Library is read-only; live status not relevant
 
   useEffect(() => {
     let cancelled = false;
@@ -143,10 +139,10 @@ export default function LibraryPage() {
 
           {/* Filter pills */}
           <div style={{ display: "flex", gap: 8 }}>
-            {(["all", "movie", "tv"] as const).map((f) => {
+            {(() => {
+            const counts: Record<Filter, number> = { all: stats.total, movie: stats.movie, tv: stats.tv };
+            return (["all", "movie", "tv"] as const).map((f) => {
               const active = filter === f;
-              const counts = { all: stats.total, movie: stats.movie, tv: stats.tv };
-              const labels = { all: "ALL", movie: "MOVIES", tv: "TV" };
               return (
                 <button
                   key={f}
@@ -166,10 +162,11 @@ export default function LibraryPage() {
                     cursor: "pointer",
                   }}
                 >
-                  {labels[f]} · {counts[f]}
+                  {FILTER_LABELS[f]} · {counts[f]}
                 </button>
               );
-            })}
+            });
+          })()}
           </div>
         </div>
 
@@ -362,7 +359,7 @@ function PosterCard({
             {job.content_type === "tv" && job.detected_season != null
               ? `S${String(job.detected_season).padStart(2, "0")} · `
               : ""}
-            {job.total_titles} {job.total_titles === 1 ? "title" : "titles"} · {formatDate(job.completed_at)}
+            {job.total_titles} {job.total_titles === 1 ? "title" : "titles"} · {formatDateOnly(job.completed_at)}
           </div>
         </div>
       </SvPanel>

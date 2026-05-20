@@ -41,7 +41,6 @@ export function StateIndicator({ state }: StateIndicatorProps) {
   const Icon = config.icon;
   const isActive = state !== "completed" && state !== "error" && state !== "idle";
   const shouldSpin = state === "ripping" || state === "scanning";
-  const shouldPulse = isActive;
 
   return (
     <span
@@ -71,7 +70,7 @@ export function StateIndicator({ state }: StateIndicatorProps) {
         <Icon size={12} color={config.color} />
       </motion.span>
 
-      {shouldPulse && (
+      {isActive && (
         <motion.span
           style={{
             width: 6,

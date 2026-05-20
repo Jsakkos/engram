@@ -1,14 +1,41 @@
 import type { CSSProperties } from "react";
-import { SvBadge } from "./SvBadge";
+import { SvBadge, type SvBadgeState } from "./SvBadge";
 import { SvCorners } from "./SvCorners";
 import { SvLabel } from "./SvLabel";
 import { SvPanel } from "./SvPanel";
 import { SvRuler } from "./SvRuler";
-import { sv } from "./tokens";
+import { monoLabelStyle, sv } from "./tokens";
 
 export type DiscInsertPhase = "detect" | "scan" | "classify" | "ready";
 
 const PHASES: DiscInsertPhase[] = ["detect", "scan", "classify", "ready"];
+
+/** Per-phase classification-panel copy: badge state/text + footer status line. */
+const PHASE_COPY: Record<
+  DiscInsertPhase,
+  { badgeState: SvBadgeState; badgeText: string; footer: string }
+> = {
+  detect: {
+    badgeState: "queued",
+    badgeText: "DETECTING",
+    footer: "drive online · awaiting media",
+  },
+  scan: {
+    badgeState: "scanning",
+    badgeText: "ANALYZING",
+    footer: "reading title structure · runtime patterns",
+  },
+  classify: {
+    badgeState: "scanning",
+    badgeText: "ANALYZING",
+    footer: "tmdb match found · audio fingerprint pending",
+  },
+  ready: {
+    badgeState: "complete",
+    badgeText: "READY",
+    footer: "classification complete · ripping queued",
+  },
+};
 
 interface Props {
   phase: DiscInsertPhase;
@@ -111,15 +138,7 @@ function DiscPanel({
         >
           {driveLabel && <SvLabel color={sv.cyan}>{driveLabel}</SvLabel>}
           {driveMeta && (
-            <span
-              style={{
-                fontFamily: sv.mono,
-                fontSize: 10,
-                letterSpacing: "0.22em",
-                color: sv.ink,
-                textTransform: "uppercase",
-              }}
-            >
+            <span style={monoLabelStyle({ size: 10, color: sv.ink, letterSpacing: "0.22em" })}>
               {driveMeta}
             </span>
           )}
@@ -245,14 +264,10 @@ function DiscPanel({
                 data-testid={`sv-disc-insert-phase-${p}`}
                 data-active={isActive ? "true" : "false"}
                 style={{
+                  ...monoLabelStyle({ size: 9, color: textColor, letterSpacing: "0.2em" }),
                   flex: 1,
                   padding: "6px 8px",
                   borderTop: `2px solid ${borderColor}`,
-                  fontFamily: sv.mono,
-                  fontSize: 9,
-                  letterSpacing: "0.2em",
-                  color: textColor,
-                  textTransform: "uppercase",
                 }}
               >
                 <div style={{ opacity: 0.6, fontSize: 8 }}>0{i + 1}</div>
@@ -280,8 +295,7 @@ function ClassifyPanel({
   phase: DiscInsertPhase;
 }) {
   const hasMatch = phase === "classify" || phase === "ready";
-  const badgeState = phase === "ready" ? "complete" : phase === "detect" ? "queued" : "scanning";
-  const badgeText = phase === "ready" ? "READY" : phase === "detect" ? "DETECTING" : "ANALYZING";
+  const copy = PHASE_COPY[phase];
 
   return (
     <SvPanel
@@ -292,7 +306,7 @@ function ClassifyPanel({
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <SvLabel color={sv.cyan}>Disc · classification</SvLabel>
-        <SvBadge state={badgeState}>{badgeText}</SvBadge>
+        <SvBadge state={copy.badgeState}>{copy.badgeText}</SvBadge>
       </div>
 
       {hasMatch && bestMatch ? (
@@ -318,12 +332,8 @@ function ClassifyPanel({
           {bestMatchMeta && (
             <div
               style={{
+                ...monoLabelStyle({ size: 10, color: sv.inkDim, letterSpacing: "0.18em" }),
                 marginTop: 8,
-                fontFamily: sv.mono,
-                fontSize: 10,
-                letterSpacing: "0.18em",
-                color: sv.inkDim,
-                textTransform: "uppercase",
               }}
             >
               {bestMatchMeta}
@@ -333,11 +343,7 @@ function ClassifyPanel({
       ) : (
         <div
           style={{
-            fontFamily: sv.mono,
-            fontSize: 11,
-            letterSpacing: "0.2em",
-            color: sv.cyan,
-            textTransform: "uppercase",
+            ...monoLabelStyle({ size: 11, color: sv.cyan, letterSpacing: "0.2em" }),
             animation: "svPulse 1.5s ease-in-out infinite",
           }}
         >
@@ -349,22 +355,11 @@ function ClassifyPanel({
 
       <div
         style={{
+          ...monoLabelStyle({ size: 9, color: sv.inkFaint, letterSpacing: "0.22em" }),
           marginTop: "auto",
-          fontFamily: sv.mono,
-          fontSize: 9,
-          letterSpacing: "0.22em",
-          color: sv.inkFaint,
-          textTransform: "uppercase",
         }}
       >
-        ›{" "}
-        {phase === "detect"
-          ? "drive online · awaiting media"
-          : phase === "scan"
-            ? "reading title structure · runtime patterns"
-            : phase === "classify"
-              ? "tmdb match found · audio fingerprint pending"
-              : "classification complete · ripping queued"}
+        › {copy.footer}
       </div>
     </SvPanel>
   );

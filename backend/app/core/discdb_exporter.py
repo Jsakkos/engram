@@ -204,11 +204,7 @@ def _collect_scan_log(job_id: int | None, export_dir: Path) -> str | None:
 
 def _list_images(export_dir: Path) -> list[str]:
     """List image files in the export directory (tier 3 contributions)."""
-    images = []
-    for ext in ("*.jpg", "*.jpeg", "*.png"):
-        for img in export_dir.glob(ext):
-            images.append(img.name)
-    return sorted(images)
+    return sorted(img.name for ext in ("*.jpg", "*.jpeg", "*.png") for img in export_dir.glob(ext))
 
 
 async def get_pending_exports(session: AsyncSession) -> list[DiscJob]:

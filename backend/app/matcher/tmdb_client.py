@@ -4,7 +4,6 @@ import re
 import time
 from collections.abc import Callable
 from functools import lru_cache, wraps
-from threading import Lock
 from typing import Any, TypeVar
 
 import requests
@@ -76,52 +75,73 @@ def retry_network_operation(max_retries: int = 3, base_delay: float = 1.0) -> Ca
 
 BASE_IMAGE_URL = "https://image.tmdb.org/t/p/original"
 
+# TMDB v4 read-access tokens are long JWTs; v3 keys are short hex strings.
+_V4_TOKEN_MIN_LEN = 40
 
-class RateLimitedRequest:
+
+def _tmdb_auth(api_key: str) -> tuple[dict, dict]:
+    """Build (headers, params) for TMDB auth based on key type.
+
+    v4 read-access tokens use a Bearer header; v3 keys use an api_key param.
     """
-    A class that represents a rate-limited request object.
+    headers: dict = {}
+    params: dict = {}
+    if len(api_key) > _V4_TOKEN_MIN_LEN:
+        headers["Authorization"] = f"Bearer {api_key}"
+    else:
+        params["api_key"] = api_key
+    return headers, params
 
-    Attributes:
-        rate_limit (int): Maximum number of requests allowed per period.
-        period (int): Period in seconds.
-        requests_made (int): Counter for requests made.
-        start_time (float): Start time of the current period.
-        lock (Lock): Lock for synchronization.
+
+def _tmdb_get_json(url: str, api_key: str, query_params: dict | None = None) -> dict | None:
+    """Perform an authenticated TMDB GET and return parsed JSON.
+
+    Returns None if the request fails (logs the error). Raises nothing —
+    callers supply their own default return value.
     """
-
-    def __init__(self, rate_limit=30, period=1):
-        self.rate_limit = rate_limit
-        self.period = period
-        self.requests_made = 0
-        self.start_time = time.time()
-        self.lock = Lock()
-
-    def get(self, url):
-        """
-        Sends a rate-limited GET request to the specified URL.
-
-        Args:
-            url (str): The URL to send the request to.
-
-        Returns:
-            Response: The response object returned by the request.
-        """
-        with self.lock:
-            if self.requests_made >= self.rate_limit:
-                sleep_time = self.period - (time.time() - self.start_time)
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
-                self.requests_made = 0
-                self.start_time = time.time()
-
-            self.requests_made += 1
-
-        response = requests.get(url, timeout=30)
-        return response
+    headers, params = _tmdb_auth(api_key)
+    if query_params:
+        params.update(query_params)
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"TMDB request failed for {url}: {e}")
+        return None
 
 
-# Initialize rate-limited request
-rate_limited_request = RateLimitedRequest(rate_limit=30, period=1)
+def _strip_the_prefix(name: str) -> list[str]:
+    """Variation with a leading 'The ' removed."""
+    if name.lower().startswith("the "):
+        return [name[4:].strip()]
+    return []
+
+
+def _punctuation_variants(name: str) -> list[str]:
+    """Variations swapping common punctuation forms."""
+    variants = []
+    if ":" in name:
+        variants.append(name.replace(":", " -"))
+        variants.append(name.replace(":", ""))
+    if " - " in name:
+        variants.append(name.replace(" - ", ": "))
+    if "&" in name:
+        variants.append(name.replace("&", "and"))
+    elif " and " in name.lower():
+        variants.append(re.sub(r"\band\b", "&", name, flags=re.IGNORECASE))
+    return variants
+
+
+def _remove_common_words(name: str) -> list[str]:
+    """Variations with common collection words removed."""
+    variants = []
+    for word in ("Season", "Complete", "Series", "Collection"):
+        if word.lower() in name.lower():
+            cleaned = re.sub(rf"\s*\b{word}\b\s*", " ", name, flags=re.IGNORECASE).strip()
+            if cleaned and cleaned != name:
+                variants.append(cleaned)
+    return variants
 
 
 def generate_name_variations(name: str) -> list[str]:
@@ -140,29 +160,13 @@ def generate_name_variations(name: str) -> list[str]:
     current = name
 
     # 1. Try without "The" prefix
-    if current.lower().startswith("the "):
-        variations.append(current[4:].strip())
+    variations.extend(_strip_the_prefix(current))
 
     # 2. Try punctuation variations
-    if ":" in current:
-        variations.append(current.replace(":", " -"))
-        variations.append(current.replace(":", ""))
-
-    if " - " in current:
-        variations.append(current.replace(" - ", ": "))
-
-    if "&" in current:
-        variations.append(current.replace("&", "and"))
-    elif " and " in current.lower():
-        variations.append(re.sub(r"\band\b", "&", current, flags=re.IGNORECASE))
+    variations.extend(_punctuation_variants(current))
 
     # 3. Try removing common words
-    common_words = ["Season", "Complete", "Series", "Collection"]
-    for word in common_words:
-        if word.lower() in current.lower():
-            cleaned = re.sub(rf"\s*\b{word}\b\s*", " ", current, flags=re.IGNORECASE).strip()
-            if cleaned and cleaned != current:
-                variations.append(cleaned)
+    variations.extend(_remove_common_words(current))
 
     # Underscore/dot/dash normalization
     normalized = current.replace("_", " ").replace(".", " ")
@@ -323,16 +327,10 @@ def _fetch_show_id_cached(show_name: str) -> str | None:
 
     variations = generate_name_variations(show_name)
 
-    # Try exact match first
-    headers = {}
-    params = {"query": show_name}
+    headers, params = _tmdb_auth(api_key)
+    params["query"] = show_name
 
-    # Check if key is v3 (hex, 32 chars) or v4 (longer)
-    if len(api_key) > 40:  # v4 tokens are long JWTs
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        params["api_key"] = api_key
-
+    # Try exact match first.
     # raise_for_status() turns non-200 responses (429/5xx, etc.) into
     # HTTPError so @retry_network_operation can retry. Previously a 429
     # silently fell through ``if response.status_code == 200:`` and the
@@ -349,7 +347,6 @@ def _fetch_show_id_cached(show_name: str) -> str | None:
         logger.debug(
             f"Top result: {results[0].get('name')} ({results[0].get('first_air_date')}) ID: {results[0].get('id')}"
         )
-        # ... (logging)
         best_match = results[0]
         logger.info(
             f"Matched '{show_name}' to TMDB: '{best_match['name']}' (ID: {best_match['id']})"
@@ -367,27 +364,19 @@ def _fetch_show_id_cached(show_name: str) -> str | None:
             results = response.json().get("results", [])
             if results:
                 best_match = results[0]
-                # ... (logging)
                 logger.info(
                     f"Matched '{show_name}' (via '{variation}') to TMDB: "
                     f"'{best_match['name']}' (ID: {best_match['id']})"
                 )
                 return str(best_match["id"])
 
-    # Fallback: Fuzzy match against popular shows
-    # This handles cases like "Southpark" -> "South Park" (missing spaces)
+    # Fallback: Fuzzy match against popular shows.
+    # Handles cases like "Southpark" -> "South Park" (missing spaces).
     try:
         popular_shows = fetch_popular_shows(page=1)
-        # Also fetch page 2/3? "South Park" is usually very popular, top 20.
-        # But let's fetch a few pages if needed or just cache?
-        # For now, just page 1 is a good start.
-        # Actually, "South Park" might not be in top 20 currently airing?
-        # Let's try to match against what we have.
 
         # Build map of name -> id
         popular_map = {s["name"]: s["id"] for s in popular_shows}
-
-        # Normalize keys for better matching (lowercase)
         popular_names = list(popular_map.keys())
 
         import difflib
@@ -476,18 +465,14 @@ def _fetch_show_details_cached(show_id: int) -> dict | None:
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}"
 
-    headers = {}
-    params = {}
-
-    if len(api_key) > 40:
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        params["api_key"] = api_key
+    headers, params = _tmdb_auth(api_key)
 
     # Let RequestException propagate so @retry_network_operation can retry
     # AND lru_cache does not cache a sentinel-None on transient failures.
     # Caller (the public wrapper) catches the post-retry exception and
-    # surfaces None to satisfy the original contract.
+    # surfaces None to satisfy the original contract. (Do NOT route this
+    # through _tmdb_get_json — that helper swallows RequestException and
+    # would poison the cache with None.)
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
     return response.json()
@@ -515,26 +500,10 @@ def fetch_popular_shows(page: int = 1) -> list[dict]:
     api_key = config.tmdb_api_key.strip()
     url = "https://api.themoviedb.org/3/tv/popular"
 
-    headers = {}
-    params = {"language": "en-US", "page": page}
-
-    if len(api_key) > 40:
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        params["api_key"] = api_key
-
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as e:
-            logger.error(f"HTTP Error {response.status_code}: {response.text}")
-            raise e
-
-        return response.json().get("results", [])
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch popular shows: {e}")
+    data = _tmdb_get_json(url, api_key, {"language": "en-US", "page": page})
+    if data is None:
         return []
+    return data.get("results", [])
 
 
 def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
@@ -628,19 +597,12 @@ def _fetch_season_details_cached(show_id: str, season_number: int) -> int:
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
 
-    headers = {}
-    params = {}
-    if len(tmdb_api_key) > 40:
-        headers["Authorization"] = f"Bearer {tmdb_api_key}"
-    else:
-        params["api_key"] = tmdb_api_key
+    headers, params = _tmdb_auth(tmdb_api_key)
 
     # Let RequestException propagate so @retry_network_operation retries
-    # AND lru_cache doesn't cache 0 on transient failure. The previous
-    # KeyError fallback branch was unreachable — ``dict.get("episodes", [])``
-    # never raises KeyError; a missing key just returns the [] default and
-    # ``len([])`` is 0, so the structurally-malformed-response path lands
-    # at the same return-0 outcome without a dead except clause.
+    # AND lru_cache doesn't cache 0 on transient failure. Do NOT route this
+    # through _tmdb_get_json — that helper swallows RequestException and
+    # would let lru_cache pin a sentinel 0 on the show/season key.
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
     season_data = response.json()
@@ -669,28 +631,13 @@ def fetch_season_episode_runtimes(show_id: str, season_number: int) -> list[int]
         return []
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
-
-    headers = {}
-    params = {}
-    if len(tmdb_api_key) > 40:
-        headers["Authorization"] = f"Bearer {tmdb_api_key}"
-    else:
-        params["api_key"] = tmdb_api_key
-
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
-        season_data = response.json()
-        episodes = season_data.get("episodes", [])
-        runtimes = [ep.get("runtime", 0) or 0 for ep in episodes]
-        logger.info(f"Got {len(runtimes)} episode runtimes for Season {season_number}: {runtimes}")
-        return runtimes
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch episode runtimes for Season {season_number}: {e}")
+    season_data = _tmdb_get_json(url, tmdb_api_key)
+    if season_data is None:
         return []
-    except KeyError:
-        logger.error(f"Missing 'episodes' key in response for Season {season_number}")
-        return []
+    episodes = season_data.get("episodes", [])
+    runtimes = [ep.get("runtime", 0) or 0 for ep in episodes]
+    logger.info(f"Got {len(runtimes)} episode runtimes for Season {season_number}: {runtimes}")
+    return runtimes
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)
@@ -713,12 +660,7 @@ def get_number_of_seasons(show_id: str) -> int:
     tmdb_api_key = config.tmdb_api_key
     url = f"https://api.themoviedb.org/3/tv/{show_id}"
 
-    headers = {}
-    params = {}
-    if len(tmdb_api_key) > 40:
-        headers["Authorization"] = f"Bearer {tmdb_api_key}"
-    else:
-        params["api_key"] = tmdb_api_key
+    headers, params = _tmdb_auth(tmdb_api_key)
 
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
@@ -750,13 +692,8 @@ def fetch_movie_id(movie_name: str) -> str | None:
     url = "https://api.themoviedb.org/3/search/movie"
     variations = generate_name_variations(movie_name)
 
-    headers = {}
-    params = {"query": movie_name}
-
-    if len(api_key) > 40:
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        params["api_key"] = api_key
+    headers, params = _tmdb_auth(api_key)
+    params["query"] = movie_name
 
     response = requests.get(url, headers=headers, params=params, timeout=30)
 

@@ -1,5 +1,6 @@
 import { Job, DiscTitle, TitleState as BackendTitleState } from './index';
 import { DiscData, Track, TrackState, DiscState, MediaType, MatchCandidate } from '../app/components/DiscCard';
+import { formatDurationLongFloored } from '../utils/formatting';
 
 /**
  * Adapter layer to transform backend API types into UI component types
@@ -68,28 +69,35 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
   };
 }
 
+/**
+ * Parse a title's match_details JSON. Returns {} when missing or malformed.
+ */
+function parseMatchDetails(title: DiscTitle): MatchDetails {
+  if (!title.match_details) return {};
+  try {
+    return typeof title.match_details === 'string'
+      ? JSON.parse(title.match_details)
+      : title.match_details;
+  } catch {
+    return {};
+  }
+}
+
 function extractFinalMatchInfo(title: DiscTitle): { confidence: number; votes: number; targetVotes: number } | undefined {
   if (!title.match_details) return undefined;
 
-  try {
-    const details = typeof title.match_details === 'string'
-      ? JSON.parse(title.match_details)
-      : title.match_details;
+  const details = parseMatchDetails(title);
 
-    // For matched tracks, the winning match info is at the top level
-    if (details.score !== undefined && details.vote_count !== undefined) {
-      return {
-        confidence: details.score || 0,
-        votes: details.vote_count ?? 0,
-        targetVotes: details.target_votes ?? details.total_chunks ?? 5
-      };
-    }
-
-    return undefined;
-  } catch (error) {
-    console.error('Failed to parse match_details for final match info:', error);
-    return undefined;
+  // For matched tracks, the winning match info is at the top level
+  if (details.score !== undefined && details.vote_count !== undefined) {
+    return {
+      confidence: details.score || 0,
+      votes: details.vote_count ?? 0,
+      targetVotes: details.target_votes ?? details.total_chunks ?? 5
+    };
   }
+
+  return undefined;
 }
 
 function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
@@ -113,7 +121,7 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
   return {
     id: title.id.toString(),
     title: trackTitle,
-    duration: formatDuration(title.duration_seconds),
+    duration: formatDurationLongFloored(title.duration_seconds),
     state: trackState,
     progress: trackState === 'matching'
       ? (title.match_progress ?? 0)
@@ -150,17 +158,6 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
   };
 }
 
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${minutes}:${secs.toString().padStart(2, '0')}`;
-}
-
 interface RunnerUp {
   episode?: string;
   score?: number;
@@ -176,53 +173,40 @@ interface MatchDetails {
   target_votes?: number;
   total_chunks?: number;
   episode?: string;
+  reason?: string;
 }
 
 function extractErrorReason(title: DiscTitle): string | null {
   if (title.state !== 'failed' || !title.match_details) return null;
-  try {
-    const details = typeof title.match_details === 'string'
-      ? JSON.parse(title.match_details)
-      : title.match_details;
-    return details.reason || null;
-  } catch {
-    return null;
-  }
+  return parseMatchDetails(title).reason || null;
 }
 
 function extractMatchCandidates(title: DiscTitle): MatchCandidate[] | undefined {
   if (!title.match_details) return undefined;
 
-  try {
-    const details: MatchDetails = typeof title.match_details === 'string'
-      ? JSON.parse(title.match_details)
-      : title.match_details;
+  const details = parseMatchDetails(title);
 
-    // Map runner_ups to candidates if available
-    if (details.runner_ups && Array.isArray(details.runner_ups) && details.runner_ups.length > 0) {
-      return details.runner_ups.map((ru: RunnerUp) => ({
-        episode: ru.episode || 'Unknown',
-        confidence: ru.score || ru.confidence || 0,     // Backend uses 'score'
-        votes: ru.vote_count ?? Math.floor((ru.score || 0) * 5),  // Use actual vote_count (0 is valid!)
-        targetVotes: ru.target_votes ?? details.target_votes ?? details.total_chunks ?? 5
-      }));
-    }
-
-    // Fallback: synthesize a single candidate from top-level match info.
-    // For decisive matches with only one candidate, runner_ups may be empty
-    // but the top-level score/vote_count still describes the best match.
-    if (details.score !== undefined && details.vote_count !== undefined) {
-      return [{
-        episode: details.episode || title.matched_episode || 'Matching...',
-        confidence: details.score || 0,
-        votes: details.vote_count ?? 0,
-        targetVotes: details.target_votes ?? details.total_chunks ?? 5
-      }];
-    }
-
-    return undefined;
-  } catch (error) {
-    console.error('Failed to parse match_details:', error);
-    return undefined;
+  // Map runner_ups to candidates if available
+  if (details.runner_ups && Array.isArray(details.runner_ups) && details.runner_ups.length > 0) {
+    return details.runner_ups.map((ru: RunnerUp) => ({
+      episode: ru.episode || 'Unknown',
+      confidence: ru.score || ru.confidence || 0,     // Backend uses 'score'
+      votes: ru.vote_count ?? Math.floor((ru.score || 0) * 5),  // Use actual vote_count (0 is valid!)
+      targetVotes: ru.target_votes ?? details.target_votes ?? details.total_chunks ?? 5
+    }));
   }
+
+  // Fallback: synthesize a single candidate from top-level match info.
+  // For decisive matches with only one candidate, runner_ups may be empty
+  // but the top-level score/vote_count still describes the best match.
+  if (details.score !== undefined && details.vote_count !== undefined) {
+    return [{
+      episode: details.episode || title.matched_episode || 'Matching...',
+      confidence: details.score || 0,
+      votes: details.vote_count ?? 0,
+      targetVotes: details.target_votes ?? details.total_chunks ?? 5
+    }];
+  }
+
+  return undefined;
 }

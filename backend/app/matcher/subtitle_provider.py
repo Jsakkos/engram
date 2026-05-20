@@ -1,6 +1,8 @@
 import abc
-import re
+import contextlib
 import shutil
+import signal
+from collections.abc import Iterator
 from pathlib import Path
 
 from loguru import logger
@@ -9,12 +11,15 @@ from app import __version__
 from app.matcher.config_manager import get_config_manager
 from app.matcher.models import EpisodeInfo, SubtitleFile
 from app.matcher.os_api_retry import os_api_call
-from app.matcher.subtitle_utils import sanitize_filename
+from app.matcher.subtitle_utils import parse_season_episode_numbers, sanitize_filename
 
-# NOTE: This module previously defined a generic ``retry_with_backoff``
-# decorator that was only used here, with hardcoded parameters that differed
-# from the inline login retry in ``testing_service.py``. Both call sites now
-# route through ``os_api_retry.os_api_call`` for consistent 429 handling.
+# CompositeSubtitleProvider returns early once it has at least this many
+# cached subtitles, skipping slower download providers.
+_MIN_CACHED_SUBTITLES_TO_SKIP_DOWNLOAD = 3
+
+# NOTE: A generic ``retry_with_backoff`` decorator previously lived in this
+# module. The OpenSubtitles call sites now all route through
+# ``os_api_retry.os_api_call`` for consistent 429 / Retry-After handling.
 
 # OpenSubtitles best-practices require the User-Agent be in the form
 # "AppName vX.Y.Z". Mirrors testing_service._USER_AGENT — kept separate
@@ -25,19 +30,32 @@ _USER_AGENT = f"Engram v{__version__}"
 
 def parse_season_episode(filename: str) -> EpisodeInfo | None:
     """Parse season and episode from filename using regex."""
-    # S01E01
-    match = re.search(r"[Ss](\d{1,2})[Ee](\d{1,2})", filename)
-    if match:
-        return EpisodeInfo(
-            series_name="",  # Placeholder
-            season=int(match.group(1)),
-            episode=int(match.group(2)),
-        )
-    # 1x01
-    match = re.search(r"(\d{1,2})x(\d{1,2})", filename)
-    if match:
-        return EpisodeInfo(series_name="", season=int(match.group(1)), episode=int(match.group(2)))
-    return None
+    parsed = parse_season_episode_numbers(filename)
+    if parsed is None:
+        return None
+    season, episode = parsed
+    return EpisodeInfo(series_name="", season=season, episode=episode)
+
+
+@contextlib.contextmanager
+def _alarm_timeout(timeout: int, label: str) -> Iterator[None]:
+    """Raise TimeoutError if the wrapped block runs longer than `timeout`.
+
+    Uses SIGALRM and is a no-op on platforms without it (e.g. Windows).
+    """
+
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"{label} operation timed out after {timeout}s")
+
+    has_alarm = hasattr(signal, "SIGALRM")
+    if has_alarm:
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout)
+    try:
+        yield
+    finally:
+        if has_alarm:
+            signal.alarm(0)
 
 
 class SubtitleProvider(abc.ABC):
@@ -92,6 +110,30 @@ class LocalSubtitleProvider(SubtitleProvider):
         return unique_subs
 
 
+def _convert_downloads_to_subtitle_files(
+    downloaded: dict[str, Path], show_name: str
+) -> list[SubtitleFile]:
+    """Convert a {episode_code: srt_path} mapping to SubtitleFile objects.
+
+    Episode codes are parsed for season/episode; unparseable codes are skipped.
+    """
+    subtitles = []
+    for episode_code, srt_path in downloaded.items():
+        parsed = parse_season_episode_numbers(episode_code)
+        if parsed:
+            ep_season, ep_num = parsed
+            subtitles.append(
+                SubtitleFile(
+                    path=srt_path,
+                    language="en",
+                    episode_info=EpisodeInfo(
+                        series_name=show_name, season=ep_season, episode=ep_num
+                    ),
+                )
+            )
+    return subtitles
+
+
 class Addic7edProvider(SubtitleProvider):
     """Provider that downloads subtitles from Addic7ed.com via web scraping."""
 
@@ -123,26 +165,7 @@ class Addic7edProvider(SubtitleProvider):
                 max_retries=2,
             )
 
-            # Convert to SubtitleFile objects
-            subtitles = []
-            for episode_code, srt_path in downloaded.items():
-                # Parse episode number from code like "S01E05"
-                import re
-
-                match = re.match(r"S(\d+)E(\d+)", episode_code)
-                if match:
-                    ep_season = int(match.group(1))
-                    ep_num = int(match.group(2))
-                    subtitles.append(
-                        SubtitleFile(
-                            path=srt_path,
-                            language="en",
-                            episode_info=EpisodeInfo(
-                                series_name=show_name, season=ep_season, episode=ep_num
-                            ),
-                        )
-                    )
-
+            subtitles = _convert_downloads_to_subtitle_files(downloaded, show_name)
             logger.info(f"Downloaded {len(subtitles)} subtitles from Addic7ed")
             return subtitles
 
@@ -215,21 +238,11 @@ class OpenSubtitlesProvider(SubtitleProvider):
         if not self.client:
             raise RuntimeError("OpenSubtitles client not initialized")
 
-        import signal
-
-        def timeout_handler(signum, frame):
-            raise TimeoutError(f"Search operation timed out after {self.network_timeout}s")
-
-        # Set timeout for search operation (Unix-like systems only)
-        if hasattr(signal, "SIGALRM"):
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(self.network_timeout)
-
-        try:
-            # Retry cadence: 4 attempts with 1s base delay → 3 sleeps of
-            # 1s, 2s, 4s (the 4th attempt re-raises without sleeping). Tight
-            # schedule — sufficient for transient network errors; a genuine
-            # 429 still gets four chances.
+        # Retry cadence: 4 attempts with 1s base delay → 3 sleeps of
+        # 1s, 2s, 4s (the 4th attempt re-raises without sleeping). Tight
+        # schedule — sufficient for transient network errors; a genuine
+        # 429 still gets four chances.
+        with _alarm_timeout(self.network_timeout, "Search"):
             return os_api_call(
                 self.client.search,
                 query=query,
@@ -240,9 +253,6 @@ class OpenSubtitlesProvider(SubtitleProvider):
                 max_attempts=4,
                 base_delay=1.0,
             )
-        finally:
-            if hasattr(signal, "SIGALRM"):
-                signal.alarm(0)  # Cancel the alarm
 
     def _download_with_retry(self, subtitle):
         """Download subtitle file with 429-aware retry.
@@ -255,26 +265,80 @@ class OpenSubtitlesProvider(SubtitleProvider):
         if not self.client:
             raise RuntimeError("OpenSubtitles client not initialized")
 
-        import signal
-
-        def timeout_handler(signum, frame):
-            raise TimeoutError(f"Download operation timed out after {self.network_timeout}s")
-
-        # Set timeout for download operation (Unix-like systems only)
-        if hasattr(signal, "SIGALRM"):
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(self.network_timeout)
-
-        try:
+        with _alarm_timeout(self.network_timeout, "Download"):
             return os_api_call(
                 self.client.download_and_save,
                 subtitle,
                 max_attempts=6,
                 base_delay=3.0,
             )
-        finally:
-            if hasattr(signal, "SIGALRM"):
-                signal.alarm(0)  # Cancel the alarm
+
+    def _resolve_show_name(self, show_name: str, tmdb_id: int | None) -> str:
+        """Resolve the show name to search with, preferring TMDB's name.
+
+        Falls back to the original name on any lookup failure.
+        """
+        if not tmdb_id:
+            return show_name
+
+        logger.info(f"Using manual TMDB ID: {tmdb_id} for {show_name}")
+        try:
+            from app.matcher.tmdb_client import fetch_show_details
+
+            show_data = fetch_show_details(tmdb_id)
+            if show_data:
+                resolved = show_data.get("name", show_name)
+                logger.info(f"TMDB lookup: Using '{resolved}' instead of '{show_name}'")
+                return resolved
+            logger.warning(f"Failed to lookup TMDB ID {tmdb_id}")
+        except Exception as e:
+            logger.error(f"Error looking up TMDB ID {tmdb_id}: {e}")
+        return show_name
+
+    @staticmethod
+    def _extract_episode_number(subtitle, season: int) -> tuple[int | None, str | None]:
+        """Determine the episode number for a subtitle result.
+
+        Prefers the API-provided season/episode metadata, falling back to
+        parsing the subtitle filename.
+
+        Returns:
+            (episode_number, None) on success, or (None, skip_reason) where
+            skip_reason is "season" or "parse" indicating why it was skipped.
+        """
+        api_season = getattr(subtitle, "season_number", None)
+        api_episode = getattr(subtitle, "episode_number", None)
+
+        # Get filename from files list or top level
+        sub_filename = subtitle.file_name
+        if not sub_filename and subtitle.files:
+            # files is a list of dicts based on debug output
+            if isinstance(subtitle.files[0], dict):
+                sub_filename = subtitle.files[0].get("file_name", "")
+            else:
+                # Fallback if it somehow changes to object
+                sub_filename = getattr(subtitle.files[0], "file_name", "")
+
+        logger.debug(
+            f"Subtitle: api_season={api_season}, api_episode={api_episode}, filename={sub_filename}"
+        )
+
+        if api_season and api_episode:
+            if api_season != season:
+                logger.debug(f"  Skipping: API season {api_season} != requested season {season}")
+                return None, "season"
+            logger.debug(f"  Using API metadata: S{api_season:02d}E{api_episode:02d}")
+            return api_episode, None
+
+        # Fallback to parsing filename
+        info = parse_season_episode(sub_filename or "")
+        if not info or info.season != season:
+            logger.debug(
+                f"  Skipping: Failed to parse or season mismatch in filename: {sub_filename}"
+            )
+            return None, "parse"
+        logger.debug(f"  Parsed from filename: S{info.season:02d}E{info.episode:02d}")
+        return info.episode, None
 
     def get_subtitles(
         self,
@@ -289,20 +353,7 @@ class OpenSubtitlesProvider(SubtitleProvider):
             return []
 
         # Check for manual TMDB ID first and get correct show name
-        search_show_name = show_name
-        if tmdb_id:
-            logger.info(f"Using manual TMDB ID: {tmdb_id} for {show_name} S{season:02d}")
-            try:
-                from app.matcher.tmdb_client import fetch_show_details
-
-                show_data = fetch_show_details(tmdb_id)
-                if show_data:
-                    search_show_name = show_data.get("name", show_name)
-                    logger.info(f"TMDB lookup: Using '{search_show_name}' instead of '{show_name}'")
-                else:
-                    logger.warning(f"Failed to lookup TMDB ID {tmdb_id}")
-            except Exception as e:
-                logger.error(f"Error looking up TMDB ID {tmdb_id}: {e}")
+        search_show_name = self._resolve_show_name(show_name, tmdb_id)
 
         logger.info(f"Searching OpenSubtitles for {search_show_name} S{season:02d}")
 
@@ -351,45 +402,13 @@ class OpenSubtitlesProvider(SubtitleProvider):
             for subtitle in response.data:
                 subtitles_checked += 1
 
-                # Use API provided metadata first
-                api_season = getattr(subtitle, "season_number", None)
-                api_episode = getattr(subtitle, "episode_number", None)
-
-                # Get filename from files list or top level
-                sub_filename = subtitle.file_name
-                if not sub_filename and subtitle.files:
-                    # files is a list of dicts based on debug output
-                    if isinstance(subtitle.files[0], dict):
-                        sub_filename = subtitle.files[0].get("file_name", "")
-                    else:
-                        # Fallback if it somehow changes to object
-                        sub_filename = getattr(subtitle.files[0], "file_name", "")
-
-                logger.debug(
-                    f"Subtitle {subtitles_checked}: api_season={api_season}, api_episode={api_episode}, filename={sub_filename}"
-                )
-
-                # Check match
-                if api_season and api_episode:
-                    if api_season != season:
-                        logger.debug(
-                            f"  Skipping: API season {api_season} != requested season {season}"
-                        )
-                        subtitles_skipped_season += 1
-                        continue
-                    ep_num = api_episode
-                    logger.debug(f"  Using API metadata: S{api_season:02d}E{ep_num:02d}")
-                else:
-                    # Fallback to parsing filename
-                    info = parse_season_episode(sub_filename or "")
-                    if not info or info.season != season:
-                        logger.debug(
-                            f"  Skipping: Failed to parse or season mismatch in filename: {sub_filename}"
-                        )
-                        subtitles_skipped_parse += 1
-                        continue
-                    ep_num = info.episode
-                    logger.debug(f"  Parsed from filename: S{info.season:02d}E{ep_num:02d}")
+                ep_num, skip_reason = self._extract_episode_number(subtitle, season)
+                if skip_reason == "season":
+                    subtitles_skipped_season += 1
+                    continue
+                if skip_reason == "parse":
+                    subtitles_skipped_parse += 1
+                    continue
 
                 if ep_num in seen_episodes:
                     continue
@@ -461,25 +480,7 @@ class OpenSubtitlesWebProvider(SubtitleProvider):
                 max_retries=2,
             )
 
-            # Convert to SubtitleFile objects
-            subtitles = []
-            for episode_code, srt_path in downloaded.items():
-                import re
-
-                match = re.match(r"S(\d+)E(\d+)", episode_code)
-                if match:
-                    ep_season = int(match.group(1))
-                    ep_num = int(match.group(2))
-                    subtitles.append(
-                        SubtitleFile(
-                            path=srt_path,
-                            language="en",
-                            episode_info=EpisodeInfo(
-                                series_name=show_name, season=ep_season, episode=ep_num
-                            ),
-                        )
-                    )
-
+            subtitles = _convert_downloads_to_subtitle_files(downloaded, show_name)
             logger.info(f"Scraped {len(subtitles)} subtitles from OpenSubtitles")
             return subtitles
 
@@ -512,7 +513,7 @@ class CompositeSubtitleProvider(SubtitleProvider):
                 )
                 results.extend(provider_results)
                 # Return early if we have enough cached subtitles
-                if len(provider_results) >= 3:  # Arbitrary threshold for "enough" episodes
+                if len(provider_results) >= _MIN_CACHED_SUBTITLES_TO_SKIP_DOWNLOAD:
                     logger.info("Using cached subtitles, skipping download")
                     return results
             else:

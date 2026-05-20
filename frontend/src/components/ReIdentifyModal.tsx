@@ -36,6 +36,10 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
         titleInputRef.current?.focus();
     }, []);
 
+    useEffect(() => () => {
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    }, []);
+
     const doSearch = useCallback(async (query: string) => {
         if (!query.trim()) {
             setSearchResults([]);
