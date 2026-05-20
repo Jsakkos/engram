@@ -106,10 +106,18 @@ def validate(assets_dir: Path) -> ValidationResult:
             f"manifest={manifest.get('n_features')!r}, current main={HASHING_N_FEATURES!r}"
         )
 
-    with tarfile.open(tarball, "r:gz") as tar:
-        members = set(tar.getnames())
+    # Catch tarfile.TarError (parent of ReadError, CompressionError, etc.) so a
+    # corrupt tarball doesn't blow away the failures already collected above.
+    try:
+        with tarfile.open(tarball, "r:gz") as tar:
+            members = set(tar.getnames())
+    except tarfile.TarError as exc:
+        failures.append(f"tarball is not a valid gzip tarball: {exc}")
+        members = set()
     missing = REQUIRED_TARBALL_ENTRIES - members
-    if missing:
+    if missing and not any("not a valid gzip" in f for f in failures):
+        # Only report missing entries if the tarball was readable — otherwise
+        # the "missing" set is meaningless (it's just REQUIRED_TARBALL_ENTRIES).
         failures.append(f"tarball missing required entries: {sorted(missing)}")
 
     n_shows = len(manifest.get("shows", {}))
@@ -131,14 +139,27 @@ def main() -> int:
     if len(sys.argv) != 2:
         print(f"usage: {sys.argv[0]} <assets-dir>", file=sys.stderr)
         return 2
-    result = validate(Path(sys.argv[1]))
+    assets_dir = Path(sys.argv[1])
+    result = validate(assets_dir)
 
     # Diagnostic snapshot first so CI logs show what was inspected even on failure.
-    for key, value in result.summary.items():
-        if key == "tarball_size_bytes":
-            print(f"tarball size: {value:,} bytes")
+    if result.summary:
+        for key, value in result.summary.items():
+            if key == "tarball_size_bytes":
+                print(f"tarball size: {value:,} bytes")
+            else:
+                print(f"{key}: {value!r}" if isinstance(value, str) else f"{key}: {value}")
+    else:
+        # Early-return path (missing/malformed inputs) — list what's on disk so
+        # the operator can tell apart "gh release download wrote nothing" from
+        # "the wrong file landed there".
+        print(f"assets dir: {assets_dir}")
+        if assets_dir.exists():
+            for entry in sorted(assets_dir.iterdir()):
+                size = entry.stat().st_size if entry.is_file() else "-"
+                print(f"  {entry.name}: {size} bytes")
         else:
-            print(f"{key}: {value!r}" if isinstance(value, str) else f"{key}: {value}")
+            print("  (does not exist)")
 
     if result.failures:
         print("VALIDATION FAILURES:")

@@ -10,7 +10,6 @@ produces and what the consumer expects (manifest schema, tarball layout,
 vectorizer config identity).
 """
 
-import hashlib
 import importlib.util
 import json
 import shutil
@@ -52,6 +51,26 @@ def _load_build_module():
 @pytest.fixture(scope="module")
 def bsc():
     return _load_build_module()
+
+
+def _load_validator_module():
+    """Load the validator the same way as test_validate_subtitle_cache so the
+    round-trip test asserts SHA equality via the validator's helper — the same
+    path the CI smoke workflow uses against the live release."""
+    backend_root = Path(__file__).parent.parent.parent
+    spec = importlib.util.spec_from_file_location(
+        "validate_subtitle_cache",
+        backend_root / "scripts" / "validate_subtitle_cache.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["validate_subtitle_cache"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.fixture(scope="module")
+def vsc():
+    return _load_validator_module()
 
 
 @pytest.mark.unit
@@ -213,7 +232,7 @@ class TestMainRoundTrip:
     that purely-unit tests on either side would miss.
     """
 
-    def test_main_produces_loadable_tarball(self, bsc, tmp_path, monkeypatch):
+    def test_main_produces_loadable_tarball(self, bsc, vsc, tmp_path, monkeypatch):
         cache_dir = tmp_path / "cache"
         data_dir = cache_dir / "data" / _SHOW / "S01"
         srt_paths: dict[str, Path] = {}
@@ -298,9 +317,11 @@ class TestMainRoundTrip:
         assert _SHOW in release_manifest["shows"]
         assert release_manifest["shows"][_SHOW]["seasons"] == [1]
 
-        # sha256 in the release manifest matches the actual file.
-        actual_sha = hashlib.sha256(output_tarball.read_bytes()).hexdigest()
-        assert release_manifest["tarball_sha256"] == actual_sha
+        # sha256 in the release manifest matches the actual file — and is
+        # computed via the validator's streaming helper so this test also
+        # proves the build script and validator agree on the hash for the
+        # same bytes (the smoke workflow depends on this equality).
+        assert release_manifest["tarball_sha256"] == vsc._sha256_of_file(output_tarball)
 
         # Unpack and load through the real matcher — the round-trip assertion.
         unpack_dir = tmp_path / "unpacked"

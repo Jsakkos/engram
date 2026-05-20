@@ -142,3 +142,28 @@ class TestValidate:
         assert result.summary["cache_format_version"] == CACHE_FORMAT_VERSION
         assert result.summary["n_features"] == HASHING_N_FEATURES
         assert len(result.summary["tarball_sha256"]) == 64
+
+    def test_corrupt_tarball_reports_clean_failure(self, vsc, tmp_path):
+        """Simulates a partial gh-release-download or wrong file uploaded:
+        manifest claims a sha that won't match (irrelevant — could be anything),
+        and the tarball exists but isn't a gzip. Without the TarError guard
+        this raises and loses the earlier SHA-mismatch failure entry.
+        """
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "tarball_sha256": "a" * 64,
+                    "cache_format_version": CACHE_FORMAT_VERSION,
+                    "vectorizer_config_hash": vectorizer_config_hash(),
+                    "n_features": HASHING_N_FEATURES,
+                    "shows": {"Some Show": {}},
+                }
+            )
+        )
+        (tmp_path / "engram-subtitle-cache.tar.gz").write_bytes(b"not a tarball")
+        result = vsc.validate(tmp_path)
+        assert any("not a valid gzip tarball" in f for f in result.failures)
+        # The pre-existing SHA-mismatch failure must still be reported — the
+        # whole point of the try/except is to preserve already-accumulated
+        # failures when tarfile.open throws.
+        assert any("tarball_sha256 mismatch" in f for f in result.failures)

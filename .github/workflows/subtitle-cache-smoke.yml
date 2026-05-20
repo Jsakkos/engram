@@ -11,8 +11,12 @@ on:
   schedule:
     - cron: "0 13 * * *"  # 13:00 UTC daily (after typical evening uploads in US tz)
   workflow_dispatch:
-  # Also run when the cache plumbing itself changes — catches drift in the
-  # download/load path without waiting for the next daily run.
+  # Note: no pull_request trigger by design. The smoke test validates the
+  # live `subtitle-cache-latest` release against the constants compiled into
+  # current main. A PR branch has no corresponding pre-released artifact to
+  # download, so drift is only catchable after merge (when the cache is
+  # rebuilt and re-uploaded). PR-time build/consumer drift is covered by
+  # tests/unit/test_build_subtitle_cache.py::TestMainRoundTrip.
   push:
     branches: [main]
     paths:
