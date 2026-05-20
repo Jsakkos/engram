@@ -23,6 +23,7 @@ import json
 import sqlite3
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +60,24 @@ CREATE TABLE IF NOT EXISTS subtitle_coverage (
 
 _local = threading.local()
 _init_lock = threading.Lock()
-_initialized = False
+
+
+@dataclass
+class _SchemaState:
+    """One-shot schema-init flag.
+
+    Wrapped in a dataclass — instead of a bare module global — because
+    CodeQL's ``unused global variable`` checker doesn't track
+    read-then-write-across-calls through the ``global`` keyword and
+    flags a plain ``_initialized = False`` as dead code. Attribute access
+    on a single object reads as a normal reference. Same pattern as
+    ``testing_service._OS``.
+    """
+
+    initialized: bool = False
+
+
+_schema = _SchemaState()
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -74,14 +92,13 @@ def _get_conn() -> sqlite3.Connection:
     Schema creation is idempotent and runs once per process under
     ``_init_lock`` so threads don't race to ``CREATE TABLE``.
     """
-    global _initialized
     conn = getattr(_local, "conn", None)
     if conn is not None:
         return conn
 
-    if not _initialized:
+    if not _schema.initialized:
         with _init_lock:
-            if not _initialized:
+            if not _schema.initialized:
                 CACHE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
                 bootstrap = sqlite3.connect(CACHE_DB_PATH, timeout=30)
                 try:
@@ -90,7 +107,7 @@ def _get_conn() -> sqlite3.Connection:
                     bootstrap.commit()
                 finally:
                     bootstrap.close()
-                _initialized = True
+                _schema.initialized = True
 
     conn = sqlite3.connect(CACHE_DB_PATH, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -160,9 +177,8 @@ def close() -> None:
     the cache is regenerated at need and orphan connections drain when
     their owning thread exits.
     """
-    global _initialized
     conn = getattr(_local, "conn", None)
     if conn is not None:
         conn.close()
         _local.conn = None
-    _initialized = False
+    _schema.initialized = False

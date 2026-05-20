@@ -40,11 +40,26 @@ from app.matcher.subtitle_utils import is_valid_srt_file
 
 
 class SubtitleProviderClient(Protocol):
-    """Structural contract every provider client must satisfy."""
+    """Structural contract every provider client must satisfy.
 
-    def get_best_subtitle(self, show_name: str, season: int, episode: int) -> Any: ...
+    Protocol method bodies use docstrings rather than the ``...`` ellipsis
+    convention because CodeQL's ``py/ineffectual-statement`` check
+    flags bare ``...`` as a no-effect statement. Docstrings are
+    functionally identical for protocol declaration and document the
+    expected return contract at the same time.
+    """
 
-    def download_subtitle(self, subtitle: Any, save_path: Path) -> Path | None: ...
+    def get_best_subtitle(self, show_name: str, season: int, episode: int) -> Any:
+        """Search the provider for the best subtitle for one episode.
+
+        Return a provider-specific entry object on hit, or ``None`` on
+        miss. May raise on transport errors — the scheduler treats
+        exceptions as a miss and advances to the next provider."""
+
+    def download_subtitle(self, subtitle: Any, save_path: Path) -> Path | None:
+        """Persist ``subtitle`` to ``save_path``.
+
+        Return ``save_path`` on success, ``None`` on download failure."""
 
 
 @dataclass
