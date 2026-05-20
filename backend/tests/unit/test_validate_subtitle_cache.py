@@ -196,19 +196,32 @@ class TestValidate:
         """The symmetric TOCTOU on the tarball_readable=True branch: tarfile.open
         succeeds, but tarball.stat() fails before the summary populate. validate()
         must still return cleanly with tarball_size_bytes=None.
+
+        Arming strategy: signature-based discrimination is non-portable
+        (Path.exists() on Linux 3.11 calls self.stat() with no args, same
+        shape as the summary call — making `not args and not kwargs` collide
+        with the existence check). Instead, only arm the stat-raiser AFTER
+        tarfile.open completes; that places the failure exactly at the code
+        path the new try/except OSError exists to protect.
         """
         _make_assets(vsc, tmp_path)
-        original_stat = Path.stat
 
-        def stat_raises_for_tarball(self, *args, **kwargs):
-            # validate() calls tarball.stat() with no args; Path.exists() calls
-            # stat internally with follow_symlinks kwarg. Discriminate so the
-            # exists() guard still works and only the size-lookup line raises.
-            if self.name == "engram-subtitle-cache.tar.gz" and not args and not kwargs:
+        armed = {"on": False}
+        original_stat = Path.stat
+        original_tarfile_open = tarfile.open
+
+        def stat_maybe_raises(self, *args, **kwargs):
+            if armed["on"] and self.name == "engram-subtitle-cache.tar.gz":
                 raise PermissionError("simulated TOCTOU on stat")
             return original_stat(self, *args, **kwargs)
 
-        monkeypatch.setattr(Path, "stat", stat_raises_for_tarball)
+        def tarfile_open_arms(*args, **kwargs):
+            result = original_tarfile_open(*args, **kwargs)
+            armed["on"] = True
+            return result
+
+        monkeypatch.setattr(Path, "stat", stat_maybe_raises)
+        monkeypatch.setattr(tarfile, "open", tarfile_open_arms)
 
         result = vsc.validate(tmp_path)  # must not raise
         assert result.summary["tarball_size_bytes"] is None
