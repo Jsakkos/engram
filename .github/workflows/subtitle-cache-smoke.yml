@@ -19,6 +19,12 @@ on:
   # tests/unit/test_build_subtitle_cache.py::TestMainRoundTrip.
   push:
     branches: [main]
+    # If you land here on a red job after a CACHE_FORMAT_VERSION or vectorizer
+    # config bump, that's expected — the live release was built against the
+    # old code. Remediation is to rebuild and re-upload subtitle-cache-latest
+    # (run scripts/build_subtitle_cache.py locally with current main, then
+    # `gh release upload subtitle-cache-latest ... --clobber`), then re-run
+    # this workflow. NOT a code-revert situation.
     paths:
       # Deliberately does NOT include this YAML or scripts/validate_subtitle_cache.py
       # itself — a comment-only or formatting edit shouldn't trigger a validation
@@ -55,7 +61,10 @@ jobs:
 
       - name: Install backend deps
         working-directory: backend
-        run: uv sync --no-install-project
+        # --no-dev skips pytest/ruff/etc. — the validator only needs the
+        # runtime imports (scipy/numpy via vectorizer_config). Trims a few
+        # seconds off the daily scheduled job.
+        run: uv sync --no-dev --no-install-project
 
       - name: Download release assets
         env:

@@ -85,9 +85,13 @@ def validate(assets_dir: Path) -> ValidationResult:
 
     actual_sha = _sha256_of_file(tarball)
     if manifest.get("tarball_sha256") != actual_sha:
+        # Distinguish "key absent" from "key is the wrong hex string" — a
+        # manifest=None in the CI log otherwise looks like the manifest itself
+        # is None, hiding the real cause.
         failures.append(
             f"tarball_sha256 mismatch: "
-            f"manifest={manifest.get('tarball_sha256')!r}, actual={actual_sha!r}"
+            f"manifest={manifest.get('tarball_sha256', '<key missing>')!r}, "
+            f"actual={actual_sha!r}"
         )
 
     if manifest.get("cache_format_version") != CACHE_FORMAT_VERSION:
