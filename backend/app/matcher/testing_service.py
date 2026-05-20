@@ -176,8 +176,13 @@ def _get_os_client(config) -> object | None:
             _OS.failed = True
             return None
 
-        client = _OSApi(_USER_AGENT, config.opensubtitles_api_key)
+        # Construct AND login inside the same try so a malformed config
+        # (e.g., missing opensubtitles_api_key attribute → AttributeError)
+        # is caught and gracefully degraded to scrapers, matching the
+        # original pre-refactor contract. Constructing outside the try
+        # would propagate that AttributeError to the caller unhandled.
         try:
+            client = _OSApi(_USER_AGENT, config.opensubtitles_api_key)
             login_response = os_api_call(
                 client.login,
                 config.opensubtitles_username,

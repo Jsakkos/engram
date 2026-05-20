@@ -588,17 +588,15 @@ def _fetch_season_details_cached(show_id: str, season_number: int) -> int:
         params["api_key"] = tmdb_api_key
 
     # Let RequestException propagate so @retry_network_operation retries
-    # AND lru_cache doesn't cache 0 on transient failure. KeyError is kept
-    # as a return-0 path because malformed JSON isn't network-retryable —
-    # caching 0 there is correct (the response is structurally wrong).
+    # AND lru_cache doesn't cache 0 on transient failure. The previous
+    # KeyError fallback branch was unreachable — ``dict.get("episodes", [])``
+    # never raises KeyError; a missing key just returns the [] default and
+    # ``len([])`` is 0, so the structurally-malformed-response path lands
+    # at the same return-0 outcome without a dead except clause.
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
     season_data = response.json()
-    try:
-        return len(season_data.get("episodes", []))
-    except KeyError:
-        logger.error(f"Missing 'episodes' key in response JSON data for Season {season_number}")
-        return 0
+    return len(season_data.get("episodes", []))
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)
