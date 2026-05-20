@@ -37,7 +37,6 @@ from app.matcher.subtitle_provider import (
     CompositeSubtitleProvider,
     LocalSubtitleProvider,
     OpenSubtitlesProvider,
-    OpenSubtitlesWebProvider,
 )
 
 
@@ -182,10 +181,6 @@ class MatchEngineV2:
         if self.config.sub_provider == "opensubtitles":
             providers.append(OpenSubtitlesProvider())
             logger.info("OpenSubtitles API provider enabled")
-
-        # Always add OpenSubtitles Web Scraper as fallback (no API key needed)
-        providers.append(OpenSubtitlesWebProvider())
-        logger.info("OpenSubtitles Web Scraper provider enabled")
 
         self.subtitle_provider = CompositeSubtitleProvider(providers)
 

@@ -12,11 +12,25 @@ from app.matcher import testing_service
 from app.matcher.testing_service import download_subtitles
 
 
+@pytest.fixture(autouse=True)
+def _stub_extra_providers():
+    """Stub the TVsubtitles worker to return None for every lookup.
+    Tests in this file are written around the Addic7ed path (historical
+    behaviour) and explicitly assert ``not_found`` when the primary
+    scraper misses — without this stub the real TVsubtitles client would
+    make live HTTP calls and hang the test."""
+    with patch("app.matcher.testing_service.TVSubtitlesClient") as tvsub:
+        instance = Mock()
+        instance.get_best_subtitle.return_value = None
+        instance.download_subtitle.return_value = None
+        tvsub.return_value = instance
+        yield
+
+
 @pytest.mark.unit
 class TestDownloadSubtitles:
     """Tests for subtitle download orchestration."""
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -29,7 +43,6 @@ class TestDownloadSubtitles:
         mock_season,
         mock_show_details,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test complete download workflow with all mocks."""
@@ -60,10 +73,6 @@ class TestDownloadSubtitles:
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
-
-        # Mock OpenSubtitles client (not called since Addic7ed succeeds)
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
 
         # Execute
         result = download_subtitles("Arrested Development", 1)
@@ -101,7 +110,6 @@ class TestDownloadSubtitles:
         with pytest.raises(ValueError, match="No episodes found"):
             download_subtitles("Test Show", 1)
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -114,7 +122,6 @@ class TestDownloadSubtitles:
         mock_season,
         mock_show_details,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test that cached files aren't re-downloaded."""
@@ -139,19 +146,14 @@ class TestDownloadSubtitles:
         addic7ed_client = Mock()
         mock_addic7ed.return_value = addic7ed_client
 
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-
         # Execute
         result = download_subtitles("Test Show", 1)
 
         # Verify no downloads were attempted
         assert addic7ed_client.get_best_subtitle.call_count == 0
-        assert os_client.get_best_subtitle.call_count == 0
         assert all(ep["status"] == "cached" for ep in result["episodes"])
         assert all(ep["source"] == "cache" for ep in result["episodes"])
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -164,7 +166,6 @@ class TestDownloadSubtitles:
         mock_season,
         mock_show_details,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test that only missing episodes are downloaded."""
@@ -196,9 +197,6 @@ class TestDownloadSubtitles:
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
 
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-
         # Execute
         result = download_subtitles("Test Show", 1)
 
@@ -208,7 +206,6 @@ class TestDownloadSubtitles:
         assert statuses.count("downloaded") == 2
         assert addic7ed_client.get_best_subtitle.call_count == 2  # Only for missing episodes
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -221,7 +218,6 @@ class TestDownloadSubtitles:
         mock_season,
         mock_show_details,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test handling when subtitle not found on both scrapers."""
@@ -237,19 +233,14 @@ class TestDownloadSubtitles:
         mock_addic7ed.return_value = addic7ed_client
         addic7ed_client.get_best_subtitle.return_value = None  # Not found
 
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-        os_client.get_best_subtitle.return_value = None  # Not found either
-
         # Execute
         result = download_subtitles("Test Show", 1)
 
-        # Verify both scrapers were tried
+        # Verify Addic7ed was tried and returned nothing
         assert all(ep["status"] == "not_found" for ep in result["episodes"])
         assert all(ep["path"] is None for ep in result["episodes"])
         assert all(ep["source"] is None for ep in result["episodes"])
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -262,7 +253,6 @@ class TestDownloadSubtitles:
         mock_season,
         mock_show_details,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test handling when both downloads fail but subtitle entries exist."""
@@ -281,18 +271,12 @@ class TestDownloadSubtitles:
         addic7ed_client.get_best_subtitle.return_value = mock_subtitle
         addic7ed_client.download_subtitle.return_value = None  # Download failed
 
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-        os_client.get_best_subtitle.return_value = mock_subtitle
-        os_client.download_subtitle.return_value = None  # Download failed too
-
         # Execute
         result = download_subtitles("Test Show", 1)
 
-        # Verify both scrapers were tried
+        # Verify the failed download is marked not_found
         assert result["episodes"][0]["status"] == "not_found"
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -305,7 +289,6 @@ class TestDownloadSubtitles:
         mock_season,
         mock_show_details,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test that exceptions during download are caught and both scrapers tried."""
@@ -321,10 +304,6 @@ class TestDownloadSubtitles:
         mock_addic7ed.return_value = addic7ed_client
         addic7ed_client.get_best_subtitle.side_effect = Exception("Network error")
 
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-        os_client.get_best_subtitle.side_effect = Exception("Network error")
-
         # Execute
         result = download_subtitles("Test Show", 1)
 
@@ -336,7 +315,6 @@ class TestDownloadSubtitles:
 class TestSubtitleFilenameFormat:
     """Tests for subtitle filename format."""
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -349,7 +327,6 @@ class TestSubtitleFilenameFormat:
         mock_season,
         mock_show_details,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test that subtitle filenames follow correct format."""
@@ -375,9 +352,6 @@ class TestSubtitleFilenameFormat:
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
-
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
 
         # Execute
         download_subtitles("The Office", 1)

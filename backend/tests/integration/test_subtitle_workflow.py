@@ -15,7 +15,6 @@ from tests.fixtures.tmdb_responses import (
 class TestSubtitleWorkflowIntegration:
     """Tests for complete TMDB → Addic7ed → cache flow."""
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.tmdb_client.requests.get")
     @patch("app.services.config_service.get_config_sync")
@@ -24,7 +23,6 @@ class TestSubtitleWorkflowIntegration:
         mock_config_sync,
         mock_requests,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test TMDB lookup → Addic7ed download → cache creation."""
@@ -58,10 +56,6 @@ class TestSubtitleWorkflowIntegration:
             return save_path
 
         client.download_subtitle.side_effect = download_side_effect
-
-        # Mock OpenSubtitles (not called since Addic7ed succeeds)
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
 
         # Execute workflow
         result = download_subtitles("Arrested Development", 1)
@@ -146,7 +140,6 @@ class TestSubtitleWorkflowIntegration:
 class TestCacheBehavior:
     """Tests for cache hit/miss scenarios."""
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.tmdb_client.requests.get")
     @patch("app.services.config_service.get_config_sync")
@@ -155,7 +148,6 @@ class TestCacheBehavior:
         mock_config_sync,
         mock_requests,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test that cached files aren't re-downloaded."""
@@ -192,9 +184,6 @@ class TestCacheBehavior:
         addic7ed_client = Mock()
         mock_addic7ed.return_value = addic7ed_client
 
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-
         # Execute
         result = download_subtitles("Breaking Bad", 1)
 
@@ -202,11 +191,9 @@ class TestCacheBehavior:
         assert all(ep["status"] == "cached" for ep in result["episodes"])
         assert all(ep["source"] == "cache" for ep in result["episodes"])
 
-        # Verify neither scraper was called
+        # Verify scraper was not called
         assert addic7ed_client.get_best_subtitle.call_count == 0
-        assert os_client.get_best_subtitle.call_count == 0
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.tmdb_client.requests.get")
     @patch("app.services.config_service.get_config_sync")
@@ -215,7 +202,6 @@ class TestCacheBehavior:
         mock_config_sync,
         mock_requests,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test that only missing episodes are downloaded."""
@@ -265,9 +251,6 @@ class TestCacheBehavior:
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
 
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-
         # Execute
         result = download_subtitles("Test Show", 1)
 
@@ -284,7 +267,6 @@ class TestCacheBehavior:
         assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E02.srt").read_text()
         assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E03.srt").read_text()
 
-    @patch("app.matcher.testing_service.OpenSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.tmdb_client.requests.get")
     @patch("app.services.config_service.get_config_sync")
@@ -293,7 +275,6 @@ class TestCacheBehavior:
         mock_config_sync,
         mock_requests,
         mock_addic7ed,
-        mock_opensubtitles,
         tmp_path,
     ):
         """Test workflow with mixed cache hits, downloads, and not found."""
@@ -349,11 +330,6 @@ class TestCacheBehavior:
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
-
-        # Mock OpenSubtitles: also doesn't have episode 3
-        os_client = Mock()
-        mock_opensubtitles.return_value = os_client
-        os_client.get_best_subtitle.return_value = None
 
         # Execute
         result = download_subtitles("Test Show", 1)
