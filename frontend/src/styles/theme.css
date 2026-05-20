@@ -352,13 +352,6 @@
   to { transform: rotate(360deg); }
 }
 
-@keyframes svFlicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.92; }
-  52% { opacity: 0.6; }
-  54% { opacity: 1; }
-}
-
 @keyframes svSweep {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
