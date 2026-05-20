@@ -7,7 +7,6 @@ supporting OpenAI Whisper models via faster-whisper for efficient inference.
 
 import abc
 import os
-import re
 import tempfile
 from pathlib import Path
 
@@ -17,6 +16,8 @@ import numpy as np
 import soundfile as sf
 from loguru import logger
 from rapidfuzz import fuzz
+
+from app.matcher.srt_utils import clean_text
 
 # Cache for loaded models to avoid reloading
 _model_cache = {}
@@ -174,20 +175,11 @@ class FasterWhisperModel(ASRModel):
                     download_root=None,  # Use default cache location
                 )
 
-                # Eagerly verify CUDA execution to trigger potential DLL errors immediately
+                # Eagerly transcribe 1s of silence to surface missing CUDA
+                # DLL errors here instead of on the first real transcription.
                 if self.device == "cuda":
                     try:
-                        # Attempt a dummy encode to check if libraries are actually loadable
-                        # Create a small dummy feature vector [1, 80, 30] (typical mel spectrogram shape)
-                        # We just need to trigger the engine
                         logger.debug("Verifying CUDA availability by running dummy encoding...")
-                        # Simply accessing the model properties or running a tiny transcribe might be safer
-                        # Let's try to transcribe a 1-second silence if possible, or just rely on ctranslate2 check
-                        # Actually, just checking if we can encode a dummy tensor is best, but easier is
-                        # to let the first transcribe fail? No better to catch it here.
-                        # Using a minimal transcribe on a dummy array
-                        import numpy as np
-
                         dummy_audio = np.zeros(16000, dtype=np.float32)
                         next(self._model.transcribe(dummy_audio, language="en")[0], None)
                     except Exception as e:
@@ -281,11 +273,7 @@ class FasterWhisperModel(ASRModel):
         if not text:
             return ""
 
-        # Use same cleaning logic as EpisodeMatcher.clean_text()
-        text = text.lower().strip()
-        text = re.sub(r"\[.*?\]|\<.*?\>", "", text)
-        text = re.sub(r"([A-Za-z])-\1+", r"\1", text)
-        return " ".join(text.split())
+        return clean_text(text)
 
     def transcribe(self, audio_path: str | Path) -> dict:
         """

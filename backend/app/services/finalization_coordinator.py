@@ -20,6 +20,23 @@ from app.services.job_state_machine import JobStateMachine
 logger = logging.getLogger(__name__)
 
 
+def _merge_match_details(existing: str | None, updates: dict) -> str:
+    """Merge ``updates`` into an existing match_details JSON string.
+
+    If ``existing`` is missing or unparseable, the result is just ``updates``.
+    """
+    merged: dict = {}
+    if existing:
+        try:
+            parsed = json.loads(existing)
+            if isinstance(parsed, dict):
+                merged = parsed
+        except (json.JSONDecodeError, TypeError):
+            merged = {}
+    merged.update(updates)
+    return json.dumps(merged)
+
+
 class FinalizationCoordinator:
     """Coordinates conflict resolution, file organization, and job completion."""
 
@@ -45,6 +62,18 @@ class FinalizationCoordinator:
         self._on_task_done = on_task_done
         self._active_jobs = active_jobs
         self._match_single_file = match_single_file
+
+    async def _complete_tv_job(self, session, job) -> None:
+        """Finalize a TV job: set progress, compute final_path, transition to COMPLETED."""
+        from app.services.config_service import get_config as get_db_config
+
+        job.progress_percent = 100.0
+        job.error_message = None
+        db_config = await get_db_config()
+        job.final_path = str(
+            Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
+        )
+        await self._state_machine.transition_to_completed(job, session)
 
     async def check_job_completion(self, session, job_id: int):
         """Check if all titles in a job are processed, and if so, finalize."""
@@ -453,24 +482,13 @@ class FinalizationCoordinator:
                             logger.info(f"Organized movie: {org_result['main_file']}")
                         elif org_result.get("error_code") == "FILE_EXISTS":
                             title.state = TitleState.REVIEW
-                            try:
-                                existing_details = (
-                                    json.loads(title.match_details) if title.match_details else {}
-                                )
-                                existing_details.update(
-                                    {
-                                        "error": "file_exists",
-                                        "message": str(org_result["error"]),
-                                    }
-                                )
-                                title.match_details = json.dumps(existing_details)
-                            except (json.JSONDecodeError, TypeError):
-                                title.match_details = json.dumps(
-                                    {
-                                        "error": "file_exists",
-                                        "message": str(org_result["error"]),
-                                    }
-                                )
+                            title.match_details = _merge_match_details(
+                                title.match_details,
+                                {
+                                    "error": "file_exists",
+                                    "message": str(org_result["error"]),
+                                },
+                            )
 
                             await self._state_machine.transition_to_review(
                                 job,
@@ -561,26 +579,13 @@ class FinalizationCoordinator:
                             elif org_result.get("error_code") == "FILE_EXISTS":
                                 conflict_count += 1
                                 disc_title.state = TitleState.REVIEW
-                                try:
-                                    existing = (
-                                        json.loads(disc_title.match_details)
-                                        if disc_title.match_details
-                                        else {}
-                                    )
-                                    existing.update(
-                                        {
-                                            "error": "file_exists",
-                                            "message": str(org_result["error"]),
-                                        }
-                                    )
-                                    disc_title.match_details = json.dumps(existing)
-                                except (json.JSONDecodeError, TypeError):
-                                    disc_title.match_details = json.dumps(
-                                        {
-                                            "error": "file_exists",
-                                            "message": str(org_result["error"]),
-                                        }
-                                    )
+                                disc_title.match_details = _merge_match_details(
+                                    disc_title.match_details,
+                                    {
+                                        "error": "file_exists",
+                                        "message": str(org_result["error"]),
+                                    },
+                                )
                                 logger.warning(
                                     f"Organization conflict for TV: {org_result['error']}"
                                 )
@@ -611,17 +616,7 @@ class FinalizationCoordinator:
                         reason=f"{conflict_count} files already exist in library",
                     )
                 elif success_count > 0:
-                    job.progress_percent = 100.0
-                    job.error_message = None
-                    from app.services.config_service import (
-                        get_config as get_db_config,
-                    )
-
-                    db_config = await get_db_config()
-                    job.final_path = str(
-                        Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
-                    )
-                    await self._state_machine.transition_to_completed(job, session)
+                    await self._complete_tv_job(session, job)
                 else:
                     await self._state_machine.transition_to_failed(
                         job,
@@ -634,7 +629,6 @@ class FinalizationCoordinator:
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job without waiting for unresolved ones."""
         from app.core.organizer import organize_tv_extras, tv_organizer
-        from app.services.config_service import get_config as get_db_config
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -695,24 +689,13 @@ class FinalizationCoordinator:
                 elif org_result.get("error_code") == "FILE_EXISTS":
                     conflict_count += 1
                     disc_title.state = TitleState.REVIEW
-                    try:
-                        existing = (
-                            json.loads(disc_title.match_details) if disc_title.match_details else {}
-                        )
-                        existing.update(
-                            {
-                                "error": "file_exists",
-                                "message": str(org_result["error"]),
-                            }
-                        )
-                        disc_title.match_details = json.dumps(existing)
-                    except (json.JSONDecodeError, TypeError):
-                        disc_title.match_details = json.dumps(
-                            {
-                                "error": "file_exists",
-                                "message": str(org_result["error"]),
-                            }
-                        )
+                    disc_title.match_details = _merge_match_details(
+                        disc_title.match_details,
+                        {
+                            "error": "file_exists",
+                            "message": str(org_result["error"]),
+                        },
+                    )
                     logger.warning(f"Organization conflict for TV: {org_result['error']}")
                 else:
                     logger.error(f"Failed to organize: {org_result['error']}")
@@ -744,13 +727,7 @@ class FinalizationCoordinator:
             unresolved = unresolved_result.scalars().all()
 
             if not unresolved and conflict_count == 0:
-                job.progress_percent = 100.0
-                job.error_message = None
-                db_config = await get_db_config()
-                job.final_path = str(
-                    Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
-                )
-                await self._state_machine.transition_to_completed(job, session)
+                await self._complete_tv_job(session, job)
             else:
                 await session.commit()
 

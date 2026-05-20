@@ -8,6 +8,39 @@ interface ConfigWizardProps {
     isOnboarding?: boolean;
 }
 
+const STEP_LABELS = ['Paths', 'Tools', 'TMDB', 'Preferences'];
+
+const AI_PROVIDER_LABELS: Record<string, string> = {
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    openrouter: 'OpenRouter',
+};
+
+const AI_KEY_PLACEHOLDERS: Record<string, string> = {
+    anthropic: 'sk-ant-...',
+    openai: 'sk-...',
+    openrouter: 'sk-or-...',
+};
+
+interface NamingPreset {
+    id: string;
+    seasonFormat: string;
+    episodeFormat: string;
+}
+
+const NAMING_PRESETS: NamingPreset[] = [
+    { id: 'plex', seasonFormat: 'Season {season:02d}', episodeFormat: '{show} - S{season:02d}E{episode:02d}' },
+    { id: 'kodi', seasonFormat: 'Season {season:d}', episodeFormat: '{show} - S{season:02d}E{episode:02d}' },
+    { id: 'minimal', seasonFormat: 'S{season:02d}', episodeFormat: '{show} - S{season:02d}E{episode:02d}' },
+];
+
+function SavedKeyBadge({ saved, text }: { saved: boolean; text: string }) {
+    if (!saved) {
+        return null;
+    }
+    return <span className="ml-2 text-xs font-normal text-green-500">{text}</span>;
+}
+
 interface ConfigData {
     stagingPath: string;
     makemkvPath: string;
@@ -200,6 +233,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
     const handleSave = async () => {
         setIsSaving(true);
+        // Only include a secret key in the payload when the user actually entered one,
+        // so blank fields don't overwrite stored credentials.
+        const optional = (key: string, value: string) => (value ? { [key]: value } : {});
         try {
             const response = await fetch('/api/config', {
                 method: 'PUT',
@@ -223,15 +259,15 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     discdb_enabled: config.discdbEnabled,
                     ai_identification_enabled: config.aiIdentificationEnabled,
                     ai_provider: config.aiProvider,
-                    ...(config.aiApiKey ? { ai_api_key: config.aiApiKey } : {}),
+                    ...optional('ai_api_key', config.aiApiKey),
                     discdb_contributions_enabled: config.discdbContributionsEnabled,
                     discdb_contribution_tier: config.discdbContributionTier,
                     discdb_export_path: config.discdbExportPath,
-                    ...(config.discdbApiKey ? { discdb_api_key: config.discdbApiKey } : {}),
+                    ...optional('discdb_api_key', config.discdbApiKey),
                     discdb_api_url: config.discdbApiUrl,
-                    ...(config.opensubtitlesApiKey ? { opensubtitles_api_key: config.opensubtitlesApiKey } : {}),
+                    ...optional('opensubtitles_api_key', config.opensubtitlesApiKey),
                     opensubtitles_username: config.opensubtitlesUsername,
-                    ...(config.opensubtitlesPassword ? { opensubtitles_password: config.opensubtitlesPassword } : {}),
+                    ...optional('opensubtitles_password', config.opensubtitlesPassword),
                     setup_complete: true,
                 }),
             });
@@ -454,9 +490,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         <div className="form-group" style={{ marginTop: '1.5rem' }}>
                             <label htmlFor="licenseKey">
                                 MakeMKV License Key
-                                {savedKeys.makemkv && (
-                                    <span className="ml-2 text-xs font-normal text-green-500">Key saved</span>
-                                )}
+                                <SavedKeyBadge saved={savedKeys.makemkv} text="Key saved" />
                             </label>
                             <input
                                 id="licenseKey"
@@ -490,9 +524,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         <div className="form-group">
                             <label htmlFor="tmdbApiKey">
                                 TMDB Read Access Token
-                                {savedKeys.tmdb && (
-                                    <span className="ml-2 text-xs font-normal text-green-500">Token saved</span>
-                                )}
+                                <SavedKeyBadge saved={savedKeys.tmdb} text="Token saved" />
                             </label>
                             <input
                                 id="tmdbApiKey"
@@ -542,9 +574,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         <div className="form-group">
                             <label htmlFor="osApiKey">
                                 API Key
-                                {savedKeys.opensubtitles && (
-                                    <span className="ml-2 text-xs font-normal text-green-500">Key saved</span>
-                                )}
+                                <SavedKeyBadge saved={savedKeys.opensubtitles} text="Key saved" />
                             </label>
                             <input
                                 id="osApiKey"
@@ -582,7 +612,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     </div>
                 );
 
-            case 4:
+            case 4: {
+                const providerLabel = AI_PROVIDER_LABELS[config.aiProvider] || config.aiProvider;
                 return (
                     <div className="wizard-step">
                         <h3 className="step-title">Preferences</h3>
@@ -640,17 +671,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 </div>
                                 <div className="form-group">
                                     <label htmlFor="aiApiKey">
-                                        {{ anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter' }[config.aiProvider] || config.aiProvider} API Key
+                                        {providerLabel} API Key
                                     </label>
                                     <input
                                         id="aiApiKey"
                                         type="password"
-                                        placeholder={{ anthropic: 'sk-ant-...', openai: 'sk-...', openrouter: 'sk-or-...' }[config.aiProvider] || ''}
+                                        placeholder={AI_KEY_PLACEHOLDERS[config.aiProvider] || ''}
                                         value={config.aiApiKey}
                                         onChange={(e) => handleInputChange('aiApiKey', e.target.value)}
                                     />
                                     <span className="form-hint">
-                                        API key for {{ anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter' }[config.aiProvider] || config.aiProvider}. Used only when TMDB lookup fails.
+                                        API key for {providerLabel}. Used only when TMDB lookup fails.
                                     </span>
                                 </div>
                             </>
@@ -803,28 +834,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             <select
                                 id="namingConvention"
                                 value={
-                                    config.namingSeasonFormat === 'Season {season:02d}' &&
-                                    config.namingEpisodeFormat === '{show} - S{season:02d}E{episode:02d}'
-                                        ? 'plex'
-                                    : config.namingSeasonFormat === 'Season {season:d}' &&
-                                      config.namingEpisodeFormat === '{show} - S{season:02d}E{episode:02d}'
-                                        ? 'kodi'
-                                    : config.namingSeasonFormat === 'S{season:02d}' &&
-                                      config.namingEpisodeFormat === '{show} - S{season:02d}E{episode:02d}'
-                                        ? 'minimal'
-                                    : 'custom'
+                                    NAMING_PRESETS.find(
+                                        (p) =>
+                                            p.seasonFormat === config.namingSeasonFormat &&
+                                            p.episodeFormat === config.namingEpisodeFormat,
+                                    )?.id ?? 'custom'
                                 }
                                 onChange={(e) => {
-                                    const preset = e.target.value;
-                                    if (preset === 'plex') {
-                                        handleInputChange('namingSeasonFormat', 'Season {season:02d}');
-                                        handleInputChange('namingEpisodeFormat', '{show} - S{season:02d}E{episode:02d}');
-                                    } else if (preset === 'kodi') {
-                                        handleInputChange('namingSeasonFormat', 'Season {season:d}');
-                                        handleInputChange('namingEpisodeFormat', '{show} - S{season:02d}E{episode:02d}');
-                                    } else if (preset === 'minimal') {
-                                        handleInputChange('namingSeasonFormat', 'S{season:02d}');
-                                        handleInputChange('namingEpisodeFormat', '{show} - S{season:02d}E{episode:02d}');
+                                    const preset = NAMING_PRESETS.find((p) => p.id === e.target.value);
+                                    if (preset) {
+                                        handleInputChange('namingSeasonFormat', preset.seasonFormat);
+                                        handleInputChange('namingEpisodeFormat', preset.episodeFormat);
                                     }
                                 }}
                             >
@@ -838,11 +858,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </span>
                         </div>
 
-                        {(
-                            config.namingSeasonFormat !== 'Season {season:02d}' &&
-                            config.namingSeasonFormat !== 'Season {season:d}' &&
-                            config.namingSeasonFormat !== 'S{season:02d}'
-                        ) && (
+                        {!NAMING_PRESETS.some((p) => p.seasonFormat === config.namingSeasonFormat) && (
                             <>
                                 <div className="form-group">
                                     <label htmlFor="namingSeasonFormat">Season Folder Format</label>
@@ -888,6 +904,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         </div>
                     </div>
                 );
+            }
 
             default:
                 return null;
@@ -911,12 +928,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             role={!isOnboarding ? 'button' : undefined}
                             tabIndex={!isOnboarding ? 0 : undefined}
                             onKeyDown={!isOnboarding ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(s); } } : undefined}
-                            aria-label={`Step ${s}: ${s === 1 ? 'Paths' : s === 2 ? 'Tools' : s === 3 ? 'TMDB' : 'Preferences'}${s === step ? ' (current)' : ''}`}
+                            aria-label={`Step ${s}: ${STEP_LABELS[s - 1]}${s === step ? ' (current)' : ''}`}
                             aria-current={s === step ? 'step' : undefined}
                         >
                             <span className="step-number">{!isOnboarding ? (s === step ? '●' : '○') : (s < step ? '✓' : s)}</span>
                             <span className="step-label">
-                                {s === 1 ? 'Paths' : s === 2 ? 'Tools' : s === 3 ? 'TMDB' : 'Preferences'}
+                                {STEP_LABELS[s - 1]}
                             </span>
                         </div>
                     ))}

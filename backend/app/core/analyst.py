@@ -56,6 +56,11 @@ _STUDIO_PREFIXES: tuple[str, ...] = (
 )
 
 
+def _title_tokens(s: str) -> set[str]:
+    """Tokenize a title into lowercased words, dropping punctuation and 1-char tokens."""
+    return {w.lower() for w in re.sub(r"[^\w\s]", "", s).split() if len(w) > 1}
+
+
 def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
     """Return True if two title strings share enough word tokens (Jaccard similarity).
 
@@ -65,11 +70,7 @@ def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
       "Star Trek Picard" vs "Star Trek: Picard" -> 0.67 -> accepted
       "The Grandmaster" vs "Grandmaster" -> 0.50 -> accepted (at threshold)
     """
-
-    def tokens(s: str) -> set[str]:
-        return {w.lower() for w in re.sub(r"[^\w\s]", "", s).split() if len(w) > 1}
-
-    a_tok, b_tok = tokens(a), tokens(b)
+    a_tok, b_tok = _title_tokens(a), _title_tokens(b)
     if not a_tok or not b_tok:
         return True  # Can't compare — allow override
     return len(a_tok & b_tok) / len(a_tok | b_tok) >= threshold
@@ -218,13 +219,8 @@ class DiscAnalyst:
             logger.info(
                 "Conflict: Movie & TV detected. Preferring TV (assuming 'Play All' feature)."
             )
-            result = DiscAnalysisResult(
-                content_type=ContentType.TV,
-                titles=titles,
-                detected_name=effective_name,
-                detected_season=detected_season,
-                confidence=tv_result["confidence"],
-                play_all_title_indices=play_all,
+            result = self._tv_result(
+                titles, effective_name, detected_season, play_all, tv_result["confidence"]
             )
             return self._apply_tmdb_signal(result, tmdb_signal)
 
@@ -235,14 +231,8 @@ class DiscAnalyst:
                 "Conflict: Movie detected but label indicates TV and Play All found. "
                 "Preferring TV (movie is likely the 'Play All' concatenation)."
             )
-            result = DiscAnalysisResult(
-                content_type=ContentType.TV,
-                titles=titles,
-                detected_name=effective_name,
-                detected_season=detected_season,
-                confidence=0.75,  # Moderate-high: label + Play All detection
-                play_all_title_indices=play_all,
-            )
+            # Moderate-high confidence: label + Play All detection
+            result = self._tv_result(titles, effective_name, detected_season, play_all, 0.75)
             return self._apply_tmdb_signal(result, tmdb_signal)
 
         # No conflict: Clear Movie
@@ -263,13 +253,8 @@ class DiscAnalyst:
 
         # No conflict: Clear TV
         if tv_result:
-            result = DiscAnalysisResult(
-                content_type=ContentType.TV,
-                titles=titles,
-                detected_name=effective_name,
-                detected_season=detected_season,
-                confidence=tv_result["confidence"],
-                play_all_title_indices=play_all,
+            result = self._tv_result(
+                titles, effective_name, detected_season, play_all, tv_result["confidence"]
             )
             return self._apply_tmdb_signal(result, tmdb_signal)
 
@@ -292,14 +277,8 @@ class DiscAnalyst:
             logger.info(
                 f"Volume label indicates TV show (season {detected_season}), trusting label"
             )
-            result = DiscAnalysisResult(
-                content_type=ContentType.TV,
-                titles=titles,
-                detected_name=effective_name,
-                detected_season=detected_season,
-                confidence=0.7,  # Moderate confidence based on volume label
-                play_all_title_indices=play_all,
-            )
+            # Moderate confidence based on volume label
+            result = self._tv_result(titles, effective_name, detected_season, play_all, 0.7)
             return self._apply_tmdb_signal(result, tmdb_signal)
 
         # No heuristic result — if TMDB has a signal, use it directly
@@ -332,6 +311,24 @@ class DiscAnalyst:
             detected_season=detected_season,
             needs_review=True,
             review_reason=reason,
+        )
+
+    def _tv_result(
+        self,
+        titles: list[TitleInfo],
+        effective_name: str | None,
+        detected_season: int | None,
+        play_all: list[int],
+        confidence: float,
+    ) -> DiscAnalysisResult:
+        """Build a TV DiscAnalysisResult with the given confidence."""
+        return DiscAnalysisResult(
+            content_type=ContentType.TV,
+            titles=titles,
+            detected_name=effective_name,
+            detected_season=detected_season,
+            confidence=confidence,
+            play_all_title_indices=play_all,
         )
 
     def _apply_tmdb_signal(self, result: DiscAnalysisResult, tmdb_signal) -> DiscAnalysisResult:
@@ -462,9 +459,6 @@ class DiscAnalyst:
                 "reason": "Multiple feature-length titles found. Please select correct version (theatrical, extended, etc.).",
             }
 
-        # Fallback for 2 titles logic (removed simple logic in favor of ambiguity check)
-        # if len(long_titles) == 2: ... (replaced by above)
-
         return None
 
     def _detect_tv_show(self, titles: list[TitleInfo]) -> dict | None:
@@ -476,12 +470,8 @@ class DiscAnalyst:
         if len(titles) < self._get_config().analyst_tv_min_cluster_size:
             return None
 
-        # Don't classify as TV if there's a clear movie-length title
-        # (even if movie detection failed due to low dominance)
         # Don't skip TV detection just because there's a movie-length title.
         # It could be a "Play All" title on a TV disc.
-        # movie_length_titles = [t for t in titles if t.duration_seconds >= self._get_config().analyst_movie_min_duration]
-        # if movie_length_titles: ... (removed to support Play All)
 
         # Filter to only TV-length titles
         tv_length_titles = [

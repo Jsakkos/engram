@@ -1,6 +1,6 @@
 """Build the precomputed subtitle-vector cache shipped with Engram.
 
-Harvests subtitles for the most popular TV shows, reduces each episode to a
+Harvests subtitles for the most-voted TV shows on TMDB, reduces each episode to a
 HASHED TF-IDF vector (no readable vocabulary -- see app/matcher/vectorizer_config),
 discards the raw SRT, and packages the vectors into a `.tar.gz` plus a manifest
 for hosting on GitHub Releases.
@@ -23,18 +23,36 @@ import shutil
 import sys
 import tarfile
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Idempotent — repeated importlib loads (e.g. one fixture per test file) would
+# otherwise accumulate duplicate entries in sys.path on every exec_module call.
+_backend_dir = str(Path(__file__).parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
 
 import numpy as np
 from loguru import logger
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 from scipy import sparse
 
 from app.matcher.episode_identification import SubtitleCache
 from app.matcher.subtitle_utils import sanitize_filename
-from app.matcher.testing_service import download_subtitles
-from app.matcher.tmdb_client import fetch_popular_shows, fetch_show_details, fetch_show_id
+from app.matcher.testing_service import download_subtitles, get_last_quota
+from app.matcher.tmdb_client import (
+    fetch_show_details,
+    fetch_show_id,
+    fetch_shows_by_vote_count,
+)
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
@@ -45,6 +63,51 @@ from app.matcher.vectorizer_config import (
 )
 
 _VALID_STATUSES = {"cached", "downloaded"}
+
+
+@dataclass
+class RunTally:
+    """Running counters for the build run, surfaced in the final summary.
+
+    Mutated in place by ``_harvest_show`` so per-show progress can be
+    rendered without changing call-site semantics.
+    """
+
+    downloaded: int = 0
+    cache_hits: int = 0
+    not_found: int = 0
+    seasons_done: int = 0
+    seasons_skipped_below_threshold: int = 0
+    seasons_failed: int = 0
+    start_time: float = field(default_factory=time.monotonic)
+
+    def elapsed_str(self) -> str:
+        secs = int(time.monotonic() - self.start_time)
+        return f"{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
+
+    @property
+    def cache_hit_rate(self) -> float:
+        denom = self.cache_hits + self.downloaded
+        return self.cache_hits / denom if denom else 0.0
+
+
+def _ensure_db_schema() -> None:
+    """Create and migrate the DB schema via the app's canonical ``init_db()``.
+
+    The standalone script runs without the FastAPI lifespan that normally
+    calls ``database.init_db()``. A fresh ``engram.db`` (e.g. a CI runner)
+    needs its tables created; a pre-existing dev database needs any
+    recently-added columns applied. ``create_all`` alone does the former but
+    never the latter, so an older local ``engram.db`` ends up missing newer
+    columns such as ``app_config.precomputed_cache_enabled``. Delegating to
+    ``init_db()`` runs the same create-all + ``_add_missing_columns`` +
+    Alembic migration path the running app uses on startup.
+    """
+    import asyncio
+
+    from app.database import init_db
+
+    asyncio.run(init_db())
 
 
 def _bootstrap_config_from_env() -> None:
@@ -81,13 +144,15 @@ def _select_shows(args) -> list[dict]:
         names = [s.strip() for s in args.shows.split(",") if s.strip()]
         candidates = [{"name": n, "id": fetch_show_id(n)} for n in names]
     else:
+        # Discover returns shows already ranked by vote_count desc; iterating
+        # pages in order and deduping preserves that ranking (dict is ordered).
         seen: dict[int, dict] = {}
         for page in range(1, args.pages + 1):
-            for show in fetch_popular_shows(page):
+            for show in fetch_shows_by_vote_count(page):
                 if show.get("id") and show["id"] not in seen:
                     seen[show["id"]] = show
             time.sleep(args.sleep)
-        ranked = sorted(seen.values(), key=lambda s: s.get("popularity", 0), reverse=True)
+        ranked = list(seen.values())
         candidates = [{"name": s["name"], "id": s["id"]} for s in ranked[: args.limit]]
 
     shows = []
@@ -110,16 +175,46 @@ def _select_shows(args) -> list[dict]:
     return shows
 
 
-def _harvest_show(show: dict, args) -> list[tuple[int, str, Path]]:
-    """Download subtitles for every season. Returns [(season, episode_code, srt_path)]."""
+def _harvest_show(
+    show: dict,
+    args,
+    tally: RunTally,
+    on_season_done=None,
+) -> list[tuple[int, str, Path]]:
+    """Download subtitles for every season. Returns [(season, episode_code, srt_path)].
+
+    Mutates ``tally`` in place with per-status counts so the caller can render
+    progress without re-walking the episode lists. ``on_season_done``, if
+    given, is invoked after each season finishes (success, skip, or fail) so
+    the caller can advance a Progress bar without coupling to its
+    implementation.
+    """
     harvested: list[tuple[int, str, Path]] = []
     canonical = show["name"]
     for season in range(1, show["seasons"] + 1):
         try:
             result = download_subtitles(canonical, season)
         except Exception as e:
-            logger.warning(f"  {canonical} S{season:02d}: harvest failed ({e})")
+            # exc_info=True per CLAUDE.md: the warning string alone (often
+            # just "429 Too Many Requests") doesn't say which provider in
+            # the OS/TMDB retry chain raised — the traceback is the only
+            # signal for diagnosing flaky seasons after the fact.
+            logger.warning(f"  {canonical} S{season:02d}: harvest failed ({e})", exc_info=True)
+            tally.seasons_failed += 1
+            if on_season_done is not None:
+                on_season_done()
             continue
+
+        # Tally every episode (including failures) so the running totals
+        # match what actually happened, not what we chose to keep.
+        for ep in result["episodes"]:
+            status = ep.get("status")
+            if status == "cached":
+                tally.cache_hits += 1
+            elif status == "downloaded":
+                tally.downloaded += 1
+            elif status == "not_found":
+                tally.not_found += 1
 
         episodes = [
             ep for ep in result["episodes"] if ep["status"] in _VALID_STATUSES and ep.get("path")
@@ -131,19 +226,27 @@ def _harvest_show(show: dict, args) -> list[tuple[int, str, Path]]:
                 f"  {canonical} S{season:02d}: {len(episodes)}/{total} episodes "
                 f"({ratio:.0%}) below threshold {args.min_episodes_ratio:.0%}; skipping season"
             )
+            tally.seasons_skipped_below_threshold += 1
+            if on_season_done is not None:
+                on_season_done()
             continue
 
         for ep in episodes:
             harvested.append((season, ep["code"], Path(ep["path"])))
         logger.info(f"  {canonical} S{season:02d}: {len(episodes)}/{total} episodes")
+        tally.seasons_done += 1
+        if on_season_done is not None:
+            on_season_done()
         time.sleep(args.sleep)
     return harvested
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the Engram subtitle-vector cache")
-    parser.add_argument("--limit", type=int, default=300, help="Number of popular shows")
-    parser.add_argument("--pages", type=int, default=15, help="TMDB popular pages to scan")
+    parser.add_argument(
+        "--limit", type=int, default=300, help="Number of shows (top by TMDB vote count)"
+    )
+    parser.add_argument("--pages", type=int, default=15, help="TMDB discover pages to scan")
     parser.add_argument(
         "--shows", type=str, default="", help="Comma-separated show names (overrides popular)"
     )
@@ -157,14 +260,50 @@ def main() -> int:
     parser.add_argument(
         "--content-version", type=str, default="", help="Cache content version (default: today)"
     )
-    parser.add_argument("--keep-srt", action="store_true", help="Do not delete harvested SRT files")
+    parser.add_argument(
+        "--clean-srt",
+        action="store_true",
+        help="Delete harvested SRTs after building (default: keep them so re-runs resume)",
+    )
+    # Deprecated: SRTs are now kept by default; --keep-srt is a no-op kept for compatibility.
+    parser.add_argument("--keep-srt", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
+    if args.keep_srt:
+        if args.clean_srt:
+            logger.warning(
+                "--keep-srt is deprecated and has no effect; SRTs will be "
+                "deleted because --clean-srt is set."
+            )
+        else:
+            logger.warning(
+                "--keep-srt is deprecated and has no effect; SRTs are kept by default. "
+                "Pass --clean-srt to delete them after the build."
+            )
+
+    _ensure_db_schema()
     _bootstrap_config_from_env()
 
     from app.services.config_service import get_config_sync
 
-    cache_dir = Path(get_config_sync().subtitles_cache_path).expanduser()
+    config = get_config_sync()
+    if (
+        config.opensubtitles_api_key
+        and config.opensubtitles_username
+        and config.opensubtitles_password
+    ):
+        logger.info("OpenSubtitles API: ACTIVE — bulk season downloads enabled")
+    else:
+        logger.warning(
+            "OpenSubtitles API: INACTIVE — credentials missing; falling back to "
+            "rate-limited scrapers (slow, flaky). Set opensubtitles_api_key, "
+            "opensubtitles_username and opensubtitles_password to enable it."
+        )
+    if not config.tmdb_api_key:
+        logger.error("TMDB API key not configured — show lookups require it; aborting")
+        return 1
+
+    cache_dir = Path(config.subtitles_cache_path).expanduser()
     precomputed_dir = cache_dir / "precomputed"
     if precomputed_dir.exists():
         shutil.rmtree(precomputed_dir)
@@ -181,41 +320,98 @@ def main() -> int:
     blocks: list[tuple[str, int, list[str], object]] = []
     hv = build_hashing_vectorizer()
     manifest_shows: dict[str, dict] = {}
+    tally = RunTally()
 
-    for idx, show in enumerate(shows, 1):
-        logger.info(f"[{idx}/{len(shows)}] {show['name']} (TMDB {show['tmdb_id']})")
-        harvested = _harvest_show(show, args)
-        if not harvested:
-            logger.warning(f"  {show['name']}: no usable seasons; omitting from cache")
-            continue
+    # Rich Console auto-detects TTY: in a local terminal we get a live
+    # updating progress bar; under GitHub Actions (no TTY) it degrades to
+    # one log line per console.log() call and the bar updates are
+    # effectively no-ops — exactly the shape that's readable in CI logs.
+    console = Console()
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        shows_task = progress.add_task("Building cache", total=len(shows))
+        for idx, show in enumerate(shows, 1):
+            show_start = time.monotonic()
+            tally_snapshot = (tally.cache_hits, tally.downloaded, tally.not_found)
+            # `transient` is a Progress() constructor argument that makes
+            # the whole bar vanish on exit, not a per-task option — passing
+            # it here is silently stored as task metadata and has no visual
+            # effect. The per-show task is removed cleanly by the
+            # `progress.remove_task(season_task)` call below after the
+            # show finishes.
+            season_task = progress.add_task(
+                f"  {show['name']}",
+                total=show["seasons"],
+            )
 
-        by_season: dict[int, list[tuple[str, Path]]] = {}
-        for season, code, path in harvested:
-            by_season.setdefault(season, []).append((code, path))
+            logger.info(f"[{idx}/{len(shows)}] {show['name']} (TMDB {show['tmdb_id']})")
+            # Bind season_task via default arg so the closure captures THIS
+            # iteration's task id, not the loop variable (B023).
+            harvested = _harvest_show(
+                show,
+                args,
+                tally,
+                on_season_done=lambda task=season_task: progress.advance(task),
+            )
+            progress.remove_task(season_task)
+            progress.advance(shows_task)
 
-        show_seasons: list[int] = []
-        episode_counts: dict[str, int] = {}
-        for season in sorted(by_season):
-            episodes = sorted(by_season[season], key=lambda x: x[0])
-            texts, codes = [], []
-            for code, path in episodes:
-                text = subtitle_cache.get_full_text(str(path))
-                if text:
-                    texts.append(text)
-                    codes.append(code)
-            if not texts:
+            if not harvested:
+                # All seasons either failed or fell below the coverage
+                # threshold — emit a yellow SKIP banner instead of the green
+                # OK banner so the log line matches what actually happened.
+                console.log(
+                    f"[yellow]SKIP[/] {show['name']} — no usable seasons "
+                    f"(omitted from cache) in {int(time.monotonic() - show_start)}s"
+                )
+                logger.warning(f"  {show['name']}: no usable seasons; omitting from cache")
                 continue
-            counts = hv.transform(texts)  # raw hashed term counts
-            blocks.append((show["name"], season, codes, counts))
-            show_seasons.append(season)
-            episode_counts[str(season)] = len(codes)
 
-        if show_seasons:
-            manifest_shows[show["name"]] = {
-                "tmdb_id": show["tmdb_id"],
-                "seasons": show_seasons,
-                "episode_counts": episode_counts,
-            }
+            # Per-show summary — show what we did this iteration.
+            delta_hits = tally.cache_hits - tally_snapshot[0]
+            delta_dls = tally.downloaded - tally_snapshot[1]
+            delta_nf = tally.not_found - tally_snapshot[2]
+            console.log(
+                f"[green]OK[/] {show['name']} — "
+                f"{delta_hits + delta_dls}/{delta_hits + delta_dls + delta_nf} episodes "
+                f"({delta_hits} cached, {delta_dls} new, {delta_nf} missing) "
+                f"in {int(time.monotonic() - show_start)}s"
+            )
+
+            by_season: dict[int, list[tuple[str, Path]]] = {}
+            for season, code, path in harvested:
+                by_season.setdefault(season, []).append((code, path))
+
+            show_seasons: list[int] = []
+            episode_counts: dict[str, int] = {}
+            for season in sorted(by_season):
+                episodes = sorted(by_season[season], key=lambda x: x[0])
+                texts, codes = [], []
+                for code, path in episodes:
+                    text = subtitle_cache.get_full_text(str(path))
+                    if text:
+                        texts.append(text)
+                        codes.append(code)
+                if not texts:
+                    continue
+                counts = hv.transform(texts)  # raw hashed term counts
+                blocks.append((show["name"], season, codes, counts))
+                show_seasons.append(season)
+                episode_counts[str(season)] = len(codes)
+
+            if show_seasons:
+                manifest_shows[show["name"]] = {
+                    "tmdb_id": show["tmdb_id"],
+                    "seasons": show_seasons,
+                    "episode_counts": episode_counts,
+                }
 
     if not blocks:
         logger.error("No subtitles harvested; nothing to build")
@@ -264,11 +460,11 @@ def main() -> int:
     with open(release_manifest_path, "w", encoding="utf-8") as fh:
         json.dump(release_manifest, fh, indent=2)
 
-    if not args.keep_srt:
+    if args.clean_srt:
         data_dir = cache_dir / "data"
         if data_dir.exists():
             shutil.rmtree(data_dir)
-            logger.info("Deleted harvested SRT files (not shipped)")
+            logger.info("Deleted harvested SRT files (--clean-srt)")
 
     total_episodes = sum(len(c) for _, _, c, _ in blocks)
     size_mb = output_path.stat().st_size / (1024 * 1024)
@@ -277,6 +473,27 @@ def main() -> int:
         f"{size_mb:.1f} MB -> {output_path}"
     )
     logger.info(f"Release manifest -> {release_manifest_path}")
+
+    # --- Final summary --------------------------------------------------------
+    # Single block readable in CI logs. ``console`` was created above in the
+    # Progress context but stays usable after the ``with`` exits.
+    quota = get_last_quota()
+    quota_str = f"{quota['remaining']}" if quota and quota.get("remaining") is not None else "n/a"
+    console.log(
+        "[bold]Final summary[/]: "
+        f"{len(manifest_shows)} shows, {total_episodes} episodes packaged "
+        f"({size_mb:.1f} MB)\n"
+        f"  episodes seen:    {tally.cache_hits + tally.downloaded + tally.not_found}\n"
+        f"  cache hits:       {tally.cache_hits}\n"
+        f"  new downloads:    {tally.downloaded}\n"
+        f"  not found:        {tally.not_found}\n"
+        f"  cache hit rate:   {tally.cache_hit_rate:.0%}\n"
+        f"  seasons OK:       {tally.seasons_done}\n"
+        f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
+        f"  seasons failed:   {tally.seasons_failed}\n"
+        f"  elapsed:          {tally.elapsed_str()}\n"
+        f"  OS quota left:    {quota_str} downloads today"
+    )
     return 0
 
 

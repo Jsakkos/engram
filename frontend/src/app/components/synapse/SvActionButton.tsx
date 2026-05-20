@@ -107,47 +107,31 @@ export function SvActionButton({
     const enter = () => !disabled && setHovered(true);
     const leave = () => setHovered(false);
 
+    const shared = {
+        onClick,
+        title,
+        "aria-label": ariaLabel,
+        className,
+        style: composed,
+        onMouseEnter: enter,
+        onMouseLeave: leave,
+        onFocus: enter,
+        onBlur: leave,
+        "data-testid": "sv-action-button",
+        "data-tone": tone,
+        "data-size": size,
+    };
+
     if (href) {
         return (
-            <a
-                href={href}
-                target={target}
-                rel={rel}
-                onClick={onClick}
-                title={title}
-                aria-label={ariaLabel}
-                className={className}
-                style={composed}
-                onMouseEnter={enter}
-                onMouseLeave={leave}
-                onFocus={enter}
-                onBlur={leave}
-                data-testid="sv-action-button"
-                data-tone={tone}
-                data-size={size}
-            >
+            <a href={href} target={target} rel={rel} {...shared}>
                 {children}
             </a>
         );
     }
 
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            title={title}
-            aria-label={ariaLabel}
-            className={className}
-            style={composed}
-            onMouseEnter={enter}
-            onMouseLeave={leave}
-            onFocus={enter}
-            onBlur={leave}
-            data-testid="sv-action-button"
-            data-tone={tone}
-            data-size={size}
-        >
+        <button type="button" disabled={disabled} {...shared}>
             {children}
         </button>
     );

@@ -21,10 +21,4 @@ export interface MatchDetails {
     auto_sorted?: string;
 }
 
-export interface ReviewState {
-    selectedEpisodes: Record<number, string>;
-    selectedEditions: Record<number, string>;
-    expandedTitles: Set<number>;
-}
-
 export type { DiscTitle };

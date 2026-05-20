@@ -10,9 +10,23 @@ import requests
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.core.security import executable_basename_allowed
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Known executable filenames for the tool validators. Validation runs the
+# binary, so it must be a real tool executable — never an arbitrary script
+# supplied as a config path.
+_MAKEMKV_EXE_NAMES = (
+    "makemkvcon",
+    "makemkvcon.exe",
+    "makemkvcon64",
+    "makemkvcon64.exe",
+    "com.makemkv.MakeMKV",
+)
+_FFMPEG_EXE_NAMES = ("ffmpeg", "ffmpeg.exe")
 
 
 class ValidationRequest(BaseModel):
@@ -84,6 +98,14 @@ def _get_ffmpeg_search_paths() -> list[str]:
     ]
 
 
+def _extract_makemkv_version(output: str) -> str:
+    """Extract a MakeMKV version string from command output."""
+    for line in output.split("\n"):
+        if "version" in line.lower() or "v1." in line or "v2." in line:
+            return line.strip()
+    return "MakeMKV (version not detectable)"
+
+
 def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
     """Validate a MakeMKV binary and extract version info."""
     try:
@@ -97,13 +119,9 @@ def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
         if "makemkvcon" not in output.lower() and "makemkv" not in output.lower():
             return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
 
-        version = "MakeMKV (version not detectable)"
-        for line in output.split("\n"):
-            if "version" in line.lower() or "v1." in line or "v2." in line:
-                version = line.strip()
-                break
-
-        return ToolDetectionResult(found=True, path=path_str, version=version)
+        return ToolDetectionResult(
+            found=True, path=path_str, version=_extract_makemkv_version(output)
+        )
     except subprocess.TimeoutExpired:
         return ToolDetectionResult(found=False, path=path_str, error="Command timeout (10s)")
     except Exception as e:
@@ -188,6 +206,11 @@ async def validate_makemkv(request: ValidationRequest) -> ValidationResponse:
     """Validate MakeMKV installation by checking path and running without arguments."""
     makemkv_path = Path(request.path)
 
+    # Constrain to known MakeMKV executables before any filesystem or
+    # subprocess access — the endpoint must not run an arbitrary binary.
+    if not executable_basename_allowed(str(makemkv_path), _MAKEMKV_EXE_NAMES):
+        return ValidationResponse(valid=False, error="Path does not point to a MakeMKV executable")
+
     # Check existence
     if not makemkv_path.exists():
         return ValidationResponse(valid=False, error="File not found at specified path")
@@ -195,29 +218,15 @@ async def validate_makemkv(request: ValidationRequest) -> ValidationResponse:
     if not makemkv_path.is_file():
         return ValidationResponse(valid=False, error="Path is not a file")
 
-    # Try running without arguments to get help text (with timeout to avoid hanging)
-    # Note: MakeMKV returns exit code 1 for help, so we check output content instead
-    try:
-        result = subprocess.run([str(makemkv_path)], capture_output=True, timeout=10, text=True)
-
-        # Check if output contains expected MakeMKV text
-        output = result.stdout + result.stderr
-        if "makemkvcon" not in output.lower() and "makemkv" not in output.lower():
-            return ValidationResponse(valid=False, error="Not a valid MakeMKV executable")
-
-        # Extract version if available in output, otherwise just confirm it's MakeMKV
-        version = "MakeMKV (version not detectable)"
-        for line in output.split("\n"):
-            if "version" in line.lower() or "v1." in line or "v2." in line:
-                version = line.strip()
-                break
-
-        return ValidationResponse(valid=True, version=version)
-
-    except subprocess.TimeoutExpired:
-        return ValidationResponse(valid=False, error="MakeMKV command timeout (10s)")
-    except Exception as e:
-        return ValidationResponse(valid=False, error=f"Execution failed: {str(e)}")
+    # MakeMKV returns exit code 1 for help, so the helper checks output content instead.
+    result = _validate_makemkv_binary(str(makemkv_path))
+    if not result.found:
+        error = result.error
+        if error == "Command timeout (10s)":
+            error = "MakeMKV command timeout (10s)"
+        return ValidationResponse(valid=False, error=error)
+    # Note: path is intentionally omitted from this response.
+    return ValidationResponse(valid=True, version=result.version)
 
 
 @router.post("/validate/ffmpeg", response_model=ValidationResponse)
@@ -225,6 +234,11 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
     """Validate FFmpeg installation. Empty path = check PATH."""
     if request.path:
         ffmpeg_cmd = Path(request.path)
+        # Constrain to known FFmpeg executables before filesystem/subprocess use.
+        if not executable_basename_allowed(str(ffmpeg_cmd), _FFMPEG_EXE_NAMES):
+            return ValidationResponse(
+                valid=False, error="Path does not point to an FFmpeg executable"
+            )
         if not ffmpeg_cmd.exists():
             return ValidationResponse(valid=False, error="File not found at specified path")
         ffmpeg_path_str = str(ffmpeg_cmd)
@@ -235,21 +249,15 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
             return ValidationResponse(valid=False, error="FFmpeg not found in system PATH")
         ffmpeg_path_str = ffmpeg_cmd_found
 
-    try:
-        result = subprocess.run(
-            [ffmpeg_path_str, "-version"], capture_output=True, timeout=10, text=True
-        )
-        if result.returncode != 0:
-            return ValidationResponse(valid=False, error="FFmpeg returned non-zero exit code")
-
-        # Parse version
-        version_line = result.stdout.split("\n")[0] if result.stdout else "Unknown"
-        return ValidationResponse(valid=True, version=version_line, path=ffmpeg_path_str)
-
-    except subprocess.TimeoutExpired:
-        return ValidationResponse(valid=False, error="FFmpeg command timeout (10s)")
-    except Exception as e:
-        return ValidationResponse(valid=False, error=f"Execution failed: {str(e)}")
+    result = _validate_ffmpeg_binary(ffmpeg_path_str)
+    if not result.found:
+        error = result.error
+        if error == "Non-zero exit code":
+            error = "FFmpeg returned non-zero exit code"
+        elif error == "Command timeout (10s)":
+            error = "FFmpeg command timeout (10s)"
+        return ValidationResponse(valid=False, error=error)
+    return ValidationResponse(valid=True, version=result.version, path=result.path)
 
 
 @router.post("/validate/tmdb", response_model=ValidationResponse)

@@ -1,3 +1,6 @@
 """Unified Media Automator Backend."""
 
-__version__ = "0.1.0"
+# Keep in sync with pyproject.toml [project].version. Surfaced as the
+# User-Agent suffix on outbound API calls (OpenSubtitles, etc.), so a
+# stale value here misidentifies the app to upstream services.
+__version__ = "0.6.0"

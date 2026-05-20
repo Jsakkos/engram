@@ -67,8 +67,12 @@ class SimulationService:
         content_type_str = params.get("content_type", "tv")
 
         # Parse detected_title
-        default_title = volume_label.replace("_", " ").title()
-        default_title = re.sub(r"\s+S\d+D?\d*$", "", default_title, flags=re.IGNORECASE)
+        default_title = re.sub(
+            r"\s+S\d+D?\d*$",
+            "",
+            volume_label.replace("_", " ").title(),
+            flags=re.IGNORECASE,
+        )
         detected_title = params.get("detected_title", default_title)
         detected_season = params.get("detected_season", 1)
         simulate_ripping = params.get("simulate_ripping", False)
@@ -76,6 +80,7 @@ class SimulationService:
         title_params = params.get("titles", [])
 
         content_type = ContentType(content_type_str)
+        effective_season = detected_season if content_type == ContentType.TV else None
 
         # Default titles if none provided
         if not title_params:
@@ -101,7 +106,7 @@ class SimulationService:
                 volume_label=volume_label,
                 content_type=content_type,
                 detected_title=detected_title,
-                detected_season=(detected_season if content_type == ContentType.TV else None),
+                detected_season=effective_season,
                 state=JobState.IDENTIFYING,
                 total_titles=len(title_params),
                 staging_path=str(
@@ -138,7 +143,7 @@ class SimulationService:
                 JobState.IDENTIFYING.value,
                 content_type=content_type.value,
                 detected_title=detected_title,
-                detected_season=(detected_season if content_type == ContentType.TV else None),
+                detected_season=effective_season,
                 total_titles=len(title_params),
             )
 
@@ -151,7 +156,7 @@ class SimulationService:
                 title_list,
                 content_type=content_type.value,
                 detected_title=detected_title,
-                detected_season=(detected_season if content_type == ContentType.TV else None),
+                detected_season=effective_season,
             )
 
             # Start subtitle download for TV content
@@ -186,7 +191,7 @@ class SimulationService:
                     JobState.REVIEW_NEEDED.value,
                     content_type=content_type.value,
                     detected_title=job.detected_title,
-                    detected_season=(detected_season if content_type == ContentType.TV else None),
+                    detected_season=effective_season,
                     review_reason=job.review_reason,
                     total_titles=len(title_params),
                 )
@@ -204,7 +209,7 @@ class SimulationService:
                     JobState.RIPPING.value,
                     content_type=content_type.value,
                     detected_title=detected_title,
-                    detected_season=(detected_season if content_type == ContentType.TV else None),
+                    detected_season=effective_season,
                     total_titles=len(title_params),
                 )
 
@@ -378,38 +383,54 @@ class SimulationService:
 
                 logger.info(f"[SIMULATE] Job {job_id}: completed realistic rip of title {i}")
 
-            # Move to matching
             job = await session.get(DiscJob, job_id)
-            if content_type == ContentType.TV:
-                if job_id in self._subtitle_ready:
-                    logger.info(f"[SIMULATE] Job {job_id}: waiting for subtitle download...")
-                    try:
-                        await asyncio.wait_for(self._subtitle_ready[job_id].wait(), timeout=30)
-                        logger.info(f"[SIMULATE] Job {job_id}: subtitle download complete")
-                        await session.refresh(job)
-                    except TimeoutError:
-                        logger.warning(f"[SIMULATE] Job {job_id}: subtitle download timed out")
+            await self._finish_simulated_rip(
+                job, job_id, titles, content_type, session, subtitle_timeout=30
+            )
 
-                job.state = JobState.MATCHING
-                await session.commit()
-                await self._broadcaster.broadcast_job_state_changed(job_id, JobState.MATCHING)
-                await self._simulate_matching(job_id, titles, session)
-            else:
-                job.state = JobState.ORGANIZING
-                await session.commit()
-                await self._broadcaster.broadcast_job_state_changed(job_id, JobState.ORGANIZING)
-                await asyncio.sleep(0.5)
-                job.progress_percent = 100.0
-                for title in titles:
-                    title_db = await session.get(DiscTitle, title.id)
-                    if title_db and title_db.state not in (
-                        TitleState.COMPLETED,
-                        TitleState.FAILED,
-                    ):
-                        title_db.state = TitleState.COMPLETED
-                        session.add(title_db)
-                await session.commit()
-                await self._state_machine.transition_to_completed(job, session)
+    async def _finish_simulated_rip(
+        self,
+        job: DiscJob,
+        job_id: int,
+        titles: list[DiscTitle],
+        content_type: ContentType,
+        session: AsyncSession,
+        *,
+        subtitle_timeout: float,
+    ) -> None:
+        """Move a simulated job from ripping into matching/organizing completion."""
+        if content_type == ContentType.TV:
+            if job_id in self._subtitle_ready:
+                logger.info(f"[SIMULATE] Job {job_id}: waiting for subtitle download...")
+                try:
+                    await asyncio.wait_for(
+                        self._subtitle_ready[job_id].wait(), timeout=subtitle_timeout
+                    )
+                    logger.info(f"[SIMULATE] Job {job_id}: subtitle download complete")
+                    await session.refresh(job)
+                except TimeoutError:
+                    logger.warning(f"[SIMULATE] Job {job_id}: subtitle download timed out")
+
+            job.state = JobState.MATCHING
+            await session.commit()
+            await self._broadcaster.broadcast_job_state_changed(job_id, JobState.MATCHING)
+            await self._simulate_matching(job_id, titles, session)
+        else:
+            job.state = JobState.ORGANIZING
+            await session.commit()
+            await self._broadcaster.broadcast_job_state_changed(job_id, JobState.ORGANIZING)
+            await asyncio.sleep(0.5)
+            job.progress_percent = 100.0
+            for title in titles:
+                title_db = await session.get(DiscTitle, title.id)
+                if title_db and title_db.state not in (
+                    TitleState.COMPLETED,
+                    TitleState.FAILED,
+                ):
+                    title_db.state = TitleState.COMPLETED
+                    session.add(title_db)
+            await session.commit()
+            await self._state_machine.transition_to_completed(job, session)
 
     async def _simulate_ripping(
         self,
@@ -500,36 +521,9 @@ class SimulationService:
 
             # Move to matching
             job = await session.get(DiscJob, job_id)
-            if content_type == ContentType.TV:
-                if job_id in self._subtitle_ready:
-                    logger.info(f"[SIMULATE] Job {job_id}: waiting for subtitle download...")
-                    try:
-                        await asyncio.wait_for(self._subtitle_ready[job_id].wait(), timeout=10)
-                        logger.info(f"[SIMULATE] Job {job_id}: subtitle download complete")
-                        await session.refresh(job)
-                    except TimeoutError:
-                        logger.warning(f"[SIMULATE] Job {job_id}: subtitle download timed out")
-
-                job.state = JobState.MATCHING
-                await session.commit()
-                await self._broadcaster.broadcast_job_state_changed(job_id, JobState.MATCHING)
-                await self._simulate_matching(job_id, titles, session)
-            else:
-                job.state = JobState.ORGANIZING
-                await session.commit()
-                await self._broadcaster.broadcast_job_state_changed(job_id, JobState.ORGANIZING)
-                await asyncio.sleep(0.5)
-                job.progress_percent = 100.0
-                for title in titles:
-                    title_db = await session.get(DiscTitle, title.id)
-                    if title_db and title_db.state not in (
-                        TitleState.COMPLETED,
-                        TitleState.FAILED,
-                    ):
-                        title_db.state = TitleState.COMPLETED
-                        session.add(title_db)
-                await session.commit()
-                await self._state_machine.transition_to_completed(job, session)
+            await self._finish_simulated_rip(
+                job, job_id, titles, content_type, session, subtitle_timeout=10
+            )
 
     async def _simulate_subtitle_download(self, job_id: int, total: int, show_name: str) -> None:
         """Simulate subtitle download events."""

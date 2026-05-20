@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { sv } from "./tokens";
+import { monoLabelStyle, sv } from "./tokens";
 import { SvPanel } from "./SvPanel";
 import { SvLabel } from "./SvLabel";
 import { SvRuler } from "./SvRuler";
@@ -72,6 +72,13 @@ export function SvErrorState({
   const head = headline ?? k.headline;
   const sub = subtitle ?? k.subtitle;
 
+  // Kind-color tints reused across the diagnostics panel.
+  const tint = {
+    panel: `${k.color}55`,
+    ruler: `${k.color}33`,
+    divider: `${k.color}22`,
+  };
+
   return (
     <div
       data-testid="sv-error-state"
@@ -89,12 +96,8 @@ export function SvErrorState({
       <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 560 }}>
         <span
           style={{
-            fontFamily: sv.mono,
-            fontSize: 11,
+            ...monoLabelStyle({ size: 11, color: k.color, letterSpacing: "0.30em" }),
             fontWeight: 600,
-            letterSpacing: "0.30em",
-            textTransform: "uppercase",
-            color: k.color,
           }}
         >
           {k.tag}
@@ -130,22 +133,14 @@ export function SvErrorState({
       </div>
 
       {/* Right — diagnostics */}
-      <SvPanel pad={20} accent={`${k.color}55`} style={{ background: `${sv.bg1}cc` }}>
+      <SvPanel pad={20} accent={tint.panel} style={{ background: `${sv.bg1}cc` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <SvLabel size={11}>Diagnostics</SvLabel>
-          <span
-            style={{
-              fontFamily: sv.mono,
-              fontSize: 9,
-              letterSpacing: "0.20em",
-              color: k.color,
-              textTransform: "uppercase",
-            }}
-          >
+          <span style={monoLabelStyle({ size: 9, color: k.color, letterSpacing: "0.20em" })}>
             {kind}
           </span>
         </div>
-        <SvRuler ticks={32} color={`${k.color}33`} />
+        <SvRuler ticks={32} color={tint.ruler} />
         <dl
           style={{
             display: "grid",
@@ -169,17 +164,13 @@ export function SvErrorState({
         </dl>
         <div
           style={{
+            ...monoLabelStyle({ size: 9, color: sv.inkFaint, letterSpacing: "0.20em" }),
             marginTop: 18,
             paddingTop: 12,
-            borderTop: `1px solid ${k.color}22`,
+            borderTop: `1px solid ${tint.divider}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            fontFamily: sv.mono,
-            fontSize: 9,
-            letterSpacing: "0.20em",
-            color: sv.inkFaint,
-            textTransform: "uppercase",
           }}
         >
           <span>Trace ID</span>

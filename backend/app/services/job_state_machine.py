@@ -101,9 +101,6 @@ class JobStateMachine:
 
         Returns:
             True if transition succeeded, False if invalid
-
-        Raises:
-            ValueError: If transition is invalid and strict mode is enabled
         """
         from_state = job.state
 

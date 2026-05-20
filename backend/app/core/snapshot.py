@@ -14,7 +14,12 @@ SNAPSHOTS_DIR = Path.home() / ".engram" / "snapshots"
 
 
 def _safe_filename(label: str) -> str:
-    """Convert a volume label to a safe filename."""
+    """Convert a volume label to a safe filename.
+
+    Intentionally distinct from ``sanitize_filename``: this replaces every
+    non-word character with ``_`` and lowercases the result (slug-style), as
+    opposed to removing invalid characters while preserving case.
+    """
     return re.sub(r"[^\w]", "_", label).strip("_").lower()
 
 
