@@ -10,7 +10,6 @@ produces and what the consumer expects (manifest schema, tarball layout,
 vectorizer config identity).
 """
 
-import importlib.util
 import json
 import shutil
 import sys
@@ -29,48 +28,9 @@ from app.matcher.vectorizer_config import (
     vectorizer_config_hash,
 )
 
-
-def _load_build_module():
-    """Import scripts/build_subtitle_cache.py without polluting sys.modules.
-
-    The script lives outside the importable backend/app/ tree (it uses
-    ``sys.path.insert`` to find app/), so we load it by file path. This
-    keeps the test setup honest about what the script's structure is.
-    """
-    backend_root = Path(__file__).parent.parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "build_subtitle_cache",
-        backend_root / "scripts" / "build_subtitle_cache.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["build_subtitle_cache"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-@pytest.fixture(scope="module")
-def bsc():
-    return _load_build_module()
-
-
-def _load_validator_module():
-    """Load the validator the same way as test_validate_subtitle_cache so the
-    round-trip test asserts SHA equality via the validator's helper — the same
-    path the CI smoke workflow uses against the live release."""
-    backend_root = Path(__file__).parent.parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "validate_subtitle_cache",
-        backend_root / "scripts" / "validate_subtitle_cache.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["validate_subtitle_cache"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-@pytest.fixture(scope="module")
-def vsc():
-    return _load_validator_module()
+# `bsc` (build_subtitle_cache) and `vsc` (validate_subtitle_cache) fixtures
+# live in conftest.py as session-scoped — each script's module-level code
+# (including sys.path.insert) executes exactly once per pytest run.
 
 
 @pytest.mark.unit
@@ -293,7 +253,7 @@ class TestMainRoundTrip:
                 "--sleep",
                 "0",
                 "--content-version",
-                "2026-05-20-test",
+                "test-run",
             ],
         )
 
@@ -313,7 +273,7 @@ class TestMainRoundTrip:
         assert release_manifest["cache_format_version"] == CACHE_FORMAT_VERSION
         assert release_manifest["n_features"] == HASHING_N_FEATURES
         assert release_manifest["vectorizer_config_hash"] == vectorizer_config_hash()
-        assert release_manifest["content_version"] == "2026-05-20-test"
+        assert release_manifest["content_version"] == "test-run"
         assert _SHOW in release_manifest["shows"]
         assert release_manifest["shows"][_SHOW]["seasons"] == [1]
 

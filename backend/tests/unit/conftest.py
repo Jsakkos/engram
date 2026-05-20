@@ -5,12 +5,44 @@ the real engram.db.
 """
 
 import importlib
+import importlib.util
+import sys
+from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine
+
+
+def _load_script_module(name: str) -> object:
+    """Load a backend/scripts/<name>.py file as an importable module.
+
+    Lives here so multiple test files share a single load (and thus a single
+    exec_module run) per session — the validator and build-script modules
+    contain top-level imports and a sys.path.insert that would otherwise run
+    once per loader call site.
+    """
+    backend_root = Path(__file__).parent.parent.parent
+    spec = importlib.util.spec_from_file_location(name, backend_root / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.fixture(scope="session")
+def vsc():
+    """The validate_subtitle_cache.py module, loaded once per pytest session."""
+    return _load_script_module("validate_subtitle_cache")
+
+
+@pytest.fixture(scope="session")
+def bsc():
+    """The build_subtitle_cache.py module, loaded once per pytest session."""
+    return _load_script_module("build_subtitle_cache")
+
 
 _unit_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",

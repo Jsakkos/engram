@@ -6,11 +6,11 @@ mismatch, vectorizer hash mismatch, n_features mismatch, missing tarball
 entries, empty shows dict) without touching the network — each builds a
 synthetic release-assets dir, mutates one field, and asserts the validator
 reports exactly that failure.
+
+The `vsc` fixture (loaded once per pytest session) lives in conftest.py.
 """
 
-import importlib.util
 import json
-import sys
 import tarfile
 from pathlib import Path
 
@@ -21,23 +21,6 @@ from app.matcher.vectorizer_config import (
     HASHING_N_FEATURES,
     vectorizer_config_hash,
 )
-
-
-def _load_validator():
-    backend_root = Path(__file__).parent.parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "validate_subtitle_cache",
-        backend_root / "scripts" / "validate_subtitle_cache.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["validate_subtitle_cache"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-@pytest.fixture(scope="module")
-def vsc():
-    return _load_validator()
 
 
 def _make_assets(
