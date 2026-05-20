@@ -24,6 +24,7 @@ import hashlib
 import json
 import sys
 import tarfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -37,16 +38,48 @@ from app.matcher.vectorizer_config import (
 REQUIRED_TARBALL_ENTRIES = frozenset(
     {"precomputed", "precomputed/idf.npy", "precomputed/manifest.json"}
 )
+_SHA_CHUNK_SIZE = 1 << 16  # 64 KiB; tarballs grow with show count, stream rather than load
 
 
-def validate(assets_dir: Path) -> list[str]:
-    """Return a list of failure messages; empty list means cache is healthy."""
+def _sha256_of_file(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(_SHA_CHUNK_SIZE), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
+@dataclass
+class ValidationResult:
+    """Pure result object. ``failures`` is the list smoke-test asserts on;
+    ``summary`` is the diagnostic snapshot main() prints to the CI log."""
+
+    failures: list[str] = field(default_factory=list)
+    summary: dict = field(default_factory=dict)
+
+
+def validate(assets_dir: Path) -> ValidationResult:
+    """Return a ValidationResult; empty .failures means cache is healthy."""
     tarball = assets_dir / "engram-subtitle-cache.tar.gz"
     manifest_path = assets_dir / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    failures: list[str] = []
 
-    actual_sha = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    # Treat missing or malformed inputs as validation failures, not tracebacks:
+    # this is exactly the kind of corruption the smoke test is supposed to catch.
+    if not manifest_path.exists():
+        return ValidationResult(failures=[f"manifest.json not found in {assets_dir}"])
+    if not tarball.exists():
+        return ValidationResult(
+            failures=[f"engram-subtitle-cache.tar.gz not found in {assets_dir}"]
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return ValidationResult(failures=[f"manifest.json is not valid JSON: {exc}"])
+
+    failures: list[str] = []
+    expected_hash = vectorizer_config_hash()
+
+    actual_sha = _sha256_of_file(tarball)
     if manifest.get("tarball_sha256") != actual_sha:
         failures.append(
             f"tarball_sha256 mismatch: "
@@ -60,11 +93,11 @@ def validate(assets_dir: Path) -> list[str]:
             f"current main={CACHE_FORMAT_VERSION!r}"
         )
 
-    if manifest.get("vectorizer_config_hash") != vectorizer_config_hash():
+    if manifest.get("vectorizer_config_hash") != expected_hash:
         failures.append(
             f"vectorizer_config_hash mismatch: "
             f"manifest={manifest.get('vectorizer_config_hash')!r}, "
-            f"current main={vectorizer_config_hash()!r}"
+            f"current main={expected_hash!r}"
         )
 
     if manifest.get("n_features") != HASHING_N_FEATURES:
@@ -83,24 +116,33 @@ def validate(assets_dir: Path) -> list[str]:
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
 
-    print(f"cache_format_version: {manifest.get('cache_format_version')!r}")
-    print(f"vectorizer_config_hash: {manifest.get('vectorizer_config_hash')!r}")
-    print(f"n_features: {manifest.get('n_features')!r}")
-    print(f"n_shows: {n_shows}")
-    print(f"tarball size: {tarball.stat().st_size:,} bytes")
-    print(f"tarball sha256: {actual_sha}")
-
-    return failures
+    summary = {
+        "cache_format_version": manifest.get("cache_format_version"),
+        "vectorizer_config_hash": manifest.get("vectorizer_config_hash"),
+        "n_features": manifest.get("n_features"),
+        "n_shows": n_shows,
+        "tarball_size_bytes": tarball.stat().st_size,
+        "tarball_sha256": actual_sha,
+    }
+    return ValidationResult(failures=failures, summary=summary)
 
 
 def main() -> int:
     if len(sys.argv) != 2:
         print(f"usage: {sys.argv[0]} <assets-dir>", file=sys.stderr)
         return 2
-    failures = validate(Path(sys.argv[1]))
-    if failures:
+    result = validate(Path(sys.argv[1]))
+
+    # Diagnostic snapshot first so CI logs show what was inspected even on failure.
+    for key, value in result.summary.items():
+        if key == "tarball_size_bytes":
+            print(f"tarball size: {value:,} bytes")
+        else:
+            print(f"{key}: {value!r}" if isinstance(value, str) else f"{key}: {value}")
+
+    if result.failures:
         print("VALIDATION FAILURES:")
-        for f in failures:
+        for f in result.failures:
             print(f"  - {f}")
         return 1
     print("OK — live release is consistent with current main.")

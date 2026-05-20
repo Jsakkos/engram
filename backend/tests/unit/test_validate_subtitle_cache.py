@@ -82,35 +82,63 @@ def _make_assets(
 class TestValidate:
     def test_healthy_release_returns_no_failures(self, vsc, tmp_path):
         _make_assets(tmp_path)
-        assert vsc.validate(tmp_path) == []
+        assert vsc.validate(tmp_path).failures == []
 
     def test_sha_mismatch_detected(self, vsc, tmp_path):
         _make_assets(tmp_path, corrupt_sha=True)
-        failures = vsc.validate(tmp_path)
+        failures = vsc.validate(tmp_path).failures
         assert any("tarball_sha256 mismatch" in f for f in failures)
 
     def test_format_version_mismatch_detected(self, vsc, tmp_path):
         _make_assets(tmp_path, manifest_overrides={"cache_format_version": "999"})
-        failures = vsc.validate(tmp_path)
+        failures = vsc.validate(tmp_path).failures
         assert any("cache_format_version mismatch" in f for f in failures)
 
     def test_vectorizer_hash_mismatch_detected(self, vsc, tmp_path):
         _make_assets(tmp_path, manifest_overrides={"vectorizer_config_hash": "deadbeef"})
-        failures = vsc.validate(tmp_path)
+        failures = vsc.validate(tmp_path).failures
         assert any("vectorizer_config_hash mismatch" in f for f in failures)
 
     def test_n_features_mismatch_detected(self, vsc, tmp_path):
         _make_assets(tmp_path, manifest_overrides={"n_features": 1})
-        failures = vsc.validate(tmp_path)
+        failures = vsc.validate(tmp_path).failures
         assert any("n_features mismatch" in f for f in failures)
 
     def test_missing_tarball_entries_detected(self, vsc, tmp_path):
         # Tarball that's missing precomputed/idf.npy.
         _make_assets(tmp_path, tarball_members=["precomputed", "precomputed/manifest.json"])
-        failures = vsc.validate(tmp_path)
+        failures = vsc.validate(tmp_path).failures
         assert any("missing required entries" in f for f in failures)
 
     def test_empty_shows_dict_detected(self, vsc, tmp_path):
         _make_assets(tmp_path, manifest_overrides={"shows": {}})
-        failures = vsc.validate(tmp_path)
+        failures = vsc.validate(tmp_path).failures
         assert any("shows dict in manifest is empty" in f for f in failures)
+
+    def test_missing_manifest_reports_clean_failure(self, vsc, tmp_path):
+        # No assets at all — what happens when `gh release download` produces
+        # nothing useful. Should report a single clean failure, not traceback.
+        result = vsc.validate(tmp_path)
+        assert len(result.failures) == 1
+        assert "manifest.json not found" in result.failures[0]
+
+    def test_missing_tarball_reports_clean_failure(self, vsc, tmp_path):
+        (tmp_path / "manifest.json").write_text("{}")
+        result = vsc.validate(tmp_path)
+        assert len(result.failures) == 1
+        assert "engram-subtitle-cache.tar.gz not found" in result.failures[0]
+
+    def test_malformed_manifest_reports_clean_failure(self, vsc, tmp_path):
+        (tmp_path / "manifest.json").write_text("{not valid json")
+        (tmp_path / "engram-subtitle-cache.tar.gz").write_bytes(b"x")
+        result = vsc.validate(tmp_path)
+        assert len(result.failures) == 1
+        assert "not valid JSON" in result.failures[0]
+
+    def test_summary_populated_on_healthy_release(self, vsc, tmp_path):
+        _make_assets(tmp_path)
+        result = vsc.validate(tmp_path)
+        assert result.summary["n_shows"] == 1
+        assert result.summary["cache_format_version"] == CACHE_FORMAT_VERSION
+        assert result.summary["n_features"] == HASHING_N_FEATURES
+        assert len(result.summary["tarball_sha256"]) == 64
