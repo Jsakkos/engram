@@ -3,16 +3,10 @@ import { motion } from "motion/react";
 import { Loader2, CheckCircle2, AlertTriangle, Vote } from "lucide-react";
 import type { Track, TrackState } from "./DiscCard";
 import { sv, SvBadge, SvBar, SvLabel } from "./synapse";
+import { formatBytesBinary } from "../../utils/formatting";
 
 interface TrackGridProps {
   tracks: Track[];
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
 interface StateConfig {
@@ -205,7 +199,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                     {track.expectedSizeBytes && track.actualSizeBytes ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span className="sv-tnum" style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
-                          {formatBytes(track.actualSizeBytes)} / {formatBytes(track.expectedSizeBytes)}
+                          {formatBytesBinary(track.actualSizeBytes)} / {formatBytesBinary(track.expectedSizeBytes)}
                         </span>
                         <span
                           className="sv-tnum"

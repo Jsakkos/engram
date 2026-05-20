@@ -1,6 +1,27 @@
 import re
 from pathlib import Path
 
+# Ordered season/episode patterns, tried in sequence. The first match wins.
+_SEASON_EPISODE_PATTERNS = [
+    r"[Ss](\d{1,2})[Ee](\d{1,2})",  # S01E01 / s1e2
+    r"(\d{1,2})x(\d{1,2})",  # 1x01 / 01x01
+    r"Season\s*(\d+).*?(\d+)",  # Season 1 - 01
+]
+
+
+def parse_season_episode_numbers(text: str) -> tuple[int, int] | None:
+    """Parse season and episode numbers from a string.
+
+    Tries multiple common formats (S01E01, 1x01, "Season 1 ... 01") and
+    returns the first match as a (season, episode) tuple, or None if no
+    pattern matches.
+    """
+    for pattern in _SEASON_EPISODE_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+    return None
+
 
 def generate_subtitle_patterns(series_name: str, season: int, episode: int) -> list[str]:
     """
@@ -36,7 +57,7 @@ def generate_subtitle_patterns(series_name: str, season: int, episode: int) -> l
 
 def find_existing_subtitle(
     series_cache_dir: str, series_name: str, season: int, episode: int
-) -> str | None:
+) -> Path | None:
     """
     Check for existing subtitle files in various naming formats.
 

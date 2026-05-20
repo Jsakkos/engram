@@ -4,12 +4,15 @@ Handles disc scanning and extraction using makemkvcon.
 """
 
 import asyncio
+import concurrent.futures
 import hashlib
 import logging
+import queue
 import re
 import struct
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +21,40 @@ from pathlib import Path
 from app.core.analyst import TitleInfo
 
 logger = logging.getLogger(__name__)
+
+# Matches a robot-mode MSG line announcing a created .mkv file, e.g. ... "Show_t00.mkv" ...
+_CREATED_MKV_PATTERN = re.compile(r'["\']([^"\']+\.mkv)["\']')
+
+
+def _to_drive_spec(drive: str) -> str:
+    """Normalize a drive identifier into a MakeMKV drive spec.
+
+    Drive letters/device paths become ``dev:<drive>``; ``disc:N`` specs pass through.
+    """
+    if not drive.startswith("disc:"):
+        return f"dev:{drive}"
+    return drive
+
+
+def _extract_created_mkv(line: str, output_dir: Path) -> Path | None:
+    """Extract the created .mkv path from a MakeMKV output line, if present."""
+    if ".mkv" not in line or "created" not in line:
+        return None
+    match = _CREATED_MKV_PATTERN.search(line)
+    if not match:
+        return None
+    return output_dir / Path(match.group(1)).name
+
+
+def _safe_callback(cb: Callable, *args, label: str) -> None:
+    """Invoke a user-supplied callback, logging (but not raising) any exception.
+
+    CancelledError is not caught here — it is not an ``Exception`` subclass.
+    """
+    try:
+        cb(*args)
+    except Exception as e:
+        logger.exception(f"Error in {label}: {e}")
 
 
 @dataclass
@@ -188,12 +225,7 @@ class MakeMKVExtractor:
         self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
     ) -> tuple[list[TitleInfo], str]:
         """Internal scan implementation (caller must hold drive lock)."""
-        # Normalize drive specification
-        if not drive.startswith("disc:"):
-            # Convert drive letter to disc index
-            drive_spec = f"dev:{drive}"
-        else:
-            drive_spec = drive
+        drive_spec = _to_drive_spec(drive)
 
         cmd = [
             str(self.makemkv_path),
@@ -327,11 +359,7 @@ class MakeMKVExtractor:
         self._cancelled_jobs.discard(job_id)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Normalize drive specification
-        if not drive.startswith("disc:"):
-            drive_spec = f"dev:{drive}"
-        else:
-            drive_spec = drive
+        drive_spec = _to_drive_spec(drive)
 
         # Prepare commands to run
         commands = []
@@ -388,15 +416,11 @@ class MakeMKVExtractor:
         current_title_idx = 0  # 0-based absolute index for progress reporting
 
         # Queue for progress updates from thread to async context
-        import queue
-
         progress_queue: queue.Queue[RipProgress] = queue.Queue()
         output_lines: list[str] = []
         output_files: list[Path] = []
 
         # Shared state for filesystem-based title completion detection.
-        import threading
-
         known_files: dict[str, int] = {}  # filename -> last known size
         completed_files: set[str] = set()
         _fs_lock = threading.Lock()
@@ -421,21 +445,21 @@ class MakeMKVExtractor:
                                     f"({current_size / 1024 / 1024:.0f} MB)"
                                 )
                                 if title_complete_callback:
-                                    try:
-                                        title_complete_callback(len(completed_files), filepath)
-                                    except Exception as e:
-                                        logger.exception(f"Error in title complete callback: {e}")
+                                    _safe_callback(
+                                        title_complete_callback,
+                                        len(completed_files),
+                                        filepath,
+                                        label="title complete callback",
+                                    )
                         known_files[fname] = current_size
                 except (OSError, PermissionError) as e:
                     logger.exception(f"Error checking for completed files: {e}")
 
-        def run_rip_with_streaming() -> tuple[int, str]:
+        def run_rip_with_streaming() -> tuple[int, str, set[int]]:
             """Run ripping commands in sequence."""
             nonlocal current_title_idx, total_titles_count
 
-            import time as _time
-
-            last_fs_check = _time.monotonic()
+            last_fs_check = time.monotonic()
             combined_stderr = ""
             final_returncode = 0
             # Track the current title from PRGC messages (1-based for reporting).
@@ -457,7 +481,7 @@ class MakeMKVExtractor:
                 stall_start = None
 
                 while proc.poll() is None:
-                    _time.sleep(poll_interval)
+                    time.sleep(poll_interval)
                     if proc.poll() is not None:
                         break
 
@@ -480,8 +504,8 @@ class MakeMKVExtractor:
 
                     if current_sizes and not any_growth:
                         if stall_start is None:
-                            stall_start = _time.monotonic()
-                        elif _time.monotonic() - stall_start >= timeout:
+                            stall_start = time.monotonic()
+                        elif time.monotonic() - stall_start >= timeout:
                             logger.warning(
                                 f"Ripping stall detected: no file growth for "
                                 f"{timeout}s. Terminating MakeMKV process "
@@ -491,13 +515,12 @@ class MakeMKVExtractor:
                             # Fire error callback immediately so the UI
                             # shows the title as FAILED right away
                             if title_error_callback:
-                                try:
-                                    title_error_callback(
-                                        current_title_idx,
-                                        "Ripping stalled — possible disc damage",
-                                    )
-                                except Exception as cb_err:
-                                    logger.exception(f"Error in title_error_callback: {cb_err}")
+                                _safe_callback(
+                                    title_error_callback,
+                                    current_title_idx,
+                                    "Ripping stalled — possible disc damage",
+                                    label="title_error_callback",
+                                )
                             try:
                                 proc.terminate()
                             except (ProcessLookupError, PermissionError):
@@ -533,8 +556,6 @@ class MakeMKVExtractor:
                     # Start stall watchdog thread if timeout is configured
                     watchdog_thread = None
                     if stall_timeout and stall_timeout > 0:
-                        import threading
-
                         watchdog_thread = threading.Thread(
                             target=_stall_watchdog,
                             args=(process, output_dir, stall_timeout),
@@ -594,21 +615,19 @@ class MakeMKVExtractor:
                                     progress_queue.put(progress)
 
                         # Also catch robot-mode MSG lines about file creation
-                        if ".mkv" in line and "created" in line:
-                            match = re.search(r'["\']([^"\']+\.mkv)["\']', line)
-                            if match:
-                                filepath = output_dir / Path(match.group(1)).name
-                                # Track the file for stable-size detection but do NOT
-                                # fire title_complete_callback — the file was just created,
-                                # not finished writing. Let _check_for_completed_files
-                                # detect true completion via stable file size.
-                                with _fs_lock:
-                                    if filepath.name not in known_files:
-                                        known_files[filepath.name] = 0
-                                        logger.info(f"MakeMKV created output file: {filepath.name}")
+                        filepath = _extract_created_mkv(line, output_dir)
+                        if filepath is not None:
+                            # Track the file for stable-size detection but do NOT
+                            # fire title_complete_callback — the file was just created,
+                            # not finished writing. Let _check_for_completed_files
+                            # detect true completion via stable file size.
+                            with _fs_lock:
+                                if filepath.name not in known_files:
+                                    known_files[filepath.name] = 0
+                                    logger.info(f"MakeMKV created output file: {filepath.name}")
 
                         # Also check filesystem periodically from the thread
-                        now = _time.monotonic()
+                        now = time.monotonic()
                         if now - last_fs_check >= 3.0:
                             _check_for_completed_files()
                             last_fs_check = now
@@ -673,10 +692,7 @@ class MakeMKVExtractor:
 
         try:
             # Start ripping in thread
-            import concurrent.futures
-            import time as _async_time
-
-            last_async_fs_check = _async_time.monotonic()
+            last_async_fs_check = time.monotonic()
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(run_rip_with_streaming)
@@ -695,7 +711,7 @@ class MakeMKVExtractor:
                     # Filesystem polling from async context — runs even if
                     # MakeMKV stdout is block-buffered and PRGV lines don't
                     # arrive in the thread.
-                    now = _async_time.monotonic()
+                    now = time.monotonic()
                     if now - last_async_fs_check >= 3.0:
                         await asyncio.to_thread(_check_for_completed_files)
                         last_async_fs_check = now
@@ -732,10 +748,9 @@ class MakeMKVExtractor:
             # Fallback: parse output_lines if thread didn't track any files
             if not output_files:
                 for line in output_lines:
-                    if ".mkv" in line and "created" in line:
-                        match = re.search(r'["\']([^"\']+\.mkv)["\']', line)
-                        if match:
-                            output_files.append(output_dir / Path(match.group(1)).name)
+                    filepath = _extract_created_mkv(line, output_dir)
+                    if filepath is not None:
+                        output_files.append(filepath)
 
             stalled_list = sorted(stalled) if stalled else None
 

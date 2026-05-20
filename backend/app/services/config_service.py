@@ -34,6 +34,13 @@ def _platform_default_paths() -> dict[str, str]:
     }
 
 
+def _make_default_config() -> AppConfig:
+    """Build a default AppConfig with platform-aware paths."""
+    defaults = _platform_default_paths()
+    logger.info(f"Created default configuration with platform paths: {defaults}")
+    return AppConfig(**defaults)
+
+
 async def get_config() -> AppConfig:
     """Get the current configuration, creating defaults if none exists."""
     async with async_session() as session:
@@ -41,13 +48,10 @@ async def get_config() -> AppConfig:
         config = result.scalar_one_or_none()
 
         if config is None:
-            # Create default config with platform-aware paths
-            defaults = _platform_default_paths()
-            config = AppConfig(**defaults)
+            config = _make_default_config()
             session.add(config)
             await session.commit()
             await session.refresh(config)
-            logger.info(f"Created default configuration with platform paths: {defaults}")
 
         return config
 
@@ -77,12 +81,10 @@ def get_config_sync() -> AppConfig:
         config = session.exec(statement).first()
 
         if config is None:
-            defaults = _platform_default_paths()
-            config = AppConfig(**defaults)
+            config = _make_default_config()
             session.add(config)
             session.commit()
             session.refresh(config)
-            logger.info(f"Created default configuration (sync) with platform paths: {defaults}")
 
         return config
 
@@ -123,6 +125,17 @@ async def update_config(**kwargs) -> AppConfig:
 
         # Ensure paths exist
         await ensure_paths_exist(config)
+
+        # If the TMDB key was rotated, blow away any results fetched with
+        # the old key. The TMDB ``@lru_cache``-wrapped fetchers cache by
+        # the function arguments alone (not the key), so a rotation
+        # would silently keep returning stale results — including
+        # successful lookups made with a now-revoked key — until process
+        # restart. ConfigWizard is the common rotation entry point.
+        if "tmdb_api_key" in kwargs:
+            from app.matcher.tmdb_client import clear_caches
+
+            clear_caches()
 
         logger.info(f"Updated configuration: {list(kwargs.keys())}")
         return config

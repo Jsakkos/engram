@@ -5,12 +5,58 @@ the real engram.db.
 """
 
 import importlib
+import importlib.util
+import sys
+from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine
+
+
+def _load_script_module(name: str) -> object:
+    """Load a backend/scripts/<name>.py file as an importable module.
+
+    Lives here so multiple test files share a single load (and thus a single
+    exec_module run) per session — the validator and build-script modules
+    contain top-level imports and a sys.path.insert that would otherwise run
+    once per loader call site.
+    """
+    backend_root = Path(__file__).parent.parent.parent
+    script_path = backend_root / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, script_path)
+    # spec_from_file_location can return None for unresolvable paths and
+    # ModuleSpec.loader is typed Optional — guard both so a missing or
+    # renamed script surfaces as a clean ImportError rather than an
+    # AttributeError on the next line.
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load script module {name!r}: no loader for {script_path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    # If exec_module raises (missing dep, import error in the script), pop the
+    # half-initialised stub so a later test sees a fresh ImportError rather
+    # than a zombie module. Matches the pattern in importlib's own internals.
+    try:
+        spec.loader.exec_module(mod)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return mod
+
+
+@pytest.fixture(scope="session")
+def vsc():
+    """The validate_subtitle_cache.py module, loaded once per pytest session."""
+    return _load_script_module("validate_subtitle_cache")
+
+
+@pytest.fixture(scope="session")
+def bsc():
+    """The build_subtitle_cache.py module, loaded once per pytest session."""
+    return _load_script_module("build_subtitle_cache")
+
 
 _unit_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
@@ -42,13 +88,10 @@ async def isolate_database(monkeypatch):
 
     _config_mod = importlib.import_module("app.services.config_service")
     _jm_mod = importlib.import_module("app.services.job_manager")
-    _rc_mod = importlib.import_module("app.services.ripping_coordinator")
 
     monkeypatch.setattr(_db_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_config_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_jm_mod, "async_session", _unit_session_factory)
-    # ripping_coordinator imports async_session locally; patch the source module
-    # so that any `from app.database import async_session` gets the patched one.
 
     # Redirect the cached sync engine in config_service so get_config_sync()
     # uses the in-memory test database instead of connecting to engram.db.

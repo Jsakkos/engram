@@ -31,6 +31,7 @@ import {
   sv,
 } from "../app/components/synapse";
 import EnhanceWizard, { type TitleInfo } from "./EnhanceWizard";
+import { formatDurationShort } from "../utils/formatting";
 
 interface ContributionJob {
   id: number;
@@ -62,6 +63,23 @@ interface Config {
   discdb_export_path: string;
   discdb_api_key_set: boolean;
   discdb_api_url: string;
+}
+
+type HoverStyle = Partial<Pick<CSSStyleDeclaration, "color" | "borderColor" | "boxShadow">>;
+
+/**
+ * Builds `onMouseEnter`/`onMouseLeave` handlers that apply `hover` styles on
+ * enter and restore `base` styles on leave. Spread the result onto an element.
+ */
+function hoverProps(hover: HoverStyle, base: HoverStyle) {
+  return {
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
+      Object.assign(e.currentTarget.style, hover);
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
+      Object.assign(e.currentTarget.style, base);
+    },
+  };
 }
 
 // Generate a consistent color for a release group UUID
@@ -228,12 +246,6 @@ export default function ContributePage() {
     });
   };
 
-  const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
   const handleSubmit = async (jobId: number) => {
     setActionInProgress(jobId);
     try {
@@ -328,6 +340,26 @@ export default function ContributePage() {
     });
   };
 
+  // Enhance button — shared between the pending and exported job branches.
+  const renderEnhanceButton = (job: ContributionJob) => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <SvActionButton
+          tone="magenta"
+          size="sm"
+          onClick={() => {
+            setExpandedJob(expandedJob === job.id ? null : job.id);
+            if (expandedJob !== job.id) fetchTitles(job.id);
+          }}
+        >
+          {expandedJob === job.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          Enhance
+        </SvActionButton>
+      </TooltipTrigger>
+      <TooltipContent>Add UPC, ASIN, cover art, and extras info</TooltipContent>
+    </Tooltip>
+  );
+
   if (loading) {
     return (
       <SvAtmosphere>
@@ -411,10 +443,12 @@ export default function ContributePage() {
   // Bulk action: pre-compute group buttons
   const groups = new Map<string, ContributionJob[]>();
   for (const job of jobs) {
-    if (job.release_group_id) {
-      const existing = groups.get(job.release_group_id) || [];
+    if (!job.release_group_id) continue;
+    const existing = groups.get(job.release_group_id);
+    if (existing) {
       existing.push(job);
-      groups.set(job.release_group_id, existing);
+    } else {
+      groups.set(job.release_group_id, [job]);
     }
   }
   const submittableGroups = Array.from(groups.entries()).filter(
@@ -623,8 +657,7 @@ export default function ContributePage() {
                           cursor: "pointer",
                           transition: "color 120ms",
                         }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = sv.cyan; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = sv.inkFaint; }}
+                        {...hoverProps({ color: sv.cyan }, { color: sv.inkFaint })}
                       >
                         <ChevronRight
                           size={14}
@@ -636,19 +669,22 @@ export default function ContributePage() {
                       </button>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        {job.release_group_id && (
-                          <span
-                            style={{
-                              width: 10,
-                              height: 10,
-                              borderRadius: "50%",
-                              flexShrink: 0,
-                              background: releaseGroupColor(job.release_group_id),
-                              boxShadow: `0 0 6px ${releaseGroupColor(job.release_group_id)}88`,
-                            }}
-                            title={`Release group: ${job.release_group_id.slice(0, 8)}…`}
-                          />
-                        )}
+                        {job.release_group_id && (() => {
+                          const groupColor = releaseGroupColor(job.release_group_id);
+                          return (
+                            <span
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                flexShrink: 0,
+                                background: groupColor,
+                                boxShadow: `0 0 6px ${groupColor}88`,
+                              }}
+                              title={`Release group: ${job.release_group_id.slice(0, 8)}…`}
+                            />
+                          );
+                        })()}
                         <span
                           style={{
                             color: sv.ink,
@@ -698,22 +734,7 @@ export default function ContributePage() {
                               </TooltipTrigger>
                               <TooltipContent>Generate disc metadata for local review</TooltipContent>
                             </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <SvActionButton
-                                  tone="magenta"
-                                  size="sm"
-                                  onClick={() => {
-                                    setExpandedJob(expandedJob === job.id ? null : job.id);
-                                    if (expandedJob !== job.id) fetchTitles(job.id);
-                                  }}
-                                >
-                                  {expandedJob === job.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                                  Enhance
-                                </SvActionButton>
-                              </TooltipTrigger>
-                              <TooltipContent>Add UPC, ASIN, cover art, and extras info</TooltipContent>
-                            </Tooltip>
+                            {renderEnhanceButton(job)}
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <SvActionButton
@@ -746,22 +767,7 @@ export default function ContributePage() {
                                 <TooltipContent>Send disc metadata to TheDiscDB</TooltipContent>
                               </Tooltip>
                             )}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <SvActionButton
-                                  tone="magenta"
-                                  size="sm"
-                                  onClick={() => {
-                                    setExpandedJob(expandedJob === job.id ? null : job.id);
-                                    if (expandedJob !== job.id) fetchTitles(job.id);
-                                  }}
-                                >
-                                  {expandedJob === job.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                                  Enhance
-                                </SvActionButton>
-                              </TooltipTrigger>
-                              <TooltipContent>Add UPC, ASIN, cover art, and extras info</TooltipContent>
-                            </Tooltip>
+                            {renderEnhanceButton(job)}
                           </>
                         )}
                         {job.export_status === "submitted" && job.contribute_url && (
@@ -847,7 +853,7 @@ export default function ContributePage() {
                               </div>
                             )}
                             {titleCache.has(job.id) ? (
-                              <TitleTable titles={titleCache.get(job.id)!} formatDuration={formatDuration} />
+                              <TitleTable titles={titleCache.get(job.id)!} formatDuration={formatDurationShort} />
                             ) : titleErrors.has(job.id) ? (
                               <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.red }}>Failed to load titles</span>
                             ) : (

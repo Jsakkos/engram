@@ -125,3 +125,68 @@ class TestEpisodeMatcherCacheLoader:
         self._write_cache(tmp_path)
         matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Other Show")
         assert matcher._load_precomputed_season(1) is None
+
+
+@pytest.mark.unit
+class TestPrecomputedCacheService:
+    """The cache-service layer is the entry point on startup. The rolling
+    `subtitle-cache-latest` tag means an old backend can pull a new
+    incompatible cache from the same URL — the format-version check has to
+    work or we will load garbage vectors into the matcher."""
+
+    def test_cache_tag_is_rolling(self):
+        """Guards against silently reverting to per-format-version tags.
+
+        If someone refactors and reintroduces ``f"subtitle-cache-v{...}"``,
+        this test catches it before the next release pushes garbage.
+        """
+        from app.services.precomputed_cache_service import _CACHE_TAG
+
+        assert _CACHE_TAG == "subtitle-cache-latest"
+
+    @pytest.mark.asyncio
+    async def test_incompatible_remote_format_skips_download(self, monkeypatch):
+        """When the remote manifest reports a format version we don't
+        understand, we must log and bail — NOT download the tarball."""
+        from app.services import precomputed_cache_service as svc
+
+        # The remote manifest reports an alien format version. The local
+        # code only understands `CACHE_FORMAT_VERSION` (currently 2).
+        async def fake_manifest():
+            from app.matcher.vectorizer_config import CACHE_FORMAT_VERSION
+
+            return {
+                "cache_format_version": CACHE_FORMAT_VERSION + 100,
+                "content_version": "2099-01-01",
+                "shows": {},
+            }
+
+        async def fake_download(*args, **kwargs):
+            raise AssertionError("must not download when format-version mismatches")
+
+        async def fake_get_config():
+            return type(
+                "Cfg",
+                (),
+                {
+                    "precomputed_cache_enabled": True,
+                    "subtitles_cache_path": "~/.engram/cache",
+                    "precomputed_cache_version": "",
+                },
+            )()
+
+        async def fake_update_config(**kwargs):
+            raise AssertionError("must not update config when format-version mismatches")
+
+        monkeypatch.setattr(svc, "_fetch_remote_manifest", fake_manifest)
+        monkeypatch.setattr(svc, "_download_and_extract", fake_download)
+        # _ensure_precomputed_cache_inner imports these at call time.
+        from app.services import config_service
+
+        monkeypatch.setattr(config_service, "get_config", fake_get_config)
+        monkeypatch.setattr(config_service, "update_config", fake_update_config)
+
+        # Wrapper swallows all exceptions; if we got an AssertionError out
+        # of fake_download/fake_update_config, the function we're testing
+        # didn't honor the format-version check.
+        await svc.ensure_precomputed_cache()

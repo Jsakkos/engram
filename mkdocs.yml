@@ -68,4 +68,5 @@ nav:
   - Development:
     - Testing: development/testing.md
     - Contributing: development/contributing.md
+    - Subtitle Cache Build: development/subtitle-cache.md
   - Changelog: changelog.md

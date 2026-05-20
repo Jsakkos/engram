@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DiscTitle, Job, JobState, TitleState } from "../../types";
 import { SvBar, SvBarChart, SvLabel, SvPanel, sv } from "./synapse";
+import { formatBytesCompact, formatTimeOfDay } from "../../utils/formatting";
 
 interface ActivityEvent {
   id: string;
@@ -27,18 +28,6 @@ function parseMbPerSec(speedStr: string | undefined): number {
   if (!speedStr) return 0;
   const m = speedStr.match(/([\d.]+)\s*M[Bb]?\/s/);
   return m ? parseFloat(m[1]) : 0;
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes || !Number.isFinite(bytes)) return "—";
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
-  return `${(bytes / 1024).toFixed(0)} KB`;
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  return d.toTimeString().slice(0, 8);
 }
 
 const LEVEL_COLOR: Record<ActivityEvent["level"], string> = {
@@ -260,7 +249,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
               {stats.titlesDone}/{stats.titlesTotal} tracks
             </span>
             <span data-testid="sv-side-rail-bytes">
-              {formatBytes(stats.bytesRipped)} / {formatBytes(stats.bytesTotal)}
+              {formatBytesCompact(stats.bytesRipped)} / {formatBytesCompact(stats.bytesTotal)}
             </span>
           </div>
         </SvPanel>
@@ -376,7 +365,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
                   alignItems: "baseline",
                 }}
               >
-                <span style={{ color: sv.inkFaint }}>{formatTime(e.ts)}</span>
+                <span style={{ color: sv.inkFaint }}>{formatTimeOfDay(e.ts)}</span>
                 <span style={{ color: LEVEL_COLOR[e.level], fontWeight: 600 }}>
                   {e.subject}
                 </span>

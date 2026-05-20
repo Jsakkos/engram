@@ -9,8 +9,8 @@ on:
         description: "Number of popular TV shows to include"
         default: "300"
       cache_tag:
-        description: "Release tag to publish the cache to"
-        default: "subtitle-cache-v1"
+        description: "Release tag to publish the cache to (rolling, overwritten on each run)"
+        default: "subtitle-cache-latest"
 
 permissions:
   contents: write
@@ -62,17 +62,31 @@ jobs:
           OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
           OPENSUBTITLES_USERNAME: ${{ secrets.OPENSUBTITLES_USERNAME }}
           OPENSUBTITLES_PASSWORD: ${{ secrets.OPENSUBTITLES_PASSWORD }}
-        # --keep-srt preserves the harvested SRTs for the cache step above;
-        # they are excluded from the published tarball regardless.
-        run: uv run python scripts/build_subtitle_cache.py --limit ${{ inputs.limit }} --keep-srt
+          # Passed via env so the Actions runtime never interpolates the raw
+          # workflow input into the shell command (expression-injection guard).
+          CACHE_LIMIT: ${{ inputs.limit }}
+        # Harvested SRTs are kept by default so the cache step above can persist
+        # them; they are excluded from the published tarball regardless.
+        run: uv run python scripts/build_subtitle_cache.py --limit "$CACHE_LIMIT"
 
+      # softprops/action-gh-release@v3 with a fixed tag overwrites the
+      # release's assets on subsequent runs (the `files:` list replaces the
+      # asset list). Backend reads cache_format_version from the in-tarball
+      # manifest and falls back to scraping if it does not match its
+      # vectorizer_config.CACHE_FORMAT_VERSION — so old backends remain
+      # safe even when this rolling release ships a new format.
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.cache_tag }}
-          name: Subtitle Cache (${{ inputs.cache_tag }})
-          body: >
+          name: "Subtitle Cache (latest)"
+          make_latest: true
+          body: |
             Precomputed subtitle-matching cache (hashed TF-IDF vectors).
+            Rolling release — overwritten by each successful run of the
+            Build Subtitle Cache workflow.
+
+            Cache format version is in `manifest.json` inside the tarball.
             Downloaded automatically by Engram on first run.
           files: |
             backend/engram-subtitle-cache.tar.gz
