@@ -1,3 +1,4 @@
+import { useReducedMotion } from "motion/react";
 import { sv } from "./tokens";
 
 interface Props {
@@ -13,18 +14,27 @@ interface Props {
  *
  * The keyframes `engSpin` live in theme.css and are shared with any other
  * component that needs slow rotation.
+ *
+ * Honors `prefers-reduced-motion`: when the user has reduced motion
+ * enabled, both the CSS rotation and the SMIL `<animate>` elements are
+ * suppressed (we render a static mark in its resting state). A CSS
+ * `@media (prefers-reduced-motion: reduce)` rule in theme.css provides
+ * defense-in-depth for non-React consumers of the keyframe.
  */
 export function MarkAnimated({
   size = 96,
   color = sv.cyan,
   accent = sv.magenta,
 }: Props) {
+  const reduce = useReducedMotion();
+
   return (
     <div
       data-testid="sv-mark-animated"
+      data-reduced-motion={reduce ? "true" : "false"}
       style={{ width: size, height: size, position: "relative" }}
     >
-      {/* Layer 1: rotating arcs */}
+      {/* Layer 1: rotating arcs (rotation suppressed under reduced motion). */}
       <svg
         viewBox="0 0 64 64"
         width={size}
@@ -33,7 +43,7 @@ export function MarkAnimated({
           display: "block",
           position: "absolute",
           inset: 0,
-          animation: "engSpin 14s linear infinite",
+          animation: reduce ? undefined : "engSpin 14s linear infinite",
         }}
       >
         <path
@@ -61,7 +71,9 @@ export function MarkAnimated({
         />
       </svg>
 
-      {/* Layer 2: stationary read-line + pulsing node */}
+      {/* Layer 2: stationary read-line + pulsing node.
+          SMIL `<animate>` elements are conditionally rendered so reduced-
+          motion users get the static resting state (opacity 1, r 6.5). */}
       <svg
         viewBox="0 0 64 64"
         width={size}
@@ -78,20 +90,24 @@ export function MarkAnimated({
           strokeLinecap="round"
         />
         <circle cx="56" cy="32" r="3.5" fill={accent}>
-          <animate
-            attributeName="opacity"
-            values="1;0.3;1"
-            dur="1.2s"
-            repeatCount="indefinite"
-          />
+          {!reduce && (
+            <animate
+              attributeName="opacity"
+              values="1;0.3;1"
+              dur="1.2s"
+              repeatCount="indefinite"
+            />
+          )}
         </circle>
         <circle cx="56" cy="32" r="6.5" fill={accent} opacity="0.18">
-          <animate
-            attributeName="r"
-            values="6.5;10;6.5"
-            dur="1.6s"
-            repeatCount="indefinite"
-          />
+          {!reduce && (
+            <animate
+              attributeName="r"
+              values="6.5;10;6.5"
+              dur="1.6s"
+              repeatCount="indefinite"
+            />
+          )}
         </circle>
       </svg>
     </div>

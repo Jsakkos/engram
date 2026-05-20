@@ -31,13 +31,25 @@ export function Splash({
   const root: CSSProperties = {
     position: "fixed",
     inset: 0,
-    zIndex: 100,
+    // Match the pre-React HTML splash (z-index 1000) and sit above the
+    // ConfigWizard overlay (also 1000). The reconnect state is critical
+    // information and must not be hidden behind any modal.
+    zIndex: 1000,
     background: atmosphere ? sv.bg0 : "transparent",
     overflow: "hidden",
   };
 
   return (
-    <div data-testid="sv-splash" style={root}>
+    // role=status + aria-live=assertive: when the splash mounts mid-session
+    // (e.g. WebSocket dropped during active use), assistive tech announces
+    // the reconnect state immediately rather than waiting for focus.
+    <div
+      data-testid="sv-splash"
+      role="status"
+      aria-live="assertive"
+      aria-atomic="true"
+      style={root}
+    >
       {atmosphere && <AtmosphereLayers />}
 
       <div
@@ -66,7 +78,11 @@ export function Splash({
           data-testid="sv-splash-label"
         >
           {label}
-          <span style={{ animation: "engBlink 1s infinite" }}>...</span>
+          {/* Blinking dots are decorative — hide from AT to avoid
+              repeated "dot dot dot" announcements as opacity toggles. */}
+          <span style={{ animation: "engBlink 1s infinite" }} aria-hidden="true">
+            ...
+          </span>
         </div>
       </div>
 

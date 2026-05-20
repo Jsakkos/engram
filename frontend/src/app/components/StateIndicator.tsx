@@ -7,6 +7,7 @@ import {
   IcoComplete,
   IcoError,
   IcoLibrary,
+  IcoReview,
 } from "./icons";
 import type { DiscState } from "./DiscCard";
 import { sv, type SvBadgeState } from "./synapse";
@@ -30,12 +31,12 @@ interface StateConfig {
 const STATE: Record<DiscState, StateConfig> = {
   idle:           { label: "IDLE",          badgeState: "idle",     color: sv.inkDim,   glow: sv.inkDim,   icon: IcoIdle },
   scanning:       { label: "SCANNING",      badgeState: "scanning", color: sv.yellow,   glow: sv.yellow,   icon: IcoScan },
-  review_needed:  { label: "REVIEW NEEDED", badgeState: "review",   color: sv.yellow,   glow: sv.yellow,   icon: IcoError },
+  review_needed:  { label: "REVIEW NEEDED", badgeState: "review",   color: sv.yellow,   glow: sv.yellow,   icon: IcoReview },
   archiving_iso:  { label: "ARCHIVING",     badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoLibrary },
   ripping:        { label: "RIPPING",       badgeState: "ripping",  color: sv.magenta,  glow: sv.magenta,  icon: IcoRipping },
   matching:       { label: "MATCHING",      badgeState: "matching", color: sv.amber,    glow: sv.amber,    icon: IcoMatching },
   organizing:     { label: "ORGANIZING",    badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoMatching },
-  processing:     { label: "PROCESSING",    badgeState: "matching", color: sv.amber,    glow: sv.amber,    icon: IcoIdle },
+  processing:     { label: "PROCESSING",    badgeState: "matching", color: sv.amber,    glow: sv.amber,    icon: IcoMatching },
   completed:      { label: "COMPLETE",      badgeState: "complete", color: sv.green,    glow: sv.green,    icon: IcoComplete },
   error:          { label: "ERROR",         badgeState: "error",    color: sv.red,      glow: sv.red,      icon: IcoError },
 };

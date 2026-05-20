@@ -33,7 +33,7 @@ export function LockupHorizontal({
         ...style,
       }}
     >
-      <SvMark size={size * 1.18} glow={glow} monochrome={paper} />
+      <SvMark size={size * 1.18} color={color} glow={glow} monochrome={paper} />
       <Wordmark size={size} color={color} paper={paper} />
     </div>
   );
@@ -62,7 +62,7 @@ export function LockupStacked({
         ...style,
       }}
     >
-      <SvMark size={size * 1.6} glow={glow} monochrome={paper} />
+      <SvMark size={size * 1.6} color={color} glow={glow} monochrome={paper} />
       <Wordmark size={size} color={color} paper={paper} />
     </div>
   );
@@ -95,7 +95,7 @@ export function LockupWithDescriptor({
         ...style,
       }}
     >
-      <SvMark size={size * 1.18} glow={glow} monochrome={paper} />
+      <SvMark size={size * 1.18} color={color} glow={glow} monochrome={paper} />
       <div style={{ display: "flex", flexDirection: "column", gap: size * 0.1 }}>
         <Wordmark size={size} color={color} paper={paper} />
         <div

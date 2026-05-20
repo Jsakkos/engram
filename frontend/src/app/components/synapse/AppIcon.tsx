@@ -9,8 +9,27 @@ interface Props {
   edition?: "dark" | "light";
   /** Render the mark's radial glow. Defaults to true. */
   glow?: boolean;
-  /** Show the "v1" stamp in the bottom-right corner. Auto at size >= 96. */
+  /** Show the version stamp in the bottom-right corner. Auto at size >= 96. */
   versionStamp?: boolean;
+  /**
+   * Override the version label. Defaults to the Vite-injected
+   * `__APP_VERSION__` global (e.g. "0.6.0") so the stamp tracks
+   * `package.json` automatically.
+   */
+  version?: string;
+}
+
+/**
+ * Resolve the version label safely. `__APP_VERSION__` is a Vite-injected
+ * global available in the running app, but unit tests and any future
+ * SSR consumer won't have it defined — fall back to "1" rather than
+ * crashing on the ReferenceError.
+ */
+function resolveVersion(override?: string): string {
+  if (override) return override;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g = globalThis as any;
+  return typeof g.__APP_VERSION__ === "string" ? g.__APP_VERSION__ : "1";
 }
 
 const PAPER_BG = "#F3EEE4";
@@ -33,12 +52,14 @@ export function AppIcon({
   edition = "dark",
   glow = true,
   versionStamp,
+  version,
 }: Props) {
   const dark = edition === "dark";
   const radius = Math.round(size * 0.2237);
   const inset = size * 0.18;
   const showVersion = versionStamp ?? (dark && size >= 96);
   const useMonogram = size < 24;
+  const versionLabel = resolveVersion(version);
 
   return (
     <div
@@ -104,7 +125,7 @@ export function AppIcon({
             color: "rgba(230,236,245,0.32)",
           }}
         >
-          v1
+          v{versionLabel}
         </div>
       )}
     </div>

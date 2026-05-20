@@ -113,9 +113,10 @@ function appIconSvg({ dark }) {
 
   // Mark centered inside the inset area. Re-uses the 64-unit viewBox by
   // placing it inside an <svg> with explicit width/height.
+  // The full mark (with read-line + node) is the canonical app-icon
+  // contents; the monogram is only used for ≤16px favicons.
   const markColor = dark ? CYAN : PAPER_INK;
   const accentColor = dark ? MAGENTA : PAPER_INK;
-  const includeNode = true;
 
   const arcs = [
     { d: "M 32 8 A 24 24 0 1 0 32 56", opacity: 1 },
@@ -128,11 +129,9 @@ function appIconSvg({ dark }) {
     )
     .join("\n      ");
 
-  const readLine = includeNode
-    ? `\n      <line x1="32" y1="32" x2="56" y2="32" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round"/>
+  const readLine = `\n      <line x1="32" y1="32" x2="56" y2="32" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round"/>
       <circle cx="56" cy="32" r="3.5" fill="${accentColor}"/>
-      <circle cx="56" cy="32" r="6.5" fill="${accentColor}" opacity="0.18"/>`
-    : "";
+      <circle cx="56" cy="32" r="6.5" fill="${accentColor}" opacity="0.18"/>`;
 
   const markBlock = `<svg x="${inset}" y="${inset}" width="${markSize}" height="${markSize}" viewBox="0 0 64 64">
       ${arcs}${readLine}
