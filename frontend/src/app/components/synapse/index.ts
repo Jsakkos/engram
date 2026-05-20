@@ -5,8 +5,7 @@
  * These components are pure-presentational. Data integration happens at
  * the call site (App.tsx, DiscCard.tsx, ReviewQueue.tsx, etc.).
  */
-export { sv, accentColor, accentHi } from "./tokens";
-export type { SvAccent } from "./tokens";
+export { sv } from "./tokens";
 
 export { SvAtmosphere } from "./SvAtmosphere";
 export { SvPanel } from "./SvPanel";

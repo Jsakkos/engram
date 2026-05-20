@@ -21,6 +21,13 @@ import {
 } from "lucide-react";
 import { FEATURES } from "../config/constants";
 import { SvActionButton, SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
+import {
+  formatBytesScaled,
+  formatDateTime,
+  formatDateTimeShort,
+  formatDurationCoarse,
+  formatDurationShort,
+} from "../utils/formatting";
 
 interface HistoryJob {
   id: number;
@@ -114,50 +121,42 @@ interface Stats {
   daily_throughput?: number[];
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  return `${h}h ${m}m`;
+type HoverStyle = Partial<Pick<CSSStyleDeclaration, "color" | "borderColor" | "boxShadow">>;
+
+/**
+ * Builds `onMouseEnter`/`onMouseLeave` handlers that apply `hover` styles on
+ * enter and restore `base` styles on leave. Spread the result onto an element.
+ */
+function hoverProps(hover: HoverStyle, base: HoverStyle) {
+  return {
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
+      Object.assign(e.currentTarget.style, hover);
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
+      Object.assign(e.currentTarget.style, base);
+    },
+  };
 }
 
-function formatTitleDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+/**
+ * Shared "mono caption" inline-style fragments — tiny uppercase labels.
+ * Spread these into a `style` prop; size/letter-spacing preserved per use site.
+ */
+const captionTiny: React.CSSProperties = {
+  fontFamily: sv.mono,
+  fontSize: 9,
+  letterSpacing: "0.22em",
+  textTransform: "uppercase",
+  color: sv.inkFaint,
+};
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "\u2014";
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDateShort(iso: string | null): string {
-  if (!iso) return "\u2014";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
+const captionTinyLoose: React.CSSProperties = {
+  fontFamily: sv.mono,
+  fontSize: 9,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase",
+  color: sv.inkFaint,
+};
 
 function StatCard({
   label,
@@ -195,16 +194,7 @@ function StatCard({
             >
               {value}
             </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontFamily: sv.mono,
-                fontSize: 9,
-                letterSpacing: "0.22em",
-                textTransform: "uppercase",
-                color: sv.inkFaint,
-              }}
-            >
+            <div style={{ marginTop: 4, ...captionTiny }}>
               {label}
             </div>
           </div>
@@ -388,24 +378,22 @@ function JobDetailPanel({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Close on click outside
+  // Close on click outside or Escape key
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
       }
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
-
-  // Close on Escape key
-  useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
+    document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [onClose]);
 
   return (
@@ -471,14 +459,10 @@ function JobDetailPanel({
             cursor: "pointer",
             transition: "border-color 120ms, color 120ms",
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = sv.cyan;
-            e.currentTarget.style.color = sv.cyanHi;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = sv.line;
-            e.currentTarget.style.color = sv.inkDim;
-          }}
+          {...hoverProps(
+            { borderColor: sv.cyan, color: sv.cyanHi },
+            { borderColor: sv.line, color: sv.inkDim },
+          )}
         >
           <X size={14} />
         </button>
@@ -563,15 +547,15 @@ function JobDetailPanel({
           <div>
             <SvLabel>Timeline</SvLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-              <TimelineRow label="Created" value={formatDateShort(detail.created_at)} />
+              <TimelineRow label="Created" value={formatDateTimeShort(detail.created_at)} />
               <TimelineRow
                 label={detail.state === "completed" ? "Completed" : "Failed"}
-                value={formatDateShort(detail.completed_at)}
+                value={formatDateTimeShort(detail.completed_at)}
               />
               {detail.created_at && detail.completed_at && (
                 <TimelineRow
                   label="Duration"
-                  value={formatDuration(
+                  value={formatDurationCoarse(
                     (new Date(detail.completed_at).getTime() -
                       new Date(detail.created_at).getTime()) /
                       1000
@@ -695,10 +679,10 @@ function JobDetailPanel({
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
                         <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>#{t.title_index}</span>
                         <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.ink }}>
-                          {formatTitleDuration(t.duration_seconds)}
+                          {formatDurationShort(t.duration_seconds)}
                         </span>
                         <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
-                          {formatBytes(t.file_size_bytes)}
+                          {formatBytesScaled(t.file_size_bytes)}
                         </span>
                         {t.video_resolution && (
                           <SvBadge size="sm" tone={sv.purple}>{t.video_resolution}</SvBadge>
@@ -807,8 +791,7 @@ function JobDetailPanel({
                 textDecoration: "none",
                 transition: "color 120ms",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = sv.red; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = sv.inkDim; }}
+              {...hoverProps({ color: sv.red }, { color: sv.inkDim })}
             >
               <Bug size={12} />
               Report bug for this job
@@ -864,15 +847,7 @@ function HistoryStatsRail({ stats }: { stats: Stats }) {
       <SvPanel pad={18} testid="sv-history-stats-throughput">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <SvLabel>Throughput · 14d</SvLabel>
-          <span
-            style={{
-              fontFamily: sv.mono,
-              fontSize: 9,
-              letterSpacing: "0.22em",
-              color: sv.inkFaint,
-              textTransform: "uppercase",
-            }}
-          >
+          <span style={captionTiny}>
             jobs/day
           </span>
         </div>
@@ -906,15 +881,7 @@ function RailStat({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span
-        style={{
-          fontFamily: sv.mono,
-          fontSize: 9,
-          letterSpacing: "0.22em",
-          color: sv.inkFaint,
-          textTransform: "uppercase",
-        }}
-      >
+      <span style={captionTiny}>
         {label}
       </span>
       <span
@@ -931,21 +898,23 @@ function RailStat({
         {value}
       </span>
       {sub && (
-        <span
-          style={{
-            fontFamily: sv.mono,
-            fontSize: 9,
-            letterSpacing: "0.16em",
-            color: sv.inkFaint,
-            textTransform: "uppercase",
-          }}
-        >
+        <span style={captionTinyLoose}>
           {sub}
         </span>
       )}
     </div>
   );
 }
+
+/** History table columns — label plus responsive-visibility class. */
+const HISTORY_COLUMNS: { label: string; cls: string }[] = [
+  { label: "Title",  cls: "" },
+  { label: "Type",   cls: "hidden sm:table-cell" },
+  { label: "State",  cls: "" },
+  { label: "Titles", cls: "hidden md:table-cell" },
+  { label: "Source", cls: "hidden lg:table-cell" },
+  { label: "Date",   cls: "hidden sm:table-cell" },
+];
 
 function DistRow({
   label,
@@ -1159,7 +1128,7 @@ export default function HistoryPage() {
             <StatCard label="Movies"      value={stats.movie_count}     icon={<Film size={18} />}         color={sv.magenta} />
             <StatCard
               label="Avg Time"
-              value={stats.avg_processing_seconds ? formatDuration(stats.avg_processing_seconds) : "\u2014"}
+              value={stats.avg_processing_seconds ? formatDurationCoarse(stats.avg_processing_seconds) : "\u2014"}
               icon={<Clock size={18} />}
               color={sv.purple}
             />
@@ -1213,15 +1182,10 @@ export default function HistoryPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: sv.mono, fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${sv.lineMid}` }}>
-                {(["Title", "Type", "State", "Titles", "Source", "Date"] as const).map((h, i) => (
+                {HISTORY_COLUMNS.map((col) => (
                   <th
-                    key={h}
-                    className={
-                      i === 1 ? "hidden sm:table-cell" :
-                      i === 3 ? "hidden md:table-cell" :
-                      i === 4 ? "hidden lg:table-cell" :
-                      i === 5 ? "hidden sm:table-cell" : ""
-                    }
+                    key={col.label}
+                    className={col.cls}
                     style={{
                       textAlign: "left",
                       padding: "12px 16px",
@@ -1233,7 +1197,7 @@ export default function HistoryPage() {
                       textTransform: "uppercase",
                     }}
                   >
-                    {h}
+                    {col.label}
                   </th>
                 ))}
               </tr>
@@ -1312,7 +1276,7 @@ export default function HistoryPage() {
                         {job.classification_source}
                       </td>
                       <td className="hidden sm:table-cell" style={{ padding: "12px 16px", color: sv.inkFaint }}>
-                        {formatDate(job.completed_at || job.created_at)}
+                        {formatDateTime(job.completed_at || job.created_at)}
                       </td>
                     </tr>
                   );

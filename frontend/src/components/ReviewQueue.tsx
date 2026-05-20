@@ -2,11 +2,54 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
 import { MATCHING_CONFIG, EPISODE_CONFIG, FEATURES } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
+
+/** Uppercase mono caption styling, reused for metadata rows and table cells. */
+const monoLabelStyle: CSSProperties = {
+    fontFamily: sv.mono,
+    fontSize: 11,
+    color: sv.inkFaint,
+};
+
+/** Single-line clipping with ellipsis overflow. */
+const truncateStyle: CSSProperties = {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+};
+
+/** Shared base for bare (borderless-chrome) inputs in the title rows. */
+const fieldBaseStyle: CSSProperties = {
+    background: sv.bg0,
+    border: `1px solid ${sv.lineMid}`,
+    color: sv.ink,
+    fontFamily: sv.mono,
+    outline: 'none',
+};
+
+/** Padding shared by every cell in the competing-matches table. */
+const tableCellStyle: CSSProperties = { padding: '6px 16px 6px 0' };
+
+/** Highlight an input's border on focus. */
+function applyFieldFocus(e: FocusEvent<HTMLElement>): void {
+    e.currentTarget.style.borderColor = sv.cyan;
+}
+
+/** Restore an input's border on blur. */
+function applyFieldBlur(e: FocusEvent<HTMLElement>): void {
+    e.currentTarget.style.borderColor = sv.lineMid;
+}
+
+/** Display name for a title — filename basename, or a generic fallback. */
+function titleDisplayName(title: DiscTitle): string {
+    return title.output_filename
+        ? title.output_filename.split(/[/\\]/).pop() ?? `Title ${title.title_index}`
+        : `Title ${title.title_index}`;
+}
 
 /**
  * Synapse text input — used for the Edition tag field on movie titles and
@@ -36,24 +79,20 @@ function SvTextInput({
             list={list}
             aria-label={ariaLabel}
             style={{
+                ...fieldBaseStyle,
                 width: '100%',
                 padding: '7px 12px',
-                background: sv.bg0,
-                border: `1px solid ${sv.lineMid}`,
-                color: sv.ink,
-                fontFamily: sv.mono,
                 fontSize: 12,
                 letterSpacing: '0.04em',
-                outline: 'none',
                 transition: 'border-color 120ms, box-shadow 120ms',
                 ...style,
             }}
             onFocus={(e) => {
-                e.currentTarget.style.borderColor = sv.cyan;
+                applyFieldFocus(e);
                 e.currentTarget.style.boxShadow = `0 0 8px ${sv.cyan}33`;
             }}
             onBlur={(e) => {
-                e.currentTarget.style.borderColor = sv.lineMid;
+                applyFieldBlur(e);
                 e.currentTarget.style.boxShadow = 'none';
             }}
         />
@@ -298,24 +337,30 @@ function ReviewQueue() {
         }
     };
 
+    // POST every pending episode selection to the review endpoint.
+    // Throws on the first failure so callers can abort their follow-up step.
+    const submitPendingSelections = async () => {
+        for (const [titleId, episodeCode] of Object.entries(selectedEpisodes)) {
+            const response = await fetch(`/api/jobs/${jobId}/review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title_id: parseInt(titleId),
+                    episode_code: episodeCode,
+                }),
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Failed to save title ${titleId}: ${text}`);
+            }
+        }
+    };
+
     const handleSaveAll = async () => {
         setIsSaving(true);
         setError(null);
         try {
-            for (const [titleId, episodeCode] of Object.entries(selectedEpisodes)) {
-                const response = await fetch(`/api/jobs/${jobId}/review`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title_id: parseInt(titleId),
-                        episode_code: episodeCode,
-                    }),
-                });
-                if (!response.ok) {
-                    const text = await response.text();
-                    throw new Error(`Failed to save title ${titleId}: ${text}`);
-                }
-            }
+            await submitPendingSelections();
             navigate('/');
         } catch (err) {
             console.error('Failed to save reviews:', err);
@@ -330,20 +375,7 @@ function ReviewQueue() {
         setError(null);
         try {
             // First submit all pending selections
-            for (const [titleId, episodeCode] of Object.entries(selectedEpisodes)) {
-                const response = await fetch(`/api/jobs/${jobId}/review`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title_id: parseInt(titleId),
-                        episode_code: episodeCode,
-                    }),
-                });
-                if (!response.ok) {
-                    const text = await response.text();
-                    throw new Error(`Failed to save title ${titleId}: ${text}`);
-                }
-            }
+            await submitPendingSelections();
             // Then process matched titles
             const response = await fetch(`/api/jobs/${jobId}/process-matched`, { method: 'POST' });
             if (!response.ok) {
@@ -498,25 +530,21 @@ function ReviewQueue() {
                                                 </SvBadge>
                                                 <span
                                                     style={{
+                                                        ...truncateStyle,
                                                         fontFamily: sv.mono,
                                                         fontSize: 13,
                                                         color: sv.cyanHi,
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        whiteSpace: 'nowrap',
                                                     }}
                                                 >
-                                                    {title.output_filename ? title.output_filename.split(/[/\\]/).pop() : `Title ${title.title_index}`}
+                                                    {titleDisplayName(title)}
                                                 </span>
                                             </div>
                                             <div
                                                 style={{
+                                                    ...monoLabelStyle,
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: 24,
-                                                    fontFamily: sv.mono,
-                                                    fontSize: 11,
-                                                    color: sv.inkFaint,
                                                 }}
                                             >
                                                 <span>{formatDuration(title.duration_seconds)}</span>
@@ -692,27 +720,18 @@ function ReviewQueue() {
                                 <div
                                     key={title.id}
                                     style={{
+                                        ...monoLabelStyle,
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: 24,
                                         padding: '14px 16px',
                                         background: sv.bg1,
                                         border: `1px solid ${sv.line}`,
-                                        fontFamily: sv.mono,
-                                        fontSize: 11,
-                                        color: sv.inkFaint,
                                     }}
                                 >
                                     <SvBadge size="sm" tone={sv.inkFaint} dot={false}>#{title.title_index}</SvBadge>
-                                    <span
-                                        style={{
-                                            flex: 1,
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                        }}
-                                    >
-                                        {title.output_filename?.split(/[/\\]/).pop() || `Title ${title.title_index}`}
+                                    <span style={{ ...truncateStyle, flex: 1 }}>
+                                        {titleDisplayName(title)}
                                     </span>
                                     <span>{formatDuration(title.duration_seconds)}</span>
                                     <span>{title.matched_episode || '—'}</span>
@@ -818,15 +837,13 @@ function TVTitleRow({
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <span
                                 style={{
+                                    ...truncateStyle,
                                     fontFamily: sv.mono,
                                     fontSize: 13,
                                     color: sv.cyanHi,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
                                 }}
                             >
-                                {title.output_filename ? title.output_filename.split(/[/\\]/).pop() : `Title ${title.title_index}`}
+                                {titleDisplayName(title)}
                             </span>
                             {isConflict && (
                                 <SvBadge size="sm" state="warn" dot={false}>
@@ -836,13 +853,11 @@ function TVTitleRow({
                         </div>
                         <div
                             style={{
+                                ...monoLabelStyle,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 16,
                                 marginTop: 4,
-                                fontFamily: sv.mono,
-                                fontSize: 11,
-                                color: sv.inkFaint,
                             }}
                         >
                             <span>{formatDuration(title.duration_seconds)}</span>
@@ -895,36 +910,28 @@ function TVTitleRow({
                             title="Season number"
                             aria-label="Season number"
                             style={{
+                                ...fieldBaseStyle,
                                 width: 40,
                                 padding: '4px 6px',
-                                background: sv.bg0,
-                                border: `1px solid ${sv.lineMid}`,
-                                color: sv.ink,
-                                fontFamily: sv.mono,
                                 fontSize: 11,
                                 textAlign: 'center',
-                                outline: 'none',
                             }}
-                            onFocus={(e) => { e.currentTarget.style.borderColor = sv.cyan; }}
-                            onBlur={(e) => { e.currentTarget.style.borderColor = sv.lineMid; }}
+                            onFocus={applyFieldFocus}
+                            onBlur={applyFieldBlur}
                         />
                         <select
                             value={selectedEpisode}
                             onChange={(e) => onEpisodeChange(title.id, e.target.value)}
                             aria-label={`Episode assignment for title ${title.title_index}`}
                             style={{
+                                ...fieldBaseStyle,
                                 flex: 1,
                                 padding: '6px 8px',
-                                background: sv.bg0,
-                                border: `1px solid ${sv.lineMid}`,
-                                color: sv.ink,
-                                fontFamily: sv.mono,
                                 fontSize: 11,
-                                outline: 'none',
                                 cursor: 'pointer',
                             }}
-                            onFocus={(e) => { e.currentTarget.style.borderColor = sv.cyan; }}
-                            onBlur={(e) => { e.currentTarget.style.borderColor = sv.lineMid; }}
+                            onFocus={applyFieldFocus}
+                            onBlur={applyFieldBlur}
                         >
                             <option value="">Select episode…</option>
                             {title.matched_episode && (
@@ -966,7 +973,7 @@ function TVTitleRow({
                             <Trash2 size={11} />
                         </SvActionButton>
                         <SvActionButton
-                            tone={titleAction === 'skip' ? 'neutral' : 'neutral'}
+                            tone="neutral"
                             size="sm"
                             onClick={() => onTitleAction(title.id, 'skip')}
                             title="Skip for now"
@@ -1023,12 +1030,10 @@ function TVTitleRow({
                         {details.vote_count !== undefined && (
                             <div
                                 style={{
+                                    ...monoLabelStyle,
                                     display: 'flex',
                                     gap: 24,
                                     marginBottom: 12,
-                                    fontFamily: sv.mono,
-                                    fontSize: 11,
-                                    color: sv.inkFaint,
                                 }}
                             >
                                 <span>Votes: <span style={{ color: sv.ink }}>{details.vote_count}</span></span>
@@ -1044,8 +1049,8 @@ function TVTitleRow({
                                         <th
                                             key={h}
                                             style={{
+                                                ...tableCellStyle,
                                                 textAlign: 'left',
-                                                padding: '6px 16px 6px 0',
                                                 color: sv.inkFaint,
                                                 letterSpacing: '0.18em',
                                                 textTransform: 'uppercase',
@@ -1061,14 +1066,14 @@ function TVTitleRow({
                             <tbody>
                                 {title.matched_episode && (
                                     <tr style={{ borderBottom: `1px solid ${sv.line}` }}>
-                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green }}>1st</td>
-                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green, fontWeight: 700 }}>
+                                        <td style={{ ...tableCellStyle, color: sv.green }}>1st</td>
+                                        <td style={{ ...tableCellStyle, color: sv.green, fontWeight: 700 }}>
                                             {title.matched_episode}
                                         </td>
-                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green }}>
+                                        <td style={{ ...tableCellStyle, color: sv.green }}>
                                             {Math.round(title.match_confidence * 100)}%
                                         </td>
-                                        <td style={{ padding: '6px 16px 6px 0', color: sv.green }}>{details.vote_count || '?'}</td>
+                                        <td style={{ ...tableCellStyle, color: sv.green }}>{details.vote_count || '?'}</td>
                                         <td style={{ padding: '6px 0' }}>
                                             <SvBadge size="sm" state="complete" dot={false}>BEST</SvBadge>
                                         </td>
@@ -1076,12 +1081,12 @@ function TVTitleRow({
                                 )}
                                 {alternatives.map((alt, idx) => (
                                     <tr key={idx} style={{ borderBottom: `1px solid ${sv.line}`, color: sv.inkDim }}>
-                                        <td style={{ padding: '6px 16px 6px 0' }}>
+                                        <td style={tableCellStyle}>
                                             {idx + 2}{idx === 0 ? 'nd' : idx === 1 ? 'rd' : 'th'}
                                         </td>
-                                        <td style={{ padding: '6px 16px 6px 0' }}>{alt.episode}</td>
-                                        <td style={{ padding: '6px 16px 6px 0' }}>{Math.round(alt.confidence * 100)}%</td>
-                                        <td style={{ padding: '6px 16px 6px 0' }}>{alt.vote_count || '?'}</td>
+                                        <td style={tableCellStyle}>{alt.episode}</td>
+                                        <td style={tableCellStyle}>{Math.round(alt.confidence * 100)}%</td>
+                                        <td style={tableCellStyle}>{alt.vote_count || '?'}</td>
                                         <td style={{ padding: '6px 0' }}>
                                             <SvBadge size="sm" tone={sv.inkDim} dot={false}>
                                                 {alt.confidence > MATCHING_CONFIG.MIN_CONFIDENCE ? 'POSSIBLE' : 'UNLIKELY'}

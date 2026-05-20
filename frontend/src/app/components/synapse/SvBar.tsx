@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { sv } from "./tokens";
+import { chunkedTicks, sv } from "./tokens";
 
 interface Props {
   /** Fill ratio in [0, 1]. Values outside the range are clamped. */
@@ -59,14 +59,7 @@ export function SvBar({
     transition: "width 0.3s ease",
   };
 
-  const ticks: CSSProperties = chunked
-    ? {
-        position: "absolute",
-        inset: 0,
-        background: `repeating-linear-gradient(90deg, transparent 0 9%, ${sv.bg0}40 9% 10%)`,
-        pointerEvents: "none",
-      }
-    : { display: "none" };
+  const ticks: CSSProperties = chunked ? chunkedTicks("40") : { display: "none" };
 
   return (
     <div className={className} style={wrap} data-testid={testid} data-value={clamped}>

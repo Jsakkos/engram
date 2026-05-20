@@ -46,10 +46,6 @@ export function useNotifications(jobs: Job[]) {
         }
 
         // Update previous states
-        const newStates: Record<number, string> = {};
-        for (const job of jobs) {
-            newStates[job.id] = job.state;
-        }
-        prevStatesRef.current = newStates;
+        prevStatesRef.current = Object.fromEntries(jobs.map(j => [j.id, j.state]));
     }, [jobs]);
 }

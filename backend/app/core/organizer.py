@@ -125,6 +125,50 @@ def clean_movie_name(raw_name: str) -> str:
     return name
 
 
+def resolve_conflict(dest_file: Path, conflict_resolution: str) -> tuple[Path | None, dict | None]:
+    """Resolve a destination-file conflict according to the chosen strategy.
+
+    Returns a (resolved_path, early_return) tuple:
+    - ("overwrite") deletes the existing file and returns (dest_file, None)
+    - ("rename") picks the next free "(vN)" path and returns (versioned, None)
+    - ("skip") returns (None, {"skipped": True})
+    - ("ask"/unknown) returns (None, {...}) with FILE_EXISTS conflict details
+
+    When dest_file does not exist, returns (dest_file, None) unchanged.
+    The early_return dict carries only conflict-specific keys; callers merge it
+    with their own result shape.
+    """
+    if not dest_file.exists():
+        return dest_file, None
+
+    if conflict_resolution == "overwrite":
+        logger.info(f"Overwriting existing file: {dest_file}")
+        dest_file.unlink()
+        return dest_file, None
+
+    if conflict_resolution == "rename":
+        # Find next available version
+        counter = 2
+        while True:
+            versioned = dest_file.with_stem(f"{dest_file.stem} (v{counter})")
+            if not versioned.exists():
+                logger.info(f"Renaming to avoid conflict: {versioned}")
+                return versioned, None
+            counter += 1
+
+    if conflict_resolution == "skip":
+        logger.info(f"Skipping file due to conflict: {dest_file}")
+        return None, {"success": True, "skipped": True}
+
+    # "ask" or unknown — return conflict info for user review
+    return None, {
+        "success": False,
+        "error": f"File already exists: {dest_file}",
+        "error_code": "FILE_EXISTS",
+        "existing_path": str(dest_file),
+    }
+
+
 def find_main_movie_file(staging_dir: Path) -> Path | None:
     """Find the main movie file (largest MKV) in a staging directory."""
     mkv_files = list(staging_dir.glob("*.mkv"))
@@ -163,9 +207,10 @@ def organize_movie(
     Returns:
         dict with 'success', 'main_file', 'extras', 'error' keys
     """
-    if library_path is None:
-        from app.services.config_service import get_config_sync
+    # Imported function-locally to avoid a circular import with config_service.
+    from app.services.config_service import get_config_sync
 
+    if library_path is None:
         library_path = Path(get_config_sync().library_movies_path)
 
     # Validate library path
@@ -210,8 +255,6 @@ def organize_movie(
     clean_name = clean_movie_name(movie_name)
 
     # Load naming format from config
-    from app.services.config_service import get_config_sync
-
     cfg = get_config_sync()
     folder_name = format_movie_folder(cfg.naming_movie_format, clean_name, year)
     file_name = f"{folder_name}.mkv"
@@ -225,33 +268,9 @@ def organize_movie(
     logger.info(f"Moving main movie: {main_file.name} -> {dest_file}")
 
     # Check if destination exists and handle conflict
-    if dest_file.exists():
-        if conflict_resolution == "overwrite":
-            logger.info(f"Overwriting existing file: {dest_file}")
-            dest_file.unlink()
-        elif conflict_resolution == "rename":
-            # Find next available version
-            counter = 2
-            while True:
-                versioned = dest_file.with_stem(f"{dest_file.stem} (v{counter})")
-                if not versioned.exists():
-                    dest_file = versioned
-                    logger.info(f"Renaming to avoid conflict: {dest_file}")
-                    break
-                counter += 1
-        elif conflict_resolution == "skip":
-            logger.info(f"Skipping file due to conflict: {dest_file}")
-            return {"success": True, "skipped": True, "main_file": None, "extras": []}
-        else:  # "ask" or unknown
-            # Return conflict info for user review
-            return {
-                "success": False,
-                "main_file": None,
-                "extras": [],
-                "error": f"File already exists: {dest_file}",
-                "error_code": "FILE_EXISTS",
-                "existing_path": str(dest_file),
-            }
+    dest_file, early = resolve_conflict(dest_file, conflict_resolution)
+    if early:
+        return {**early, "main_file": None, "extras": []}
 
     try:
         # Move main movie
@@ -345,9 +364,10 @@ def organize_tv_episode(
     """
     import re
 
-    if library_path is None:
-        from app.services.config_service import get_config_sync
+    # Imported function-locally to avoid a circular import with config_service.
+    from app.services.config_service import get_config_sync
 
+    if library_path is None:
         library_path = Path(get_config_sync().library_tv_path)
 
     # Validate library path
@@ -371,8 +391,6 @@ def organize_tv_episode(
     episode_num = int(ep_match.group(2))
 
     # Load naming format from config
-    from app.services.config_service import get_config_sync
-
     cfg = get_config_sync()
 
     # Clean and sanitize names
@@ -391,33 +409,9 @@ def organize_tv_episode(
     logger.info(f"Organizing TV episode: {source_file.name} -> {dest_file}")
 
     # Check if destination exists and handle conflict
-    if dest_file.exists():
-        if conflict_resolution == "overwrite":
-            logger.info(f"Overwriting existing file: {dest_file}")
-            dest_file.unlink()
-        elif conflict_resolution == "rename":
-            # Find next available version
-            counter = 2
-            while True:
-                # Insert version before extension
-                versioned = dest_file.with_stem(f"{dest_file.stem} (v{counter})")
-                if not versioned.exists():
-                    dest_file = versioned
-                    logger.info(f"Renaming to avoid conflict: {dest_file}")
-                    break
-                counter += 1
-        elif conflict_resolution == "skip":
-            logger.info(f"Skipping file due to conflict: {dest_file}")
-            return {"success": True, "skipped": True, "final_path": None}
-        else:  # "ask" or unknown
-            # Return conflict info for user review
-            return {
-                "success": False,
-                "final_path": None,
-                "error": f"File already exists: {dest_file}",
-                "error_code": "FILE_EXISTS",
-                "existing_path": str(dest_file),
-            }
+    dest_file, early = resolve_conflict(dest_file, conflict_resolution)
+    if early:
+        return {**early, "final_path": None}
 
     try:
         # Ensure directory exists
@@ -458,9 +452,10 @@ def organize_tv_extras(
     Returns:
         dict with 'success', 'final_path', 'error' keys
     """
-    if library_path is None:
-        from app.services.config_service import get_config_sync
+    # Imported function-locally to avoid a circular import with config_service.
+    from app.services.config_service import get_config_sync
 
+    if library_path is None:
         library_path = Path(get_config_sync().library_tv_path)
 
     # Validate library path
@@ -472,8 +467,6 @@ def organize_tv_extras(
         }
 
     # Load naming format from config
-    from app.services.config_service import get_config_sync
-
     cfg = get_config_sync()
 
     # Clean and sanitize names

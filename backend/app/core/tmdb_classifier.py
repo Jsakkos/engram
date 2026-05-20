@@ -5,10 +5,10 @@ a TV show or movie, providing a strong signal for disc classification.
 """
 
 import logging
-import re
 
 import requests
 
+from app.core.analyst import _title_tokens
 from app.models.disc_job import ContentType
 
 logger = logging.getLogger(__name__)
@@ -20,17 +20,22 @@ TMDB_SEARCH_MOVIE_URL = "https://api.themoviedb.org/3/search/movie"
 HIGH_POPULARITY_THRESHOLD = 50
 
 
+def _confidence_from_popularity(popularity: float, ambiguous: bool) -> float:
+    """Map a TMDB popularity score to a classification confidence value."""
+    if ambiguous:
+        return 0.60
+    if popularity > HIGH_POPULARITY_THRESHOLD:
+        return 0.85
+    return 0.70
+
+
 def _name_similarity(query: str, candidate: str) -> float:
     """Compute similarity between query and candidate name tokens.
 
     Uses Jaccard similarity with fuzzy prefix matching for near-identical tokens
     (e.g., "Thunderbird" vs "Thunderbirds").
     """
-
-    def tokens(s: str) -> set[str]:
-        return {w.lower() for w in re.sub(r"[^\w\s]", "", s).split() if len(w) > 1}
-
-    q_tok, c_tok = tokens(query), tokens(candidate)
+    q_tok, c_tok = _title_tokens(query), _title_tokens(candidate)
     if not q_tok or not c_tok:
         return 0.0
 
@@ -218,12 +223,7 @@ def classify_from_tmdb(
 def _make_tv_signal(result: dict, ambiguous: bool = False) -> TmdbSignal:
     """Build a TV TmdbSignal from a TMDB search result."""
     popularity = result.get("popularity", 0)
-    if ambiguous:
-        confidence = 0.60
-    elif popularity > HIGH_POPULARITY_THRESHOLD:
-        confidence = 0.85
-    else:
-        confidence = 0.70
+    confidence = _confidence_from_popularity(popularity, ambiguous)
     name = result.get("name", result.get("original_name", ""))
     logger.info(f"TMDB: TV match '{name}' (id={result['id']}, popularity={popularity:.1f})")
     return TmdbSignal(
@@ -237,12 +237,7 @@ def _make_tv_signal(result: dict, ambiguous: bool = False) -> TmdbSignal:
 def _make_movie_signal(result: dict, ambiguous: bool = False) -> TmdbSignal:
     """Build a MOVIE TmdbSignal from a TMDB search result."""
     popularity = result.get("popularity", 0)
-    if ambiguous:
-        confidence = 0.60
-    elif popularity > HIGH_POPULARITY_THRESHOLD:
-        confidence = 0.85
-    else:
-        confidence = 0.70
+    confidence = _confidence_from_popularity(popularity, ambiguous)
     name = result.get("title", result.get("original_title", ""))
     logger.info(f"TMDB: Movie match '{name}' (id={result['id']}, popularity={popularity:.1f})")
     return TmdbSignal(

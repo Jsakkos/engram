@@ -1,8 +1,7 @@
 """Shared helpers for ripping coordination.
 
-Extracted from job_manager.py and ripping_coordinator.py to eliminate
-duplicate implementations of SpeedCalculator, title resolution, and
-title list building.
+Extracted from job_manager.py to eliminate duplicate implementations of
+SpeedCalculator, title resolution, and title list building.
 """
 
 import logging
@@ -11,7 +10,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from app.models.disc_job import DiscTitle
+from app.models.disc_job import DiscJob, DiscTitle
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +107,31 @@ async def resolve_title_from_filename(
         logger.warning(f"Could not map ripped file {path.name} to any title (Job {job_id})")
 
     return title
+
+
+def find_staging_file(job: DiscJob, title: DiscTitle) -> Path | None:
+    """Locate the staging .mkv file for a title.
+
+    Tries, in order:
+    1. The recorded ``output_filename`` path directly.
+    2. ``staging_path / output_filename.name`` (file moved/renamed staging dir).
+    3. A ``*_t{index:02d}.mkv`` glob within ``staging_path``.
+    """
+    if title.output_filename:
+        p = Path(title.output_filename)
+        if p.exists():
+            return p
+        if job.staging_path:
+            p2 = Path(job.staging_path) / p.name
+            if p2.exists():
+                return p2
+
+    if job.staging_path:
+        matches = list(Path(job.staging_path).glob(f"*_t{title.title_index:02d}.mkv"))
+        if matches:
+            return matches[0]
+
+    return None
 
 
 def build_title_list(titles, *, include_video_resolution: bool = False) -> list[dict]:

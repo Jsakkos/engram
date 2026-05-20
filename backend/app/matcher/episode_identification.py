@@ -2,6 +2,7 @@ import json
 import re
 import subprocess
 import tempfile
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -9,7 +10,6 @@ import chardet
 import ctranslate2
 import numpy as np
 from loguru import logger
-from rich import print
 from rich.console import Console
 from scipy.sparse import load_npz as scipy_load_npz
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -441,28 +441,6 @@ class EpisodeMatcher:
         self.audio_chunks[cache_key] = chunk_path_str
         return chunk_path_str
 
-    def load_reference_chunk(self, srt_file, chunk_idx):
-        """
-        Load reference subtitles for a specific time chunk with caching.
-
-        Args:
-            srt_file (str or Path): Path to the SRT file
-            chunk_idx (int): Index of the chunk to load
-
-        Returns:
-            str: Combined text from the subtitle chunk
-        """
-        try:
-            # Apply the same offset as in _try_match_with_model
-            chunk_start = self.skip_initial_duration + (chunk_idx * self.chunk_duration)
-            chunk_end = chunk_start + self.chunk_duration
-
-            return self.subtitle_cache.get_chunk(srt_file, chunk_idx, chunk_start, chunk_end)
-
-        except Exception as e:
-            logger.error(f"Error loading reference chunk from {srt_file}: {e}")
-            return ""
-
     def _load_precomputed_manifest(self):
         """Load and validate the precomputed-cache manifest once. Returns dict or None.
 
@@ -582,121 +560,6 @@ class EpisodeMatcher:
         logger.debug(f"Found {len(reference_files)} reference files for season {season_number}")
         self.reference_files_cache[cache_key] = reference_files
         return reference_files
-
-    def _try_match_with_model(self, video_file, model_config, max_duration, reference_files):
-        """
-        Attempt to match using specified model, checking multiple chunks starting from skip_initial_duration
-        and continuing up to max_duration.
-
-        Args:
-            video_file: Path to the video file
-            model_config: Dictionary with ASR model configuration or string for backward compatibility
-            max_duration: Maximum duration in seconds to check
-            reference_files: List of reference subtitle files
-        """
-        # Handle backward compatibility for string model names
-        if isinstance(model_config, str):
-            # Convert old Whisper model names to new format
-            model_config = {
-                "type": "whisper",
-                "name": model_config,
-                "device": self.device,
-            }
-        elif isinstance(model_config, dict):
-            # Ensure device is set if not specified
-            if "device" not in model_config:
-                model_config = model_config.copy()
-                model_config["device"] = self.device
-
-        # Use cached model
-        model = get_cached_model(model_config)
-
-        # Calculate number of chunks to check
-        num_chunks = min(
-            max_duration // self.chunk_duration, 10
-        )  # Limit to 10 chunks for initial check
-
-        # Pre-load all reference chunks for the chunks we'll check
-        for chunk_idx in range(num_chunks):
-            for ref_file in reference_files:
-                self.load_reference_chunk(ref_file, chunk_idx)
-
-        for chunk_idx in range(num_chunks):
-            # Start at self.skip_initial_duration and check subsequent chunks
-            start_time = self.skip_initial_duration + (chunk_idx * self.chunk_duration)
-            model_name = (
-                model_config.get("name", "unknown")
-                if isinstance(model_config, dict)
-                else model_config
-            )
-            logger.debug(f"Trying {model_name} model at {start_time} seconds")
-
-            try:
-                audio_path = self.extract_audio_chunk(video_file, start_time)
-                logger.debug(f"Extracted audio chunk: {audio_path}")
-            except RuntimeError as e:
-                logger.warning(f"Failed to extract audio chunk at {start_time}s: {e}")
-                continue  # Skip this chunk and try the next one
-            except Exception as e:
-                logger.error(f"Unexpected error extracting audio chunk at {start_time}s: {e}")
-                continue  # Skip this chunk and try the next one
-
-            try:
-                logger.debug(
-                    f"[Matcher] Transcribing audio chunk at {start_time}s with model {model_name}"
-                )
-                result = model.transcribe(audio_path)
-                logger.debug(f"[Matcher] Transcription complete at {start_time}s")
-            except Exception as e:
-                logger.error(f"ASR transcription failed for chunk at {start_time}s: {e}")
-                continue  # Skip this chunk and try the next one
-
-            chunk_text = result["text"]
-            logger.debug(f"Transcription result: {chunk_text} ({len(chunk_text)} characters)")
-            if len(chunk_text) < 10:
-                logger.debug(
-                    f"Transcription result too short: {chunk_text} ({len(chunk_text)} characters)"
-                )
-                continue
-            best_confidence = 0
-            best_match = None
-
-            # Compare with reference chunks
-            # Compare with reference chunks
-            for ref_file in reference_files:
-                ref_text = self.load_reference_chunk(ref_file, chunk_idx)
-
-                # Use model's internal scoring logic
-                confidence = model.calculate_match_score(chunk_text, ref_text)
-
-                if confidence > best_confidence:
-                    logger.debug(f"New best confidence: {confidence} for {ref_file}")
-                    best_confidence = confidence
-                    best_match = Path(ref_file)
-
-                if confidence > self.min_confidence:
-                    print(f"Matched with {best_match} (confidence: {best_confidence:.2f})")
-                    try:
-                        season, episode = extract_season_episode(best_match.stem)
-                    except Exception as e:
-                        print(f"Error extracting season/episode: {e}")
-                        continue
-                    print(
-                        f"Season: {season}, Episode: {episode} (confidence: {best_confidence:.2f})"
-                    )
-                    if season and episode:
-                        return {
-                            "season": season,
-                            "episode": episode,
-                            "confidence": best_confidence,
-                            "reference_file": str(best_match),
-                            "matched_at": start_time,
-                        }
-
-            logger.info(
-                f"No match found at {start_time} seconds (best confidence: {best_confidence:.2f})"
-            )
-        return None
 
     def _match_full_file(self, video_file, model_config, reference_files, duration):
         """
@@ -892,10 +755,7 @@ class EpisodeMatcher:
             num_points = 10
 
             # Calculate actual interval to evenly distribute points across available duration
-            if num_points > 1:
-                interval = available_duration / (num_points - 1)
-            else:
-                interval = 0
+            interval = available_duration / (num_points - 1)
 
             # Generate evenly-spaced scan points
             scan_points = []
@@ -931,7 +791,6 @@ class EpisodeMatcher:
             )
 
             matches_found_count = 0  # Total matched chunks
-            matches_found = 0
             matches_rejected_count = 0  # Total rejected chunks
 
             for i, start_time in enumerate(scan_points, 1):
@@ -979,7 +838,6 @@ class EpisodeMatcher:
                             )
 
                     if chunk_matches > 0:
-                        matches_found += chunk_matches
                         matches_found_count += 1
                     else:
                         logger.debug(
@@ -1100,7 +958,6 @@ class EpisodeMatcher:
             best_match["match_details"]["runner_ups"] = runner_ups
 
             # Log top candidates with voting details and score gap analysis
-            results_summary.sort(key=lambda x: x["score"], reverse=True)
             voting_method = "ranked voting" if self.use_ranked_voting else "weighted score"
             logger.info(f"{voting_method.capitalize()} results for {video_file.name}:")
 
@@ -1234,9 +1091,7 @@ def get_video_duration(video_file, _retries: int = 6, _retry_delay: float = 5.0)
                         f"[MATCH] ffprobe permission denied for {video_file}, "
                         f"retrying in {_retry_delay}s (attempt {attempt}/{_retries})..."
                     )
-                    import time as _time
-
-                    _time.sleep(_retry_delay)
+                    time.sleep(_retry_delay)
                     last_error = RuntimeError(error_msg)
                     continue
                 logger.error(error_msg)

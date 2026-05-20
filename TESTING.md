@@ -266,7 +266,7 @@ backend/tests/
 
 | Fixture | Scope | Location | Purpose |
 |---------|-------|----------|---------|
-| `isolate_database` | function, autouse | `unit/conftest.py` | Patches `async_session` in database, config_service, job_manager, ripping_coordinator to prevent touching `engram.db` |
+| `isolate_database` | function, autouse | `unit/conftest.py` | Patches `async_session` in database, config_service, job_manager to prevent touching `engram.db` |
 | `integration_client` | function | `integration/conftest.py` | `AsyncClient` with `ASGITransport` and session override |
 | `integration_config` | function | `integration/conftest.py` | Seeds `AppConfig` with fast poll intervals |
 | `analyst` | function | `pipeline/conftest.py` | `DiscAnalyst` instance with production-default thresholds |

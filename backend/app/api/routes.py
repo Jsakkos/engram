@@ -5,6 +5,7 @@ import logging
 import platform
 import re
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -28,6 +29,27 @@ logger = logging.getLogger(__name__)
 _SIM_DEFAULT_DRIVE = "/dev/sr0" if sys.platform != "win32" else "E:"
 
 router = APIRouter(prefix="/api", tags=["jobs"])
+
+_HOME_PATH = str(Path.home())
+
+
+def _redact_home(p: object) -> str:
+    """Replace the user's home directory in a path string with '~'."""
+    return str(p).replace(_HOME_PATH, "~")
+
+
+async def get_job_or_404(job_id: int, session: AsyncSession = Depends(get_session)) -> DiscJob:
+    """FastAPI dependency that loads a job by ID or raises 404."""
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+def require_debug() -> None:
+    """FastAPI dependency that blocks an endpoint unless debug mode is enabled."""
+    if not settings.debug:
+        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
 # Request/Response Models
@@ -83,6 +105,8 @@ class TitleResponse(BaseModel):
     discdb_match_details: str | None = None
     discdb_flagged: bool = False
     discdb_flag_reason: str | None = None
+
+    model_config = {"from_attributes": True}
 
 
 class HistoryJobResponse(BaseModel):
@@ -282,6 +306,40 @@ class ReviewRequest(BaseModel):
     edition: str | None = None  # e.g., "Extended", "Theatrical"
 
 
+def _history_job_dict(j: DiscJob) -> dict:
+    """Serialize a job into the HistoryJobResponse dict shape."""
+    return {
+        "id": j.id,
+        "volume_label": j.volume_label,
+        "content_type": j.content_type,
+        "state": j.state,
+        "detected_title": j.detected_title,
+        "detected_season": j.detected_season,
+        "error_message": j.error_message,
+        "classification_source": j.classification_source,
+        "classification_confidence": j.classification_confidence,
+        "total_titles": j.total_titles,
+        "content_hash": j.content_hash,
+        "discdb_slug": j.discdb_slug,
+        "disc_number": j.disc_number,
+        "tmdb_id": j.tmdb_id,
+        "created_at": j.created_at.isoformat() if j.created_at else None,
+        "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+        "cleared_at": j.cleared_at.isoformat() if j.cleared_at else None,
+    }
+
+
+def _export_status(job: DiscJob) -> str:
+    """Classify a job's TheDiscDB export status."""
+    if job.submitted_at:
+        return "submitted"
+    if job.exported_at is None:
+        return "pending"
+    if job.exported_at.year == 1970:
+        return "skipped"
+    return "exported"
+
+
 # Routes
 @router.get("/jobs", response_model=list[JobResponse])
 async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJob]:
@@ -319,28 +377,7 @@ async def get_job_history(
     result = await session.execute(query)
     jobs = result.scalars().all()
 
-    return [
-        {
-            "id": j.id,
-            "volume_label": j.volume_label,
-            "content_type": j.content_type,
-            "state": j.state,
-            "detected_title": j.detected_title,
-            "detected_season": j.detected_season,
-            "error_message": j.error_message,
-            "classification_source": j.classification_source,
-            "classification_confidence": j.classification_confidence,
-            "total_titles": j.total_titles,
-            "content_hash": j.content_hash,
-            "discdb_slug": j.discdb_slug,
-            "disc_number": j.disc_number,
-            "tmdb_id": j.tmdb_id,
-            "created_at": j.created_at.isoformat() if j.created_at else None,
-            "completed_at": j.completed_at.isoformat() if j.completed_at else None,
-            "cleared_at": j.cleared_at.isoformat() if j.cleared_at else None,
-        }
-        for j in jobs
-    ]
+    return [_history_job_dict(j) for j in jobs]
 
 
 @router.get("/jobs/stats", response_model=StatsResponse)
@@ -416,66 +453,38 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
         "total_titles_ripped": total_titles,
         "avg_processing_seconds": avg_processing,
         "common_errors": common_errors,
-        "recent_jobs": [
-            {
-                "id": j.id,
-                "volume_label": j.volume_label,
-                "content_type": j.content_type,
-                "state": j.state,
-                "detected_title": j.detected_title,
-                "detected_season": j.detected_season,
-                "error_message": j.error_message,
-                "classification_source": j.classification_source,
-                "classification_confidence": j.classification_confidence,
-                "total_titles": j.total_titles,
-                "content_hash": j.content_hash,
-                "discdb_slug": j.discdb_slug,
-                "disc_number": j.disc_number,
-                "tmdb_id": j.tmdb_id,
-                "created_at": j.created_at.isoformat() if j.created_at else None,
-                "completed_at": j.completed_at.isoformat() if j.completed_at else None,
-                "cleared_at": j.cleared_at.isoformat() if j.cleared_at else None,
-            }
-            for j in recent
-        ],
+        "recent_jobs": [_history_job_dict(j) for j in recent],
         "daily_throughput": daily_throughput,
     }
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job_id: int, session: AsyncSession = Depends(get_session)) -> DiscJob:
+async def get_job(job: DiscJob = Depends(get_job_or_404)) -> DiscJob:
     """Get a specific job by ID."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
     return job
 
 
 @router.get("/jobs/{job_id}/titles", response_model=list[TitleResponse])
 async def get_job_titles(
-    job_id: int, session: AsyncSession = Depends(get_session)
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
 ) -> list[DiscTitle]:
     """Get all titles with match results for a job."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     result = await session.execute(
-        select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+        select(DiscTitle).where(DiscTitle.job_id == job.id).order_by(DiscTitle.title_index)
     )
     return list(result.scalars().all())
 
 
 @router.get("/jobs/{job_id}/detail", response_model=JobDetailResponse)
-async def get_job_detail(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+async def get_job_detail(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
     """Get full job detail with titles for history drill-down."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     # Fetch associated titles
     titles_result = await session.execute(
-        select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+        select(DiscTitle).where(DiscTitle.job_id == job.id).order_by(DiscTitle.title_index)
     )
     titles = list(titles_result.scalars().all())
 
@@ -516,87 +525,47 @@ async def get_job_detail(job_id: int, session: AsyncSession = Depends(get_sessio
         "subtitles_failed": job.subtitles_failed,
         "staging_path": job.staging_path,
         "final_path": job.final_path,
-        "titles": [
-            {
-                "id": t.id,
-                "job_id": t.job_id,
-                "title_index": t.title_index,
-                "duration_seconds": t.duration_seconds,
-                "file_size_bytes": t.file_size_bytes,
-                "chapter_count": t.chapter_count,
-                "is_selected": t.is_selected,
-                "output_filename": t.output_filename,
-                "matched_episode": t.matched_episode,
-                "match_confidence": t.match_confidence,
-                "match_details": t.match_details,
-                "state": t.state,
-                "video_resolution": t.video_resolution,
-                "edition": t.edition,
-                "conflict_resolution": t.conflict_resolution,
-                "existing_file_path": t.existing_file_path,
-                "organized_from": t.organized_from,
-                "organized_to": t.organized_to,
-                "is_extra": t.is_extra,
-                "match_source": t.match_source,
-                "discdb_match_details": t.discdb_match_details,
-                "discdb_flagged": t.discdb_flagged,
-                "discdb_flag_reason": t.discdb_flag_reason,
-            }
-            for t in titles
-        ],
+        "titles": titles,
     }
 
 
 @router.post("/jobs/{job_id}/start")
-async def start_job(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+async def start_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     """Start ripping a disc."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
         raise HTTPException(status_code=400, detail=f"Cannot start job in state: {job.state}")
 
     # Import here to avoid circular imports
     from app.services.job_manager import job_manager
 
-    await job_manager.start_ripping(job_id)
-    return {"status": "started", "job_id": job_id}
+    await job_manager.start_ripping(job.id)
+    return {"status": "started", "job_id": job.id}
 
 
 @router.post("/jobs/{job_id}/cancel")
-async def cancel_job(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+async def cancel_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     """Cancel a running job."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     from app.services.job_manager import job_manager
 
-    await job_manager.cancel_job(job_id)
-    return {"status": "cancelled", "job_id": job_id}
+    await job_manager.cancel_job(job.id)
+    return {"status": "cancelled", "job_id": job.id}
 
 
 @router.post("/jobs/{job_id}/review")
 async def submit_review(
-    job_id: int,
     review: ReviewRequest,
-    session: AsyncSession = Depends(get_session),
+    job: DiscJob = Depends(get_job_or_404),
 ) -> dict:
     """Submit a review decision for a title."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(status_code=400, detail="Job is not awaiting review")
 
     from app.services.job_manager import job_manager
 
     await job_manager.apply_review(
-        job_id, review.title_id, episode_code=review.episode_code, edition=review.edition
+        job.id, review.title_id, episode_code=review.episode_code, edition=review.edition
     )
-    return {"status": "reviewed", "job_id": job_id}
+    return {"status": "reviewed", "job_id": job.id}
 
 
 class SetNameRequest(BaseModel):
@@ -609,22 +578,17 @@ class SetNameRequest(BaseModel):
 
 @router.post("/jobs/{job_id}/set-name")
 async def set_job_name(
-    job_id: int,
     req: SetNameRequest,
-    session: AsyncSession = Depends(get_session),
+    job: DiscJob = Depends(get_job_or_404),
 ) -> dict:
     """Set a user-provided name for a disc with unreadable volume label, then resume ripping."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(status_code=400, detail="Job is not awaiting name input")
 
     from app.services.job_manager import job_manager
 
-    await job_manager.set_name_and_resume(job_id, req.name, req.content_type, req.season)
-    return {"status": "ok", "job_id": job_id}
+    await job_manager.set_name_and_resume(job.id, req.name, req.content_type, req.season)
+    return {"status": "ok", "job_id": job.id}
 
 
 class ReIdentifyRequest(BaseModel):
@@ -638,15 +602,10 @@ class ReIdentifyRequest(BaseModel):
 
 @router.post("/jobs/{job_id}/re-identify")
 async def re_identify_job(
-    job_id: int,
     req: ReIdentifyRequest,
-    session: AsyncSession = Depends(get_session),
+    job: DiscJob = Depends(get_job_or_404),
 ) -> dict:
     """Re-identify a disc with user-corrected title, content type, and optional TMDB ID."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(
             status_code=400,
@@ -655,8 +614,8 @@ async def re_identify_job(
 
     from app.services.job_manager import job_manager
 
-    await job_manager.re_identify_job(job_id, req.title, req.content_type, req.season, req.tmdb_id)
-    return {"status": "re-identifying", "job_id": job_id}
+    await job_manager.re_identify_job(job.id, req.title, req.content_type, req.season, req.tmdb_id)
+    return {"status": "re-identifying", "job_id": job.id}
 
 
 @router.get("/tmdb/search")
@@ -706,15 +665,10 @@ async def tmdb_search(query: str = Query(..., min_length=1)) -> dict:
 
 @router.post("/jobs/{job_id}/retry-subtitles")
 async def retry_subtitle_download(
-    job_id: int,
-    session: AsyncSession = Depends(get_session),
+    job: DiscJob = Depends(get_job_or_404),
 ) -> dict:
     """Retry subtitle download for a job that failed."""
     import asyncio
-
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
 
     if job.subtitle_status not in ("failed", None):
         raise HTTPException(
@@ -732,26 +686,22 @@ async def retry_subtitle_download(
     from app.services.job_manager import job_manager
 
     asyncio.create_task(
-        job_manager._download_subtitles(job_id, job.detected_title, job.detected_season)
+        job_manager._download_subtitles(job.id, job.detected_title, job.detected_season)
     )
 
-    return {"status": "retry_started", "job_id": job_id}
+    return {"status": "retry_started", "job_id": job.id}
 
 
 @router.post("/jobs/{job_id}/process-matched")
-async def process_matched_titles(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+async def process_matched_titles(job: DiscJob = Depends(get_job_or_404)) -> dict:
     """Process all matched titles for a job without waiting for unresolved ones."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(status_code=400, detail="Job is not awaiting review")
 
     from app.services.job_manager import job_manager
 
-    result = await job_manager.process_matched_titles(job_id)
-    return {"status": "processed", "job_id": job_id, **result}
+    result = await job_manager.process_matched_titles(job.id)
+    return {"status": "processed", "job_id": job.id, **result}
 
 
 @router.get("/config", response_model=ConfigResponse)
@@ -858,20 +808,15 @@ async def update_config(config: ConfigUpdate) -> dict:
 
 
 @router.get("/jobs/{job_id}/poster")
-async def get_job_poster(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+async def get_job_poster(job: DiscJob = Depends(get_job_or_404)) -> dict:
     """Get TMDB poster URL for a job."""
-    result = await session.execute(select(DiscJob).where(DiscJob.id == job_id))
-    job = result.scalar_one_or_none()
-
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if not job.detected_title:
         return {"poster_url": None}
 
     # Fetch poster from TMDB
     import requests
 
+    from app.core.tmdb_classifier import _build_auth
     from app.matcher.tmdb_client import BASE_IMAGE_URL
     from app.services.config_service import get_config as get_db_config
 
@@ -887,13 +832,8 @@ async def get_job_poster(job_id: int, session: AsyncSession = Depends(get_sessio
     else:  # tv
         search_url = "https://api.themoviedb.org/3/search/tv"
 
-    headers = {}
-    params = {"query": job.detected_title}
-
-    if len(api_key) > 40:  # v4 token
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:  # v3 key
-        params["api_key"] = api_key
+    headers, params = _build_auth(api_key)
+    params["query"] = job.detected_title
 
     try:
         response = requests.get(search_url, headers=headers, params=params, timeout=10)
@@ -903,7 +843,7 @@ async def get_job_poster(job_id: int, session: AsyncSession = Depends(get_sessio
                 poster_path = results[0]["poster_path"]
                 return {"poster_url": f"{BASE_IMAGE_URL}{poster_path}"}
     except Exception as e:
-        print(f"Error fetching poster: {e}")
+        logger.warning(f"Error fetching poster: {e}")
 
     return {"poster_url": None}
 
@@ -940,12 +880,11 @@ async def clear_completed_jobs(session: AsyncSession = Depends(get_session)) -> 
 
 
 @router.delete("/jobs/{job_id}")
-async def delete_job(job_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+async def delete_job(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
     """Soft-delete a single completed or failed job (moves to history)."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if job.state not in (JobState.COMPLETED, JobState.FAILED):
         raise HTTPException(
             status_code=400,
@@ -955,7 +894,7 @@ async def delete_job(job_id: int, session: AsyncSession = Depends(get_session)) 
     job.cleared_at = datetime.now(UTC)
     await session.commit()
 
-    return {"status": "cleared", "job_id": job_id}
+    return {"status": "cleared", "job_id": job.id}
 
 
 # --- Simulation Endpoints (debug mode only) ---
@@ -976,30 +915,24 @@ class SimulateDiscRequest(BaseModel):
     review_reason: str | None = None
 
 
-@router.post("/simulate/insert-disc")
+@router.post("/simulate/insert-disc", dependencies=[Depends(require_debug)])
 async def simulate_insert_disc(req: SimulateDiscRequest) -> dict:
     """Simulate a disc insertion. Only available in debug mode."""
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
-
     from app.services.job_manager import job_manager
 
     params = req.model_dump()
     if not params.get("force_review_needed") and params.get("detected_title") is None:
         params["detected_title"] = req.volume_label.replace("_", " ").title()
     if params.get("titles") is None:
-        params.pop("titles", None)
+        del params["titles"]
 
     job_id = await job_manager.simulate_disc_insert(params)
     return {"status": "simulated", "job_id": job_id}
 
 
-@router.post("/simulate/remove-disc")
+@router.post("/simulate/remove-disc", dependencies=[Depends(require_debug)])
 async def simulate_remove_disc(drive_id: str = _SIM_DEFAULT_DRIVE) -> dict:
     """Simulate a disc removal. Only available in debug mode."""
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
-
     from app.api.websocket import manager as ws_manager
     from app.services.job_manager import job_manager
 
@@ -1008,16 +941,13 @@ async def simulate_remove_disc(drive_id: str = _SIM_DEFAULT_DRIVE) -> dict:
     return {"status": "removed", "drive_id": drive_id}
 
 
-@router.post("/simulate/trigger-real-scan")
+@router.post("/simulate/trigger-real-scan", dependencies=[Depends(require_debug)])
 async def trigger_real_scan(drive_id: str = _SIM_DEFAULT_DRIVE) -> dict:
     """Trigger a real disc scan and rip pipeline. Only available in debug mode.
 
     This fires the same event as a physical disc insertion, using the real
     MakeMKV extractor to scan and rip the disc currently in the drive.
     """
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
-
     from app.core.sentinel import get_volume_label, is_disc_present
     from app.services.job_manager import job_manager
 
@@ -1029,12 +959,9 @@ async def trigger_real_scan(drive_id: str = _SIM_DEFAULT_DRIVE) -> dict:
     return {"status": "triggered", "drive_id": drive_id, "volume_label": label}
 
 
-@router.post("/simulate/advance-job/{job_id}")
+@router.post("/simulate/advance-job/{job_id}", dependencies=[Depends(require_debug)])
 async def simulate_advance_job(job_id: int) -> dict:
     """Manually advance a job to the next state. Only available in debug mode."""
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
-
     from app.services.job_manager import job_manager
 
     try:
@@ -1044,12 +971,9 @@ async def simulate_advance_job(job_id: int) -> dict:
         raise HTTPException(status_code=400, detail=str(e)) from None
 
 
-@router.delete("/simulate/reset-all-jobs")
+@router.delete("/simulate/reset-all-jobs", dependencies=[Depends(require_debug)])
 async def reset_all_jobs(session: AsyncSession = Depends(get_session)) -> dict:
     """Delete ALL jobs and titles regardless of state. Debug mode only."""
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
-
     from sqlalchemy import delete
 
     await session.execute(delete(DiscTitle))
@@ -1058,7 +982,7 @@ async def reset_all_jobs(session: AsyncSession = Depends(get_session)) -> dict:
     return {"status": "reset", "deleted_count": result.rowcount}
 
 
-@router.post("/simulate/insert-disc-from-staging")
+@router.post("/simulate/insert-disc-from-staging", dependencies=[Depends(require_debug)])
 async def simulate_insert_disc_from_staging(
     staging_path: str,
     volume_label: str = "REAL_DATA_DISC",
@@ -1072,9 +996,6 @@ async def simulate_insert_disc_from_staging(
     Simulates ripping per track with progress updates.
     Only available in debug mode.
     """
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
-
     import asyncio
     from pathlib import Path
 
@@ -1233,7 +1154,7 @@ async def cleanup_orphaned_staging(session: AsyncSession = Depends(get_session))
 
 
 @router.get("/staging/size")
-async def get_staging_size(session: AsyncSession = Depends(get_session)) -> dict:
+async def get_staging_size() -> dict:
     """Get total staging directory size and per-job breakdown."""
     from pathlib import Path
 
@@ -1302,7 +1223,6 @@ async def cleanup_job_staging(job_id: int, session: AsyncSession = Depends(get_s
 # Diagnostics
 # ---------------------------------------------------------------------------
 
-_HOME_PATH = str(Path.home())
 _SENSITIVE_RE = re.compile(
     r"(eyJ[A-Za-z0-9_-]{20,})"  # JWT tokens
     r"|(?<=key=)[^\s,;'\"]{8,}"  # key=VALUE
@@ -1324,7 +1244,7 @@ async def get_recent_logs(
     """Return the last N lines from the engram log file, sanitized."""
     log_path = Path.home() / ".engram" / "engram.log"
     if not log_path.exists():
-        return {"lines": [], "log_path": str(log_path).replace(_HOME_PATH, "~")}
+        return {"lines": [], "log_path": _redact_home(log_path)}
 
     try:
         raw = log_path.read_text(encoding="utf-8", errors="replace")
@@ -1335,7 +1255,7 @@ async def get_recent_logs(
 
     return {
         "lines": sanitized,
-        "log_path": str(log_path).replace(_HOME_PATH, "~"),
+        "log_path": _redact_home(log_path),
     }
 
 
@@ -1379,9 +1299,9 @@ async def generate_bug_report(
 
     # --- Redacted config ---
     redacted_config = {
-        "staging_path": str(config.staging_path).replace(_HOME_PATH, "~"),
-        "library_movies_path": str(config.library_movies_path).replace(_HOME_PATH, "~"),
-        "library_tv_path": str(config.library_tv_path).replace(_HOME_PATH, "~"),
+        "staging_path": _redact_home(config.staging_path),
+        "library_movies_path": _redact_home(config.library_movies_path),
+        "library_tv_path": _redact_home(config.library_tv_path),
         "max_concurrent_matches": config.max_concurrent_matches,
         "conflict_resolution_default": config.conflict_resolution_default,
         "extras_policy": config.extras_policy,
@@ -1533,14 +1453,7 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
 
     responses = []
     for job in jobs:
-        if job.submitted_at:
-            status = "submitted"
-        elif job.exported_at is None:
-            status = "pending"
-        elif job.exported_at.year == 1970:
-            status = "skipped"
-        else:
-            status = "exported"
+        status = _export_status(job)
 
         # Use stored contribute URL, or construct from submission ID as fallback
         contribute_url = job.discdb_contribute_url
@@ -1574,39 +1487,30 @@ async def contribution_stats(session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(DiscJob).where(DiscJob.state == JobState.COMPLETED))
     jobs = result.scalars().all()
 
-    pending = 0
-    exported = 0
-    skipped = 0
-    submitted = 0
-    for job in jobs:
-        if job.submitted_at:
-            submitted += 1
-        elif job.exported_at is None:
-            pending += 1
-        elif job.exported_at.year == 1970:
-            skipped += 1
-        else:
-            exported += 1
+    counts = Counter(_export_status(job) for job in jobs)
 
     return ContributionStatsResponse(
-        pending=pending, exported=exported, skipped=skipped, submitted=submitted
+        pending=counts["pending"],
+        exported=counts["exported"],
+        skipped=counts["skipped"],
+        submitted=counts["submitted"],
     )
 
 
 @router.post("/contributions/{job_id}/export")
-async def export_contribution(job_id: int, session: AsyncSession = Depends(get_session)):
+async def export_contribution(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+):
     """Manually trigger export for a specific job."""
     from app.core.discdb_exporter import generate_export, mark_exported
     from app.services.config_service import get_config as get_db_config
 
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
 
     config = await get_db_config()
-    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
     titles = list(titles_result.scalars().all())
 
     from app import __version__
@@ -1615,20 +1519,19 @@ async def export_contribution(job_id: int, session: AsyncSession = Depends(get_s
     if not export_dir:
         raise HTTPException(status_code=400, detail="Cannot export — no content hash")
 
-    await mark_exported(job_id, session)
+    await mark_exported(job.id, session)
     return {"status": "exported", "export_path": str(export_dir)}
 
 
 @router.post("/contributions/{job_id}/skip")
-async def skip_contribution(job_id: int, session: AsyncSession = Depends(get_session)):
+async def skip_contribution(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+):
     """Mark a job as skipped for contribution."""
     from app.core.discdb_exporter import mark_skipped
 
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    await mark_skipped(job_id, session)
+    await mark_skipped(job.id, session)
     return {"status": "skipped"}
 
 
@@ -1654,16 +1557,11 @@ class FetchCoverRequest(BaseModel):
 
 @router.post("/contributions/{job_id}/upc-lookup")
 async def upc_lookup(
-    job_id: int,
     request: UPCLookupRequest,
-    session: AsyncSession = Depends(get_session),
+    job: DiscJob = Depends(get_job_or_404),
 ):
     """Look up product info by UPC barcode."""
     from app.core.upc_lookup import compute_match_confidence, lookup_upc
-
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
 
     result = await lookup_upc(request.upc_code)
     if not result.success:
@@ -1691,7 +1589,11 @@ async def fetch_cover(
     """Download a cover image and save it to the export directory."""
     from app.services.config_service import get_config as get_db_config
 
-    # SSRF guard: only fetch from allowlisted public image hosts.
+    # SSRF guard runs BEFORE the DB lookup so a disallowed URL fails fast
+    # with 400 — and so test_fetch_cover_security can prove the guard fires
+    # before any other handler logic. Do NOT replace this with
+    # Depends(get_job_or_404), which would 404 first on a missing job and
+    # mask the security check.
     if not is_allowed_image_url(request.image_url):
         raise HTTPException(status_code=400, detail="Image URL host is not in the allowlist")
 
@@ -1757,17 +1659,14 @@ async def fetch_cover(
 
 @router.post("/contributions/{job_id}/enhance")
 async def enhance_contribution(
-    job_id: int,
     request: EnhanceRequest,
+    job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Add tier-3 data (UPC) and re-export."""
     from app.core.discdb_exporter import generate_export, mark_exported
     from app.services.config_service import get_config as get_db_config
 
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
 
@@ -1787,7 +1686,7 @@ async def enhance_contribution(
         await session.commit()
         await session.refresh(job)
 
-    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
     titles = list(titles_result.scalars().all())
 
     # Update per-title extra descriptions
@@ -1809,23 +1708,19 @@ async def enhance_contribution(
     if not export_dir:
         raise HTTPException(status_code=400, detail="Cannot export — no content hash")
 
-    await mark_exported(job_id, session)
+    await mark_exported(job.id, session)
     return {"status": "enhanced", "export_path": str(export_dir)}
 
 
 @router.post("/jobs/{job_id}/flag-discdb")
 async def flag_discdb(
-    job_id: int,
     request: FlagDiscDBRequest,
+    job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Flag a DiscDB title match as incorrect."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     title = await session.get(DiscTitle, request.title_id)
-    if not title or title.job_id != job_id:
+    if not title or title.job_id != job.id:
         raise HTTPException(status_code=404, detail="Title not found")
 
     title.discdb_flagged = True
@@ -1838,24 +1733,20 @@ async def flag_discdb(
 
 @router.post("/jobs/{job_id}/titles/{title_id}/rematch")
 async def rematch_title(
-    job_id: int,
     title_id: int,
     request: RematchRequest,
+    job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Re-match a single title with optional source preference."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     title = await session.get(DiscTitle, title_id)
-    if not title or title.job_id != job_id:
+    if not title or title.job_id != job.id:
         raise HTTPException(status_code=404, detail="Title not found")
 
     from app.services.job_manager import job_manager
 
     try:
-        await job_manager.rematch_single_title(job_id, title_id, request.source_preference)
+        await job_manager.rematch_single_title(job.id, title_id, request.source_preference)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
 
@@ -1864,45 +1755,36 @@ async def rematch_title(
 
 @router.post("/jobs/{job_id}/rematch")
 async def rematch_job(
-    job_id: int,
     request: RematchRequest,
-    session: AsyncSession = Depends(get_session),
+    job: DiscJob = Depends(get_job_or_404),
 ):
     """Re-match all titles for a job."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     from app.services.job_manager import job_manager
 
-    await job_manager.rerun_matching(job_id, request.source_preference)
+    await job_manager.rerun_matching(job.id, request.source_preference)
 
-    return {"status": "rematching", "job_id": job_id}
+    return {"status": "rematching", "job_id": job.id}
 
 
 @router.post("/jobs/{job_id}/titles/{title_id}/reassign")
 async def reassign_episode(
-    job_id: int,
     title_id: int,
     request: ReassignRequest,
+    job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Manually reassign an episode for a title."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if job.state in (JobState.ORGANIZING, JobState.FAILED, JobState.COMPLETED):
         raise HTTPException(status_code=400, detail=f"Cannot reassign in state: {job.state}")
 
     title = await session.get(DiscTitle, title_id)
-    if not title or title.job_id != job_id:
+    if not title or title.job_id != job.id:
         raise HTTPException(status_code=404, detail="Title not found")
 
     from app.services.job_manager import job_manager
 
     try:
-        await job_manager.reassign_episode(job_id, title_id, request.episode_code, request.edition)
+        await job_manager.reassign_episode(job.id, title_id, request.episode_code, request.edition)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
 
@@ -1910,14 +1792,14 @@ async def reassign_episode(
 
 
 @router.post("/contributions/{job_id}/submit")
-async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_session)):
+async def submit_contribution(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+):
     """Submit a job's disc data to TheDiscDB API."""
     from app.core.discdb_submitter import submit_job
     from app.services.config_service import get_config as get_db_config
 
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
     if not job.exported_at or job.exported_at.year == 1970:
@@ -1925,7 +1807,7 @@ async def submit_contribution(job_id: int, session: AsyncSession = Depends(get_s
 
     config = await get_db_config()
 
-    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+    titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
     titles = list(titles_result.scalars().all())
 
     from app import __version__
@@ -1979,21 +1861,17 @@ async def create_release_group(
 
 @router.put("/contributions/{job_id}/release-group")
 async def assign_release_group(
-    job_id: int,
     request: ReleaseGroupAssignRequest,
+    job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Assign or remove a job from a release group."""
-    job = await session.get(DiscJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     if request.release_group_id:
         # Verify the release group exists (at least one other job has it)
         result = await session.execute(
             select(DiscJob).where(
                 DiscJob.release_group_id == request.release_group_id,
-                DiscJob.id != job_id,
+                DiscJob.id != job.id,
             )
         )
         if not result.scalars().first():
@@ -2003,7 +1881,7 @@ async def assign_release_group(
     session.add(job)
     await session.commit()
 
-    return {"job_id": job_id, "release_group_id": request.release_group_id}
+    return {"job_id": job.id, "release_group_id": request.release_group_id}
 
 
 @router.post("/contributions/release-group/{release_group_id}/submit")

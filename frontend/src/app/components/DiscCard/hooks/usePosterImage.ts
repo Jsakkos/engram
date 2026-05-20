@@ -5,6 +5,9 @@
 import { useState, useEffect } from 'react';
 import { UI_CONFIG } from '../../../../config/constants';
 
+// `discTitle` is intentionally not read inside the effect — it only serves as
+// an effect dependency so the poster is re-fetched when the title changes
+// (e.g. after a TMDB re-identify swaps the disc to a different title).
 export function usePosterImage(discId: string, discTitle: string) {
     const [posterUrl, setPosterUrl] = useState<string | null>(null);
 
@@ -30,7 +33,7 @@ export function usePosterImage(discId: string, discTitle: string) {
         };
 
         fetchPoster();
-    }, [discId, discTitle]); // Re-fetch when title changes
+    }, [discId, discTitle]); // discTitle re-triggers fetch on TMDB re-identify
 
     return posterUrl;
 }

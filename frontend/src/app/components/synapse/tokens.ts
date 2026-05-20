@@ -8,6 +8,8 @@
  * Keep these in lockstep with the CSS variables.
  */
 
+import type { CSSProperties } from "react";
+
 export const sv = {
   // Surfaces
   bg0: "#05070c",
@@ -55,7 +57,7 @@ export const sv = {
 
 export type SvAccent = "cyan" | "magenta" | "yellow" | "amber" | "green" | "red";
 
-/** Accent palette indexed by name — used by SvBadge / SvBar / SvJobCard. */
+/** Accent palette indexed by name — used by SvBarChart. */
 export const accentColor: Record<SvAccent, string> = {
   cyan: sv.cyan,
   magenta: sv.magenta,
@@ -65,12 +67,39 @@ export const accentColor: Record<SvAccent, string> = {
   red: sv.red,
 };
 
-/** Hi (brighter) variants for hover / glow. */
-export const accentHi: Record<SvAccent, string> = {
-  cyan: sv.cyanHi,
-  magenta: sv.magentaHi,
-  yellow: sv.yellow,
-  amber: sv.amber,
-  green: sv.green,
-  red: sv.red,
-};
+/**
+ * Chunk-tick overlay style — 10% repeating-linear-gradient stripes used by
+ * progress bars. `alpha` is the two-hex-digit opacity suffix on `sv.bg0`
+ * (e.g. "40", "55").
+ */
+export function chunkedTicks(alpha: string): CSSProperties {
+  return {
+    position: "absolute",
+    inset: 0,
+    background: `repeating-linear-gradient(90deg, transparent 0 9%, ${sv.bg0}${alpha} 9% 10%)`,
+    pointerEvents: "none",
+  };
+}
+
+/**
+ * Mono uppercase label style — the recurring inline style for small caps
+ * mono labels across Synapse components. Spread it at the call site and
+ * override only what differs.
+ */
+export function monoLabelStyle({
+  size,
+  color,
+  letterSpacing,
+}: {
+  size: number;
+  color: string;
+  letterSpacing: string;
+}): CSSProperties {
+  return {
+    fontFamily: sv.mono,
+    fontSize: size,
+    letterSpacing,
+    color,
+    textTransform: "uppercase",
+  };
+}

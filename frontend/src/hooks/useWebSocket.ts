@@ -5,15 +5,12 @@ import { UI_CONFIG } from '../config/constants';
 type MessageListener = (msg: WebSocketMessage) => void;
 
 interface UseWebSocketReturn {
-    /** @deprecated Use addMessageListener instead — lastMessage loses rapid messages due to React batching */
-    lastMessage: WebSocketMessage | null;
     isConnected: boolean;
     sendMessage: (message: string) => void;
     addMessageListener: (listener: MessageListener) => () => void;
 }
 
 export function useWebSocket(url: string): UseWebSocketReturn {
-    const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<number | null>(null);
@@ -46,8 +43,6 @@ export function useWebSocket(url: string): UseWebSocketReturn {
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data) as WebSocketMessage;
-                    // Set lastMessage for backward compat (still lossy under batching)
-                    setLastMessage(data);
                     // Invoke all registered listeners synchronously — zero message loss
                     listenersRef.current.forEach(listener => listener(data));
                 } catch (error) {
@@ -85,5 +80,5 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         return () => { listenersRef.current.delete(listener); };
     }, []);
 
-    return { lastMessage, isConnected, sendMessage, addMessageListener };
+    return { isConnected, sendMessage, addMessageListener };
 }

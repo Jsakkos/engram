@@ -13,6 +13,7 @@ import {
   Save,
 } from "lucide-react";
 import { SvActionButton, SvLabel, SvNotice, SvPanel, sv } from "../app/components/synapse";
+import { formatDurationShort } from "../utils/formatting";
 
 interface ContributionJob {
   id: number;
@@ -87,12 +88,6 @@ function focusInput(e: React.FocusEvent<HTMLInputElement>) {
 function blurInput(e: React.FocusEvent<HTMLInputElement>) {
   e.currentTarget.style.borderColor = sv.lineMid;
   e.currentTarget.style.boxShadow = "none";
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 export default function EnhanceWizard({ job, titles, onSave, onCancel }: EnhanceWizardProps) {
@@ -222,17 +217,12 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
     }
   };
 
-  const confidenceColor = (c: string) => {
-    if (c === "high") return sv.green;
-    if (c === "low") return sv.amber;
-    return sv.red;
-  };
+  const annotatedExtrasCount = Object.values(extraDescriptions).filter((v) => v.trim()).length;
 
-  const confidenceLabel = (c: string) => {
-    if (c === "high") return "High match";
-    if (c === "low") return "Low match";
-    return "No match";
-  };
+  const CONFIDENCE_COLOR: Record<string, string> = { high: sv.green, low: sv.amber };
+  const CONFIDENCE_LABEL: Record<string, string> = { high: "High match", low: "Low match" };
+  const confidenceColor = (c: string) => CONFIDENCE_COLOR[c] ?? sv.red;
+  const confidenceLabel = (c: string) => CONFIDENCE_LABEL[c] ?? "No match";
 
   return (
     <SvPanel pad={20}>
@@ -484,7 +474,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                         #{t.title_index}
                       </span>
                       <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint, marginLeft: 8 }}>
-                        {formatDuration(t.duration_seconds)}
+                        {formatDurationShort(t.duration_seconds)}
                       </span>
                     </div>
                     <input
@@ -534,15 +524,15 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                   {upc.trim() && <p style={{ margin: 0 }}>UPC: {upc.trim()}</p>}
                   {selectedAsin && <p style={{ margin: 0 }}>ASIN: {selectedAsin}</p>}
                   {coverSaved && <p style={{ margin: 0 }}>Cover art saved</p>}
-                  {Object.values(extraDescriptions).filter((v) => v.trim()).length > 0 && (
+                  {annotatedExtrasCount > 0 && (
                     <p style={{ margin: 0 }}>
-                      {Object.values(extraDescriptions).filter((v) => v.trim()).length} extra(s) annotated
+                      {annotatedExtrasCount} extra(s) annotated
                     </p>
                   )}
                   {!upc.trim() &&
                     !selectedAsin &&
                     !coverSaved &&
-                    Object.values(extraDescriptions).filter((v) => v.trim()).length === 0 && (
+                    annotatedExtrasCount === 0 && (
                       <p style={{ margin: 0, color: sv.inkFaint }}>No enhancements to save</p>
                     )}
                 </div>

@@ -216,13 +216,11 @@ class JobManager:
         logger.info(f"Drive event: {drive_letter} {event} (label: {volume_label})")
 
         if event == "inserted":
+            # Create the job before broadcasting so clients see it on first fetch.
             await self._create_job_for_disc(drive_letter, volume_label)
+            await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
         elif event == "removed":
             await self._cancel_jobs_for_drive(drive_letter)
-
-        if event == "inserted":
-            await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
-        else:
             await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
 
     async def _on_staging_event(self, event: str, staging_dir: str, label: str) -> None:
@@ -596,6 +594,44 @@ class JobManager:
 
     # --- Ripping ---
 
+    async def _transition_title_out_of_ripping(
+        self,
+        job_id: int,
+        title_id: int,
+        content_type: ContentType,
+        expected_size: int,
+        actual_size: int,
+        *,
+        on_error_level: int = logging.WARNING,
+    ) -> None:
+        """Transition a no-longer-active title out of RIPPING.
+
+        TV titles move to MATCHING, movie titles to MATCHED. Only acts on titles
+        currently in RIPPING. Failures are logged at ``on_error_level`` and
+        swallowed so progress tracking is never interrupted.
+        """
+        new_state = TitleState.MATCHING if content_type == ContentType.TV else TitleState.MATCHED
+        try:
+            async with async_session() as sess:
+                title_db = await sess.get(DiscTitle, title_id)
+                if title_db and title_db.state == TitleState.RIPPING:
+                    title_db.state = new_state
+                    sess.add(title_db)
+                    await sess.commit()
+                    await ws_manager.broadcast_title_update(
+                        job_id,
+                        title_db.id,
+                        new_state.value,
+                        expected_size_bytes=expected_size,
+                        actual_size_bytes=actual_size,
+                    )
+        except Exception:
+            logger.log(
+                on_error_level,
+                f"Failed to transition title {title_id} out of RIPPING (Job {job_id})",
+                exc_info=True,
+            )
+
     async def _run_ripping(self, job_id: int) -> None:
         """Execute the ripping process."""
         async with async_session() as session:
@@ -632,11 +668,8 @@ class JobManager:
                 if not has_selection and job.content_type == ContentType.MOVIE and disc_titles:
                     longest = max(disc_titles, key=lambda t: t.duration_seconds or 0)
                     longest.is_selected = True
-                    async with async_session() as select_session:
-                        db_title = await select_session.get(DiscTitle, longest.id)
-                        if db_title:
-                            db_title.is_selected = True
-                            await select_session.commit()
+                    session.add(longest)
+                    await session.commit()
                     has_selection = True
 
                 titles_to_rip = disc_titles
@@ -704,30 +737,14 @@ class JobManager:
                             prev_list_idx = _last_title_idx - 1
                             if 0 <= prev_list_idx < len(sorted_titles):
                                 prev_title = sorted_titles[prev_list_idx]
-                                try:
-                                    async with async_session() as sess:
-                                        prev_db = await sess.get(DiscTitle, prev_title.id)
-                                        if prev_db and prev_db.state == TitleState.RIPPING:
-                                            if job.content_type == ContentType.TV:
-                                                new_state = TitleState.MATCHING
-                                            else:
-                                                new_state = TitleState.MATCHED
-                                            prev_db.state = new_state
-                                            sess.add(prev_db)
-                                            await sess.commit()
-                                            await ws_manager.broadcast_title_update(
-                                                job_id,
-                                                prev_db.id,
-                                                new_state.value,
-                                                expected_size_bytes=prev_title.file_size_bytes,
-                                                actual_size_bytes=prev_title.file_size_bytes,
-                                            )
-                                except Exception:
-                                    logger.warning(
-                                        f"Failed to transition title {prev_title.id} "
-                                        f"out of RIPPING (Job {job_id})",
-                                        exc_info=True,
-                                    )
+                                await self._transition_title_out_of_ripping(
+                                    job_id,
+                                    prev_title.id,
+                                    job.content_type,
+                                    expected_size=prev_title.file_size_bytes,
+                                    actual_size=prev_title.file_size_bytes,
+                                    on_error_level=logging.WARNING,
+                                )
                         _last_title_idx = current_idx
 
                         if active_title and active_title.id not in _titles_marked_ripping:
@@ -815,9 +832,11 @@ class JobManager:
                 rip_indices = [t.title_index for t in sorted_titles]
                 stall_timeout = rip_config.ripping_stall_timeout if rip_config else 120.0
 
-                if stall_timeout and stall_timeout > 0:
-                    pass
-                elif len(rip_indices) == len(disc_titles):
+                # Pass title_indices=None (rip everything) only when no stall
+                # timeout is set and every disc title is selected.
+                if not (stall_timeout and stall_timeout > 0) and len(rip_indices) == len(
+                    disc_titles
+                ):
                     rip_indices = None
 
                 def _fire_progress(p):
@@ -899,33 +918,14 @@ class JobManager:
                                         and active_title_id is not None
                                         and active_title_id != t.id
                                     ):
-                                        new_state = (
-                                            TitleState.MATCHING
-                                            if job.content_type == ContentType.TV
-                                            else TitleState.MATCHED
+                                        await self._transition_title_out_of_ripping(
+                                            job_id,
+                                            t.id,
+                                            job.content_type,
+                                            expected_size=t.file_size_bytes,
+                                            actual_size=fsize,
+                                            on_error_level=logging.DEBUG,
                                         )
-                                        try:
-                                            async with async_session() as sess:
-                                                title_db = await sess.get(DiscTitle, t.id)
-                                                if (
-                                                    title_db
-                                                    and title_db.state == TitleState.RIPPING
-                                                ):
-                                                    title_db.state = new_state
-                                                    await sess.commit()
-                                                    await ws_manager.broadcast_title_update(
-                                                        job_id,
-                                                        title_db.id,
-                                                        new_state.value,
-                                                        expected_size_bytes=t.file_size_bytes,
-                                                        actual_size_bytes=fsize,
-                                                    )
-                                        except Exception:
-                                            logger.debug(
-                                                f"Job {job_id}: failed to transition title "
-                                                f"{t.id} out of RIPPING in fs monitor",
-                                                exc_info=True,
-                                            )
                                         _titles_marked_ripping.discard(t.id)
 
                                 _prev_file_sizes.update(file_sizes)
@@ -1107,8 +1107,6 @@ class JobManager:
                     await session.commit()
                     await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
 
-                    Path(job.staging_path)
-
                     organize_result = await asyncio.to_thread(
                         movie_organizer.organize,
                         Path(job.staging_path),
@@ -1195,7 +1193,6 @@ class JobManager:
                 f"(Title {title.id}, Job {job_id}) — queuing for matching"
             )
 
-            job = await session.get(DiscJob, job_id)
             if job and job.content_type == ContentType.TV:
                 discdb_applied = await self._matching.try_discdb_assignment(job_id, title, session)
                 if discdb_applied:
