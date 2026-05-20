@@ -80,6 +80,40 @@ class TestUpdateConfig:
         updated = await update_config(staging_path="/brand-new")
         assert updated.staging_path == "/brand-new"
 
+    async def test_tmdb_key_rotation_clears_tmdb_caches(self, monkeypatch):
+        """Rotating ``tmdb_api_key`` must drop any cached lookups made
+        with the old key — otherwise a revoked or replaced key would
+        keep returning stale results until process restart.
+        """
+        from app.matcher import tmdb_client
+
+        called = {"count": 0}
+
+        def fake_clear():
+            called["count"] += 1
+
+        monkeypatch.setattr(tmdb_client, "clear_caches", fake_clear)
+
+        await update_config(tmdb_api_key="eyJrotated_key")
+        assert called["count"] == 1, "TMDB key rotation must call clear_caches()"
+
+    async def test_non_tmdb_update_does_not_clear_caches(self, monkeypatch):
+        """A staging-path update should NOT touch the TMDB cache —
+        clear_caches() is expensive enough that we only call it on
+        rotations that could invalidate the cache.
+        """
+        from app.matcher import tmdb_client
+
+        called = {"count": 0}
+
+        def fake_clear():
+            called["count"] += 1
+
+        monkeypatch.setattr(tmdb_client, "clear_caches", fake_clear)
+
+        await update_config(staging_path="/changed/path")
+        assert called["count"] == 0, "non-TMDB update must not clear TMDB caches"
+
 
 class TestEnsurePathsExist:
     """Tests for ensure_paths_exist()."""
