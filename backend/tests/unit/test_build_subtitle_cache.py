@@ -283,6 +283,13 @@ class TestMainRoundTrip:
         # same bytes (the smoke workflow depends on this equality).
         assert release_manifest["tarball_sha256"] == vsc._sha256_of_file(output_tarball)
 
+        # End-to-end: the live smoke validator (the one CI runs daily against
+        # subtitle-cache-latest) must pass on the artifact main() just
+        # produced. Closes the loop — a future renamed manifest field would
+        # be caught here, not in production.
+        smoke_result = vsc.validate(tmp_path)
+        assert smoke_result.failures == [], smoke_result.failures
+
         # Unpack and load through the real matcher — the round-trip assertion.
         unpack_dir = tmp_path / "unpacked"
         with tarfile.open(output_tarball, "r:gz") as tar:

@@ -91,4 +91,8 @@ jobs:
       # tests/unit/test_validate_subtitle_cache.py.
       - name: Validate manifest and tarball shape
         working-directory: backend
-        run: uv run python scripts/validate_subtitle_cache.py /tmp/cache-smoke
+        # --no-project mirrors --no-install-project in the sync above —
+        # without it, `uv run` would re-install the project and undo the
+        # daily-job-shortening optimization. The validator gets `app.*` via
+        # the sys.path.insert in the script itself, not via package install.
+        run: uv run --no-project python scripts/validate_subtitle_cache.py /tmp/cache-smoke

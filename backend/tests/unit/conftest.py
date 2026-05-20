@@ -35,7 +35,14 @@ def _load_script_module(name: str) -> object:
         raise ImportError(f"Cannot load script module {name!r}: no loader for {script_path}")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
-    spec.loader.exec_module(mod)
+    # If exec_module raises (missing dep, import error in the script), pop the
+    # half-initialised stub so a later test sees a fresh ImportError rather
+    # than a zombie module. Matches the pattern in importlib's own internals.
+    try:
+        spec.loader.exec_module(mod)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
     return mod
 
 
