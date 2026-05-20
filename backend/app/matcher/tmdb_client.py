@@ -567,33 +567,54 @@ def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
     if cached is not None:
         return cached
 
-    api_key = config.tmdb_api_key.strip()
-    url = "https://api.themoviedb.org/3/discover/tv"
-
-    headers = {}
-    params = {"language": "en-US", "page": page, "sort_by": "vote_count.desc"}
-
-    if len(api_key) > 40:
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        params["api_key"] = api_key
-
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as e:
-            logger.error(f"HTTP Error {response.status_code}: {response.text}")
-            raise e
-
-        results = response.json().get("results", [])
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch shows by vote count: {e}")
+        results = _fetch_shows_by_vote_count_uncached(page)
+    # Match retry_network_operation's tuple exactly — after retries are
+    # exhausted the original exception is re-raised, so the public wrapper
+    # must catch the same set or a builtin socket error escapes the
+    # documented "returns []" contract. Without this catch, the build
+    # script's discovery loop would surface a RequestException from
+    # _select_shows and abort the whole run on a single transient 429.
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to fetch shows by vote count: {e}", exc_info=True)
         return []
 
     if results:
         tmdb_persistent_cache.put(persistent_key, results, tmdb_persistent_cache.TTL_DISCOVER)
     return results
+
+
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_shows_by_vote_count_uncached(page: int) -> list[dict]:
+    """Network-only implementation. Caller (the public wrapper) guarantees
+    the API key is present and consults the persistent cache first.
+
+    Wrapped in ``@retry_network_operation`` to match the rest of the TMDB
+    public surface — a transient 429 or DNS blip would otherwise silently
+    return ``[]`` from the public wrapper, skip the SQLite ``put()``, and
+    force a cold-start miss on the next run. The retry decorator
+    propagates the final exception, which the public wrapper catches and
+    surfaces as ``[]`` (preserving the original contract).
+    """
+    from app.services.config_service import get_config_sync
+
+    api_key = get_config_sync().tmdb_api_key.strip()
+    url = "https://api.themoviedb.org/3/discover/tv"
+
+    headers = {}
+    params: dict[str, Any] = {
+        "language": "en-US",
+        "page": page,
+        "sort_by": "vote_count.desc",
+    }
+    if len(api_key) > 40:
+        headers["Authorization"] = f"Bearer {api_key}"
+    else:
+        params["api_key"] = api_key
+
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    return response.json().get("results", [])
 
 
 def fetch_season_details(show_id: str, season_number: int) -> int:

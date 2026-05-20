@@ -115,6 +115,17 @@ def _get_conn() -> sqlite3.Connection:
     return conn
 
 
+def get_conn() -> sqlite3.Connection:
+    """Public alias for the thread-local connection.
+
+    Modules that share this SQLite file (currently ``coverage_tracker``)
+    use this entry point so the connection-management strategy stays an
+    internal detail of ``tmdb_persistent_cache`` — they don't reach into
+    the underscore-prefixed ``_get_conn``.
+    """
+    return _get_conn()
+
+
 def get(cache_key: str) -> Any | None:
     """Return the cached payload if present and fresh, otherwise None.
 

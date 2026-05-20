@@ -78,8 +78,14 @@ class TestClear:
 class TestConcurrentReads:
     def test_many_threads_read_simultaneously(self):
         """The W4 scheduler runs one worker per provider; each reads TMDB
-        metadata from its own thread via the shared connection. The connection
-        is opened with check_same_thread=False; this smoke-tests that contract."""
+        metadata from its own thread. Thread-local connections in
+        ``_get_conn()`` mean each thread holds its own
+        ``sqlite3.Connection`` (no cross-thread sharing), so concurrent
+        reads are safe without needing ``check_same_thread=False``. This
+        test guards that contract — if anyone refactors back to a single
+        shared connection, the concurrent reads will surface the
+        ``sqlite3.InterfaceError: bad parameter or other API misuse`` the
+        thread-local pattern was added to prevent."""
         tmdb_persistent_cache.put("hot_key", "1234", ttl_seconds=3600)
 
         def reader():

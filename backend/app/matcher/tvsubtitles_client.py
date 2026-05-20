@@ -132,7 +132,7 @@ class TVSubtitlesClient:
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.warning(f"TVsubtitles search failed for {show_name}: {e}")
+            logger.warning(f"TVsubtitles search failed for {show_name}: {e}", exc_info=True)
             self._show_id_cache[show_name] = None
             return None
 
@@ -153,7 +153,10 @@ class TVSubtitlesClient:
             response = self._get(season_url)
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.warning(f"TVsubtitles season page failed for {show_name} S{season:02d}: {e}")
+            logger.warning(
+                f"TVsubtitles season page failed for {show_name} S{season:02d}: {e}",
+                exc_info=True,
+            )
             return None
 
         episode_page_url = _find_episode_page(
@@ -166,7 +169,7 @@ class TVSubtitlesClient:
             ep_response = self._get(episode_page_url)
             ep_response.raise_for_status()
         except requests.RequestException as e:
-            logger.warning(f"TVsubtitles episode page failed: {e}")
+            logger.warning(f"TVsubtitles episode page failed: {e}", exc_info=True)
             return None
 
         candidates = _parse_subtitle_candidates(
@@ -200,7 +203,7 @@ class TVSubtitlesClient:
             sub_page = self._get(subtitle.subtitle_page_url)
             sub_page.raise_for_status()
         except requests.RequestException as e:
-            logger.warning(f"TVsubtitles subtitle page failed: {e}")
+            logger.warning(f"TVsubtitles subtitle page failed: {e}", exc_info=True)
             return None
 
         download_page_url = _extract_download_page_url(sub_page.text, base_url=self.BASE_URL)
@@ -215,7 +218,7 @@ class TVSubtitlesClient:
             response = self._get(download_page_url, headers={"Referer": subtitle.subtitle_page_url})
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.warning(f"TVsubtitles download endpoint failed: {e}")
+            logger.warning(f"TVsubtitles download endpoint failed: {e}", exc_info=True)
             return None
 
         zip_bytes = self._resolve_zip_bytes(response, download_page_url)
@@ -269,7 +272,7 @@ class TVSubtitlesClient:
             zip_response = self._get(zip_url, headers={"Referer": download_page_url})
             zip_response.raise_for_status()
         except requests.RequestException as e:
-            logger.warning(f"TVsubtitles ZIP fetch failed: {e}")
+            logger.warning(f"TVsubtitles ZIP fetch failed: {e}", exc_info=True)
             return None
         return zip_response.content
 

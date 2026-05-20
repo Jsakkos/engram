@@ -34,7 +34,7 @@ def should_skip(
     The caller logs ``prior_row`` so the user sees why a season was
     skipped without having to inspect the DB by hand.
     """
-    conn = tmdb_persistent_cache._get_conn()
+    conn = tmdb_persistent_cache.get_conn()
     row = conn.execute(
         "SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "
         "FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?",
@@ -68,7 +68,7 @@ def record(tmdb_id: int, season: int, total: int, covered: int) -> None:
     workstream is trying to eliminate.
     """
     ratio = (covered / total) if total > 0 else 0.0
-    conn = tmdb_persistent_cache._get_conn()
+    conn = tmdb_persistent_cache.get_conn()
     conn.execute(
         "INSERT OR REPLACE INTO subtitle_coverage "
         "(tmdb_id, season, attempted_at, total_episodes, covered_episodes, coverage_ratio) "
@@ -90,7 +90,7 @@ def clear(tmdb_id: int | None = None, season: int | None = None) -> None:
     if not tmdb_persistent_cache.CACHE_DB_PATH.exists():
         return
 
-    conn = tmdb_persistent_cache._get_conn()
+    conn = tmdb_persistent_cache.get_conn()
     if tmdb_id is None:
         conn.execute("DELETE FROM subtitle_coverage")
     elif season is None:

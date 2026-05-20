@@ -224,8 +224,16 @@ class Scheduler:
         self.mark_complete(job)
 
     def mark_complete(self, job: EpisodeJob) -> None:
+        # Explicit None-check rather than ``assert`` — ``assert`` is stripped
+        # when Python runs under ``-O``, and a None result silently stored
+        # in self._results would poison the caller's response dict with no
+        # diagnostic.
+        if job.result is None:
+            raise RuntimeError(
+                f"mark_complete called with result=None for {job.episode_code}; "
+                "every job-completion path must set job.result first"
+            )
         with self._lock:
-            assert job.result is not None
             self._results[job.episode_code] = job.result
             self._pending_count -= 1
             if self._pending_count <= 0:
