@@ -83,8 +83,19 @@ def validate(assets_dir: Path) -> ValidationResult:
     failures: list[str] = []
     expected_hash = vectorizer_config_hash()
 
-    actual_sha = _sha256_of_file(tarball)
-    if manifest.get("tarball_sha256") != actual_sha:
+    # tarball.exists() above doesn't guarantee open() will succeed — a
+    # permission flip or transient I/O error between the existence check
+    # and the read would otherwise escape validate() unhandled.
+    try:
+        actual_sha: str | None = _sha256_of_file(tarball)
+    except OSError as exc:
+        failures.append(f"could not read tarball for hashing: {exc}")
+        actual_sha = None
+
+    # Only run the sha comparison if we actually computed one — when the
+    # read failed above, "could not read tarball for hashing" already
+    # tells the operator everything they need.
+    if actual_sha is not None and manifest.get("tarball_sha256") != actual_sha:
         # Distinguish "key absent" from "key is the wrong hex string" — a
         # manifest=None in the CI log otherwise looks like the manifest itself
         # is None, hiding the real cause.
@@ -139,16 +150,21 @@ def validate(assets_dir: Path) -> ValidationResult:
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
 
-    # `tarball.stat()` would re-raise OSError if a TOCTOU between _sha256_of_file
-    # and here flipped the file's readability (perms changed mid-run, transient
-    # EIO). validate() promises to return a ValidationResult, never raise — so
-    # use None when tarfile.open already showed the file wasn't safely readable.
+    # tarball.stat() can re-raise OSError on its own — a permission flip
+    # between tarfile.open succeeding and reaching this line would otherwise
+    # escape unhandled. Catch both that and the "tarfile.open already saw
+    # the file wasn't readable" case via the same `None` fallback.
+    try:
+        tarball_size: int | None = tarball.stat().st_size if tarball_readable else None
+    except OSError:
+        tarball_size = None
+
     summary = {
         "cache_format_version": manifest.get("cache_format_version"),
         "vectorizer_config_hash": manifest.get("vectorizer_config_hash"),
         "n_features": manifest.get("n_features"),
         "n_shows": n_shows,
-        "tarball_size_bytes": tarball.stat().st_size if tarball_readable else None,
+        "tarball_size_bytes": tarball_size,
         "tarball_sha256": actual_sha,
     }
     return ValidationResult(failures=failures, summary=summary)

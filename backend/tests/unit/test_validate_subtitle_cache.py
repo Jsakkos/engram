@@ -170,3 +170,47 @@ class TestValidate:
         # signalled the file wasn't safely readable. Regression guard against
         # someone later "tidying up" the conditional in main() into a TypeError.
         assert result.summary["tarball_size_bytes"] is None
+
+    def test_sha_read_failure_does_not_raise(self, vsc, tmp_path, monkeypatch):
+        """validate() promises to return a ValidationResult, never raise.
+        Simulate a permission flip between tarball.exists() and the sha
+        read — _sha256_of_file's open() would otherwise propagate OSError
+        and escape the function unhandled.
+        """
+        _make_assets(vsc, tmp_path)
+
+        def raise_oserror(_path):
+            raise PermissionError("simulated TOCTOU on tarball read")
+
+        monkeypatch.setattr(vsc, "_sha256_of_file", raise_oserror)
+
+        result = vsc.validate(tmp_path)  # must not raise
+        assert any("could not read tarball for hashing" in f for f in result.failures)
+        # The sha-mismatch check should NOT fire when actual_sha is None —
+        # the "could not read" failure already tells the operator what happened.
+        assert not any("tarball_sha256 mismatch" in f for f in result.failures)
+        # actual_sha lands in summary as None.
+        assert result.summary["tarball_sha256"] is None
+
+    def test_stat_failure_yields_none_size(self, vsc, tmp_path, monkeypatch):
+        """The symmetric TOCTOU on the tarball_readable=True branch: tarfile.open
+        succeeds, but tarball.stat() fails before the summary populate. validate()
+        must still return cleanly with tarball_size_bytes=None.
+        """
+        _make_assets(vsc, tmp_path)
+        original_stat = Path.stat
+
+        def stat_raises_for_tarball(self, *args, **kwargs):
+            # validate() calls tarball.stat() with no args; Path.exists() calls
+            # stat internally with follow_symlinks kwarg. Discriminate so the
+            # exists() guard still works and only the size-lookup line raises.
+            if self.name == "engram-subtitle-cache.tar.gz" and not args and not kwargs:
+                raise PermissionError("simulated TOCTOU on stat")
+            return original_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", stat_raises_for_tarball)
+
+        result = vsc.validate(tmp_path)  # must not raise
+        assert result.summary["tarball_size_bytes"] is None
+        # tarfile.open did succeed, so no "could not be read" failure here.
+        assert not any("could not be read" in f for f in result.failures)
