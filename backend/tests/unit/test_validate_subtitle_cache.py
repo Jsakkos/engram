@@ -146,6 +146,15 @@ class TestValidate:
         assert result.summary["n_features"] == HASHING_N_FEATURES
         assert len(result.summary["tarball_sha256"]) == 64
 
+    def test_null_shows_reports_clean_failure(self, vsc, tmp_path):
+        """A manifest with `"shows": null` (vs the key absent) used to hit
+        `len(None)` and exit with an unhandled TypeError. Now it must
+        accumulate the same "shows dict is empty" failure as the absent case.
+        """
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": None})
+        failures = vsc.validate(tmp_path).failures
+        assert any("shows dict in manifest is empty" in f for f in failures)
+
     def test_corrupt_tarball_reports_clean_failure(self, vsc, tmp_path):
         """Simulates a partial gh-release-download or wrong file uploaded:
         manifest claims a sha that won't match (irrelevant — could be anything),

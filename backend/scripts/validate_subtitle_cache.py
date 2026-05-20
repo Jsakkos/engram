@@ -126,7 +126,10 @@ def validate(assets_dir: Path) -> ValidationResult:
     if missing and tarball_readable:
         failures.append(f"tarball missing required entries: {sorted(missing)}")
 
-    n_shows = len(manifest.get("shows", {}))
+    # `get("shows", {})` falls back to {} only when the key is *absent* —
+    # `"shows": null` would return None and len(None) raises TypeError,
+    # bypassing the accumulated failures list. `or {}` handles both.
+    n_shows = len(manifest.get("shows") or {})
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
 
