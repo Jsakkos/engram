@@ -36,7 +36,9 @@ def _make_assets(
     build_dir = assets_dir / "_build" / "precomputed"
     build_dir.mkdir(parents=True)
     (build_dir / "idf.npy").write_bytes(b"fake-idf")
-    (build_dir / "manifest.json").write_text("{}")  # in-tar manifest; validator only checks members
+    (build_dir / "manifest.json").write_text(
+        "{}", encoding="utf-8"
+    )  # in-tar manifest; validator only checks members
 
     tarball = assets_dir / "engram-subtitle-cache.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
@@ -61,7 +63,7 @@ def _make_assets(
         "shows": {"Some Show": {"tmdb_id": 1, "seasons": [1], "episode_counts": {"1": 3}}},
     }
     manifest.update(manifest_overrides or {})
-    (assets_dir / "manifest.json").write_text(json.dumps(manifest))
+    (assets_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
 @pytest.mark.unit
@@ -109,13 +111,13 @@ class TestValidate:
         assert "manifest.json not found" in result.failures[0]
 
     def test_missing_tarball_reports_clean_failure(self, vsc, tmp_path):
-        (tmp_path / "manifest.json").write_text("{}")
+        (tmp_path / "manifest.json").write_text("{}", encoding="utf-8")
         result = vsc.validate(tmp_path)
         assert len(result.failures) == 1
         assert "engram-subtitle-cache.tar.gz not found" in result.failures[0]
 
     def test_malformed_manifest_reports_clean_failure(self, vsc, tmp_path):
-        (tmp_path / "manifest.json").write_text("{not valid json")
+        (tmp_path / "manifest.json").write_text("{not valid json", encoding="utf-8")
         (tmp_path / "engram-subtitle-cache.tar.gz").write_bytes(b"x")
         result = vsc.validate(tmp_path)
         assert len(result.failures) == 1
@@ -153,11 +155,12 @@ class TestValidate:
                     "n_features": HASHING_N_FEATURES,
                     "shows": {"Some Show": {}},
                 }
-            )
+            ),
+            encoding="utf-8",
         )
         (tmp_path / "engram-subtitle-cache.tar.gz").write_bytes(b"not a tarball")
         result = vsc.validate(tmp_path)
-        assert any("not a valid gzip tarball" in f for f in result.failures)
+        assert any("tarball could not be read" in f for f in result.failures)
         # The pre-existing SHA-mismatch failure must still be reported — the
         # whole point of the try/except is to preserve already-accumulated
         # failures when tarfile.open throws.

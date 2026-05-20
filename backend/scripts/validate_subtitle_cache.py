@@ -114,14 +114,16 @@ def validate(assets_dir: Path) -> ValidationResult:
             f"manifest={manifest.get('n_features')!r}, current main={HASHING_N_FEATURES!r}"
         )
 
-    # Catch tarfile.TarError (parent of ReadError, CompressionError, etc.) so a
-    # corrupt tarball doesn't blow away the failures already collected above.
+    # Catch tarfile.TarError (parent of ReadError, CompressionError, etc.) for
+    # corrupt archives, plus OSError for filesystem-level failures (permission
+    # denied, transient I/O error) so neither path blows away the failures
+    # already collected above.
     tarball_readable = True
     try:
         with tarfile.open(tarball, "r:gz") as tar:
             members = set(tar.getnames())
-    except tarfile.TarError as exc:
-        failures.append(f"tarball is not a valid gzip tarball: {exc}")
+    except (tarfile.TarError, OSError) as exc:
+        failures.append(f"tarball could not be read: {exc}")
         members = set()
         tarball_readable = False
     # Skip the membership check on unreadable tarballs — `REQUIRED_TARBALL_ENTRIES - members`

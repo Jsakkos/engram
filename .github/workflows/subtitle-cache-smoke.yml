@@ -38,6 +38,12 @@ on:
 permissions:
   contents: read
 
+# Avoid stacking — a push at 12:58 UTC and the 13:00 UTC schedule could
+# otherwise queue two runs back-to-back validating the same release.
+concurrency:
+  group: subtitle-cache-smoke
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
