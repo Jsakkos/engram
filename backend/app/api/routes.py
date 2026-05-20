@@ -1582,16 +1582,24 @@ async def upc_lookup(
 
 @router.post("/contributions/{job_id}/fetch-cover")
 async def fetch_cover(
+    job_id: int,
     request: FetchCoverRequest,
-    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
     from app.services.config_service import get_config as get_db_config
 
-    # SSRF guard: only fetch from allowlisted public image hosts.
+    # SSRF guard runs BEFORE the DB lookup so a disallowed URL fails fast
+    # with 400 — and so test_fetch_cover_security can prove the guard fires
+    # before any other handler logic. Do NOT replace this with
+    # Depends(get_job_or_404), which would 404 first on a missing job and
+    # mask the security check.
     if not is_allowed_image_url(request.image_url):
         raise HTTPException(status_code=400, detail="Image URL host is not in the allowlist")
 
+    job = await session.get(DiscJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
     if not job.content_hash:
         raise HTTPException(status_code=400, detail="No content hash")
 

@@ -4,7 +4,6 @@ import re
 import time
 from collections.abc import Callable
 from functools import lru_cache, wraps
-from threading import Lock
 from typing import Any, TypeVar
 
 import requests
