@@ -3,15 +3,14 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
   ChevronRight,
-  Search,
   Loader2,
   Check,
   Image,
   Barcode,
   Tag,
-  Film,
   Save,
 } from "lucide-react";
+import { IcoMovie, IcoSearch } from "../app/components/icons";
 import { SvActionButton, SvLabel, SvNotice, SvPanel, sv } from "../app/components/synapse";
 import { formatDurationShort } from "../utils/formatting";
 
@@ -125,7 +124,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
       steps.push({ id: "cover", label: "Cover", icon: <Image size={14} /> });
     }
     if (extras.length > 0) {
-      steps.push({ id: "extras", label: "Extras", icon: <Film size={14} /> });
+      steps.push({ id: "extras", label: "Extras", icon: <IcoMovie size={14} /> });
     }
     steps.push({ id: "save", label: "Save", icon: <Save size={14} /> });
     return steps;
@@ -313,7 +312,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                   onClick={handleLookup}
                   disabled={lookupLoading || !upc.trim()}
                 >
-                  {lookupLoading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                  {lookupLoading ? <Loader2 size={12} className="animate-spin" /> : <IcoSearch size={12} />}
                   Lookup
                 </SvActionButton>
               </div>

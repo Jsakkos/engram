@@ -14,7 +14,7 @@
 
 import { useState, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 import { motion } from "motion/react";
-import { X, AlertTriangle, RefreshCw } from "lucide-react";
+import { IcoCancel, IcoError, IcoRetry } from "../icons";
 import type { DiscState } from "../DiscCard";
 import { sv } from "../synapse";
 
@@ -140,7 +140,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     ariaLabel="Cancel job"
                     paddingX={0}
                 >
-                    <X size={14} />
+                    <IcoCancel size={14} />
                 </ToneButton>
             )}
 
@@ -152,7 +152,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     ariaLabel="Wrong title — re-identify disc"
                     paddingX={10}
                 >
-                    <RefreshCw size={12} />
+                    <IcoRetry size={12} />
                     <span style={{ fontSize: 10 }}>Wrong title?</span>
                 </ToneButton>
             )}
@@ -165,7 +165,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     ariaLabel="Review needed — open review queue"
                     paddingX={12}
                 >
-                    <AlertTriangle size={14} />
+                    <IcoError size={14} />
                     <span style={{ fontSize: 11 }}>Review needed</span>
                 </ToneButton>
             )}

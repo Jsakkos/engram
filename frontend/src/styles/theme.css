@@ -366,3 +366,30 @@
 .sv-tnum {
   font-variant-numeric: tabular-nums;
 }
+
+/* ─── Engram mark animations ──────────────────────────────────────── */
+/* engSpin — slow rotation for the splash/loading mark. */
+@keyframes engSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* engBlink — used on the splash "INITIALIZING..." trailing dots. */
+@keyframes engBlink {
+  0%, 49%, 100% { opacity: 1; }
+  50%, 99% { opacity: 0.2; }
+}
+
+/* Respect prefers-reduced-motion for the Engram-namespaced animations.
+   The React MarkAnimated component also gates these via motion/react's
+   useReducedMotion hook; this rule provides defense-in-depth for any
+   surface that imports the keyframe directly — most importantly the
+   pre-React HTML splash in index.html, which spins the same mark via
+   inline CSS before React has a chance to apply the hook. */
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="sv-mark-animated"] svg,
+  .pre-splash-mark,
+  .pre-splash-label-dots {
+    animation: none !important;
+  }
+}
