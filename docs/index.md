@@ -73,5 +73,6 @@ and files everything into your media library -- automatically.
 [Get Started](getting-started/installation.md){ .md-button .md-button--primary }
 [API Reference](api/rest.md){ .md-button }
 [Architecture](architecture/overview.md){ .md-button }
+[Brand System](development/brand.md){ .md-button }
 
 </div>

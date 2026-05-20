@@ -1,4 +1,11 @@
-/* Cyberpunk ConfigWizard Styling */
+/* ConfigWizard — Synapse v2 brand chrome.
+ *
+ * Colors source from theme.css's --color-sv-* custom properties so the
+ * wizard stays in lockstep with the rest of the app. The atmospheric
+ * effects (scanlines, vignette) are NOT re-applied here — the global
+ * <SvAtmosphere> already paints them at the app root, and the handoff
+ * explicitly warns: "Resist over-glow… do not over-apply on every panel."
+ */
 
 /* Full-viewport backdrop */
 .wizard-overlay {
@@ -41,18 +48,19 @@
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    background: #0a0e18;
-    border: 2px solid rgba(94, 234, 212, 0.5);
-    box-shadow: 0 0 30px rgba(94, 234, 212, 0.4), inset 0 0 30px rgba(94, 234, 212, 0.1);
+    /* Match SvPanel chrome: subtle gradient + 1px line, sharp 90° corners. */
+    background: linear-gradient(180deg, rgba(18, 24, 39, 0.92), rgba(10, 14, 24, 0.96));
+    border: 1px solid var(--color-sv-line-hi);
+    box-shadow: 0 0 24px rgba(94, 234, 212, 0.14);
     position: relative;
     overflow: hidden;
 }
 
 /* Modal Header */
 .modal-header {
-    padding: 1.5rem 2rem;
-    background: rgba(94, 234, 212, 0.05);
-    border-bottom: 2px solid rgba(94, 234, 212, 0.3);
+    padding: 1.25rem 1.75rem;
+    background: rgba(94, 234, 212, 0.04);
+    border-bottom: 1px solid var(--color-sv-line);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -61,73 +69,37 @@
 }
 
 .modal-title {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 700;
-    color: #5eead4;
+    color: var(--color-sv-cyan-hi);
     text-transform: uppercase;
-    letter-spacing: 3px;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    text-shadow: 0 0 15px rgba(94, 234, 212, 0.6);
+    letter-spacing: 0.22em;
+    font-family: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+    text-shadow: 0 0 12px rgba(94, 234, 212, 0.5);
     margin: 0;
 }
 
 .modal-close {
-    background: none;
-    border: 2px solid rgba(255, 61, 127, 0.5);
-    color: #ff3d7f;
-    font-size: 2rem;
-    width: 40px;
-    height: 40px;
+    background: transparent;
+    border: 1px solid rgba(255, 61, 127, 0.45);
+    color: var(--color-sv-magenta);
+    font-size: 1.5rem;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
     font-family: Arial, sans-serif;
     line-height: 1;
     padding: 0;
 }
 
 .modal-close:hover {
-    background: rgba(255, 61, 127, 0.2);
-    border-color: #ff3d7f;
-    box-shadow: 0 0 15px rgba(255, 61, 127, 0.5);
-    transform: rotate(90deg);
-}
-
-/* Scanline effect */
-.wizard-modal::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(94, 234, 212, 0.03) 2px,
-        rgba(94, 234, 212, 0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* Animated corners */
-.wizard-modal::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-    background:
-        linear-gradient(90deg, #5eead4 2px, transparent 2px) 0 0,
-        linear-gradient(90deg, #5eead4 2px, transparent 2px) 0 100%,
-        linear-gradient(0deg, #5eead4 2px, transparent 2px) 0 0,
-        linear-gradient(0deg, #5eead4 2px, transparent 2px) 100% 0;
-    background-size: 20px 2px, 20px 2px, 2px 20px, 2px 20px;
-    background-repeat: no-repeat;
-    z-index: 1;
+    background: rgba(255, 61, 127, 0.10);
+    border-color: var(--color-sv-magenta);
+    box-shadow: 0 0 12px rgba(255, 61, 127, 0.45);
 }
 
 /* Progress Steps */
@@ -237,14 +209,16 @@
     margin-bottom: 1.5rem;
 }
 
+/* Labels are CYAN-DIM uppercase mono — magenta is reserved for active
+ * state and primary CTA per the brand handoff. */
 .form-group label {
     display: block;
     margin-bottom: 0.5rem;
-    color: #ff3d7f;
+    color: var(--color-sv-ink-dim);
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.18em;
     font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
@@ -253,38 +227,39 @@
 .form-group input[type="number"],
 .form-group select {
     width: 100%;
-    padding: 0.75rem;
-    background: rgba(94, 234, 212, 0.05);
-    border: 2px solid rgba(94, 234, 212, 0.3);
-    color: #e6ecf5;
-    font-size: 0.9rem;
+    padding: 0.65rem 0.75rem;
+    background: rgba(94, 234, 212, 0.04);
+    border: 1px solid var(--color-sv-line-mid);
+    color: var(--color-sv-ink);
+    font-size: 0.88rem;
     font-family: "JetBrains Mono", ui-monospace, monospace;
-    transition: all 0.3s ease;
+    transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .form-group input:focus,
 .form-group select:focus {
     outline: none;
-    border-color: #5eead4;
-    box-shadow: 0 0 15px rgba(94, 234, 212, 0.3);
-    background: rgba(94, 234, 212, 0.1);
+    border-color: var(--color-sv-cyan);
+    box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
+    background: rgba(94, 234, 212, 0.08);
 }
 
 .form-group input::placeholder {
-    color: #2a3147;
+    color: var(--color-sv-ink-ghost);
 }
 
 .form-group select option {
-    background: #0a0e18;
-    color: #e6ecf5;
+    background: var(--color-sv-bg1);
+    color: var(--color-sv-ink);
 }
 
 .form-hint {
     display: block;
-    margin-top: 0.5rem;
-    font-size: 0.75rem;
-    color: #4a5369;
+    margin-top: 0.45rem;
+    font-size: 0.72rem;
+    color: var(--color-sv-ink-faint);
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    letter-spacing: 0.02em;
 }
 
 /* Checkbox */
@@ -614,11 +589,11 @@
     cursor: not-allowed;
 }
 
-/* Wizard Actions */
+/* Wizard Actions — tinted-cyan footer chrome, magenta primary CTA. */
 .wizard-actions {
-    padding: 1.5rem 2rem;
-    background: rgba(255, 61, 127, 0.05);
-    border-top: 2px solid rgba(255, 61, 127, 0.3);
+    padding: 1.25rem 1.75rem;
+    background: rgba(94, 234, 212, 0.03);
+    border-top: 1px solid var(--color-sv-line);
     display: flex;
     justify-content: space-between;
     position: relative;
@@ -626,20 +601,20 @@
 }
 
 .wizard-actions button {
-    padding: 0.75rem 2rem;
+    padding: 0.7rem 1.6rem;
     font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 700;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    border: 2px solid;
-    background: #0a0e18;
+    letter-spacing: 0.20em;
+    border: 1px solid;
+    background: var(--color-sv-bg0);
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .wizard-actions button:not(:disabled):hover {
-    box-shadow: 0 0 20px currentColor;
+    box-shadow: 0 0 14px currentColor;
 }
 
 .wizard-actions button:disabled {
@@ -648,21 +623,21 @@
 }
 
 .wizard-actions .btn-secondary {
-    color: #4a5369;
-    border-color: #2a3147;
+    color: var(--color-sv-ink-dim);
+    border-color: var(--color-sv-line);
 }
 
 .wizard-actions .btn-secondary:not(:disabled):hover {
-    color: #5eead4;
-    border-color: #5eead4;
+    color: var(--color-sv-cyan);
+    border-color: var(--color-sv-cyan);
 }
 
+/* Primary CTA stays magenta — "magenta is action" per the handoff. */
 .wizard-actions .btn-primary {
-    color: #ff3d7f;
-    border-color: #ff3d7f;
+    color: var(--color-sv-magenta);
+    border-color: var(--color-sv-magenta);
 }
 
 .wizard-actions .btn-primary:not(:disabled):hover {
-    background: rgba(255, 61, 127, 0.1);
-    border-color: #ff3d7f;
+    background: rgba(255, 61, 127, 0.10);
 }

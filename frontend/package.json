@@ -11,7 +11,8 @@
         "test:unit": "vitest run",
         "test:e2e": "playwright test",
         "test:e2e:ui": "playwright test --ui",
-        "test:e2e:headed": "playwright test --headed"
+        "test:e2e:headed": "playwright test --headed",
+        "brand:export": "node scripts/render-svg-sources.mjs && node scripts/generate-brand-assets.mjs"
     },
     "dependencies": {
         "@popperjs/core": "2.11.8",
@@ -85,7 +86,9 @@
         "eslint-plugin-react-hooks": "^4.6.0",
         "eslint-plugin-react-refresh": "^0.4.5",
         "jsdom": "^28.1.0",
+        "png2icons": "^2.0.1",
         "postcss": "^8.5.6",
+        "sharp": "^0.34.0",
         "tailwindcss": "4.2.4",
         "typescript": "^5.2.2",
         "vite": "^5.0.8",

@@ -1,0 +1,32 @@
+{
+  "generated": "2026-05-20T20:45:23.694Z",
+  "favicons": [
+    "favicons/favicon-16.png",
+    "favicons/favicon-24.png",
+    "favicons/favicon-32.png",
+    "favicons/favicon-48.png",
+    "favicons/favicon-64.png",
+    "favicons/favicon.svg",
+    "favicons/favicon.ico"
+  ],
+  "windows": [
+    "app-icons/windows/engram.ico"
+  ],
+  "macos": [
+    "app-icons/macos/engram.icns",
+    "app-icons/macos/iconset/icon_16x16.png",
+    "app-icons/macos/iconset/icon_32x32.png",
+    "app-icons/macos/iconset/icon_64x64.png",
+    "app-icons/macos/iconset/icon_128x128.png",
+    "app-icons/macos/iconset/icon_256x256.png",
+    "app-icons/macos/iconset/icon_512x512.png",
+    "app-icons/macos/iconset/icon_1024x1024.png"
+  ],
+  "linux": [
+    "app-icons/linux/engram-32.png",
+    "app-icons/linux/engram-48.png",
+    "app-icons/linux/engram-64.png",
+    "app-icons/linux/engram-128.png",
+    "app-icons/linux/engram-256.png"
+  ]
+}

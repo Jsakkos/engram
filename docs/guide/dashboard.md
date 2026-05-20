@@ -8,7 +8,7 @@ When you open Engram, the dashboard shows all current disc jobs as cards. Each c
 
 ![Empty state -- no discs detected](../screenshots/01-empty-state.png)
 
-When no jobs are active, the dashboard displays a pulsing Engram logo with context-sensitive messaging depending on the active filter.
+When no jobs are active, the dashboard displays a pulsing Engram mark (three open arcs + horizontal read-line into a magenta node — the "trace being written" motif from the Synapse v2 brand system) with context-sensitive messaging depending on the active filter.
 
 ## Job Cards
 

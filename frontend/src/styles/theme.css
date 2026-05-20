@@ -366,3 +366,16 @@
 .sv-tnum {
   font-variant-numeric: tabular-nums;
 }
+
+/* ─── Engram mark animations ──────────────────────────────────────── */
+/* engSpin — slow rotation for the splash/loading mark. */
+@keyframes engSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* engBlink — used on the splash "INITIALIZING..." trailing dots. */
+@keyframes engBlink {
+  0%, 49%, 100% { opacity: 1; }
+  50%, 99% { opacity: 0.2; }
+}

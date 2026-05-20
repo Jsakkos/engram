@@ -16,6 +16,7 @@ import LibraryPage from "../components/LibraryPage";
 import { FEATURES } from "../config/constants";
 import type { Job } from "../types";
 import {
+  Splash,
   SvAtmosphere,
   SvTopBar,
   SvStatusBar,
@@ -113,6 +114,21 @@ function MainDashboard() {
   const { jobs, titlesMap, isConnected, cancelJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
 
+  // Show the full-screen Splash with a "RECONNECTING…" label when the
+  // WebSocket has been down for >2.5s. The grace period absorbs momentary
+  // reconnect blips — without it, every brief WS hiccup would flash the
+  // splash. Backend-truly-down stays surfaced via the top-bar pill until
+  // the grace fires, then the splash takes over.
+  const [showOfflineSplash, setShowOfflineSplash] = useState(false);
+  useEffect(() => {
+    if (isConnected) {
+      setShowOfflineSplash(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShowOfflineSplash(true), 2500);
+    return () => window.clearTimeout(t);
+  }, [isConnected]);
+
   // Disc filtering and transformation
   const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
 
@@ -142,6 +158,15 @@ function MainDashboard() {
 
   return (
     <SvAtmosphere ripActive={discsData.some((d) => d.state === "ripping")}>
+      {/* Full-screen overlay when WS has been down past the grace period.
+          Stays on top of all chrome (z-index 100 inside Splash). */}
+      {showOfflineSplash && (
+        <Splash
+          label="RECONNECTING"
+          captionRight={`v${__APP_VERSION__}`}
+          atmosphere={false}
+        />
+      )}
       <SvTopBar
         isConnected={isConnected}
         version={__APP_VERSION__}

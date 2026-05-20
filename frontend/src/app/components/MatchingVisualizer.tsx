@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { TrendingUp } from "lucide-react";
+import { IcoConfidence } from "./icons";
 import type { MatchCandidate } from "./DiscCard";
 import { sv, SvBar, SvLabel } from "./synapse";
 
@@ -77,7 +77,7 @@ export function MatchingVisualizer({ candidates, compact = false }: MatchingVisu
           fontWeight: 700,
         }}
       >
-        <TrendingUp size={14} />
+        <IcoConfidence size={14} />
         <SvLabel size={10} color={sv.yellow}>
           Match voting
         </SvLabel>

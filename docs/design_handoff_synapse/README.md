@@ -1,5 +1,7 @@
 # Handoff: Engram — Synapse UI Refresh
 
+> **See also:** The brand system itself (mark geometry, wordmark, lockups, app icons, favicon, splash, full icon set) is documented in a separate handoff at [`docs/design_handoff_brand/`](../design_handoff_brand/README.md). This document covers the **screen-level UI direction** (dashboard, review queue, library, history). The two are complementary — implementation guidance for developers is at [`docs/development/brand.md`](../development/brand.md).
+
 ## Overview
 
 Full UI refresh for **Engram**, a disc ripping & media organization tool that automates the workflow from disc insertion → ripping → metadata matching → archive. This handoff covers the **Synapse v2** direction: a Neo-Tokyo / Blade Runner cyberpunk aesthetic — deep blue-black canvas, cyan + magenta accents, Chakra Petch + JetBrains Mono, with light atmospheric chrome (scanlines, distant skyline, scrolling telemetry).

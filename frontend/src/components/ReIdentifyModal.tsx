@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Disc3, Film, Tv, Search, RefreshCw } from 'lucide-react';
+import { IcoDisc, IcoMovie, IcoTv, IcoSearch, IcoRetry } from '../app/components/icons';
 import type { Job } from '../types';
 import { SvPanel, SvLabel, sv } from '../app/components/synapse';
 
@@ -149,7 +149,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                 animate={{ rotate: [0, 360] }}
                                 transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
                             >
-                                <RefreshCw
+                                <IcoRetry
                                     size={22}
                                     color={sv.cyan}
                                     style={{ filter: `drop-shadow(0 0 6px ${sv.cyan}cc)` }}
@@ -195,7 +195,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                 background: `${sv.yellow}0d`,
                             }}
                         >
-                            <Disc3
+                            <IcoDisc
                                 size={16}
                                 color={sv.yellow}
                                 style={{ marginTop: 2, flexShrink: 0, filter: `drop-shadow(0 0 4px ${sv.yellow}99)` }}
@@ -234,7 +234,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <SvLabel size={10}>Search TMDB</SvLabel>
                             <div style={{ position: 'relative' }}>
-                                <Search
+                                <IcoSearch
                                     size={14}
                                     color={sv.inkFaint}
                                     style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }}
@@ -256,7 +256,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                                         style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}
                                     >
-                                        <RefreshCw size={14} color={sv.cyan} />
+                                        <IcoRetry size={14} color={sv.cyan} />
                                     </motion.div>
                                 )}
                             </div>
@@ -323,9 +323,9 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                                         }}
                                                     >
                                                         {result.type === 'tv' ? (
-                                                            <Tv size={14} color={sv.inkFaint} />
+                                                            <IcoTv size={14} color={sv.inkFaint} />
                                                         ) : (
-                                                            <Film size={14} color={sv.inkFaint} />
+                                                            <IcoMovie size={14} color={sv.inkFaint} />
                                                         )}
                                                     </div>
                                                 )}
@@ -400,8 +400,8 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                                 {(
                                     [
-                                        { value: 'movie', label: 'Movie', Icon: Film },
-                                        { value: 'tv', label: 'TV Show', Icon: Tv },
+                                        { value: 'movie', label: 'Movie', Icon: IcoMovie },
+                                        { value: 'tv', label: 'TV Show', Icon: IcoTv },
                                     ] as const
                                 ).map(({ value, label, Icon }) => {
                                     const active = contentType === value;
