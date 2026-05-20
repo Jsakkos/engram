@@ -139,12 +139,16 @@ def validate(assets_dir: Path) -> ValidationResult:
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
 
+    # `tarball.stat()` would re-raise OSError if a TOCTOU between _sha256_of_file
+    # and here flipped the file's readability (perms changed mid-run, transient
+    # EIO). validate() promises to return a ValidationResult, never raise — so
+    # use None when tarfile.open already showed the file wasn't safely readable.
     summary = {
         "cache_format_version": manifest.get("cache_format_version"),
         "vectorizer_config_hash": manifest.get("vectorizer_config_hash"),
         "n_features": manifest.get("n_features"),
         "n_shows": n_shows,
-        "tarball_size_bytes": tarball.stat().st_size,
+        "tarball_size_bytes": tarball.stat().st_size if tarball_readable else None,
         "tarball_sha256": actual_sha,
     }
     return ValidationResult(failures=failures, summary=summary)
@@ -161,7 +165,13 @@ def main() -> int:
     if result.summary:
         for key, value in result.summary.items():
             if key == "tarball_size_bytes":
-                print(f"tarball size: {value:,} bytes")
+                # `value` is None when the tarball wasn't safely readable;
+                # the validate() comment explains the TOCTOU rationale.
+                print(
+                    f"tarball size: {value:,} bytes"
+                    if value is not None
+                    else "tarball size: unreadable"
+                )
             else:
                 # Summary values come from manifest.json (already validated as
                 # JSON-safe) plus our own hex digest — no repr quoting needed.

@@ -165,3 +165,8 @@ class TestValidate:
         # whole point of the try/except is to preserve already-accumulated
         # failures when tarfile.open throws.
         assert any("tarball_sha256 mismatch" in f for f in result.failures)
+        # On the unreadable-tarball branch the summary's tarball_size_bytes is
+        # None — validate() must never call stat() after tarfile.open already
+        # signalled the file wasn't safely readable. Regression guard against
+        # someone later "tidying up" the conditional in main() into a TypeError.
+        assert result.summary["tarball_size_bytes"] is None
