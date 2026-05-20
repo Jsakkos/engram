@@ -330,14 +330,32 @@ class TestFetchShowIdExactMatch:
 
     @patch("app.matcher.tmdb_client.requests.get")
     def test_api_error_returns_none(self, mock_get):
-        """Test that API error returns None."""
-        mock_get.return_value = Mock(status_code=500)
+        """Test that API error returns None.
+
+        Mock now actually raises HTTPError on raise_for_status() — the
+        previous version of this test relied on the function having an
+        ``if response.status_code == 200:`` guard that silently fell
+        through to return None, which let a 429/500 get permanently
+        cached as None by @lru_cache. With raise_for_status() in place,
+        a transient HTTPError propagates through retries, exhausts, and
+        the public wrapper's try/except returns None — without poisoning
+        the cache.
+        """
+        err_response = Mock(status_code=500)
+        err_response.raise_for_status = Mock(
+            side_effect=requests.exceptions.HTTPError("500 Server Error")
+        )
+        mock_get.return_value = err_response
 
         with patch("app.services.config_service.get_config_sync") as mock_conf:
             mock_conf.return_value.tmdb_api_key = "test_key"
             result = fetch_show_id("Test Show")
 
         assert result is None
+        # Critical: the post-retry HTTPError must NOT be cached as None.
+        # If it were, the next call for "Test Show" would return None
+        # from the cache without ever hitting the network again.
+        assert _fetch_show_id_cached.cache_info().currsize == 0
 
 
 @pytest.mark.unit

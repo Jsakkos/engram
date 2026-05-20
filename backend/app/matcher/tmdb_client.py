@@ -259,14 +259,20 @@ def fetch_show_id(show_name: str) -> str | None:
     is configured. Caching the ``None`` early-return would poison the cache
     on the common first-boot path (user starts Engram, then sets the TMDB
     key in ConfigWizard — later calls would keep returning the cached None
-    until process restart).
+    until process restart). Also catches post-retry RequestException so a
+    transient TMDB failure surfaces as None (preserving the external
+    contract) without being cached by @lru_cache as a permanent None.
     """
     from app.services.config_service import get_config_sync
 
     if not get_config_sync().tmdb_api_key:
         logger.warning("TMDB API key not configured in Engram settings")
         return None
-    return _fetch_show_id_cached(show_name)
+    try:
+        return _fetch_show_id_cached(show_name)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch show ID for '{show_name}': {e}", exc_info=True)
+        return None
 
 
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
@@ -311,41 +317,46 @@ def _fetch_show_id_cached(show_name: str) -> str | None:
     else:
         params["api_key"] = api_key
 
+    # raise_for_status() turns non-200 responses (429/5xx, etc.) into
+    # HTTPError so @retry_network_operation can retry. Previously a 429
+    # silently fell through ``if response.status_code == 200:`` and the
+    # function eventually returned None — which @lru_cache would then
+    # permanently store for the show name, silently disabling TMDB
+    # lookups for that show until process restart.
     response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
 
-    results = []
-    if response.status_code == 200:
-        results = response.json().get("results", [])
-        logger.debug(f"TMDB search for '{show_name}': {len(results)} results")
+    results = response.json().get("results", [])
+    logger.debug(f"TMDB search for '{show_name}': {len(results)} results")
 
-        if results:
-            logger.debug(
-                f"Top result: {results[0].get('name')} ({results[0].get('first_air_date')}) ID: {results[0].get('id')}"
-            )
-            # ... (logging)
-            best_match = results[0]
-            logger.info(
-                f"Matched '{show_name}' to TMDB: '{best_match['name']}' (ID: {best_match['id']})"
-            )
-            return str(best_match["id"])
+    if results:
+        logger.debug(
+            f"Top result: {results[0].get('name')} ({results[0].get('first_air_date')}) ID: {results[0].get('id')}"
+        )
+        # ... (logging)
+        best_match = results[0]
+        logger.info(
+            f"Matched '{show_name}' to TMDB: '{best_match['name']}' (ID: {best_match['id']})"
+        )
+        return str(best_match["id"])
 
-        # Try common variations if exact match fails
-        for variation in variations:
-            if variation != show_name and variation:  # Skip if same or empty
-                variation_params = params.copy()
-                variation_params["query"] = variation
+    # Try common variations if exact match fails
+    for variation in variations:
+        if variation != show_name and variation:  # Skip if same or empty
+            variation_params = params.copy()
+            variation_params["query"] = variation
 
-                response = requests.get(url, headers=headers, params=variation_params, timeout=30)
-                if response.status_code == 200:
-                    results = response.json().get("results", [])
-                    if results:
-                        best_match = results[0]
-                        # ... (logging)
-                        logger.info(
-                            f"Matched '{show_name}' (via '{variation}') to TMDB: "
-                            f"'{best_match['name']}' (ID: {best_match['id']})"
-                        )
-                        return str(best_match["id"])
+            response = requests.get(url, headers=headers, params=variation_params, timeout=30)
+            response.raise_for_status()
+            results = response.json().get("results", [])
+            if results:
+                best_match = results[0]
+                # ... (logging)
+                logger.info(
+                    f"Matched '{show_name}' (via '{variation}') to TMDB: "
+                    f"'{best_match['name']}' (ID: {best_match['id']})"
+                )
+                return str(best_match["id"])
 
     # Fallback: Fuzzy match against popular shows
     # This handles cases like "Southpark" -> "South Park" (missing spaces)
@@ -384,7 +395,10 @@ def _fetch_show_id_cached(show_name: str) -> str | None:
     logger.warning(
         f"Could not find show '{show_name}' on TMDB (tried {num_variations} variations). API Key valid: {bool(api_key)}"
     )
-    if not results and response.status_code == 200:
+    # Reaching here means every requests.get() returned 200 (any non-200
+    # would have raised via raise_for_status() above) but no variation
+    # yielded a match — log the last response body for diagnostics.
+    if not results:
         logger.debug(f"TMDB Response: {response.text[:500]}")
     return None
 

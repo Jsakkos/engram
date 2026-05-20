@@ -336,10 +336,15 @@ def main() -> int:
         for idx, show in enumerate(shows, 1):
             show_start = time.monotonic()
             tally_snapshot = (tally.cache_hits, tally.downloaded, tally.not_found)
+            # `transient` is a Progress() constructor argument that makes
+            # the whole bar vanish on exit, not a per-task option — passing
+            # it here is silently stored as task metadata and has no visual
+            # effect. The per-show task is removed cleanly by the
+            # `progress.remove_task(season_task)` call below after the
+            # show finishes.
             season_task = progress.add_task(
                 f"  {show['name']}",
                 total=show["seasons"],
-                transient=True,
             )
 
             logger.info(f"[{idx}/{len(shows)}] {show['name']} (TMDB {show['tmdb_id']})")
