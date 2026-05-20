@@ -8,7 +8,6 @@ synthetic release-assets dir, mutates one field, and asserts the validator
 reports exactly that failure.
 """
 
-import hashlib
 import importlib.util
 import json
 import sys
@@ -42,6 +41,7 @@ def vsc():
 
 
 def _make_assets(
+    vsc,
     assets_dir: Path,
     *,
     manifest_overrides: dict | None = None,
@@ -66,7 +66,10 @@ def _make_assets(
                 info.size = 0
                 tar.addfile(info)
 
-    sha = "0" * 64 if corrupt_sha else hashlib.sha256(tarball.read_bytes()).hexdigest()
+    # Use the validator's own helper so the test proves it agrees with the
+    # build script + validator on the same bytes (matches the round-trip
+    # test in test_build_subtitle_cache.py).
+    sha = "0" * 64 if corrupt_sha else vsc._sha256_of_file(tarball)
     manifest = {
         "tarball_sha256": sha,
         "cache_format_version": CACHE_FORMAT_VERSION,
@@ -81,37 +84,37 @@ def _make_assets(
 @pytest.mark.unit
 class TestValidate:
     def test_healthy_release_returns_no_failures(self, vsc, tmp_path):
-        _make_assets(tmp_path)
+        _make_assets(vsc, tmp_path)
         assert vsc.validate(tmp_path).failures == []
 
     def test_sha_mismatch_detected(self, vsc, tmp_path):
-        _make_assets(tmp_path, corrupt_sha=True)
+        _make_assets(vsc, tmp_path, corrupt_sha=True)
         failures = vsc.validate(tmp_path).failures
         assert any("tarball_sha256 mismatch" in f for f in failures)
 
     def test_format_version_mismatch_detected(self, vsc, tmp_path):
-        _make_assets(tmp_path, manifest_overrides={"cache_format_version": "999"})
+        _make_assets(vsc, tmp_path, manifest_overrides={"cache_format_version": "999"})
         failures = vsc.validate(tmp_path).failures
         assert any("cache_format_version mismatch" in f for f in failures)
 
     def test_vectorizer_hash_mismatch_detected(self, vsc, tmp_path):
-        _make_assets(tmp_path, manifest_overrides={"vectorizer_config_hash": "deadbeef"})
+        _make_assets(vsc, tmp_path, manifest_overrides={"vectorizer_config_hash": "deadbeef"})
         failures = vsc.validate(tmp_path).failures
         assert any("vectorizer_config_hash mismatch" in f for f in failures)
 
     def test_n_features_mismatch_detected(self, vsc, tmp_path):
-        _make_assets(tmp_path, manifest_overrides={"n_features": 1})
+        _make_assets(vsc, tmp_path, manifest_overrides={"n_features": 1})
         failures = vsc.validate(tmp_path).failures
         assert any("n_features mismatch" in f for f in failures)
 
     def test_missing_tarball_entries_detected(self, vsc, tmp_path):
         # Tarball that's missing precomputed/idf.npy.
-        _make_assets(tmp_path, tarball_members=["precomputed", "precomputed/manifest.json"])
+        _make_assets(vsc, tmp_path, tarball_members=["precomputed", "precomputed/manifest.json"])
         failures = vsc.validate(tmp_path).failures
         assert any("missing required entries" in f for f in failures)
 
     def test_empty_shows_dict_detected(self, vsc, tmp_path):
-        _make_assets(tmp_path, manifest_overrides={"shows": {}})
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": {}})
         failures = vsc.validate(tmp_path).failures
         assert any("shows dict in manifest is empty" in f for f in failures)
 
@@ -136,7 +139,7 @@ class TestValidate:
         assert "not valid JSON" in result.failures[0]
 
     def test_summary_populated_on_healthy_release(self, vsc, tmp_path):
-        _make_assets(tmp_path)
+        _make_assets(vsc, tmp_path)
         result = vsc.validate(tmp_path)
         assert result.summary["n_shows"] == 1
         assert result.summary["cache_format_version"] == CACHE_FORMAT_VERSION

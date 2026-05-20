@@ -347,6 +347,12 @@ class TestMainRoundTrip:
         tfidf = TfidfMatcher()
         tfidf.load_precomputed(*loaded)
         results = tfidf.match("the crew explores a far away planet")
+        # Guard before indexing so a silent loader failure or all-zero vectors
+        # surface as a readable assertion rather than an IndexError.
+        assert results, (
+            "tfidf.match returned no candidates — precomputed cache may not "
+            "have loaded correctly or vectorizer produced empty output"
+        )
         assert results[0][0] == "S01E02", (
             "matched against the wrong episode — vectorizer or IDF "
             "computation differs between build script and consumer"

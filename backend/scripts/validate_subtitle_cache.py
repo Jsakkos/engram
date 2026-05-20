@@ -108,16 +108,18 @@ def validate(assets_dir: Path) -> ValidationResult:
 
     # Catch tarfile.TarError (parent of ReadError, CompressionError, etc.) so a
     # corrupt tarball doesn't blow away the failures already collected above.
+    tarball_readable = True
     try:
         with tarfile.open(tarball, "r:gz") as tar:
             members = set(tar.getnames())
     except tarfile.TarError as exc:
         failures.append(f"tarball is not a valid gzip tarball: {exc}")
         members = set()
+        tarball_readable = False
+    # Skip the membership check on unreadable tarballs — `members - REQUIRED_TARBALL_ENTRIES`
+    # would just echo the required set and add noise to the failure list.
     missing = REQUIRED_TARBALL_ENTRIES - members
-    if missing and not any("not a valid gzip" in f for f in failures):
-        # Only report missing entries if the tarball was readable — otherwise
-        # the "missing" set is meaningless (it's just REQUIRED_TARBALL_ENTRIES).
+    if missing and tarball_readable:
         failures.append(f"tarball missing required entries: {sorted(missing)}")
 
     n_shows = len(manifest.get("shows", {}))
@@ -148,7 +150,9 @@ def main() -> int:
             if key == "tarball_size_bytes":
                 print(f"tarball size: {value:,} bytes")
             else:
-                print(f"{key}: {value!r}" if isinstance(value, str) else f"{key}: {value}")
+                # Summary values come from manifest.json (already validated as
+                # JSON-safe) plus our own hex digest — no repr quoting needed.
+                print(f"{key}: {value}")
     else:
         # Early-return path (missing/malformed inputs) — list what's on disk so
         # the operator can tell apart "gh release download wrote nothing" from

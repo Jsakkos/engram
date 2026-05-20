@@ -20,11 +20,14 @@ on:
   push:
     branches: [main]
     paths:
+      # Deliberately does NOT include this YAML or scripts/validate_subtitle_cache.py
+      # itself — a comment-only or formatting edit shouldn't trigger a validation
+      # against the live release (would attribute unrelated drift to the edit).
+      # Logic changes to the validator are covered by test_validate_subtitle_cache.
       - "backend/app/services/precomputed_cache_service.py"
       - "backend/app/matcher/episode_identification.py"
       - "backend/app/matcher/vectorizer_config.py"
       - "backend/scripts/build_subtitle_cache.py"
-      - ".github/workflows/subtitle-cache-smoke.yml"
 
 permissions:
   contents: read
