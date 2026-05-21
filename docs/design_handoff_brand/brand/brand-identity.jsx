@@ -164,7 +164,6 @@ function ArtboardReversed() {
 
 function ArtboardConstruction() {
   // Grid view of the mark — 24 unit baseline grid showing the geometry
-  const G = 12; // grid unit
   return (
     <BAtmosphere>
       <div style={{position:'absolute', inset: 0, padding: 36,

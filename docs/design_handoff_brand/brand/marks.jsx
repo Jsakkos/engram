@@ -124,7 +124,6 @@ function MarkMono({ size = 48, color, paper = false, glow = false }) {
 function AppIcon({ size = 128, radius, dark = true, glow = true }) {
   const r = radius ?? Math.round(size * 0.2237); // macOS squircle radius
   const inset = size * 0.18;
-  const id = React.useId().replace(/:/g,'-');
   return (
     <div style={{
       width: size, height: size, borderRadius: r, overflow:'hidden',
@@ -184,7 +183,6 @@ function BIconCorners({ size, color }) {
 // Animated mark — used in splash + loading states. Mark slowly rotates,
 // node pulses, scanline sweeps across.
 function MarkAnimated({ size = 96, color, secondary }) {
-  const id = React.useId().replace(/:/g,'-');
   const p = color || M.cyan;
   const s = secondary || M.magenta;
   return (
