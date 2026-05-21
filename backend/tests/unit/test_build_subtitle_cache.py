@@ -117,6 +117,10 @@ class TestHarvestShowAccumulatesTally:
         assert tally.downloaded == 2
         assert tally.not_found == 1
         assert tally.seasons_done == 1
+        # Per-source breakdown counts only NEW downloads by provider; the
+        # cached episode (source=cache) and the not_found episode (source=None)
+        # are both excluded.
+        assert tally.by_source == {"opensubtitles_api": 1, "addic7ed": 1}
 
     def test_on_season_done_called_on_success_skip_and_fail(self, bsc):
         """The progress-bar advance hook must fire for every season —
