@@ -23,6 +23,7 @@ import shutil
 import sys
 import tarfile
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -82,6 +83,10 @@ class RunTally:
     seasons_done: int = 0
     seasons_skipped_below_threshold: int = 0
     seasons_failed: int = 0
+    # Per-provider hit counts (cache, opensubtitles_api, addic7ed, tvsubtitles).
+    # Surfaces which source actually served each episode so a quiet fallback
+    # provider's contribution is visible in the final summary.
+    by_source: Counter = field(default_factory=Counter)
     start_time: float = field(default_factory=time.monotonic)
 
     def elapsed_str(self) -> str:
@@ -239,6 +244,9 @@ def _harvest_show(
                 tally.downloaded += 1
             elif status == "not_found":
                 tally.not_found += 1
+            source = ep.get("source")
+            if source and status in _VALID_STATUSES:
+                tally.by_source[source] += 1
 
         episodes = [
             ep for ep in result["episodes"] if ep["status"] in _VALID_STATUSES and ep.get("path")
@@ -528,6 +536,7 @@ def main() -> int:
     # Progress context but stays usable after the ``with`` exits.
     quota = get_last_quota()
     quota_str = f"{quota['remaining']}" if quota and quota.get("remaining") is not None else "n/a"
+    by_source = ", ".join(f"{s}={n}" for s, n in sorted(tally.by_source.items())) or "none"
     console.log(
         "[bold]Final summary[/]: "
         f"{len(manifest_shows)} shows, {total_episodes} episodes packaged "
@@ -537,6 +546,7 @@ def main() -> int:
         f"  new downloads:    {tally.downloaded}\n"
         f"  not found:        {tally.not_found}\n"
         f"  cache hit rate:   {tally.cache_hit_rate:.0%}\n"
+        f"  by source:        {by_source}\n"
         f"  seasons OK:       {tally.seasons_done}\n"
         f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
         f"  seasons failed:   {tally.seasons_failed}\n"
