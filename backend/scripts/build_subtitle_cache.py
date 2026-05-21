@@ -188,6 +188,9 @@ def _read_show_list(path: str) -> list[dict]:
                 for r in rows
                 if (n := (r.get("name") or "").strip())
             ]
+        raise SystemExit(
+            f"--show-list CSV has no 'tmdb_id' or 'name' column (got: {sorted(fields)})"
+        )
 
     names = [
         ln.strip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")

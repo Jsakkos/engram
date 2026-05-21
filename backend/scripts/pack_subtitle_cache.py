@@ -176,11 +176,14 @@ def _verify(precomputed_dir: Path, output_path: Path, manifest: dict) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         with tarfile.open(output_path, "r:gz") as tar:
-            tar.extractall(tmp_path, filter="data")
+            # filter= was backported to CPython only in 3.11.4 (PEP 706); guard
+            # for 3.11.0-3.11.3 where passing it raises TypeError.
+            extract_kw = {"filter": "data"} if sys.version_info >= (3, 11, 4) else {}
+            tar.extractall(tmp_path, **extract_kw)
         for key in sample_keys:
             matcher = EpisodeMatcher(cache_dir=tmp_path, show_name=key)
             season = manifest["shows"][key]["seasons"][0]
-            loaded = matcher._load_precomputed_season(season)
+            loaded = matcher.load_precomputed_season(season)
             if loaded is None or loaded[0].shape[0] == 0:
                 raise SystemExit(f"verify: consumer round-trip failed for {key} S{season:02d}")
             logger.info(f"  round-trip OK: {key} S{season:02d} ({loaded[0].shape[0]} eps)")

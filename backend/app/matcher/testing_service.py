@@ -18,7 +18,7 @@ from loguru import logger
 from app import __version__
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
-from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call
+from app.matcher.os_api_retry import os_api_call
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
@@ -177,9 +177,11 @@ def _get_os_client(config) -> object | None:
         # and, as a side effect, updates ``client.user_downloads_remaining``.
         try:
             os_api_call(client.user_info)
-        except _RETRYABLE_EXCEPTIONS as e:
+        except Exception as e:
             # Non-fatal: if the probe itself fails we proceed with whatever
-            # the library seeded (the cap) rather than blocking the run.
+            # the library seeded (the cap) rather than blocking the run. Catch
+            # broadly (not just retryable transport errors) so an unexpected
+            # library error degrades gracefully instead of aborting login.
             logger.debug(f"OS user-info probe failed (non-fatal): {e}", exc_info=True)
         remaining = getattr(client, "user_downloads_remaining", None)
 

@@ -485,6 +485,16 @@ class EpisodeMatcher:
         self._precomputed_manifest = manifest
         return manifest
 
+    def load_precomputed_season(self, season_number):
+        """Public entry point over the precomputed-cache loader.
+
+        Exposed so the cache packager's publish-gate verification can exercise
+        the real load path without reaching into a private method. Returns
+        (ref_matrix, episode_codes, idf_array) when the shipped cache covers
+        this show+season, otherwise None.
+        """
+        return self._load_precomputed_season(season_number)
+
     def _load_precomputed_season(self, season_number):
         """Load precomputed hashed TF-IDF vectors for this show/season.
 
