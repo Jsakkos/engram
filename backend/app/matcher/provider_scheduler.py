@@ -131,6 +131,7 @@ class ProviderWorker(threading.Thread):
                 "path": str(result),
                 "source": self.provider_name,
             }
+            logger.info(f"{self.provider_name} downloaded {job.episode_code}")
             self.scheduler.mark_complete(job)
         except Exception as e:
             logger.warning(
