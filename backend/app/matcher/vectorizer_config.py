@@ -21,7 +21,9 @@ from sklearn.preprocessing import normalize as _sk_normalize
 # Bump whenever VECTORIZER_PARAMS, HASHING_N_FEATURES, SUBLINEAR_TF, the artifact
 # layout, or the subtitle-cleaning function changes. A mismatch between this value
 # and a cache manifest invalidates the cache (runtime falls back to scraping).
-CACHE_FORMAT_VERSION = "1"
+# v2: on-disk format switched to uint16 hashed counts; the loader applies
+# apply_tfidf at startup. Cuts tarball size ~57% vs v1's float64 TF-IDF rows.
+CACHE_FORMAT_VERSION = "2"
 
 HASHING_N_FEATURES = 2**18
 
@@ -104,7 +106,10 @@ def apply_tfidf(counts, idf_array):
         counts.data = 1.0 + np.log(counts.data)
     idf_row = np.asarray(idf_array, dtype=np.float64).reshape(1, -1)
     weighted = sparse.csr_matrix(counts.multiply(idf_row))
-    return _sk_normalize(weighted, norm="l2", copy=False)
+    # Cast to float32 after the log+IDF math is done in float64. Values are
+    # L2-normalized in [0, 1]; float32 has ~7 decimal digits, far more than
+    # cosine similarity needs.
+    return _sk_normalize(weighted, norm="l2", copy=False).astype(np.float32, copy=False)
 
 
 def transform_query(text: str, idf_array):

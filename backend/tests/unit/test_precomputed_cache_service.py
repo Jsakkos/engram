@@ -29,7 +29,6 @@ from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
-    apply_tfidf,
     build_hashing_vectorizer,
     compute_idf,
     vectorizer_config_hash,
@@ -87,7 +86,15 @@ def _build_precomputed_tree(root) -> dict:
     counts = build_hashing_vectorizer().transform(_DOCS)
     idf = compute_idf(counts)
     np.save(precomputed / "idf.npy", idf)
-    sparse.save_npz(show_dir / "S01.npz", apply_tfidf(counts, idf))
+    # v2: persist uint16 hashed counts; the loader applies apply_tfidf at
+    # startup. Mirrors what scripts/build_subtitle_cache.py writes, including
+    # the defensive clip to uint16 range.
+    u16_max = np.iinfo(np.uint16).max
+    counts_u16 = sparse.csr_matrix(
+        (np.minimum(counts.data, u16_max).astype(np.uint16), counts.indices, counts.indptr),
+        shape=counts.shape,
+    )
+    sparse.save_npz(show_dir / "S01.npz", counts_u16)
     (show_dir / "S01.index.json").write_text(json.dumps(_CODES))
 
     manifest = {
