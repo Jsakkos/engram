@@ -38,12 +38,13 @@ def _clear_tmdb_caches():
 @pytest.mark.unit
 class TestLruCache:
     """The build script calls these fetches once per show during selection AND
-    again per season during download. ``@lru_cache`` collapses the duplicates
-    inside a single process; these tests guard against future refactors that
-    accidentally remove the decorator or change argument types."""
+    again per season during download. The persistent SQLite layer dedupes
+    across runs; the LRU dedupes the rare case where SQLite is cleared
+    mid-run. These tests guard against future refactors that accidentally
+    remove either layer or change argument types."""
 
     @patch("app.matcher.tmdb_client.requests.get")
-    def test_repeat_call_with_same_arg_hits_cache(self, mock_get):
+    def test_repeat_call_with_same_arg_hits_at_most_once(self, mock_get):
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"results": [{"id": "4589", "name": "X"}]}
@@ -56,11 +57,11 @@ class TestLruCache:
             b = fetch_show_id("X")
 
         assert a == b
-        # First call hit the network exactly once; second call returned from
-        # the cache (the *inner* cached function — the public wrapper itself
-        # is intentionally NOT @lru_cache'd so the no-key early-return
-        # cannot poison the cache).
-        assert _fetch_show_id_cached.cache_info().hits == 1
+        # The second call must NOT have hit the network — it should have been
+        # satisfied by either the SQLite layer (preferred) or the inner LRU.
+        # The exact dedup layer is an implementation detail; what matters is
+        # that one network round-trip was sufficient to satisfy two callers.
+        assert mock_get.call_count == 1
 
     def test_no_api_key_does_not_poison_cache(self):
         """First-boot regression guard.
@@ -107,6 +108,35 @@ class TestLruCache:
             assert _fetch_show_id_cached.cache_info().currsize >= 1
             clear_caches()
             assert _fetch_show_id_cached.cache_info().currsize == 0
+
+    def test_clear_caches_clears_persistent_layer(self):
+        """``clear_caches()`` must flush the SQLite layer too, otherwise a
+        TMDB API key rotation leaves results from the revoked key pinned
+        for up to 90 days."""
+        from app.matcher import tmdb_persistent_cache
+
+        tmdb_persistent_cache.put("show_id:Rotated", "5", ttl_seconds=3600)
+        assert tmdb_persistent_cache.get("show_id:Rotated") == "5"
+        clear_caches()
+        assert tmdb_persistent_cache.get("show_id:Rotated") is None
+
+    def test_persistent_cache_short_circuits_network(self):
+        """A warm SQLite row must satisfy fetch_show_details without any
+        network round-trip — the whole point of the disk layer."""
+        from app.matcher import tmdb_persistent_cache
+
+        tmdb_persistent_cache.put(
+            "show_details:1396",
+            {"name": "Breaking Bad", "number_of_seasons": 5},
+            ttl_seconds=3600,
+        )
+        with patch("app.matcher.tmdb_client.requests.get") as mock_get:
+            mock_get.side_effect = AssertionError("must not hit the network")
+            with patch("app.services.config_service.get_config_sync") as cfg:
+                cfg.return_value.tmdb_api_key = "test"
+                result = fetch_show_details(1396)
+        assert result == {"name": "Breaking Bad", "number_of_seasons": 5}
+        assert mock_get.call_count == 0
 
     def test_cached_inner_raises_when_called_without_key(self):
         """Misuse guard: calling ``_fetch_show_id_cached`` directly (bypassing

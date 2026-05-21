@@ -19,6 +19,17 @@ export { SvRuler } from "./SvRuler";
 export { SvAnimValue } from "./SvAnimValue";
 export { SvTelemetryBand } from "./SvTelemetryBand";
 export { SvMark } from "./SvMark";
+export { MarkMono } from "./MarkMono";
+export { MarkAnimated } from "./MarkAnimated";
+export { Wordmark } from "./Wordmark";
+export {
+  LockupHorizontal,
+  LockupStacked,
+  LockupWithDescriptor,
+  LockupMarkOnly,
+} from "./Lockup";
+export { AppIcon } from "./AppIcon";
+export { Splash } from "./Splash";
 export { SvTopBar } from "./SvTopBar";
 export { SvStatusBar } from "./SvStatusBar";
 export { SvErrorState } from "./SvErrorState";

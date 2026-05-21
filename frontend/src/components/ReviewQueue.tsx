@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Disc3, Play, Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight } from 'lucide-react';
+import { IcoDisc, IcoPlay, IcoRetry } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
@@ -456,7 +457,7 @@ function ReviewQueue() {
             <SvAtmosphere>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
                     <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
-                        <Disc3 size={48} color={sv.cyan} style={{ filter: `drop-shadow(0 0 10px ${sv.cyan}cc)` }} />
+                        <IcoDisc size={48} color={sv.cyan} style={{ filter: `drop-shadow(0 0 10px ${sv.cyan}cc)` }} />
                     </motion.div>
                     <span style={{ fontFamily: sv.mono, fontSize: 12, letterSpacing: '0.20em', textTransform: 'uppercase', color: sv.cyan }}>
                         › LOADING JOB DATA…
@@ -617,7 +618,7 @@ function ReviewQueue() {
                             color={sv.cyan}
                             onClick={handleStartRip}
                             disabled={isSaving || isProcessing}
-                            icon={<Play size={12} />}
+                            icon={<IcoPlay size={12} />}
                         >
                             Start rip
                         </HeaderButton>
@@ -645,7 +646,7 @@ function ReviewQueue() {
                             color={sv.magenta}
                             onClick={handleRematchAll}
                             disabled={isSaving || isProcessing || isRematching}
-                            icon={<RefreshCw size={12} className={isRematching ? 'animate-spin' : ''} />}
+                            icon={<IcoRetry size={12} className={isRematching ? 'animate-spin' : ''} />}
                         >
                             {isRematching ? 'Re-matching…' : 'Re-match all'}
                         </HeaderButton>
@@ -990,7 +991,7 @@ function TVTitleRow({
                                 title={`Switch to ${title.match_source === 'discdb' ? 'Engram' : 'DiscDB'} match`}
                                 ariaLabel="Toggle match source"
                             >
-                                <RefreshCw size={11} />
+                                <IcoRetry size={11} />
                             </SvActionButton>
                         )}
                         {/* Re-match button — only DiscDB source, no Engram data yet */}
@@ -1002,7 +1003,7 @@ function TVTitleRow({
                                 title="Re-match with Engram audio matching"
                                 ariaLabel="Re-match"
                             >
-                                <RefreshCw size={11} />
+                                <IcoRetry size={11} />
                             </SvActionButton>
                         )}
                     </div>
