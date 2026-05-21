@@ -1,0 +1,98 @@
+name: Subtitle Cache Smoke
+
+# Catches the case where a `gh release upload --clobber` to subtitle-cache-latest
+# (manual or via Build Subtitle Cache) pushed a tarball that's corrupt, malformed,
+# or out of sync with the format version current main expects. The signal is
+# loud and fast: a daily failure email instead of waiting for end-user reports.
+#
+# This is the consumer-side counterpart to build-subtitle-cache.yml — that one
+# produces the artifact, this one verifies it survives the round trip.
+on:
+  schedule:
+    - cron: "0 13 * * *"  # 13:00 UTC daily (after typical evening uploads in US tz)
+  workflow_dispatch:
+  # Note: no pull_request trigger by design. The smoke test validates the
+  # live `subtitle-cache-latest` release against the constants compiled into
+  # current main. A PR branch has no corresponding pre-released artifact to
+  # download, so drift is only catchable after merge (when the cache is
+  # rebuilt and re-uploaded). PR-time build/consumer drift is covered by
+  # tests/unit/test_build_subtitle_cache.py::TestMainRoundTrip.
+  push:
+    branches: [main]
+    # If you land here on a red job after a CACHE_FORMAT_VERSION or vectorizer
+    # config bump, that's expected — the live release was built against the
+    # old code. Remediation is to rebuild and re-upload subtitle-cache-latest
+    # (run scripts/build_subtitle_cache.py locally with current main, then
+    # `gh release upload subtitle-cache-latest ... --clobber`), then re-run
+    # this workflow. NOT a code-revert situation.
+    paths:
+      # Deliberately does NOT include this YAML or scripts/validate_subtitle_cache.py
+      # itself — a comment-only or formatting edit shouldn't trigger a validation
+      # against the live release (would attribute unrelated drift to the edit).
+      # Logic changes to the validator are covered by test_validate_subtitle_cache.
+      - "backend/app/services/precomputed_cache_service.py"
+      - "backend/app/matcher/episode_identification.py"
+      - "backend/app/matcher/vectorizer_config.py"
+      - "backend/scripts/build_subtitle_cache.py"
+
+permissions:
+  contents: read
+
+# Avoid stacking — a push at 12:58 UTC and the 13:00 UTC schedule could
+# otherwise queue two runs back-to-back validating the same release.
+concurrency:
+  group: subtitle-cache-smoke
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  validate-live-release:
+    name: Validate live subtitle-cache-latest release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        working-directory: backend
+        # --no-dev skips pytest/ruff/etc. — the validator only needs the
+        # runtime imports (scipy/numpy via vectorizer_config). Trims a few
+        # seconds off the daily scheduled job.
+        run: uv sync --no-dev --no-install-project
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/cache-smoke
+          gh release download subtitle-cache-latest \
+            --repo "${{ github.repository }}" \
+            --pattern "engram-subtitle-cache.tar.gz" \
+            --pattern "manifest.json" \
+            --dir /tmp/cache-smoke
+
+      # Validate everything that can be checked without running the actual
+      # download service: manifest JSON shape, sha256 matches, tarball is
+      # well-formed, and the format-version + vectorizer-config-hash in the
+      # release manifest match the constants compiled into current main.
+      # Validator is a normal script (importable + unit-tested) — see
+      # tests/unit/test_validate_subtitle_cache.py.
+      - name: Validate manifest and tarball shape
+        working-directory: backend
+        # --no-project mirrors --no-install-project in the sync above —
+        # without it, `uv run` would re-install the project and undo the
+        # daily-job-shortening optimization. The validator gets `app.*` via
+        # the sys.path.insert in the script itself, not via package install.
+        run: uv run --no-project python scripts/validate_subtitle_cache.py /tmp/cache-smoke

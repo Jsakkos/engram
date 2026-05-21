@@ -4,8 +4,6 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   CheckCircle2,
   XCircle,
-  Film,
-  Tv,
   Clock,
   BarChart3,
   ChevronLeft,
@@ -14,11 +12,10 @@ import {
   X,
   Copy,
   Database,
-  AlertTriangle,
-  Disc3,
   ArrowRight,
   Loader2,
 } from "lucide-react";
+import { IcoMovie, IcoTv, IcoError, IcoDisc } from "../app/components/icons";
 import { FEATURES } from "../config/constants";
 import { SvActionButton, SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
 import {
@@ -522,7 +519,7 @@ function JobDetailPanel({
 
           {/* Error Details */}
           {detail.error_message && (
-            <SvNotice tone="error" icon={<AlertTriangle size={14} />}>
+            <SvNotice tone="error" icon={<IcoError size={14} />}>
               <div style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: sv.red, marginBottom: 6 }}>
                 Error
               </div>
@@ -661,7 +658,7 @@ function JobDetailPanel({
           {/* Track Breakdown */}
           <div>
             <SvLabel>
-              <Disc3 size={11} style={{ marginRight: 4 }} />
+              <IcoDisc size={11} style={{ marginRight: 4 }} />
               Tracks ({detail.titles.length})
             </SvLabel>
             <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1124,8 +1121,8 @@ export default function HistoryPage() {
             <StatCard label="Total Jobs"  value={stats.total_jobs}      icon={<BarChart3 size={18} />}    color={sv.cyan} />
             <StatCard label="Completed"   value={stats.completed_jobs}  icon={<CheckCircle2 size={18} />} color={sv.green} />
             <StatCard label="Failed"      value={stats.failed_jobs}     icon={<XCircle size={18} />}      color={sv.red} />
-            <StatCard label="TV Shows"    value={stats.tv_count}        icon={<Tv size={18} />}           color={sv.amber} />
-            <StatCard label="Movies"      value={stats.movie_count}     icon={<Film size={18} />}         color={sv.magenta} />
+            <StatCard label="TV Shows"    value={stats.tv_count}        icon={<IcoTv size={18} />}        color={sv.amber} />
+            <StatCard label="Movies"      value={stats.movie_count}     icon={<IcoMovie size={18} />}     color={sv.magenta} />
             <StatCard
               label="Avg Time"
               value={stats.avg_processing_seconds ? formatDurationCoarse(stats.avg_processing_seconds) : "\u2014"}

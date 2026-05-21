@@ -3,7 +3,7 @@
  * Sharp 90° corners, mono label, cyan-tinted border per content kind.
  */
 
-import { Film, Tv, Disc } from "lucide-react";
+import { IcoMovie, IcoTv, IcoDisc } from "../icons";
 import type { MediaType } from "../DiscCard";
 import { sv } from "../synapse";
 
@@ -19,9 +19,9 @@ interface Variant {
 }
 
 const VARIANTS: Record<MediaType, Variant> = {
-    movie:   { Icon: Film, label: "MOVIE",     color: sv.magenta },
-    tv:      { Icon: Tv,   label: "TV",        color: sv.cyan    },
-    unknown: { Icon: Disc, label: "ANALYZING", color: sv.amber, pulse: true },
+    movie:   { Icon: IcoMovie, label: "MOVIE",     color: sv.magenta },
+    tv:      { Icon: IcoTv,    label: "TV",        color: sv.cyan    },
+    unknown: { Icon: IcoDisc,  label: "ANALYZING", color: sv.amber, pulse: true },
 };
 
 export function MediaTypeBadge({ mediaType }: MediaTypeBadgeProps) {

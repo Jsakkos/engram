@@ -26,7 +26,13 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Idempotent — repeated importlib loads (e.g. one fixture per test file) would
+# otherwise accumulate duplicate entries in sys.path on every exec_module call.
+_backend_dir = str(Path(__file__).parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
+from datetime import UTC
 
 import numpy as np
 from loguru import logger
@@ -41,6 +47,7 @@ from rich.progress import (
 )
 from scipy import sparse
 
+from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.testing_service import download_subtitles, get_last_quota
@@ -188,6 +195,27 @@ def _harvest_show(
     harvested: list[tuple[int, str, Path]] = []
     canonical = show["name"]
     for season in range(1, show["seasons"] + 1):
+        if not args.retry_low_coverage:
+            skip, prev = coverage_tracker.should_skip(
+                show["tmdb_id"],
+                season,
+                args.min_episodes_ratio,
+                args.skip_window_days,
+            )
+            if skip:
+                from datetime import datetime
+
+                ts = datetime.fromtimestamp(prev["attempted_at"], tz=UTC).strftime("%Y-%m-%d")
+                logger.info(
+                    f"  {canonical} S{season:02d}: skipping (prior coverage "
+                    f"{prev['coverage_ratio']:.0%} on {ts}; "
+                    f"pass --retry-low-coverage to retry)"
+                )
+                tally.seasons_skipped_below_threshold += 1
+                if on_season_done is not None:
+                    on_season_done()
+                continue
+
         try:
             result = download_subtitles(canonical, season)
         except Exception as e:
@@ -217,6 +245,13 @@ def _harvest_show(
         ]
         total = result.get("total_episodes", 0) or len(result["episodes"])
         ratio = len(episodes) / total if total else 0.0
+
+        # Record EVERY season we actually attempted (success or below-threshold).
+        # This is what powers the skip-list on the next run — without it, low
+        # coverage seasons keep getting re-attempted every day, burning
+        # rate-limit quota on shows that simply don't have subtitles.
+        coverage_tracker.record(show["tmdb_id"], season, total, len(episodes))
+
         if ratio < args.min_episodes_ratio:
             logger.info(
                 f"  {canonical} S{season:02d}: {len(episodes)}/{total} episodes "
@@ -263,6 +298,24 @@ def main() -> int:
     )
     # Deprecated: SRTs are now kept by default; --keep-srt is a no-op kept for compatibility.
     parser.add_argument("--keep-srt", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--retry-low-coverage",
+        action="store_true",
+        help=(
+            "Bypass the skip-list and re-attempt seasons that previously fell below "
+            "the coverage threshold. Use after VIP quota refills or after enabling a "
+            "new provider."
+        ),
+    )
+    parser.add_argument(
+        "--skip-window-days",
+        type=int,
+        default=30,
+        help=(
+            "How long a low-coverage season stays on the skip-list before it is "
+            "retried automatically (default: 30)."
+        ),
+    )
     args = parser.parse_args()
 
     if args.keep_srt:

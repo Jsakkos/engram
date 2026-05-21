@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
-import { Loader2, CheckCircle2, AlertTriangle, Vote } from "lucide-react";
+import { IcoRipping, IcoMatching, IcoComplete, IcoError } from "./icons";
 import type { Track, TrackState } from "./DiscCard";
 import { sv, SvBadge, SvBar, SvLabel } from "./synapse";
 import { formatBytesBinary } from "../../utils/formatting";
@@ -14,16 +14,16 @@ interface StateConfig {
   color: string;
   border: string;
   bg: string;
-  Icon: typeof Loader2 | null;
+  Icon: React.ComponentType<{ size?: number; color?: string }> | null;
 }
 
 const STATE: Record<TrackState, StateConfig> = {
   pending:   { label: "PENDING",  color: sv.inkDim,  border: `${sv.line}`,         bg: `${sv.bg2}66`, Icon: null         },
-  ripping:   { label: "RIPPING",  color: sv.magenta, border: `${sv.magenta}66`,    bg: `${sv.magenta}10`, Icon: Loader2  },
-  matching:  { label: "MATCHING", color: sv.amber,   border: `${sv.amber}55`,      bg: `${sv.amber}10`, Icon: Vote       },
-  matched:   { label: "MATCHED",  color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: CheckCircle2 },
-  failed:    { label: "FAILED",   color: sv.red,     border: `${sv.red}66`,        bg: `${sv.red}10`, Icon: AlertTriangle  },
-  completed: { label: "DONE",     color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: CheckCircle2 },
+  ripping:   { label: "RIPPING",  color: sv.magenta, border: `${sv.magenta}66`,    bg: `${sv.magenta}10`, Icon: IcoRipping },
+  matching:  { label: "MATCHING", color: sv.amber,   border: `${sv.amber}55`,      bg: `${sv.amber}10`, Icon: IcoMatching },
+  matched:   { label: "MATCHED",  color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: IcoComplete },
+  failed:    { label: "FAILED",   color: sv.red,     border: `${sv.red}66`,        bg: `${sv.red}10`, Icon: IcoError    },
+  completed: { label: "DONE",     color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: IcoComplete },
 };
 
 const matchSourceColor = (source?: string): string => {

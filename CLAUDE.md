@@ -33,6 +33,7 @@ npm run build        # TypeScript check + production build
 npm run lint         # ESLint
 npm run test:e2e     # Run Playwright E2E tests
 npm run test:e2e:ui  # Run E2E tests with interactive UI
+npm run brand:export # Regenerate favicons + .ico/.icns from SVG sources
 ```
 
 ### Simulation (requires backend running with DEBUG=true)
@@ -108,7 +109,9 @@ Integrated from standalone `mkv-episode-matcher` project. Flattened directory st
 
 - **Top-level modules**: `asr_provider.py` (speech recognition), `subtitle_provider.py` (subtitle matching), `models.py`, `config_manager.py`, `model_registry.py`, `srt_utils.py`, `tmdb_client.py`, `episode_identification.py`
 - **Core**: `core/engine.py` and `core/matcher.py` — matching engine logic
-- **Subtitle sources**: `addic7ed_client.py`, `opensubtitles_scraper.py`, `subtitle_utils.py`
+- **Subtitle sources**: `addic7ed_client.py`, `tvsubtitles_client.py`, `subtitle_utils.py`
+- **Provider scheduler**: `provider_scheduler.py` — threaded fan-out across subtitle providers
+- **Persistent caches** (`~/.engram/cache/tmdb_cache.sqlite`): `tmdb_persistent_cache.py` (TMDB metadata), `coverage_tracker.py` (per-season low-coverage skip list)
 - Uses faster-whisper/onnxruntime for ASR
 
 ### API (`backend/app/api/`)
@@ -124,7 +127,7 @@ React 18 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at lo
 
 **Key libraries**: React Router v7, Framer Motion, Recharts, React Hook Form, Tailwind CSS v4, shadcn/ui components.
 
-- **Dashboard** (`app/App.tsx`) — Filterable job card list (Active, Done, All) with `DiscCard` components showing content type badges, progress bars, speed/ETA, track counts, subtitle indicators, expandable track lists, and cancel buttons. Cyberpunk dual-tone cyan/magenta theme.
+- **Dashboard** (`app/App.tsx`) — Filterable job card list (Active, Done, All) with `DiscCard` components showing content type badges, progress bars, speed/ETA, track counts, subtitle indicators, expandable track lists, and cancel buttons. Built on the **Synapse v2 brand system** (`docs/design_handoff_brand/`) — three-arc mark + horizontal read-line, cyan + magenta accents, JetBrains Mono telemetry, sharp 90° panels with corner ticks. Brand primitives live under `frontend/src/app/components/synapse/` (`SvMark`, `Wordmark`, `Lockup*`, `AppIcon`, `Splash`, `SvPanel`) and the 30 custom icons under `frontend/src/app/components/icons/` (`Ico*`). Developer reference: `docs/development/brand.md`.
 - **DiscCard** (`app/components/DiscCard.tsx`) — Main job display component with subcomponents: `DiscCard/MediaTypeBadge`, `DiscCard/DiscMetadata`, `DiscCard/ActionButtons`, `DiscCard/hooks/usePosterImage`
 - **Supporting components**: `StateIndicator`, `CyberpunkProgressBar`, `TrackGrid`, `MatchingVisualizer`
 - **ReviewQueue** (`components/ReviewQueue.tsx`) — Human-in-the-Loop UI with subcomponents: `TVTitleCard`, `MovieTitleCard`, `EpisodeSelector`, `EditionInput`, `hooks/useReviewState`

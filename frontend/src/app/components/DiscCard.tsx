@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "motion/react";
-import { CheckCircle2, Clock, Database, Disc } from "lucide-react";
+import { CheckCircle2, Clock, Database } from "lucide-react";
+import { IcoDisc } from "./icons";
 import { StateIndicator } from "./StateIndicator";
 import { TrackGrid } from "./TrackGrid";
 import { usePosterImage } from "./DiscCard/hooks/usePosterImage";
@@ -236,7 +237,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     background: `linear-gradient(135deg, ${sv.bg3}, ${sv.bg0})`,
                   }}
                 >
-                  <Disc size={48} color={`${sv.cyan}55`} />
+                  <IcoDisc size={48} color={`${sv.cyan}55`} />
                 </div>
               )}
 
@@ -259,7 +260,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     animate={{ rotate: 360 }}
                     transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                   >
-                    <Disc
+                    <IcoDisc
                       size={44}
                       color={isRipping ? sv.magenta : sv.cyan}
                       style={{ filter: `drop-shadow(0 0 8px ${isRipping ? sv.magenta : sv.cyan}cc)` }}

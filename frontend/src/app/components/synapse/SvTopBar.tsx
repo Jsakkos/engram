@@ -1,8 +1,9 @@
 import type { CSSProperties } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Settings } from "lucide-react";
+import { IcoSettings } from "../icons";
 import { sv } from "./tokens";
 import { SvMark } from "./SvMark";
+import { Wordmark } from "./Wordmark";
 import { SvBadge } from "./SvBadge";
 
 interface NavItem {
@@ -60,18 +61,12 @@ export function SvTopBar({
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <SvMark size={38} />
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <span
-            style={{
-              fontFamily: sv.display,
-              fontSize: 22,
-              fontWeight: 700,
-              letterSpacing: "0.18em",
-              color: sv.cyanHi,
-              textShadow: `0 0 12px ${sv.cyan}55`,
-            }}
-          >
-            ENGRAM
-          </span>
+          <Wordmark
+            size={22}
+            color={sv.cyanHi}
+            letterSpacing="0.18em"
+            style={{ textShadow: `0 0 12px ${sv.cyan}55` }}
+          />
           <span
             style={{
               fontFamily: sv.mono,
@@ -146,7 +141,7 @@ export function SvTopBar({
             e.currentTarget.style.color = sv.inkDim;
           }}
         >
-          <Settings size={14} />
+          <IcoSettings size={14} />
         </button>
       </div>
     </header>

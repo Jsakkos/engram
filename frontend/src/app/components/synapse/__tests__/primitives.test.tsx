@@ -136,7 +136,7 @@ describe("Synapse v2 primitives — smoke", () => {
     expect(screen.getByTestId("sv-mark")).toBeDefined();
   });
 
-  it("SvAtmosphere wraps children and can hide scanlines / skyline", () => {
+  it("SvAtmosphere wraps children and can hide scanlines", () => {
     const { rerender } = render(
       <SvAtmosphere>
         <span>app content</span>
@@ -145,15 +145,13 @@ describe("Synapse v2 primitives — smoke", () => {
     expect(screen.getByTestId("sv-atmosphere")).toBeDefined();
     expect(screen.getByText("app content")).toBeDefined();
     expect(screen.getByTestId("sv-scanlines")).toBeDefined();
-    expect(screen.getByTestId("sv-skyline")).toBeDefined();
 
     rerender(
-      <SvAtmosphere scanlines={false} skyline={false}>
+      <SvAtmosphere scanlines={false}>
         <span>x</span>
       </SvAtmosphere>,
     );
     expect(screen.queryByTestId("sv-scanlines")).toBeNull();
-    expect(screen.queryByTestId("sv-skyline")).toBeNull();
   });
 
   it("SvDiscInsert renders SVG radar + breadcrumb, marks active phase", () => {

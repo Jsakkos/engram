@@ -69,4 +69,5 @@ nav:
     - Testing: development/testing.md
     - Contributing: development/contributing.md
     - Subtitle Cache Build: development/subtitle-cache.md
+    - Brand System: development/brand.md
   - Changelog: changelog.md

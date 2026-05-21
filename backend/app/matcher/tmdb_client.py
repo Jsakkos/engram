@@ -9,6 +9,8 @@ from typing import Any, TypeVar
 import requests
 from loguru import logger
 
+from app.matcher import tmdb_persistent_cache
+
 # In-process cache for TMDB lookups. The build script calls
 # fetch_show_id/fetch_show_details for every show during selection AND again
 # inside download_subtitles() for every season — a 300-show, 5-season run
@@ -281,8 +283,14 @@ def fetch_show_id(show_name: str) -> str | None:
     if not get_config_sync().tmdb_api_key:
         logger.warning("TMDB API key not configured in Engram settings")
         return None
+
+    persistent_key = f"show_id:{show_name}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return cached
+
     try:
-        return _fetch_show_id_cached(show_name)
+        result = _fetch_show_id_cached(show_name)
     # Match retry_network_operation's retry set exactly — it catches
     # all three of (RequestException, ConnectionError, TimeoutError),
     # the last two being Python builtins. After retries exhaust, the
@@ -293,6 +301,12 @@ def fetch_show_id(show_name: str) -> str | None:
     except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to fetch show ID for '{show_name}': {e}", exc_info=True)
         return None
+
+    # Skip persisting None: a transient "not found" answer shouldn't pin
+    # this show to nothing for 90 days. LRU still memoises None for the run.
+    if result is not None:
+        tmdb_persistent_cache.put(persistent_key, result, tmdb_persistent_cache.TTL_SHOW_ID)
+    return result
 
 
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
@@ -430,6 +444,14 @@ def fetch_show_details(show_id: int) -> dict | None:
     if not get_config_sync().tmdb_api_key:
         logger.warning("TMDB API key not configured")
         return None
+
+    persistent_key = f"show_details:{show_id}"
+    cached_persistent = tmdb_persistent_cache.get(persistent_key)
+    if cached_persistent is not None:
+        # Deep-copy to preserve the same mutation-safety contract the LRU path
+        # offers — callers may mutate nested dicts.
+        return copy.deepcopy(cached_persistent)
+
     try:
         cached = _fetch_show_details_cached(show_id)
     # See fetch_show_id wrapper for why the catch widens to match the
@@ -437,6 +459,9 @@ def fetch_show_details(show_id: int) -> dict | None:
     except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to fetch show details for ID {show_id}: {e}", exc_info=True)
         return None
+
+    if cached is not None:
+        tmdb_persistent_cache.put(persistent_key, cached, tmdb_persistent_cache.TTL_SHOW_DETAILS)
     return copy.deepcopy(cached) if cached is not None else None
 
 
@@ -478,16 +503,12 @@ def _fetch_show_details_cached(show_id: int) -> dict | None:
     return response.json()
 
 
-@retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_popular_shows(page: int = 1) -> list[dict]:
-    """
-    Fetch popular TV shows from TMDB.
+    """Fetch popular TV shows from TMDB.
 
-    Args:
-        page (int): Page number (default: 1)
-
-    Returns:
-        list[dict]: List of show objects (id, name, etc.)
+    Used by the ``fetch_show_id`` fuzzy-match fallback at line 376 and by
+    the build script's selection phase. Persisted via the SQLite layer so
+    cold-start runs don't re-pay this entire list on every invocation.
     """
     from app.services.config_service import get_config_sync
 
@@ -496,8 +517,24 @@ def fetch_popular_shows(page: int = 1) -> list[dict]:
         logger.warning("TMDB API key not configured")
         return []
 
-    # Sanitize API key
-    api_key = config.tmdb_api_key.strip()
+    persistent_key = f"discover:popular:{page}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return cached
+
+    result = _fetch_popular_shows_uncached(page)
+    if result:
+        tmdb_persistent_cache.put(persistent_key, result, tmdb_persistent_cache.TTL_DISCOVER)
+    return result
+
+
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_popular_shows_uncached(page: int) -> list[dict]:
+    """Network-only implementation. Caller (the public wrapper) guarantees
+    the API key is present and consults the persistent cache first."""
+    from app.services.config_service import get_config_sync
+
+    api_key = get_config_sync().tmdb_api_key.strip()
     url = "https://api.themoviedb.org/3/tv/popular"
 
     data = _tmdb_get_json(url, api_key, {"language": "en-US", "page": page})
@@ -507,19 +544,16 @@ def fetch_popular_shows(page: int = 1) -> list[dict]:
 
 
 def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
-    """
-    Fetch TV shows ranked by total accumulated TMDB votes (descending).
+    """Fetch TV shows ranked by total accumulated TMDB votes (descending).
 
     Unlike ``/tv/popular`` (a rolling, recency-biased activity score), this
     ranks by lifetime ``vote_count`` — a stable proxy for broadly-watched,
     established shows. Used to seed the precomputed subtitle cache so the
     selection is representative and reproducible across builds.
 
-    Args:
-        page (int): Page number (default: 1)
-
-    Returns:
-        list[dict]: List of show objects (id, name, etc.)
+    Persisted via the SQLite layer with a 24h TTL. The build script walks
+    15 pages of this endpoint on every cold start; without the disk cache
+    every daily run re-pays ~15 TMDB calls before any real work begins.
     """
     from app.services.config_service import get_config_sync
 
@@ -528,29 +562,58 @@ def fetch_shows_by_vote_count(page: int = 1) -> list[dict]:
         logger.warning("TMDB API key not configured")
         return []
 
-    api_key = config.tmdb_api_key.strip()
-    url = "https://api.themoviedb.org/3/discover/tv"
-
-    headers = {}
-    params = {"language": "en-US", "page": page, "sort_by": "vote_count.desc"}
-
-    if len(api_key) > 40:
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        params["api_key"] = api_key
+    persistent_key = f"discover:vote_count:{page}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return cached
 
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as e:
-            logger.error(f"HTTP Error {response.status_code}: {response.text}")
-            raise e
-
-        return response.json().get("results", [])
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch shows by vote count: {e}")
+        results = _fetch_shows_by_vote_count_uncached(page)
+    # Match retry_network_operation's tuple exactly — after retries are
+    # exhausted the original exception is re-raised, so the public wrapper
+    # must catch the same set or a builtin socket error escapes the
+    # documented "returns []" contract. Without this catch, the build
+    # script's discovery loop would surface a RequestException from
+    # _select_shows and abort the whole run on a single transient 429.
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to fetch shows by vote count: {e}", exc_info=True)
         return []
+
+    if results:
+        tmdb_persistent_cache.put(persistent_key, results, tmdb_persistent_cache.TTL_DISCOVER)
+    return results
+
+
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_shows_by_vote_count_uncached(page: int) -> list[dict]:
+    """Network-only implementation. Caller (the public wrapper) guarantees
+    the API key is present and consults the persistent cache first.
+
+    Wrapped in ``@retry_network_operation`` to match the rest of the TMDB
+    public surface — a transient 429 or DNS blip would otherwise silently
+    return ``[]`` from the public wrapper, skip the SQLite ``put()``, and
+    force a cold-start miss on the next run. The retry decorator
+    propagates the final exception, which the public wrapper catches and
+    surfaces as ``[]`` (preserving the original contract).
+    """
+    from app.services.config_service import get_config_sync
+
+    api_key = get_config_sync().tmdb_api_key.strip()
+    url = "https://api.themoviedb.org/3/discover/tv"
+
+    # Route through the shared ``_tmdb_auth`` helper so the v3-vs-v4
+    # detection lives in exactly one place (using ``_V4_TOKEN_MIN_LEN``
+    # rather than a bare literal). The previous version inlined the
+    # length comparison and was a drift point if the threshold ever
+    # moves — the rest of the TMDB call sites already use this helper.
+    headers, params = _tmdb_auth(api_key)
+    params["language"] = "en-US"
+    params["page"] = page
+    params["sort_by"] = "vote_count.desc"
+
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    return response.json().get("results", [])
 
 
 def fetch_season_details(show_id: str, season_number: int) -> int:
@@ -567,8 +630,14 @@ def fetch_season_details(show_id: str, season_number: int) -> int:
     if not get_config_sync().tmdb_api_key:
         logger.warning("TMDB API key not configured")
         return 0
+
+    persistent_key = f"season:{show_id}:{season_number}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return int(cached)
+
     try:
-        return _fetch_season_details_cached(show_id, season_number)
+        result = _fetch_season_details_cached(show_id, season_number)
     # See fetch_show_id wrapper for why the catch widens to match the
     # retry decorator's tuple (RequestException + builtin Connection/Timeout).
     except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
@@ -577,6 +646,12 @@ def fetch_season_details(show_id: str, season_number: int) -> int:
             exc_info=True,
         )
         return 0
+
+    # Caching 0 risks pinning a transient TMDB outage for a week and silently
+    # treating real seasons as empty. Only persist on a non-zero result.
+    if result > 0:
+        tmdb_persistent_cache.put(persistent_key, result, tmdb_persistent_cache.TTL_SEASON)
+    return result
 
 
 @lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
@@ -730,13 +805,16 @@ def fetch_movie_id(movie_name: str) -> str | None:
 
 
 def clear_caches() -> None:
-    """Clear all in-process TMDB LRU caches.
+    """Clear all TMDB caches — both in-process LRU and the on-disk SQLite layer.
 
     Test fixtures call this to prevent one test's mocked ``requests.get``
-    results from leaking into another test. Production callers may use it
-    after a TMDB API key rotation to drop any results fetched with the old
-    credentials.
+    results from leaking into another test. Production callers (e.g.
+    ``config_service.update_config``) use it after a TMDB API key rotation
+    to drop any results fetched with the old credentials — the SQLite layer
+    survives process restart, so flushing the LRU alone would leave stale
+    entries pinned for up to 90 days.
     """
     _fetch_show_id_cached.cache_clear()
     _fetch_show_details_cached.cache_clear()
     _fetch_season_details_cached.cache_clear()
+    tmdb_persistent_cache.clear()

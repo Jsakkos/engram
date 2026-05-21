@@ -1,14 +1,130 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="pre-splash">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/disc.svg" />
+    <link rel="icon" type="image/svg+xml" href="/brand/favicons/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/brand/favicons/favicon.ico" />
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/brand/favicons/favicon-32.png" />
+    <link rel="alternate icon" type="image/png" sizes="16x16" href="/brand/favicons/favicon-16.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Engram - Glass-Box automation for disc ripping" />
-    <title>Engram - Media Archival Platform</title>
-    <style>body { background: #0b1120; color: #e2e8f0; }</style>
+    <meta name="description" content="Engram — media archival platform. Cyberpunk-styled disc ripping, classification, and library organization." />
+    <title>Engram — Media Archive</title>
+
+    <!--
+      Inline pre-React splash. The body shows the splash mark + wordmark
+      immediately on first paint; main.tsx removes the .pre-splash class
+      from <html> once React mounts, which hides this layer beneath the app.
+      Stays self-contained — no external CSS, no React, no fonts beyond
+      system fallbacks.
+    -->
+    <style>
+      :root { background: #05070c; }
+      body {
+        margin: 0;
+        background: #05070c;
+        color: #e6ecf5;
+        font-family:
+          "Chakra Petch",
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      #pre-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: #05070c;
+        transition: opacity 240ms ease-out;
+        pointer-events: none;
+      }
+      html:not(.pre-splash) #pre-splash {
+        opacity: 0;
+      }
+
+      /* Atmosphere — radial haze + scanlines. */
+      #pre-splash::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          radial-gradient(ellipse at 15% 20%, rgba(94, 234, 212, 0.10), transparent 55%),
+          radial-gradient(ellipse at 85% 85%, rgba(255, 61, 127, 0.07), transparent 50%);
+        pointer-events: none;
+      }
+      #pre-splash::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: repeating-linear-gradient(
+          0deg,
+          rgba(94, 234, 212, 0.05) 0 1px,
+          transparent 1px 3px
+        );
+        opacity: 0.3;
+        pointer-events: none;
+      }
+
+      .pre-splash-mark {
+        width: 140px;
+        height: 140px;
+        position: relative;
+        z-index: 2;
+        animation: preSplashSpin 14s linear infinite;
+      }
+
+      .pre-splash-wordmark {
+        position: relative;
+        z-index: 2;
+        font-weight: 700;
+        font-size: 48px;
+        letter-spacing: 0.22em;
+        color: #e6ecf5;
+        text-transform: uppercase;
+      }
+
+      .pre-splash-label {
+        position: relative;
+        z-index: 2;
+        font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+        font-size: 11px;
+        color: #5eead4;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+      }
+      .pre-splash-label-dots {
+        animation: preSplashBlink 1s infinite;
+      }
+
+      @keyframes preSplashSpin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes preSplashBlink {
+        0%, 49%, 100% { opacity: 1; }
+        50%, 99% { opacity: 0.2; }
+      }
+    </style>
   </head>
   <body>
+    <div id="pre-splash" aria-hidden="true">
+      <svg class="pre-splash-mark" viewBox="0 0 64 64">
+        <path d="M 32 8 A 24 24 0 1 0 32 56" fill="none" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M 32 16 A 16 16 0 1 0 32 48" fill="none" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round" opacity="0.78"/>
+        <path d="M 32 24 A 8 8 0 1 0 32 40" fill="none" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
+      </svg>
+      <div class="pre-splash-wordmark">ENGRAM</div>
+      <div class="pre-splash-label">
+        INITIALIZING<span class="pre-splash-label-dots">...</span>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

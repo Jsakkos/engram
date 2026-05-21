@@ -1,6 +1,46 @@
 import re
 from pathlib import Path
 
+from loguru import logger
+
+
+def is_valid_srt_file(file_path: Path) -> bool:
+    """Validate that ``file_path`` is a real SRT subtitle file, not HTML
+    or other garbage masquerading as one.
+
+    Checks:
+    1. File exists and is at least 50 bytes.
+    2. First 500 bytes don't contain HTML markers.
+    3. Contains the SRT timestamp arrow ``-->`` somewhere in the header.
+
+    Lives in ``subtitle_utils`` so every provider client and the
+    scheduler can validate downloads without importing
+    ``testing_service`` (which would create a circular dependency:
+    ``testing_service`` imports the scheduler, which imports
+    ``is_valid_srt_file``).
+    """
+    try:
+        if not file_path.exists() or file_path.stat().st_size < 50:
+            return False
+
+        with open(file_path, encoding="utf-8", errors="ignore") as f:
+            header = f.read(500).lower()
+
+        if any(marker in header for marker in ["<!doctype", "<html", "<head", "<body", "<div"]):
+            logger.warning(f"Rejecting {file_path.name}: appears to be HTML, not SRT")
+            return False
+
+        if "-->" not in header:
+            logger.warning(f"Rejecting {file_path.name}: no SRT timestamp markers found")
+            return False
+
+        return True
+
+    except Exception as e:
+        logger.warning(f"Error validating {file_path}: {e}")
+        return False
+
+
 # Ordered season/episode patterns, tried in sequence. The first match wins.
 _SEASON_EPISODE_PATTERNS = [
     r"[Ss](\d{1,2})[Ee](\d{1,2})",  # S01E01 / s1e2

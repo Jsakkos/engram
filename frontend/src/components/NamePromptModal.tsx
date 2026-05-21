@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Disc3, Film, Tv, AlertTriangle } from 'lucide-react';
+import { IcoDisc, IcoMovie, IcoTv, IcoError } from '../app/components/icons';
 import type { Job } from '../types';
 import { SvPanel, SvLabel, sv } from '../app/components/synapse';
 
@@ -101,7 +101,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
                                 animate={{ rotate: [0, 360] }}
                                 transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
                             >
-                                <Disc3
+                                <IcoDisc
                                     size={22}
                                     color={sv.cyan}
                                     style={{ filter: `drop-shadow(0 0 6px ${sv.cyan}cc)` }}
@@ -148,7 +148,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
                                 boxShadow: `inset 0 0 10px ${sv.yellow}0d`,
                             }}
                         >
-                            <AlertTriangle
+                            <IcoError
                                 size={16}
                                 color={sv.yellow}
                                 style={{ marginTop: 2, flexShrink: 0, filter: `drop-shadow(0 0 4px ${sv.yellow}99)` }}
@@ -213,8 +213,8 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                                 {(
                                     [
-                                        { value: 'movie', label: 'Movie', Icon: Film },
-                                        { value: 'tv', label: 'TV Show', Icon: Tv },
+                                        { value: 'movie', label: 'Movie', Icon: IcoMovie },
+                                        { value: 'tv', label: 'TV Show', Icon: IcoTv },
                                     ] as const
                                 ).map(({ value, label, Icon }) => {
                                     const active = contentType === value;
