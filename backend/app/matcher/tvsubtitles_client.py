@@ -330,6 +330,11 @@ def _find_episode_page(html: str, season: int, episode: int, base_url: str) -> s
     # ``episode-7308-gr.html`` that appear in the flags cell.
     href_re = re.compile(r"^/?episode-\d+\.html$")
     for row in soup.find_all("tr"):
+        # ``recursive=False`` for the cell scan: only the row's OWN cells,
+        # so the wrapper <tr> (whose descendants span every episode) can't
+        # match. The link search below is deliberately recursive — the
+        # ``<a href="episode-*.html">`` lives inside a child <td>, not as a
+        # direct <tr> child, so ``recursive=False`` there would find nothing.
         cells_text = [td.get_text(strip=True) for td in row.find_all("td", recursive=False)]
         if target not in cells_text:
             continue
@@ -389,9 +394,7 @@ def _parse_downloads_near(anchor) -> int:
     labelled cell *within this anchor* (each anchor wraps exactly one entry)
     and pull the integer out, tolerating spaced thousands like ``32 167``.
     """
-    cell = anchor.find("p", attrs={"title": "downloaded"}) or anchor.find(
-        "p", attrs={"alt": "downloaded"}
-    )
+    cell = anchor.find("p", attrs={"title": "downloaded"})
     if cell is None:
         return 0
     digits = re.sub(r"\D", "", cell.get_text())
@@ -403,8 +406,10 @@ def _parse_release_near(anchor) -> str:
 
     The site exposes the rip source and release group in two labelled cells
     (``<p title="rip">DVDRip</p>`` / ``<p title="release">ORPHEUS</p>``);
-    we join the non-empty parts (``"DVDRip.ORPHEUS"``). When both are blank
-    we fall back to the entry's ``<h5>`` display name. Everything is read
+    we join the non-empty parts (``"DVDRip.ORPHEUS"``). When both are blank —
+    e.g. an uploader put the tag only in the title — we fall back to the
+    ``<h5>`` parenthetical (``"... 1x07 (WEB-DL)"`` → ``"WEB-DL"``), or the
+    whole ``<h5>`` label if there is no parenthetical. Everything is read
     from *within this anchor* — the entries are siblings in a shared
     container with no per-entry ``<tr>``, so walking up to a parent would
     grab a neighbouring (often different-language) entry's tag.
@@ -419,7 +424,11 @@ def _parse_release_near(anchor) -> str:
     if parts:
         return ".".join(parts)
     h5 = anchor.find("h5")
-    return h5.get_text(strip=True) if h5 else ""
+    if h5 is None:
+        return ""
+    label = h5.get_text(strip=True)
+    paren = re.search(r"\(([^)]+)\)\s*$", label)
+    return paren.group(1) if paren else label
 
 
 def _extract_download_page_url(html: str, base_url: str) -> str | None:

@@ -236,11 +236,22 @@ class TestFindEpisodePage:
         assert mid != "https://x/episode-7310.html"
 
     def test_ignores_language_suffixed_episode_links(self):
-        """The flags cell can carry ``episode-{n}-{lang}.html`` links; the
-        href regex must require ``.html`` right after the digits so those
-        don't shadow the canonical episode link."""
-        url = _find_episode_page(_SEASON_HTML, 1, 1, base_url="https://x")
-        assert url == "https://x/episode-7289.html"
+        """The flags cell can carry ``episode-{n}-{lang}.html`` links. Here
+        the language-suffixed link is placed BEFORE the canonical one in the
+        row's link order, so a regex not anchored with ``\\.html$`` right
+        after the digits would return it. The parser must skip it and pick
+        the canonical ``episode-{n}.html``."""
+        html = """
+        <html><body><table><tr>
+          <td>1x01</td>
+          <td>
+            <a href="episode-555-gr.html">greek</a>
+            <a href="episode-555.html"><b>Pilot</b></a>
+          </td>
+        </tr></table></body></html>
+        """
+        url = _find_episode_page(html, 1, 1, base_url="https://x")
+        assert url == "https://x/episode-555.html"
 
 
 @pytest.mark.unit
@@ -286,6 +297,26 @@ class TestParseSubtitleCandidates:
         assert english.subtitle_page_url.endswith("/subtitle-8548.html")
         assert english.downloads == 32167
         assert "HDTV" not in english.release
+
+    def test_release_falls_back_to_h5_parenthetical_when_cells_empty(self):
+        """When the structured rip/release cells are blank (an uploader put
+        the tag only in the title), the release is taken from the <h5>
+        parenthetical — ``"... 3x04 (WEB-DL)"`` → ``"WEB-DL"`` — not the
+        whole label."""
+        html = """
+        <html><body><div class="left_articles">
+        <a href="/subtitle-9001.html"><div title="Download English subtitles" class="subtitlen">
+          <h5>Some Show 3x04 (WEB-DL)</h5>
+          <p title="rip"></p>
+          <p title="release"></p>
+          <p title="downloaded">777</p>
+        </div></a>
+        </div></body></html>
+        """
+        results = _parse_subtitle_candidates(html, base_url="https://x", language="en")
+        assert len(results) == 1
+        assert results[0].release == "WEB-DL"
+        assert results[0].downloads == 777
 
 
 @pytest.mark.unit
