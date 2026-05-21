@@ -35,11 +35,17 @@ def _build_refs(docs=_DOCS):
 
 
 def _build_counts(docs=_DOCS):
-    """Return (uint16 counts, idf) — the on-disk shape for cache v2."""
+    """Return (uint16 counts, idf) — the on-disk shape for cache v2.
+
+    Mirrors scripts/build_subtitle_cache.py exactly, including the defensive
+    clip to uint16 range, so a future larger/pathological corpus can't
+    silently overflow here in a way the real build would have clipped.
+    """
     counts = build_hashing_vectorizer().transform(docs)
     idf = compute_idf(counts)
+    u16_max = np.iinfo(np.uint16).max
     counts_u16 = sparse.csr_matrix(
-        (counts.data.astype(np.uint16), counts.indices, counts.indptr),
+        (np.minimum(counts.data, u16_max).astype(np.uint16), counts.indices, counts.indptr),
         shape=counts.shape,
     )
     return counts_u16, idf

@@ -18,6 +18,7 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 from app.matcher.asr_models import get_cached_model
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.utils import extract_season_episode
+from app.matcher.vectorizer_config import apply_tfidf
 
 console = Console()
 
@@ -510,14 +511,13 @@ class EpisodeMatcher:
             return None
 
         try:
-            from app.matcher.vectorizer_config import apply_tfidf
-
             if self._precomputed_idf is None:
                 self._precomputed_idf = np.load(precomputed_dir / "idf.npy")
             # Cache v2 ships uint16 hashed counts; apply TF-IDF here so the
             # matcher gets the same L2-normalized float32 matrix v1 read
             # directly from disk. Done once per (show, season) and cached
-            # downstream — the cost is negligible vs. the 57% size win.
+            # downstream — the cost is negligible vs. the ~85% size win
+            # (~8 KB/episode vs. ~66 KB/episode for v1 float64 rows).
             counts = scipy_load_npz(npz_path)
             ref_matrix = apply_tfidf(counts, self._precomputed_idf)
             with open(index_path, encoding="utf-8") as fh:

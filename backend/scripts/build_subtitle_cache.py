@@ -428,7 +428,7 @@ def main() -> int:
     # at startup; the matcher sees the same matrix it always did. Integer
     # counts cast to uint16 are ~4x smaller in nnz bytes, and DEFLATE in
     # .npz collapses the long runs of 1s much better than it ever could on
-    # floats — net ~57% reduction on the published tarball.
+    # floats — measured ~85% reduction (~8 KB/episode vs. ~66 KB for v1).
     u16_max = np.iinfo(np.uint16).max
     for show_name, season, codes, counts in blocks:
         show_dir = precomputed_dir / sanitize_filename(show_name)

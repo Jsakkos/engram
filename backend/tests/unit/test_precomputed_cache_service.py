@@ -87,9 +87,11 @@ def _build_precomputed_tree(root) -> dict:
     idf = compute_idf(counts)
     np.save(precomputed / "idf.npy", idf)
     # v2: persist uint16 hashed counts; the loader applies apply_tfidf at
-    # startup. Mirrors what scripts/build_subtitle_cache.py writes.
+    # startup. Mirrors what scripts/build_subtitle_cache.py writes, including
+    # the defensive clip to uint16 range.
+    u16_max = np.iinfo(np.uint16).max
     counts_u16 = sparse.csr_matrix(
-        (counts.data.astype(np.uint16), counts.indices, counts.indptr),
+        (np.minimum(counts.data, u16_max).astype(np.uint16), counts.indices, counts.indptr),
         shape=counts.shape,
     )
     sparse.save_npz(show_dir / "S01.npz", counts_u16)
