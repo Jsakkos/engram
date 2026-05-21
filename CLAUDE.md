@@ -11,6 +11,16 @@ Engram is a disc ripping and media organization tool with a reactive web dashboa
 - **NEVER delete `backend/engram.db`** unless the user explicitly asks. It contains API keys and credentials that must be re-entered manually.
 - **Always terminate backend processes after testing.** Kill all `uvicorn`, `python` (uvicorn workers), and `makemkvcon` processes when done. Orphaned processes cause duplicate jobs and MakeMKV drive conflicts. Never use `--reload` — it spawns a child process with its own drive sentinel, creating duplicate disc events.
 
+## Repository Organization
+
+Keep the repo root clean. Where things belong:
+
+- **Dated working docs** (plans, specs, reviews) → `docs/superpowers/{plans,specs,reviews}/` named `YYYY-MM-DD-kebab-title.md`. Review screenshots go in `docs/superpowers/reviews/assets/`.
+- **Committed UI screenshots** → `docs/screenshots/` (user-facing, numbered) and `docs/design_handoff_synapse/screenshots/` (design handoff). The brand-system handoff lives at `docs/design_handoff_brand/`; screen-level UI direction at `docs/design_handoff_synapse/`.
+- **Design explorations / brainstorm HTML** kept for reference → `docs/design_handoff_synapse/explorations/`.
+- **Local-only debug screenshots & one-off build artifacts** → gitignored `artifacts/` (never the repo root). The root `/*.png` glob and `artifacts/` are gitignored to keep stray captures out of git.
+- **Brand raster assets** are generated, not hand-placed → `frontend/public/brand/` via `npm run brand:export` from SVG sources in `frontend/public/brand/sources/`.
+
 ## Commands
 
 ### Backend (from `backend/`)
