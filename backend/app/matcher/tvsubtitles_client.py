@@ -310,21 +310,27 @@ def _find_episode_page(html: str, season: int, episode: int, base_url: str) -> s
     ``{season}x{episode}`` row.
 
     The season page renders episodes as a table where one cell of each row
-    contains the literal text ``{S}x{EE}`` (zero-padded episode). We scan
-    every row, look for that cell anywhere in the row (NOT just the first
-    cell — the row layout puts a per-row counter before the episode
-    designator), and return the ``/episode-{n}.html`` anchor from the same
-    row.
+    contains the literal text ``{S}x{EE}`` (zero-padded episode), and the
+    ``/episode-{n}.html`` link sits in another cell of the SAME row.
+
+    Crucially, that episode table is nested inside outer layout tables, so
+    ``find_all("td")`` is restricted to each row's DIRECT children
+    (``recursive=False``). Without that restriction the outermost wrapper
+    ``<tr>`` transitively contains every episode's cells, matches any
+    target, and returns the first episode link in the document — i.e. every
+    requested episode resolves to the highest-numbered episode's page.
     """
     soup = BeautifulSoup(html, "html.parser")
     target = f"{season}x{episode:02d}"
     # Season-page episode hrefs are RELATIVE (``episode-8080.html``), not
     # absolute. urljoin with a base_url ending in ``/`` reattaches the
     # host correctly. The regex tolerates either form so the parser
-    # doesn't silently miss episodes if the markup ever flips.
+    # doesn't silently miss episodes if the markup ever flips, and the
+    # trailing ``\.html$`` rejects language-suffixed links such as
+    # ``episode-7308-gr.html`` that appear in the flags cell.
     href_re = re.compile(r"^/?episode-\d+\.html$")
     for row in soup.find_all("tr"):
-        cells_text = [td.get_text(strip=True) for td in row.find_all("td")]
+        cells_text = [td.get_text(strip=True) for td in row.find_all("td", recursive=False)]
         if target not in cells_text:
             continue
         link = row.find("a", href=href_re)
@@ -374,29 +380,46 @@ _LANGUAGE_NAMES = {"en": "english", "es": "spanish", "fr": "french", "de": "germ
 
 
 def _parse_downloads_near(anchor) -> int:
-    """Best-effort download-count extraction.
+    """Extract one subtitle entry's download count.
 
-    The page renders counts as ``"123 downloads"`` in the row or as
-    a coloured ``<span>{good}/{total}</span>`` widget. The integer right
-    before ``downloads`` (case-insensitive) is the most reliable signal.
+    The count is a bare integer inside the entry's own
+    ``<p title="downloaded"><img .../> 32167</p>`` cell — there is no
+    literal "downloads" text on the page, and the small ``{x}/{y}`` widget
+    at the top of each entry is a rating, not a download count. We read the
+    labelled cell *within this anchor* (each anchor wraps exactly one entry)
+    and pull the integer out, tolerating spaced thousands like ``32 167``.
     """
-    container = anchor.find_parent("tr") or anchor.parent
-    if container is None:
+    cell = anchor.find("p", attrs={"title": "downloaded"}) or anchor.find(
+        "p", attrs={"alt": "downloaded"}
+    )
+    if cell is None:
         return 0
-    text = container.get_text(" ", strip=True)
-    m = re.search(r"(\d+)\s*downloads?", text, flags=re.IGNORECASE)
-    if m:
-        return int(m.group(1))
-    return 0
+    digits = re.sub(r"\D", "", cell.get_text())
+    return int(digits) if digits else 0
 
 
 def _parse_release_near(anchor) -> str:
-    """Best-effort release-tag extraction."""
-    container = anchor.find_parent("tr") or anchor.parent
-    if container is None:
-        return ""
-    rel = container.find(string=re.compile(r"\b(?:WEB|HDTV|BluRay|x264|x265)\b", re.IGNORECASE))
-    return str(rel).strip() if rel else ""
+    """Extract one subtitle entry's release tag.
+
+    The site exposes the rip source and release group in two labelled cells
+    (``<p title="rip">DVDRip</p>`` / ``<p title="release">ORPHEUS</p>``);
+    we join the non-empty parts (``"DVDRip.ORPHEUS"``). When both are blank
+    we fall back to the entry's ``<h5>`` display name. Everything is read
+    from *within this anchor* — the entries are siblings in a shared
+    container with no per-entry ``<tr>``, so walking up to a parent would
+    grab a neighbouring (often different-language) entry's tag.
+    """
+    parts = []
+    for label in ("rip", "release"):
+        cell = anchor.find("p", attrs={"title": label})
+        if cell:
+            text = cell.get_text(strip=True)
+            if text:
+                parts.append(text)
+    if parts:
+        return ".".join(parts)
+    h5 = anchor.find("h5")
+    return h5.get_text(strip=True) if h5 else ""
 
 
 def _extract_download_page_url(html: str, base_url: str) -> str | None:
