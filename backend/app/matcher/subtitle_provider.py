@@ -197,7 +197,7 @@ class OpenSubtitlesProvider(SubtitleProvider):
                 from opensubtitlescom import OpenSubtitles as OpenSubtitlesClient
             except ImportError:
                 logger.warning(
-                    "opensubtitlescom package not installed - using OpenSubtitlesWebProvider instead"
+                    "opensubtitlescom package not installed - OpenSubtitles API provider disabled"
                 )
                 self.client = None
                 return
@@ -447,45 +447,6 @@ class OpenSubtitlesProvider(SubtitleProvider):
 
         except Exception as e:
             logger.error(f"OpenSubtitles search failed: {e}")
-            return []
-
-
-class OpenSubtitlesWebProvider(SubtitleProvider):
-    """Provider that scrapes subtitles from OpenSubtitles.org (no API key needed)."""
-
-    def __init__(self):
-        self.config = get_config_manager().load()
-
-    def get_subtitles(
-        self,
-        show_name: str,
-        season: int,
-        video_files: list[Path] = None,
-        tmdb_id: int | None = None,
-    ) -> list[SubtitleFile]:
-        """Download subtitles for a show/season from OpenSubtitles via scraping."""
-        try:
-            from app.matcher.opensubtitles_scraper import get_subtitles_opensubtitles
-        except ImportError as e:
-            logger.error(f"OpenSubtitles scraper not available: {e}")
-            return []
-
-        logger.info(f"Scraping subtitles from OpenSubtitles for {show_name} S{season:02d}")
-
-        try:
-            downloaded = get_subtitles_opensubtitles(
-                show_name=show_name,
-                seasons={season},
-                cache_dir=self.config.cache_dir,
-                max_retries=2,
-            )
-
-            subtitles = _convert_downloads_to_subtitle_files(downloaded, show_name)
-            logger.info(f"Scraped {len(subtitles)} subtitles from OpenSubtitles")
-            return subtitles
-
-        except Exception as e:
-            logger.error(f"OpenSubtitles scraping failed: {e}")
             return []
 
 

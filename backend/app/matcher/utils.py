@@ -164,8 +164,6 @@ def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
     """
     Retrieves and saves subtitles for a given TV show and seasons.
 
-    Uses Addic7ed as primary source with OpenSubtitles as fallback.
-
     Args:
         show_id (int): The TMDB ID of the TV show.
         seasons (Set[int]): A set of season numbers for which subtitles should be retrieved.
@@ -176,7 +174,6 @@ def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
         dict: Mapping of episode codes to downloaded subtitle file paths.
     """
     from app.matcher.addic7ed_client import get_subtitles_addic7ed
-    from app.matcher.opensubtitles_scraper import get_subtitles_opensubtitles
     from app.matcher.tmdb_client import fetch_show_details
 
     if config is None:
@@ -197,23 +194,12 @@ def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
     series_name = sanitize_filename(series_name)
     cache_dir = config.cache_dir
 
-    # Try Addic7ed first
     logger.info(f"Downloading subtitles for '{series_name}' from Addic7ed")
     downloaded = get_subtitles_addic7ed(
         show_name=series_name, seasons=seasons, cache_dir=cache_dir, max_retries=max_retries
     )
 
-    if downloaded:
-        logger.info(f"Downloaded {len(downloaded)} subtitles from Addic7ed for {series_name}")
-        return downloaded
-
-    # Fallback to OpenSubtitles if Addic7ed returns nothing
-    logger.info(f"Addic7ed returned no subtitles, trying OpenSubtitles for '{series_name}'")
-    downloaded = get_subtitles_opensubtitles(
-        show_name=series_name, seasons=seasons, cache_dir=cache_dir, max_retries=max_retries
-    )
-
-    logger.info(f"Downloaded {len(downloaded)} subtitles from OpenSubtitles for {series_name}")
+    logger.info(f"Downloaded {len(downloaded)} subtitles from Addic7ed for {series_name}")
     return downloaded
 
 

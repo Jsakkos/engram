@@ -46,3 +46,10 @@ createRoot(document.getElementById("root")!).render(
     </BrowserRouter>
   </StrictMode>
 );
+
+// Tell the pre-React splash (defined in index.html) to fade out. The CSS
+// transition then removes the element from view after 240ms; the element
+// stays in the DOM but pointer-events: none keeps it inert.
+requestAnimationFrame(() => {
+  document.documentElement.classList.remove("pre-splash");
+});
