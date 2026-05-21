@@ -176,10 +176,11 @@ def _verify(precomputed_dir: Path, output_path: Path, manifest: dict) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         with tarfile.open(output_path, "r:gz") as tar:
-            # filter= was backported to CPython only in 3.11.4 (PEP 706); guard
-            # for 3.11.0-3.11.3 where passing it raises TypeError.
-            extract_kw = {"filter": "data"} if sys.version_info >= (3, 11, 4) else {}
-            tar.extractall(tmp_path, **extract_kw)
+            # filter="data" (Python 3.11.4+) rejects members that escape the
+            # destination -- path traversal, absolute paths, unsafe links.
+            # Matches the runtime extractor in precomputed_cache_service.py; the
+            # project already standardizes on 3.11.4+ for tarball extraction.
+            tar.extractall(tmp_path, filter="data")
         for key in sample_keys:
             matcher = EpisodeMatcher(cache_dir=tmp_path, show_name=key)
             season = manifest["shows"][key]["seasons"][0]
