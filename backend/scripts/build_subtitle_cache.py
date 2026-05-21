@@ -83,10 +83,11 @@ class RunTally:
     seasons_done: int = 0
     seasons_skipped_below_threshold: int = 0
     seasons_failed: int = 0
-    # Per-provider hit counts (cache, opensubtitles_api, addic7ed, tvsubtitles).
-    # Surfaces which source actually served each episode so a quiet fallback
-    # provider's contribution is visible in the final summary.
-    by_source: Counter = field(default_factory=Counter)
+    # Per-provider download counts (opensubtitles_api, addic7ed, tvsubtitles).
+    # Surfaces which provider served each NEW download so a quiet fallback's
+    # contribution is visible in the final summary. Cache hits are excluded --
+    # they're reported separately and carry no originating-provider info.
+    by_source: Counter[str] = field(default_factory=Counter)
     start_time: float = field(default_factory=time.monotonic)
 
     def elapsed_str(self) -> str:
@@ -245,7 +246,7 @@ def _harvest_show(
             elif status == "not_found":
                 tally.not_found += 1
             source = ep.get("source")
-            if source and status in _VALID_STATUSES:
+            if source and status == "downloaded":
                 tally.by_source[source] += 1
 
         episodes = [
