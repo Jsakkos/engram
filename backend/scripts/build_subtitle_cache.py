@@ -8,6 +8,7 @@ for hosting on GitHub Releases.
 Usage (from backend/):
     uv run python scripts/build_subtitle_cache.py --limit 300
     uv run python scripts/build_subtitle_cache.py --shows "The Expanse,Arrested Development"
+    uv run python scripts/build_subtitle_cache.py --show-list scripts/curated_shows.csv
 
 TMDB / OpenSubtitles credentials are read from the AppConfig DB row; in CI they
 are bootstrapped from the env vars TMDB_API_KEY, OPENSUBTITLES_API_KEY,
@@ -15,8 +16,10 @@ OPENSUBTITLES_USERNAME, OPENSUBTITLES_PASSWORD.
 """
 
 import argparse
+import csv
 import datetime
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -146,9 +149,61 @@ def _bootstrap_config_from_env() -> None:
     logger.info(f"Bootstrapped config from env: {sorted(updates)}")
 
 
+def _read_show_list(path: str) -> list[dict]:
+    """Parse a curated show-list file into ``[{name, id}]`` candidates.
+
+    Two formats are supported:
+    - A CSV with a ``tmdb_id`` column (e.g. the curated_shows.csv produced by the
+      curation tooling). IDs are used directly, so name-collision titles like the
+      US vs UK "The Office" resolve unambiguously. A ``name`` column is kept for
+      logging; any row whose tmdb_id is missing/non-numeric falls back to a name
+      lookup via ``fetch_show_id``.
+    - A plain name list: a ``.txt`` with one show per line, or a CSV whose only
+      useful column is ``name``. Each name is resolved via ``fetch_show_id`` (the
+      same path as ``--shows``).
+
+    Blank lines and ``#`` comment lines are ignored.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise SystemExit(f"--show-list file not found: {path}")
+    text = p.read_text(encoding="utf-8-sig")
+
+    if p.suffix.lower() == ".csv":
+        rows = list(csv.DictReader(io.StringIO(text)))
+        fields = set(rows[0].keys()) if rows else set()
+        if "tmdb_id" in fields:
+            candidates = []
+            for r in rows:
+                tid = (r.get("tmdb_id") or "").strip()
+                name = (r.get("name") or "").strip()
+                if tid.isdigit():
+                    candidates.append({"name": name or tid, "id": int(tid)})
+                elif name:
+                    candidates.append({"name": name, "id": fetch_show_id(name)})
+            return candidates
+        if "name" in fields:
+            return [
+                {"name": n, "id": fetch_show_id(n)}
+                for r in rows
+                if (n := (r.get("name") or "").strip())
+            ]
+        raise SystemExit(
+            f"--show-list CSV has no 'tmdb_id' or 'name' column (got: {sorted(fields)})"
+        )
+
+    names = [
+        ln.strip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    return [{"name": n, "id": fetch_show_id(n)} for n in names]
+
+
 def _select_shows(args) -> list[dict]:
     """Return [{name, tmdb_id, seasons}] for the shows to cache."""
-    if args.shows:
+    if args.show_list:
+        candidates = _read_show_list(args.show_list)
+        logger.info(f"Loaded {len(candidates)} shows from {args.show_list}")
+    elif args.shows:
         names = [s.strip() for s in args.shows.split(",") if s.strip()]
         candidates = [{"name": n, "id": fetch_show_id(n)} for n in names]
     else:
@@ -288,6 +343,16 @@ def main() -> int:
     parser.add_argument("--pages", type=int, default=15, help="TMDB discover pages to scan")
     parser.add_argument(
         "--shows", type=str, default="", help="Comma-separated show names (overrides popular)"
+    )
+    parser.add_argument(
+        "--show-list",
+        type=str,
+        default="",
+        help=(
+            "Path to a curated show-list file (overrides --shows and popularity). "
+            "A CSV with a tmdb_id column (e.g. scripts/curated_shows.csv) is matched "
+            "by ID for unambiguous lookup; a plain name-per-line .txt also works."
+        ),
     )
     parser.add_argument(
         "--min-episodes-ratio", type=float, default=0.6, help="Min episode coverage per season"

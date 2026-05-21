@@ -451,3 +451,55 @@ class TestQuotaSnapshot:
             client.user_downloads_remaining = 988
             testing_service._snapshot_os_quota(client)
             assert log.info.call_count == 3, "post-refill drops still log"
+
+
+@pytest.mark.unit
+class TestGetOsClientQuota:
+    """``_get_os_client`` must learn the TRUE remaining download count at
+    login. The login response only carries ``allowed_downloads`` (the daily
+    CAP), so trusting it makes the build believe quota is full when it is
+    actually exhausted — then every per-season download 406s and the run
+    silently degrades to slow scrapers while logging "1000 remaining"."""
+
+    def setup_method(self):
+        testing_service._OS = testing_service._OSState()
+
+    def _config(self):
+        config = Mock()
+        config.opensubtitles_api_key = "key"
+        config.opensubtitles_username = "user"
+        config.opensubtitles_password = "pass"
+        return config
+
+    @patch("opensubtitlescom.OpenSubtitles")
+    def test_exhausted_quota_skips_opensubtitles(self, mock_os_api):
+        """remaining == 0 after the user-info probe → return None, mark the
+        process failed so later seasons short-circuit, and never hand back a
+        client that would 406 on every download."""
+        client = Mock()
+        client.login.return_value = {"user": {"allowed_downloads": 1000}}
+        # /infos/user reports the real state: cap reached, zero left.
+        client.user_downloads_remaining = 0
+        mock_os_api.return_value = client
+
+        result = testing_service._get_os_client(self._config())
+
+        assert result is None
+        assert testing_service._OS.failed is True
+        client.user_info.assert_called_once()
+        snap = testing_service.get_last_quota()
+        assert snap is not None and snap["remaining"] == 0
+
+    @patch("opensubtitlescom.OpenSubtitles")
+    def test_available_quota_returns_client(self, mock_os_api):
+        """remaining > 0 → cache and return the client as before."""
+        client = Mock()
+        client.login.return_value = {"user": {"allowed_downloads": 1000}}
+        client.user_downloads_remaining = 950
+        mock_os_api.return_value = client
+
+        result = testing_service._get_os_client(self._config())
+
+        assert result is client
+        assert testing_service._OS.failed is False
+        client.user_info.assert_called_once()

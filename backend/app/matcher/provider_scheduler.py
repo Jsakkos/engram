@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,6 +79,98 @@ class EpisodeJob:
     result: dict[str, Any] | None = None
 
 
+class _CircuitBreaker:
+    """Per-provider circuit breaker.
+
+    A provider that's *down* (connect timeouts, 5xx) otherwise costs one
+    failed attempt — and its full timeout — for EVERY episode in the batch,
+    because residual jobs are all queued at the same head provider upfront.
+    This breaker trips after ``failure_threshold`` consecutive transport
+    failures, after which the worker fast-skips its remaining jobs to the
+    next provider without calling the dead one. After ``cooldown`` seconds it
+    half-opens and lets a single probe job through: success closes it, failure
+    re-opens it with a doubled cooldown (capped at ``max_cooldown``).
+
+    Only transport failures (exceptions) count. A clean miss or an unusable
+    download means the provider *responded* — it's reachable — so those reset
+    the counter. ``now`` is injectable purely so the state machine is testable
+    without wall-clock sleeps; production passes ``time.monotonic()``.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        failure_threshold: int = 3,
+        base_cooldown: float = 30.0,
+        max_cooldown: float = 300.0,
+    ):
+        self.name = name
+        self.failure_threshold = failure_threshold
+        self.base_cooldown = base_cooldown
+        self.max_cooldown = max_cooldown
+        self._lock = threading.Lock()
+        self._consecutive_failures = 0
+        self._open = False
+        self._opened_at = 0.0
+        self._cooldown = base_cooldown
+        self._probe_in_flight = False
+
+    def allow(self, now: float | None = None) -> bool:
+        """True if a job may be sent to this provider right now."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            if not self._open:
+                return True
+            if now - self._opened_at < self._cooldown:
+                return False
+            # Cooldown elapsed → half-open. Let exactly ONE probe through; its
+            # outcome (record_success / record_failure) decides what happens
+            # next. Concurrent callers see probe_in_flight and stay blocked.
+            if self._probe_in_flight:
+                return False
+            self._probe_in_flight = True
+            logger.info(f"{self.name} circuit half-open: probing recovery")
+            return True
+
+    def record_success(self) -> None:
+        """The provider responded (hit, miss, or unusable download). Reset."""
+        with self._lock:
+            if self._open:
+                logger.info(f"{self.name} circuit closed (recovered)")
+            self._consecutive_failures = 0
+            self._open = False
+            self._probe_in_flight = False
+            self._cooldown = self.base_cooldown
+
+    def record_failure(self, now: float | None = None) -> None:
+        """A transport-level failure (exception) talking to the provider."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            was_probe = self._probe_in_flight
+            self._probe_in_flight = False
+            if self._open:
+                # A probe failed → stay open and back off further. Stragglers
+                # (jobs dispatched just before the trip) failing while already
+                # open don't move the window.
+                if was_probe:
+                    self._cooldown = min(self._cooldown * 2, self.max_cooldown)
+                    self._opened_at = now
+                    logger.warning(
+                        f"{self.name} circuit re-opened after failed probe; "
+                        f"cooldown now {self._cooldown:.0f}s"
+                    )
+                return
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= self.failure_threshold:
+                self._open = True
+                self._opened_at = now
+                self._cooldown = self.base_cooldown
+                logger.warning(
+                    f"{self.name} circuit opened after {self._consecutive_failures} "
+                    f"consecutive failures; skipping it for {self._cooldown:.0f}s"
+                )
+
+
 class ProviderWorker(threading.Thread):
     """Thread bound to one provider client. Pulls from its private
     ``queue.Queue``; the scheduler dispatches jobs whose
@@ -101,44 +194,65 @@ class ProviderWorker(threading.Thread):
                 self.queue.task_done()
 
     def _process_job(self, job: EpisodeJob) -> None:
+        # Skip without touching the network if this provider's breaker is open.
+        # This is what makes a dead provider cheap: the residual jobs were all
+        # queued at the head provider upfront, so once it trips the worker
+        # fast-advances its backlog instead of paying a timeout per job.
+        if not self.scheduler.provider_allows(self.provider_name):
+            logger.debug(f"{self.provider_name} circuit open; skipping {job.episode_code}")
+            self.scheduler.advance_or_fail(job)
+            return
+
         try:
-            entry = self.client.get_best_subtitle(job.show_name, job.season, job.episode)
-            if entry is None:
-                logger.debug(
-                    f"{self.provider_name} miss for {job.show_name} S{job.season:02d}"
-                    f"E{job.episode:02d}"
-                )
-                self.scheduler.advance_or_fail(job)
-                return
-
-            result = self.client.download_subtitle(entry, job.srt_target)
-            if result is None:
-                self.scheduler.advance_or_fail(job)
-                return
-
-            if not is_valid_srt_file(Path(result)):
-                logger.warning(
-                    f"{self.provider_name} returned an invalid SRT for "
-                    f"{job.episode_code}; deleting and trying next provider"
-                )
-                Path(result).unlink(missing_ok=True)
-                self.scheduler.advance_or_fail(job)
-                return
-
-            job.result = {
-                "code": job.episode_code,
-                "status": "downloaded",
-                "path": str(result),
-                "source": self.provider_name,
-            }
-            logger.info(f"{self.provider_name} downloaded {job.episode_code}")
-            self.scheduler.mark_complete(job)
+            outcome = self._attempt(job)
         except Exception as e:
+            # Transport-level failure — count it toward the breaker so a
+            # consistently-down provider trips and stops costing every episode.
             logger.warning(
                 f"{self.provider_name} raised on {job.episode_code}: {e}",
                 exc_info=True,
             )
+            self.scheduler.record_provider_failure(self.provider_name)
             self.scheduler.advance_or_fail(job)
+            return
+
+        # No exception → the provider responded (hit, miss, or unusable
+        # download). It's reachable, so reset the breaker either way.
+        self.scheduler.record_provider_success(self.provider_name)
+        if outcome is None:
+            self.scheduler.advance_or_fail(job)
+        else:
+            job.result = outcome
+            self.scheduler.mark_complete(job)
+
+    def _attempt(self, job: EpisodeJob) -> dict[str, Any] | None:
+        """One provider attempt. Returns the result dict on a usable download,
+        or ``None`` for a miss / unusable download (both "reachable"). Raises
+        on transport errors so the caller can record a breaker failure."""
+        entry = self.client.get_best_subtitle(job.show_name, job.season, job.episode)
+        if entry is None:
+            logger.debug(f"{self.provider_name} miss for {job.episode_code}")
+            return None
+
+        result = self.client.download_subtitle(entry, job.srt_target)
+        if result is None:
+            return None
+
+        if not is_valid_srt_file(Path(result)):
+            logger.warning(
+                f"{self.provider_name} returned an invalid SRT for "
+                f"{job.episode_code}; deleting and trying next provider"
+            )
+            Path(result).unlink(missing_ok=True)
+            return None
+
+        logger.info(f"{self.provider_name} downloaded {job.episode_code}")
+        return {
+            "code": job.episode_code,
+            "status": "downloaded",
+            "path": str(result),
+            "source": self.provider_name,
+        }
 
     def stop(self) -> None:
         self.queue.put(None)
@@ -155,6 +269,7 @@ class Scheduler:
 
     def __init__(self):
         self.workers: dict[str, ProviderWorker] = {}
+        self._breakers: dict[str, _CircuitBreaker] = {}
         self._pending_count = 0
         self._lock = threading.Lock()
         self._done = threading.Event()
@@ -164,6 +279,23 @@ class Scheduler:
         if name in self.workers:
             return
         self.workers[name] = ProviderWorker(name, client, self)
+        self._breakers[name] = _CircuitBreaker(name)
+
+    def provider_allows(self, name: str) -> bool:
+        """Worker hook: may a job be sent to ``name`` right now? False when its
+        circuit breaker is open (and still cooling down)."""
+        breaker = self._breakers.get(name)
+        return breaker is None or breaker.allow()
+
+    def record_provider_failure(self, name: str) -> None:
+        breaker = self._breakers.get(name)
+        if breaker is not None:
+            breaker.record_failure()
+
+    def record_provider_success(self, name: str) -> None:
+        breaker = self._breakers.get(name)
+        if breaker is not None:
+            breaker.record_success()
 
     def run(
         self, jobs: list[EpisodeJob], timeout: float | None = None
