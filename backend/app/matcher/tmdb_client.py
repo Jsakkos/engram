@@ -716,6 +716,39 @@ def fetch_season_episode_runtimes(show_id: str, season_number: int) -> list[int]
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)
+def fetch_season_episodes(show_id: str, season_number: int) -> list[dict]:
+    """Fetch the episode list (number + name + runtime) for a show season.
+
+    Reuses the same /tv/{id}/season/{n} endpoint as
+    ``fetch_season_episode_runtimes`` but keeps the episode name so the review
+    UI can label candidates and the season roster with real titles instead of
+    bare codes. Returns an empty list when the key is missing or the request
+    fails — callers treat that as "roster unavailable".
+    """
+    from app.services.config_service import get_config_sync
+
+    config = get_config_sync()
+    tmdb_api_key = config.tmdb_api_key
+    if not tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return []
+
+    url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
+    season_data = _tmdb_get_json(url, tmdb_api_key)
+    if season_data is None:
+        return []
+    return [
+        {
+            "episode_number": ep.get("episode_number"),
+            "name": ep.get("name") or "",
+            "runtime": ep.get("runtime") or 0,
+        }
+        for ep in season_data.get("episodes", [])
+        if ep.get("episode_number") is not None
+    ]
+
+
+@retry_network_operation(max_retries=3, base_delay=1.0)
 def get_number_of_seasons(show_id: str) -> int:
     """
     Retrieves the number of seasons for a given TV show from the TMDB API.
