@@ -524,7 +524,10 @@ async def get_season_roster(
         )
 
     season = job.detected_season
-    episodes_raw = fetch_season_episodes(str(job.tmdb_id), season)
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    episodes_raw = fetch_season_episodes(str(job.tmdb_id), season, config.tmdb_api_key)
     if not episodes_raw:
         return SeasonRosterResponse(
             available=False,
