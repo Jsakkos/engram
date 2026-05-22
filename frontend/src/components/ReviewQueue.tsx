@@ -1,15 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Save, Trash2, Package, SkipForward, ChevronDown, ChevronRight } from 'lucide-react';
+import { Save, Package } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, parseMatchDetails, generateEpisodeOptions, getReviewReasons } from './ReviewQueue/utils';
-import { MATCHING_CONFIG, EPISODE_CONFIG, FEATURES } from '../config/constants';
+import { formatDuration, formatSize, titleDisplayName } from './ReviewQueue/utils';
+import { MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
+import { useSeasonRoster } from '../hooks/useSeasonRoster';
+import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, suggestGapCode } from './ReviewQueue/coverage';
+import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
+import { TitleList } from './ReviewQueue/TitleList';
+import { Inspector } from './ReviewQueue/Inspector';
 
-/** Uppercase mono caption styling, reused for metadata rows and table cells. */
+/** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
     fontFamily: sv.mono,
     fontSize: 11,
@@ -23,7 +28,7 @@ const truncateStyle: CSSProperties = {
     whiteSpace: 'nowrap',
 };
 
-/** Shared base for bare (borderless-chrome) inputs in the title rows. */
+/** Shared base for bare (borderless-chrome) inputs. */
 const fieldBaseStyle: CSSProperties = {
     background: sv.bg0,
     border: `1px solid ${sv.lineMid}`,
@@ -31,9 +36,6 @@ const fieldBaseStyle: CSSProperties = {
     fontFamily: sv.mono,
     outline: 'none',
 };
-
-/** Padding shared by every cell in the competing-matches table. */
-const tableCellStyle: CSSProperties = { padding: '6px 16px 6px 0' };
 
 /** Highlight an input's border on focus. */
 function applyFieldFocus(e: FocusEvent<HTMLElement>): void {
@@ -45,16 +47,8 @@ function applyFieldBlur(e: FocusEvent<HTMLElement>): void {
     e.currentTarget.style.borderColor = sv.lineMid;
 }
 
-/** Display name for a title — filename basename, or a generic fallback. */
-function titleDisplayName(title: DiscTitle): string {
-    return title.output_filename
-        ? title.output_filename.split(/[/\\]/).pop() ?? `Title ${title.title_index}`
-        : `Title ${title.title_index}`;
-}
-
 /**
- * Synapse text input — used for the Edition tag field on movie titles and
- * the manual episode-code input in the TV title row.
+ * Synapse text input — used for the Edition tag field on movie titles.
  */
 function SvTextInput({
     value,
@@ -101,51 +95,8 @@ function SvTextInput({
 }
 
 /**
- * Section heading — colored dot + uppercase mono label + bracket count.
- * Used for the Auto-matched / Needs review / Processed groupings on the TV
- * review page.
- */
-function SectionHeading({
-    color,
-    count,
-    children,
-}: {
-    color: string;
-    count: number;
-    children: ReactNode;
-}) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <span
-                style={{
-                    width: 8,
-                    height: 8,
-                    background: color,
-                    boxShadow: `0 0 8px ${color}cc`,
-                }}
-            />
-            <h2
-                style={{
-                    margin: 0,
-                    fontFamily: sv.mono,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    letterSpacing: '0.20em',
-                    textTransform: 'uppercase',
-                    color,
-                }}
-            >
-                {children}
-                <span style={{ marginLeft: 8, color: `${color}aa` }}>[{count}]</span>
-            </h2>
-        </div>
-    );
-}
-
-/**
  * Small uniform header-action button for the ReviewQueue. Inline-styled with
- * sv tokens so it matches the `SvPageHeader` chrome and the dashboard's
- * ActionButtons family.
+ * sv tokens so it matches the `SvPageHeader` chrome.
  */
 function HeaderButton({
     color,
@@ -217,7 +168,9 @@ function ReviewQueue() {
     const [selectedEpisodes, setSelectedEpisodes] = useState<Record<number, string>>({});
     const [selectedEditions, setSelectedEditions] = useState<Record<number, string>>({});
     const [titleActions, setTitleActions] = useState<Record<number, TitleAction>>({});
-    const [expandedTitles, setExpandedTitles] = useState<Set<number>>(new Set());
+    const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
+
+    const { roster, episodeName } = useSeasonRoster(jobId);
 
     useEffect(() => {
         fetchJobDetails();
@@ -259,6 +212,17 @@ function ReviewQueue() {
         }
     };
 
+    // Default the inspector to the first title that needs attention.
+    useEffect(() => {
+        if (selectedTitleId !== null) return;
+        const active = titles.filter((t) => t.state !== 'completed' && t.state !== 'failed');
+        if (active.length === 0) return;
+        const firstReview = active.find(
+            (t) => !t.matched_episode || t.match_confidence < MATCHING_CONFIG.AUTO_MATCH_THRESHOLD,
+        );
+        setSelectedTitleId((firstReview ?? active[0]).id);
+    }, [titles, selectedTitleId]);
+
     const handleEpisodeChange = (titleId: number, episodeCode: string) => {
         setSelectedEpisodes(prev => ({ ...prev, [titleId]: episodeCode }));
         setTitleActions(prev => ({ ...prev, [titleId]: 'episode' }));
@@ -282,14 +246,6 @@ function ReviewQueue() {
                 return next;
             });
         }
-    };
-
-    const toggleExpand = (titleId: number) => {
-        setExpandedTitles(prev => {
-            const next = new Set(prev);
-            next.has(titleId) ? next.delete(titleId) : next.add(titleId);
-            return next;
-        });
     };
 
     // --- API Handlers ---
@@ -439,14 +395,44 @@ function ReviewQueue() {
         }
     };
 
-    // --- Categorize titles ---
-    const matchedTitles = titles.filter(t =>
-        t.matched_episode && t.match_confidence >= MATCHING_CONFIG.AUTO_MATCH_THRESHOLD && t.state !== 'completed' && t.state !== 'failed'
+    // --- Derived disc-level coverage (live, from current selections) ---
+    const rosterEpisodes = useMemo(() => roster?.episodes ?? [], [roster]);
+    const titleIndexById = useMemo(
+        () => Object.fromEntries(titles.map((t) => [t.id, t.title_index])) as Record<number, number>,
+        [titles],
     );
-    const needsReviewTitles = titles.filter(t =>
-        (!t.matched_episode || t.match_confidence < MATCHING_CONFIG.AUTO_MATCH_THRESHOLD) && t.state !== 'completed' && t.state !== 'failed'
+    const coverage = useMemo(
+        () => computeCoverage(selectedEpisodes, rosterEpisodes),
+        [selectedEpisodes, rosterEpisodes],
     );
-    const completedTitles = titles.filter(t => t.state === 'completed' || t.state === 'failed');
+    const holders = useMemo(() => assignmentsByCode(selectedEpisodes), [selectedEpisodes]);
+    const collisions = useMemo(() => collidingCodes(selectedEpisodes), [selectedEpisodes]);
+    const hasConflicts = collisions.size > 0;
+
+    const activeTitles = titles.filter((t) => t.state !== 'completed' && t.state !== 'failed');
+    const completedTitles = titles.filter((t) => t.state === 'completed' || t.state === 'failed');
+    const selectedTitle =
+        activeTitles.find((t) => t.id === selectedTitleId) ?? activeTitles[0] ?? null;
+
+    const candidates = selectedTitle ? buildCandidates(selectedTitle, episodeName) : [];
+
+    // Suggest the disc's remaining gap for the selected title when it is
+    // unassigned or its current pick collides with another title.
+    let inspectorSuggestion: { code: string; name: string } | null = null;
+    let suggestedForSelected: string | null = null;
+    if (selectedTitle) {
+        const currentSel = selectedEpisodes[selectedTitle.id];
+        const needsHelp = !currentSel || collisions.has(currentSel);
+        if (needsHelp) {
+            const others = { ...selectedEpisodes };
+            delete others[selectedTitle.id];
+            const gap = suggestGapCode(others, rosterEpisodes);
+            if (gap) {
+                inspectorSuggestion = { code: gap, name: episodeName(gap) };
+                suggestedForSelected = gap;
+            }
+        }
+    }
 
     const assignedCount = Object.keys(selectedEpisodes).length;
 
@@ -603,7 +589,7 @@ function ReviewQueue() {
         );
     }
 
-    // ==================== TV REVIEW ====================
+    // ==================== TV REVIEW (inspector layout) ====================
     const subtitleText = `› ${job.detected_title || job.volume_label}${job.detected_season ? ` / SEASON ${job.detected_season}` : ''}`;
     return (
         <SvAtmosphere>
@@ -626,7 +612,7 @@ function ReviewQueue() {
                             <HeaderButton
                                 color={sv.yellow}
                                 onClick={handleSaveAll}
-                                disabled={isSaving || isProcessing}
+                                disabled={isSaving || isProcessing || hasConflicts}
                                 icon={<Save size={12} />}
                             >
                                 {isSaving ? 'Saving…' : `Save ${assignedCount}`}
@@ -636,7 +622,7 @@ function ReviewQueue() {
                             <HeaderButton
                                 color={sv.green}
                                 onClick={handleProcessMatched}
-                                disabled={isSaving || isProcessing}
+                                disabled={isSaving || isProcessing || hasConflicts}
                                 icon={<Package size={12} />}
                             >
                                 {isProcessing ? 'Processing…' : `Process ${assignedCount}`}
@@ -658,459 +644,128 @@ function ReviewQueue() {
             <div className="max-w-[1280px] mx-auto px-6 py-8 relative z-0 pb-24">
                 {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                 {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
+                {hasConflicts && (
+                    <SvNotice tone="warn">
+                        › {collisions.size} EPISODE CONFLICT{collisions.size > 1 ? 'S' : ''} — TWO TITLES SHARE AN EPISODE. RESOLVE BEFORE SAVING.
+                    </SvNotice>
+                )}
                 {job.subtitle_status === 'failed' && !job.error_message?.includes('Subtitle') && (
                     <SvNotice tone="warn">
                         › SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
                     </SvNotice>
                 )}
 
-                {/* Matched Section */}
-                {matchedTitles.length > 0 && (
-                    <div style={{ marginBottom: 32 }}>
-                        <SectionHeading color={sv.green} count={matchedTitles.length}>Auto-matched</SectionHeading>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {matchedTitles.map(title => (
-                                <TVTitleRow
-                                    key={title.id}
-                                    title={title}
-                                    job={job}
-                                    selectedEpisode={selectedEpisodes[title.id] || ''}
-                                    titleAction={titleActions[title.id]}
-                                    isExpanded={expandedTitles.has(title.id)}
-                                    onEpisodeChange={handleEpisodeChange}
-                                    onTitleAction={handleTitleAction}
-                                    onToggleExpand={toggleExpand}
-                                    onRematch={handleRematch}
-                                    variant="matched"
-                                />
-                            ))}
+                {/* Season roster */}
+                {roster?.available && rosterEpisodes.length > 0 && (
+                    <div style={{ marginBottom: 24 }}>
+                        <div style={{ marginBottom: 12 }}>
+                            <SvLabel>Season roster — coverage across this disc</SvLabel>
                         </div>
+                        <SvPanel pad={14}>
+                            <SeasonRosterStrip
+                                episodes={rosterEpisodes}
+                                coverage={coverage}
+                                suggestedCode={suggestedForSelected}
+                                titleIndexById={titleIndexById}
+                            />
+                        </SvPanel>
                     </div>
                 )}
 
-                {/* Needs Review Section */}
-                {needsReviewTitles.length > 0 && (
-                    <div style={{ marginBottom: 32 }}>
-                        <SectionHeading color={sv.yellow} count={needsReviewTitles.length}>Needs review</SectionHeading>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {needsReviewTitles.map(title => (
-                                <TVTitleRow
-                                    key={title.id}
-                                    title={title}
-                                    job={job}
-                                    selectedEpisode={selectedEpisodes[title.id] || ''}
-                                    titleAction={titleActions[title.id]}
-                                    isExpanded={expandedTitles.has(title.id)}
-                                    onEpisodeChange={handleEpisodeChange}
-                                    onTitleAction={handleTitleAction}
-                                    onToggleExpand={toggleExpand}
-                                    onRematch={handleRematch}
-                                    variant="review"
-                                />
-                            ))}
+                {/* List + inspector */}
+                <div
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.05fr)',
+                        gap: 18,
+                        alignItems: 'start',
+                    }}
+                >
+                    {/* Left: title list */}
+                    <div>
+                        <div style={{ marginBottom: 12 }}>
+                            <SvLabel>Titles [{activeTitles.length}] — select one to inspect</SvLabel>
                         </div>
-                    </div>
-                )}
-
-                {/* Completed Section */}
-                {completedTitles.length > 0 && (
-                    <div style={{ marginBottom: 32 }}>
-                        <SectionHeading color={sv.inkFaint} count={completedTitles.length}>Processed</SectionHeading>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, opacity: 0.55 }}>
-                            {completedTitles.map(title => (
-                                <div
-                                    key={title.id}
-                                    style={{
-                                        ...monoLabelStyle,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 24,
-                                        padding: '14px 16px',
-                                        background: sv.bg1,
-                                        border: `1px solid ${sv.line}`,
-                                    }}
-                                >
-                                    <SvBadge size="sm" tone={sv.inkFaint} dot={false}>#{title.title_index}</SvBadge>
-                                    <span style={{ ...truncateStyle, flex: 1 }}>
-                                        {titleDisplayName(title)}
-                                    </span>
-                                    <span>{formatDuration(title.duration_seconds)}</span>
-                                    <span>{title.matched_episode || '—'}</span>
-                                    <SvBadge
-                                        size="sm"
-                                        state={title.state === 'completed' ? 'complete' : 'error'}
-                                        dot={false}
-                                    >
-                                        {title.state.toUpperCase()}
-                                    </SvBadge>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </SvAtmosphere>
-    );
-}
-
-// ==================== TV Title Row Component ====================
-
-interface TVTitleRowProps {
-    title: DiscTitle;
-    job: Job;
-    selectedEpisode: string;
-    titleAction?: TitleAction;
-    isExpanded: boolean;
-    onEpisodeChange: (titleId: number, episodeCode: string) => void;
-    onTitleAction: (titleId: number, action: TitleAction) => void;
-    onToggleExpand: (titleId: number) => void;
-    onRematch: (titleId: number, sourcePreference?: string) => void;
-    variant: 'matched' | 'review';
-}
-
-function TVTitleRow({
-    title,
-    job,
-    selectedEpisode,
-    titleAction,
-    isExpanded,
-    onEpisodeChange,
-    onTitleAction,
-    onToggleExpand,
-    onRematch,
-    variant,
-}: TVTitleRowProps) {
-    const [season, setSeason] = useState(job?.detected_season || 1);
-    const details = parseMatchDetails(title);
-    const isConflict = details.error === 'file_exists';
-    const reasons = getReviewReasons(title);
-    const alternatives = details.runner_ups || [];
-
-    const borderColor = isConflict
-        ? `${sv.yellow}66`
-        : variant === 'matched'
-        ? `${sv.green}33`
-        : `${sv.cyan}33`;
-
-    const confColor =
-        title.match_confidence >= MATCHING_CONFIG.AUTO_MATCH_THRESHOLD ? sv.green :
-        title.match_confidence >= MATCHING_CONFIG.MIN_CONFIDENCE ? sv.yellow : sv.red;
-
-    const sourceTone =
-        title.match_source === 'discdb' ? '#60a5fa' :
-        title.match_source === 'user' ? sv.green : sv.purple;
-    const sourceLabel =
-        title.match_source === 'discdb' ? 'DISCDB' :
-        title.match_source === 'user' ? 'MANUAL' : 'ENGRAM';
-
-    return (
-        <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
-            <SvPanel pad={16} accent={borderColor}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    {/* Expand button */}
-                    <button
-                        type="button"
-                        onClick={() => onToggleExpand(title.id)}
-                        aria-expanded={isExpanded}
-                        aria-label={isExpanded ? `Collapse details for title ${title.title_index}` : `Expand details for title ${title.title_index}`}
-                        style={{
-                            background: 'transparent',
-                            border: 0,
-                            color: sv.inkFaint,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            transition: 'color 120ms',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = sv.cyan; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = sv.inkFaint; }}
-                    >
-                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </button>
-
-                    {/* Title index */}
-                    <SvBadge size="sm" tone={sv.inkDim} dot={false}>
-                        #{title.title_index}
-                    </SvBadge>
-
-                    {/* Title name + conflict indicator */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <span
-                                style={{
-                                    ...truncateStyle,
-                                    fontFamily: sv.mono,
-                                    fontSize: 13,
-                                    color: sv.cyanHi,
-                                }}
-                            >
-                                {titleDisplayName(title)}
-                            </span>
-                            {isConflict && (
-                                <SvBadge size="sm" state="warn" dot={false}>
-                                    File exists
-                                </SvBadge>
-                            )}
-                        </div>
-                        <div
-                            style={{
-                                ...monoLabelStyle,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 16,
-                                marginTop: 4,
-                            }}
-                        >
-                            <span>{formatDuration(title.duration_seconds)}</span>
-                            <span>{formatSize(title.file_size_bytes)}</span>
-                        </div>
-                    </div>
-
-                    {/* Confidence + source */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                        {title.match_confidence > 0 ? (
-                            <SvBadge size="sm" tone={confColor} dot={false}>
-                                {Math.round(title.match_confidence * 100)}%
-                            </SvBadge>
-                        ) : (
-                            <SvBadge size="sm" tone={sv.inkFaint} dot={false}>—</SvBadge>
-                        )}
-                        {FEATURES.DISCDB && title.match_source && (
-                            <SvBadge size="sm" tone={sourceTone}>{sourceLabel}</SvBadge>
-                        )}
-                    </div>
-
-                    {/* Review reasons */}
-                    {reasons.length > 0 && (
-                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                            {reasons.slice(0, 2).map((r, i) => (
-                                <SvBadge key={i} size="sm" tone="#fb923c">{r}</SvBadge>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Episode selector with season input */}
-                    <div style={{ width: 208, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span
-                            style={{
-                                fontFamily: sv.mono,
-                                fontSize: 11,
-                                color: sv.inkDim,
-                                letterSpacing: '0.10em',
-                            }}
-                            title="Season"
-                        >
-                            S
-                        </span>
-                        <input
-                            type="number"
-                            min={1}
-                            max={20}
-                            value={season}
-                            onChange={(e) => setSeason(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-                            title="Season number"
-                            aria-label="Season number"
-                            style={{
-                                ...fieldBaseStyle,
-                                width: 40,
-                                padding: '4px 6px',
-                                fontSize: 11,
-                                textAlign: 'center',
-                            }}
-                            onFocus={applyFieldFocus}
-                            onBlur={applyFieldBlur}
+                        <TitleList
+                            titles={activeTitles}
+                            selectedTitleId={selectedTitle?.id ?? null}
+                            selections={selectedEpisodes}
+                            collisions={collisions}
+                            episodeName={episodeName}
+                            onSelect={setSelectedTitleId}
                         />
-                        <select
-                            value={selectedEpisode}
-                            onChange={(e) => onEpisodeChange(title.id, e.target.value)}
-                            aria-label={`Episode assignment for title ${title.title_index}`}
-                            style={{
-                                ...fieldBaseStyle,
-                                flex: 1,
-                                padding: '6px 8px',
-                                fontSize: 11,
-                                cursor: 'pointer',
-                            }}
-                            onFocus={applyFieldFocus}
-                            onBlur={applyFieldBlur}
-                        >
-                            <option value="">Select episode…</option>
-                            {title.matched_episode && (
-                                <option value={title.matched_episode}>
-                                    {title.matched_episode} — Best ({Math.round(title.match_confidence * 100)}%)
-                                </option>
-                            )}
-                            {alternatives.map((alt, idx) => (
-                                <option key={`alt-${idx}`} value={alt.episode}>
-                                    {alt.episode} — Alt ({Math.round(alt.confidence * 100)}%)
-                                </option>
-                            ))}
-                            {(title.matched_episode || alternatives.length > 0) && (
-                                <option disabled>{'─'.repeat(20)}</option>
-                            )}
-                            {generateEpisodeOptions(season, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON).map(ep => (
-                                <option key={ep} value={ep}>{ep}</option>
-                            ))}
-                        </select>
+
+                        {completedTitles.length > 0 && (
+                            <div style={{ marginTop: 24 }}>
+                                <div style={{ marginBottom: 12 }}>
+                                    <SvLabel>Processed [{completedTitles.length}]</SvLabel>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, opacity: 0.55 }}>
+                                    {completedTitles.map(title => (
+                                        <div
+                                            key={title.id}
+                                            style={{
+                                                ...monoLabelStyle,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 16,
+                                                padding: '12px 14px',
+                                                background: sv.bg1,
+                                                border: `1px solid ${sv.line}`,
+                                            }}
+                                        >
+                                            <SvBadge size="sm" tone={sv.inkFaint} dot={false}>#{title.title_index}</SvBadge>
+                                            <span style={{ ...truncateStyle, flex: 1 }}>
+                                                {titleDisplayName(title)}
+                                            </span>
+                                            <span>{title.matched_episode || '—'}</span>
+                                            <SvBadge
+                                                size="sm"
+                                                state={title.state === 'completed' ? 'complete' : 'error'}
+                                                dot={false}
+                                            >
+                                                {title.state.toUpperCase()}
+                                            </SvBadge>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Action buttons */}
-                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                        <SvActionButton
-                            tone={titleAction === 'extra' ? 'cyan' : 'neutral'}
-                            size="sm"
-                            onClick={() => onTitleAction(title.id, 'extra')}
-                            title="Keep as extra content"
-                        >
-                            Extra
-                        </SvActionButton>
-                        <SvActionButton
-                            tone={titleAction === 'discard' ? 'red' : 'neutral'}
-                            size="sm"
-                            onClick={() => onTitleAction(title.id, 'discard')}
-                            title="Discard this title"
-                            ariaLabel="Discard"
-                        >
-                            <Trash2 size={11} />
-                        </SvActionButton>
-                        <SvActionButton
-                            tone="neutral"
-                            size="sm"
-                            onClick={() => onTitleAction(title.id, 'skip')}
-                            title="Skip for now"
-                            ariaLabel="Skip"
-                        >
-                            <SkipForward size={11} />
-                        </SvActionButton>
-                        {/* Source toggle — switch between DiscDB and Engram when both exist */}
-                        {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
-                            <SvActionButton
-                                tone="magenta"
-                                size="sm"
-                                onClick={() => onRematch(title.id, title.match_source === 'discdb' ? 'engram' : 'discdb')}
-                                title={`Switch to ${title.match_source === 'discdb' ? 'Engram' : 'DiscDB'} match`}
-                                ariaLabel="Toggle match source"
-                            >
-                                <IcoRetry size={11} />
-                            </SvActionButton>
-                        )}
-                        {/* Re-match button — only DiscDB source, no Engram data yet */}
-                        {FEATURES.DISCDB && title.match_source === 'discdb' && !title.match_details && (
-                            <SvActionButton
-                                tone="magenta"
-                                size="sm"
-                                onClick={() => onRematch(title.id, 'engram')}
-                                title="Re-match with Engram audio matching"
-                                ariaLabel="Re-match"
-                            >
-                                <IcoRetry size={11} />
-                            </SvActionButton>
+                    {/* Right: inspector */}
+                    <div>
+                        <div style={{ marginBottom: 12 }}>
+                            <SvLabel>Inspector{selectedTitle ? ` — title #${selectedTitle.title_index}` : ''}</SvLabel>
+                        </div>
+                        {selectedTitle ? (
+                            <Inspector
+                                title={selectedTitle}
+                                job={job}
+                                candidates={candidates}
+                                suggestion={inspectorSuggestion}
+                                selection={selectedEpisodes[selectedTitle.id]}
+                                action={titleActions[selectedTitle.id]}
+                                episodes={rosterEpisodes}
+                                coverage={coverage}
+                                holders={holders}
+                                titleIndexById={titleIndexById}
+                                isRematching={isRematching}
+                                onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}
+                                onAction={(a) => handleTitleAction(selectedTitle.id, a)}
+                                onRematch={handleRematch}
+                            />
+                        ) : (
+                            <SvPanel pad={24}>
+                                <div style={{ ...monoLabelStyle, textAlign: 'center' }}>
+                                    No titles awaiting review.
+                                </div>
+                            </SvPanel>
                         )}
                     </div>
                 </div>
-
-                {/* Expanded details */}
-                {isExpanded && (
-                    <div
-                        style={{
-                            marginTop: 16,
-                            paddingTop: 12,
-                            borderTop: `1px solid ${sv.line}`,
-                        }}
-                    >
-                        {isConflict && details.message && (
-                            <div style={{ marginBottom: 12 }}>
-                                <SvNotice tone="warn">{details.message}</SvNotice>
-                            </div>
-                        )}
-                        <div style={{ marginBottom: 12 }}>
-                            <SvLabel>Competing matches</SvLabel>
-                        </div>
-
-                        {/* Match stats */}
-                        {details.vote_count !== undefined && (
-                            <div
-                                style={{
-                                    ...monoLabelStyle,
-                                    display: 'flex',
-                                    gap: 24,
-                                    marginBottom: 12,
-                                }}
-                            >
-                                <span>Votes: <span style={{ color: sv.ink }}>{details.vote_count}</span></span>
-                                <span>Coverage: <span style={{ color: sv.ink }}>{Math.round((details.file_cov || 0) * 100)}%</span></span>
-                                <span>Gap: <span style={{ color: sv.ink }}>{details.score_gap !== undefined ? `+${Math.round(details.score_gap * 100)}%` : '—'}</span></span>
-                            </div>
-                        )}
-
-                        <table style={{ width: '100%', fontFamily: sv.mono, fontSize: 11, borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: `1px solid ${sv.line}` }}>
-                                    {(['Rank', 'Episode', 'Score', 'Votes', 'Assessment'] as const).map((h) => (
-                                        <th
-                                            key={h}
-                                            style={{
-                                                ...tableCellStyle,
-                                                textAlign: 'left',
-                                                color: sv.inkFaint,
-                                                letterSpacing: '0.18em',
-                                                textTransform: 'uppercase',
-                                                fontSize: 9,
-                                                fontWeight: 700,
-                                            }}
-                                        >
-                                            {h}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {title.matched_episode && (
-                                    <tr style={{ borderBottom: `1px solid ${sv.line}` }}>
-                                        <td style={{ ...tableCellStyle, color: sv.green }}>1st</td>
-                                        <td style={{ ...tableCellStyle, color: sv.green, fontWeight: 700 }}>
-                                            {title.matched_episode}
-                                        </td>
-                                        <td style={{ ...tableCellStyle, color: sv.green }}>
-                                            {Math.round(title.match_confidence * 100)}%
-                                        </td>
-                                        <td style={{ ...tableCellStyle, color: sv.green }}>{details.vote_count || '?'}</td>
-                                        <td style={{ padding: '6px 0' }}>
-                                            <SvBadge size="sm" state="complete" dot={false}>BEST</SvBadge>
-                                        </td>
-                                    </tr>
-                                )}
-                                {alternatives.map((alt, idx) => (
-                                    <tr key={idx} style={{ borderBottom: `1px solid ${sv.line}`, color: sv.inkDim }}>
-                                        <td style={tableCellStyle}>
-                                            {idx + 2}{idx === 0 ? 'nd' : idx === 1 ? 'rd' : 'th'}
-                                        </td>
-                                        <td style={tableCellStyle}>{alt.episode}</td>
-                                        <td style={tableCellStyle}>{Math.round(alt.confidence * 100)}%</td>
-                                        <td style={tableCellStyle}>{alt.vote_count || '?'}</td>
-                                        <td style={{ padding: '6px 0' }}>
-                                            <SvBadge size="sm" tone={sv.inkDim} dot={false}>
-                                                {alt.confidence > MATCHING_CONFIG.MIN_CONFIDENCE ? 'POSSIBLE' : 'UNLIKELY'}
-                                            </SvBadge>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {!title.matched_episode && alternatives.length === 0 && (
-                                    <tr>
-                                        <td
-                                            colSpan={5}
-                                            style={{ padding: '14px 0', textAlign: 'center', color: sv.inkFaint }}
-                                        >
-                                            No match data available
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </SvPanel>
-        </motion.div>
+            </div>
+        </SvAtmosphere>
     );
 }
 
