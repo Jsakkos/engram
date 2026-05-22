@@ -174,7 +174,9 @@ def ensure_subtitles(show_name: str, season: int, needed_episodes: list[int]) ->
 
         result = download_subtitles(show_name, season)
         downloaded = sum(
-            1 for ep in result.get("episodes", []) if ep.get("status") in ("cached", "downloaded")
+            1
+            for ep in result.get("episodes", [])
+            if ep.get("status") in ("cached", "downloaded", "precomputed")
         )
         print(f"    Downloaded/cached: {downloaded} episodes")
         return downloaded >= len(needed_episodes) - len(missing)

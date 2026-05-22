@@ -210,7 +210,36 @@ def _get_os_client(config) -> object | None:
         return client
 
 
-def download_subtitles(show_name: str, season: int) -> dict:
+def _precomputed_skip_result(cache_path: Path, show_name: str, season: int) -> dict | None:
+    """Build a 'skip download' result when the precomputed cache covers the season.
+
+    Returns None when the cache doesn't cover ``show_name`` S``season``. The result
+    is sized from the cache's own episode index (no TMDB call), so it works even
+    when TMDB is unreachable — the whole point of the precomputed cache.
+    """
+    from app.matcher.episode_identification import precomputed_episode_codes
+
+    codes = precomputed_episode_codes(cache_path, show_name, season)
+    if not codes:
+        return None
+
+    logger.info(
+        f"{show_name} S{season:02d}: covered by precomputed vector cache; "
+        f"skipping subtitle download"
+    )
+    series_cache_dir = cache_path / "data" / sanitize_filename(show_name)
+    return {
+        "show_name": show_name,
+        "season": season,
+        "total_episodes": len(codes),
+        "episodes": [
+            {"code": code, "status": "precomputed", "source": "precomputed"} for code in codes
+        ],
+        "cache_dir": str(series_cache_dir),
+    }
+
+
+def download_subtitles(show_name: str, season: int, *, use_precomputed: bool = True) -> dict:
     """Download SRT subtitle files for a show/season.
 
     Strategy:
@@ -223,12 +252,35 @@ def download_subtitles(show_name: str, season: int) -> dict:
     Args:
         show_name: Name of the TV show (e.g. "Breaking Bad")
         season: Season number
+        use_precomputed: When True (default), skip downloading entirely if the
+            precomputed vector cache already covers this show+season — matching
+            reads those vectors directly, so the SRTs would be unused. The cache
+            builder passes False so rebuilds always re-harvest.
 
     Returns:
         Dict with show_name, season, total_episodes, episodes list, and cache_dir.
-        Each episode dict includes 'source' field: "cache", "opensubtitles_api",
-        "addic7ed", "tvsubtitles", or None.
+        Each episode dict includes 'source' field: "precomputed", "cache",
+        "opensubtitles_api", "addic7ed", "tvsubtitles", or None.
     """
+    # Resolve the cache path up front so the precomputed fast path needs no network.
+    from app.services.config_service import get_config_sync
+
+    config = get_config_sync()
+    cache_path = Path(config.subtitles_cache_path).expanduser()
+    if not cache_path.is_absolute():
+        cache_path = Path(__file__).parent.parent.parent / config.subtitles_cache_path
+
+    # Fast path (no network): the precomputed vector cache already covers this
+    # season. Tried BEFORE any TMDB call so an offline or failed TMDB lookup can't
+    # fail a job the cache would have matched (matching reads the vectors directly
+    # and ignores SRTs). The raw name is tried first, mirroring the matcher's own
+    # offline fallback — manifest keys are canonical names, so a hit means this
+    # name *is* the canonical key the cache was built under.
+    if use_precomputed:
+        skip = _precomputed_skip_result(cache_path, show_name, season)
+        if skip is not None:
+            return skip
+
     # Get TMDB show ID to determine episode count
     show_id = fetch_show_id(show_name)
     if not show_id:
@@ -240,20 +292,16 @@ def download_subtitles(show_name: str, season: int) -> dict:
 
     if canonical_show_name != show_name:
         logger.info(f"Using canonical show name '{canonical_show_name}' instead of '{show_name}'")
+        # Retry the precomputed fast path under the canonical name, for discs whose
+        # label differs from the cache's canonical key.
+        if use_precomputed:
+            skip = _precomputed_skip_result(cache_path, canonical_show_name, season)
+            if skip is not None:
+                return skip
 
     episode_count = fetch_season_details(show_id, season)
     if episode_count == 0:
         raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on TMDB")
-
-    # Set up cache directory
-    from app.services.config_service import get_config_sync
-
-    config = get_config_sync()
-
-    # Use config.subtitles_cache_path from DB
-    cache_path = Path(config.subtitles_cache_path).expanduser()
-    if not cache_path.is_absolute():
-        cache_path = Path(__file__).parent.parent.parent / config.subtitles_cache_path
 
     # Use canonical name for cache directory
     safe_show_name = sanitize_filename(canonical_show_name)

@@ -907,11 +907,17 @@ class MatchingCoordinator:
 
             result = await asyncio.to_thread(download_subtitles, show_name, season)
 
-            downloaded = sum(
-                1 for ep in result["episodes"] if ep["status"] in ("downloaded", "cached")
+            episodes = result["episodes"]
+            # The precomputed vector cache covered the whole season, so no SRTs
+            # were downloaded — matching will read those vectors directly.
+            using_precomputed = bool(episodes) and all(
+                ep["status"] == "precomputed" for ep in episodes
             )
-            failed = sum(1 for ep in result["episodes"] if ep["status"] in ("not_found", "failed"))
-            total = len(result["episodes"])
+            downloaded = sum(
+                1 for ep in episodes if ep["status"] in ("downloaded", "cached", "precomputed")
+            )
+            failed = sum(1 for ep in episodes if ep["status"] in ("not_found", "failed"))
+            total = len(episodes)
 
             status = "completed" if failed == 0 else ("partial" if downloaded > 0 else "failed")
 
@@ -919,10 +925,16 @@ class MatchingCoordinator:
             if status == "failed":
                 error_msg = "Subtitle download failed: No subtitles found"
 
-            logger.info(
-                f"Subtitle download complete for {show_name} S{season}: "
-                f"{status} ({downloaded} downloaded/cached, {failed} failed)"
-            )
+            if using_precomputed:
+                logger.info(
+                    f"Subtitle references for {show_name} S{season} served from "
+                    f"precomputed vector cache ({total} episodes); skipped download"
+                )
+            else:
+                logger.info(
+                    f"Subtitle download complete for {show_name} S{season}: "
+                    f"{status} ({downloaded} downloaded/cached, {failed} failed)"
+                )
 
             async with async_session() as session:
                 update_values = {"subtitle_status": status}
