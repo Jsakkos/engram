@@ -288,6 +288,15 @@ def _harvest_show(
                 on_season_done()
             continue
 
+        # Defense in depth: the builder must never receive precomputed-status
+        # episodes. use_precomputed=False is passed above, but if that ever
+        # regresses the _VALID_STATUSES filter below would silently drop every
+        # episode and write a zero-row cache. Fail loudly instead.
+        assert all(ep["status"] != "precomputed" for ep in result["episodes"]), (
+            "download_subtitles returned precomputed status to the cache builder — "
+            "use_precomputed=False must be passed when harvesting"
+        )
+
         # Tally every episode (including failures) so the running totals
         # match what actually happened, not what we chose to keep.
         for ep in result["episodes"]:
