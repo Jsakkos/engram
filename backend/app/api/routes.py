@@ -1,5 +1,6 @@
 """REST API routes for Engram."""
 
+import asyncio
 import json
 import logging
 import platform
@@ -486,7 +487,7 @@ class RosterEpisode(BaseModel):
     episode_code: str
     episode_number: int
     name: str
-    status: str  # "assigned" | "duplicate" | "missing" | "off"
+    status: Literal["assigned", "duplicate", "missing", "off"]
     assigned_title_ids: list[int]
 
 
@@ -527,7 +528,11 @@ async def get_season_roster(
     from app.services.config_service import get_config
 
     config = await get_config()
-    episodes_raw = fetch_season_episodes(str(job.tmdb_id), season, config.tmdb_api_key)
+    # fetch_season_episodes does a synchronous requests.get; run it off the
+    # event loop so a slow TMDB call doesn't stall other requests / WS pushes.
+    episodes_raw = await asyncio.to_thread(
+        fetch_season_episodes, str(job.tmdb_id), season, config.tmdb_api_key
+    )
     if not episodes_raw:
         return SeasonRosterResponse(
             available=False,

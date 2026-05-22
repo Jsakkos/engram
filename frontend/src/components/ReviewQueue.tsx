@@ -170,7 +170,7 @@ function ReviewQueue() {
     const [titleActions, setTitleActions] = useState<Record<number, TitleAction>>({});
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
 
-    const { roster, episodeName } = useSeasonRoster(jobId);
+    const { roster, error: rosterError, episodeName } = useSeasonRoster(jobId);
 
     useEffect(() => {
         fetchJobDetails();
@@ -417,22 +417,23 @@ function ReviewQueue() {
     const candidates = selectedTitle ? buildCandidates(selectedTitle, episodeName) : [];
 
     // Suggest the disc's remaining gap for the selected title when it is
-    // unassigned or its current pick collides with another title.
-    let inspectorSuggestion: { code: string; name: string } | null = null;
-    let suggestedForSelected: string | null = null;
-    if (selectedTitle) {
+    // unassigned or its current pick collides with another title. Memoized so
+    // the extra computeCoverage pass inside suggestGapCode only runs when the
+    // inputs actually change, not on every render.
+    const { inspectorSuggestion, suggestedForSelected } = useMemo<{
+        inspectorSuggestion: { code: string; name: string } | null;
+        suggestedForSelected: string | null;
+    }>(() => {
+        if (!selectedTitle) return { inspectorSuggestion: null, suggestedForSelected: null };
         const currentSel = selectedEpisodes[selectedTitle.id];
         const needsHelp = !currentSel || collisions.has(currentSel);
-        if (needsHelp) {
-            const others = { ...selectedEpisodes };
-            delete others[selectedTitle.id];
-            const gap = suggestGapCode(others, rosterEpisodes);
-            if (gap) {
-                inspectorSuggestion = { code: gap, name: episodeName(gap) };
-                suggestedForSelected = gap;
-            }
-        }
-    }
+        if (!needsHelp) return { inspectorSuggestion: null, suggestedForSelected: null };
+        const others = { ...selectedEpisodes };
+        delete others[selectedTitle.id];
+        const gap = suggestGapCode(others, rosterEpisodes);
+        if (!gap) return { inspectorSuggestion: null, suggestedForSelected: null };
+        return { inspectorSuggestion: { code: gap, name: episodeName(gap) }, suggestedForSelected: gap };
+    }, [selectedTitle, selectedEpisodes, collisions, rosterEpisodes, episodeName]);
 
     const assignedCount = Object.keys(selectedEpisodes).length;
 
@@ -652,6 +653,11 @@ function ReviewQueue() {
                 {job.subtitle_status === 'failed' && !job.error_message?.includes('Subtitle') && (
                     <SvNotice tone="warn">
                         › SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
+                    </SvNotice>
+                )}
+                {rosterError && (
+                    <SvNotice tone="warn">
+                        › SEASON ROSTER UNAVAILABLE — RELOAD TO RETRY.
                     </SvNotice>
                 )}
 
