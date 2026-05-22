@@ -538,6 +538,21 @@ class JobManager:
                 (job_id, job.detected_title, job.detected_season) if needs_subtitle_retry else None
             )
 
+            # Leave REVIEW_NEEDED for MATCHING so the dashboard's live (WebSocket)
+            # view follows the re-matching that now runs in the background. Without
+            # this the static review page stays mounted showing only cleared matches.
+            if job is not None and job.state == JobState.REVIEW_NEEDED:
+                job.state = JobState.MATCHING
+                job.updated_at = datetime.now(UTC)
+                await session.commit()
+                await ws_manager.broadcast_job_update(
+                    job_id,
+                    JobState.MATCHING.value,
+                    content_type=job.content_type.value,
+                    detected_title=job.detected_title,
+                    detected_season=job.detected_season,
+                )
+
         if retry_args is not None:
             await self._matching.restart_subtitle_download(*retry_args)
 
