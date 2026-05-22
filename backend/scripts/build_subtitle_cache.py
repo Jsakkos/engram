@@ -274,7 +274,9 @@ def _harvest_show(
                 continue
 
         try:
-            result = download_subtitles(canonical, season)
+            # Always re-harvest when building the cache, even if a prior
+            # precomputed build already covers this season.
+            result = download_subtitles(canonical, season, use_precomputed=False)
         except Exception as e:
             # exc_info=True per CLAUDE.md: the warning string alone (often
             # just "429 Too Many Requests") doesn't say which provider in

@@ -1,5 +1,6 @@
 """Unit tests for testing service orchestration."""
 
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -9,7 +10,34 @@ import pytest
 # triggers CodeQL's duplicate-import-style warning and makes refactors that
 # rename symbols harder to follow.
 from app.matcher import testing_service
+from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.testing_service import download_subtitles
+from app.matcher.vectorizer_config import CACHE_FORMAT_VERSION, vectorizer_config_hash
+
+
+def _write_precomputed_cache(cache_dir, show_name, season=1, episode_codes=None):
+    """Write a valid precomputed manifest + placeholder vector files.
+
+    The skip gate only checks manifest validity and file existence, so the
+    .npz/.index.json contents are irrelevant here.
+    """
+    episode_codes = episode_codes or ["S01E01", "S01E02", "S01E03"]
+    precomputed = cache_dir / "precomputed"
+    show_dir = precomputed / sanitize_filename(show_name)
+    show_dir.mkdir(parents=True, exist_ok=True)
+    (precomputed / "idf.npy").write_bytes(b"")
+    (show_dir / f"S{season:02d}.npz").write_bytes(b"")
+    (show_dir / f"S{season:02d}.index.json").write_text(json.dumps(episode_codes))
+    (precomputed / "manifest.json").write_text(
+        json.dumps(
+            {
+                "cache_format_version": CACHE_FORMAT_VERSION,
+                "vectorizer_config_hash": vectorizer_config_hash(),
+                "content_version": "test",
+                "shows": {show_name: {"tmdb_id": 1, "seasons": [season]}},
+            }
+        )
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -91,6 +119,87 @@ class TestDownloadSubtitles:
         assert (cache_path / "Arrested Development - S01E01.srt").exists()
         assert (cache_path / "Arrested Development - S01E02.srt").exists()
         assert (cache_path / "Arrested Development - S01E03.srt").exists()
+
+    @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
+    @patch("app.matcher.testing_service.fetch_season_details")
+    @patch("app.matcher.testing_service.fetch_show_id")
+    @patch("app.services.config_service.get_config_sync")
+    def test_skips_download_when_precomputed_covers_season(
+        self,
+        mock_config_sync,
+        mock_show_id,
+        mock_season,
+        mock_show_details,
+        mock_addic7ed,
+        tmp_path,
+    ):
+        """When the precomputed cache covers the season, no providers are hit."""
+        mock_config = Mock()
+        mock_config.subtitles_cache_path = str(tmp_path)
+        mock_config_sync.return_value = mock_config
+
+        mock_show_id.return_value = "4589"
+        mock_show_details.return_value = {"name": "Arrested Development"}
+        mock_season.return_value = 3
+
+        _write_precomputed_cache(tmp_path, "Arrested Development", season=1)
+
+        addic7ed_client = Mock()
+        mock_addic7ed.return_value = addic7ed_client
+
+        result = download_subtitles("Arrested Development", 1)
+
+        assert result["total_episodes"] == 3
+        assert len(result["episodes"]) == 3
+        assert all(ep["status"] == "precomputed" for ep in result["episodes"])
+        assert all(ep["source"] == "precomputed" for ep in result["episodes"])
+
+        # No provider calls and nothing written to the raw SRT cache.
+        addic7ed_client.get_best_subtitle.assert_not_called()
+        addic7ed_client.download_subtitle.assert_not_called()
+        assert not list((tmp_path / "data" / "Arrested Development").glob("*.srt"))
+
+    @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
+    @patch("app.matcher.testing_service.fetch_season_details")
+    @patch("app.matcher.testing_service.fetch_show_id")
+    @patch("app.services.config_service.get_config_sync")
+    def test_use_precomputed_false_still_downloads(
+        self,
+        mock_config_sync,
+        mock_show_id,
+        mock_season,
+        mock_show_details,
+        mock_addic7ed,
+        tmp_path,
+    ):
+        """The builder opt-out (use_precomputed=False) downloads even when covered."""
+        mock_config = Mock()
+        mock_config.subtitles_cache_path = str(tmp_path)
+        mock_config_sync.return_value = mock_config
+
+        mock_show_id.return_value = "4589"
+        mock_show_details.return_value = {"name": "Arrested Development"}
+        mock_season.return_value = 1
+
+        _write_precomputed_cache(tmp_path, "Arrested Development", season=1)
+
+        addic7ed_client = Mock()
+        mock_addic7ed.return_value = addic7ed_client
+        addic7ed_client.get_best_subtitle.return_value = Mock(language="English", version="WEB")
+
+        def download_side_effect(subtitle, save_path):
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            save_path.write_text("1\n00:00:00,000 --> 00:00:02,000\nhi\n")
+            return save_path
+
+        addic7ed_client.download_subtitle.side_effect = download_side_effect
+
+        result = download_subtitles("Arrested Development", 1, use_precomputed=False)
+
+        assert all(ep["status"] != "precomputed" for ep in result["episodes"])
+        addic7ed_client.get_best_subtitle.assert_called()
 
     @patch("app.matcher.testing_service.fetch_show_id")
     def test_tmdb_show_not_found_raises_error(self, mock_show_id):

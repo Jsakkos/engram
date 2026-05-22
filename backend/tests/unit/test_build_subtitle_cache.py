@@ -68,7 +68,7 @@ class TestHarvestShowAccumulatesTally:
         """One season with mixed cached / downloaded / not_found episodes —
         each must increment the matching tally field."""
 
-        def fake_download(show_name, season):
+        def fake_download(show_name, season, *, use_precomputed=False):
             return {
                 "show_name": show_name,
                 "season": season,
@@ -126,7 +126,7 @@ class TestHarvestShowAccumulatesTally:
         """The progress-bar advance hook must fire for every season —
         otherwise the bar stalls on shows with mixed outcomes."""
 
-        def downloads(show_name, season):
+        def downloads(show_name, season, *, use_precomputed=False):
             # 3 seasons → success / below-threshold / exception
             if season == 1:
                 return {
@@ -223,7 +223,7 @@ class TestMainRoundTrip:
             _write_srt(srt_path, text)
             srt_paths[code] = srt_path
 
-        def fake_download(show_name, season):
+        def fake_download(show_name, season, *, use_precomputed=False):
             return {
                 "show_name": show_name,
                 "season": season,

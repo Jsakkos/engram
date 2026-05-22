@@ -23,6 +23,65 @@ from app.matcher.vectorizer_config import apply_tfidf
 console = Console()
 
 
+def load_precomputed_manifest(cache_dir) -> dict | None:
+    """Load and validate the precomputed-cache manifest. Returns the dict or None.
+
+    A missing, unreadable, or version/config-mismatched manifest is treated as
+    "no cache" so callers fall back to subtitle scraping. Shared by the matcher's
+    load path and the download-skip check so both agree on what counts as valid.
+    """
+    from app.matcher.vectorizer_config import (
+        CACHE_FORMAT_VERSION,
+        vectorizer_config_hash,
+    )
+
+    manifest_path = Path(cache_dir) / "precomputed" / "manifest.json"
+    if not manifest_path.exists():
+        return None
+
+    try:
+        with open(manifest_path, encoding="utf-8") as fh:
+            manifest = json.load(fh)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"Precomputed cache manifest unreadable ({e}); using scraping")
+        return None
+
+    if manifest.get("cache_format_version") != CACHE_FORMAT_VERSION:
+        logger.warning(
+            f"Precomputed cache format mismatch "
+            f"(manifest={manifest.get('cache_format_version')}, code={CACHE_FORMAT_VERSION}); "
+            f"ignoring cache"
+        )
+        return None
+    if manifest.get("vectorizer_config_hash") != vectorizer_config_hash():
+        logger.warning("Precomputed cache vectorizer-config mismatch; ignoring cache")
+        return None
+
+    return manifest
+
+
+def precomputed_covers_season(cache_dir, show_name: str, season: int) -> bool:
+    """Return True when the precomputed vector cache fully covers show+season.
+
+    Mirrors the gate EpisodeMatcher applies at match time (manifest validity,
+    show/season listing, and on-disk .npz/.index.json files) WITHOUT loading
+    vectors, so a True result guarantees the matcher will use the cache. The
+    show name must be the canonical name the matcher resolves to.
+    """
+    manifest = load_precomputed_manifest(cache_dir)
+    if not manifest:
+        return False
+
+    show_entry = manifest.get("shows", {}).get(show_name)
+    if not show_entry or season not in show_entry.get("seasons", []):
+        return False
+
+    show_dir = Path(cache_dir) / "precomputed" / sanitize_filename(show_name)
+    npz_path = show_dir / f"S{season:02d}.npz"
+    index_path = show_dir / f"S{season:02d}.index.json"
+    return npz_path.exists() and index_path.exists()
+
+
 class SubtitleCache:
     """Cache for storing parsed subtitle data to avoid repeated loading and parsing."""
 
@@ -451,39 +510,8 @@ class EpisodeMatcher:
         if self._precomputed_manifest is not None:
             return self._precomputed_manifest or None
 
-        from app.matcher.vectorizer_config import (
-            CACHE_FORMAT_VERSION,
-            vectorizer_config_hash,
-        )
-
-        manifest_path = self.cache_dir / "precomputed" / "manifest.json"
-        if not manifest_path.exists():
-            self._precomputed_manifest = False
-            return None
-
-        try:
-            with open(manifest_path, encoding="utf-8") as fh:
-                manifest = json.load(fh)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Precomputed cache manifest unreadable ({e}); using scraping")
-            self._precomputed_manifest = False
-            return None
-
-        if manifest.get("cache_format_version") != CACHE_FORMAT_VERSION:
-            logger.warning(
-                f"Precomputed cache format mismatch "
-                f"(manifest={manifest.get('cache_format_version')}, code={CACHE_FORMAT_VERSION}); "
-                f"ignoring cache"
-            )
-            self._precomputed_manifest = False
-            return None
-        if manifest.get("vectorizer_config_hash") != vectorizer_config_hash():
-            logger.warning("Precomputed cache vectorizer-config mismatch; ignoring cache")
-            self._precomputed_manifest = False
-            return None
-
-        self._precomputed_manifest = manifest
-        return manifest
+        self._precomputed_manifest = load_precomputed_manifest(self.cache_dir) or False
+        return self._precomputed_manifest or None
 
     def load_precomputed_season(self, season_number):
         """Public entry point over the precomputed-cache loader.
@@ -501,24 +529,22 @@ class EpisodeMatcher:
         Returns (ref_matrix, episode_codes, idf_array) when the shipped cache
         covers the show+season, otherwise None (caller falls back to scraping).
         """
-        manifest = self._load_precomputed_manifest()
-        if not manifest:
-            return None
-
-        show_entry = manifest.get("shows", {}).get(self.show_name)
-        if not show_entry or season_number not in show_entry.get("seasons", []):
+        if not precomputed_covers_season(self.cache_dir, self.show_name, season_number):
+            # Surface the common misconfiguration: manifest lists the season but
+            # the vector files never made it to disk.
+            manifest = self._load_precomputed_manifest()
+            show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
+            if show_entry and season_number in show_entry.get("seasons", []):
+                logger.warning(
+                    f"Precomputed cache lists {self.show_name} S{season_number:02d} "
+                    f"but its files are missing; using scraping"
+                )
             return None
 
         precomputed_dir = self.cache_dir / "precomputed"
         show_dir = precomputed_dir / sanitize_filename(self.show_name)
         npz_path = show_dir / f"S{season_number:02d}.npz"
         index_path = show_dir / f"S{season_number:02d}.index.json"
-        if not npz_path.exists() or not index_path.exists():
-            logger.warning(
-                f"Precomputed cache lists {self.show_name} S{season_number:02d} "
-                f"but its files are missing; using scraping"
-            )
-            return None
 
         try:
             if self._precomputed_idf is None:

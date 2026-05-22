@@ -10,7 +10,12 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
+from app.matcher.episode_identification import (
+    EpisodeMatcher,
+    TfidfMatcher,
+    load_precomputed_manifest,
+    precomputed_covers_season,
+)
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     apply_tfidf,
@@ -142,6 +147,58 @@ class TestEpisodeMatcherCacheLoader:
         self._write_cache(tmp_path)
         matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Other Show")
         assert matcher._load_precomputed_season(1) is None
+
+
+class TestPrecomputedCoversSeason:
+    """The download-skip gate. Must agree with the matcher's load gate, so it
+    shares the same manifest validation. A True result means the matcher will
+    use the cache, so skipping the download can't strand a title."""
+
+    def _write_cache(self, tmp_path, manifest_overrides=None, write_files=True):
+        show = "Test Show"
+        precomputed = tmp_path / "precomputed"
+        show_dir = precomputed / show  # sanitize_filename("Test Show") == "Test Show"
+        show_dir.mkdir(parents=True)
+
+        if write_files:
+            # The gate only checks existence, not contents.
+            (precomputed / "idf.npy").write_bytes(b"")
+            (show_dir / "S01.npz").write_bytes(b"")
+            (show_dir / "S01.index.json").write_text(json.dumps(["S01E01", "S01E02"]))
+
+        manifest = {
+            "cache_format_version": CACHE_FORMAT_VERSION,
+            "vectorizer_config_hash": vectorizer_config_hash(),
+            "content_version": "test",
+            "shows": {show: {"tmdb_id": 1, "seasons": [1]}},
+        }
+        manifest.update(manifest_overrides or {})
+        (precomputed / "manifest.json").write_text(json.dumps(manifest))
+        return show
+
+    def test_covered_season_returns_true(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_covers_season(tmp_path, show, 1) is True
+
+    def test_missing_manifest_returns_false(self, tmp_path):
+        assert precomputed_covers_season(tmp_path, "Test Show", 1) is False
+
+    def test_unknown_show_returns_false(self, tmp_path):
+        self._write_cache(tmp_path)
+        assert precomputed_covers_season(tmp_path, "Other Show", 1) is False
+
+    def test_uncovered_season_returns_false(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_covers_season(tmp_path, show, 2) is False
+
+    def test_listed_but_files_missing_returns_false(self, tmp_path):
+        show = self._write_cache(tmp_path, write_files=False)
+        assert precomputed_covers_season(tmp_path, show, 1) is False
+
+    def test_format_version_mismatch_returns_false(self, tmp_path):
+        show = self._write_cache(tmp_path, {"cache_format_version": "999"})
+        assert precomputed_covers_season(tmp_path, show, 1) is False
+        assert load_precomputed_manifest(tmp_path) is None
 
 
 @pytest.mark.unit

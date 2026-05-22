@@ -210,7 +210,7 @@ def _get_os_client(config) -> object | None:
         return client
 
 
-def download_subtitles(show_name: str, season: int) -> dict:
+def download_subtitles(show_name: str, season: int, *, use_precomputed: bool = True) -> dict:
     """Download SRT subtitle files for a show/season.
 
     Strategy:
@@ -223,11 +223,15 @@ def download_subtitles(show_name: str, season: int) -> dict:
     Args:
         show_name: Name of the TV show (e.g. "Breaking Bad")
         season: Season number
+        use_precomputed: When True (default), skip downloading entirely if the
+            precomputed vector cache already covers this show+season — matching
+            reads those vectors directly, so the SRTs would be unused. The cache
+            builder passes False so rebuilds always re-harvest.
 
     Returns:
         Dict with show_name, season, total_episodes, episodes list, and cache_dir.
-        Each episode dict includes 'source' field: "cache", "opensubtitles_api",
-        "addic7ed", "tvsubtitles", or None.
+        Each episode dict includes 'source' field: "precomputed", "cache",
+        "opensubtitles_api", "addic7ed", "tvsubtitles", or None.
     """
     # Get TMDB show ID to determine episode count
     show_id = fetch_show_id(show_name)
@@ -259,6 +263,33 @@ def download_subtitles(show_name: str, season: int) -> dict:
     safe_show_name = sanitize_filename(canonical_show_name)
     series_cache_dir = cache_path / "data" / safe_show_name
     series_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Skip downloading when the precomputed vector cache already covers this
+    # season — the matcher reads those vectors directly and ignores SRTs, so any
+    # download here is wasted quota. Uses the same gate the matcher applies, so a
+    # skip here guarantees the matcher will hit the cache.
+    if use_precomputed:
+        from app.matcher.episode_identification import precomputed_covers_season
+
+        if precomputed_covers_season(cache_path, canonical_show_name, season):
+            logger.info(
+                f"{canonical_show_name} S{season:02d}: covered by precomputed vector "
+                f"cache; skipping subtitle download"
+            )
+            return {
+                "show_name": canonical_show_name,
+                "season": season,
+                "total_episodes": episode_count,
+                "episodes": [
+                    {
+                        "code": f"S{season:02d}E{ep:02d}",
+                        "status": "precomputed",
+                        "source": "precomputed",
+                    }
+                    for ep in range(1, episode_count + 1)
+                ],
+                "cache_dir": str(series_cache_dir),
+            }
 
     logger.info(f"Downloading subtitles for '{canonical_show_name}' to: {series_cache_dir}")
 
