@@ -230,7 +230,7 @@ Playwright auto-starts servers via `playwright.config.ts`, but if you prefer to 
 ```bash
 cd backend
 set DEBUG=true
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --port 8000
 ```
 
 **Terminal 2 — Frontend:**

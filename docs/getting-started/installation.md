@@ -4,7 +4,7 @@
 
 - [MakeMKV](https://www.makemkv.com/) with a valid license key
 - A [TMDB Read Access Token](https://www.themoviedb.org/settings/api) (v4 auth) for media metadata and poster art
-- If running from source: **Python 3.11+** with [uv](https://docs.astral.sh/uv/), and **Node.js 18+**
+- If running from source: **Python 3.11+** with [uv](https://docs.astral.sh/uv/), and **Node.js 24**
 
 ### Linux-Specific Prerequisites
 
@@ -80,7 +80,7 @@ You need two terminals -- one for the backend, one for the frontend.
 
 ```bash
 cd backend
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app
 ```
 
 **Frontend** (serves the dashboard on port 5173, proxies API calls to the backend):
@@ -111,7 +111,7 @@ Once both servers are running:
 | Command | Description |
 |---------|-------------|
 | `uv sync` | Install/sync Python dependencies |
-| `uv run uvicorn app.main:app --reload` | Start dev server (port 8000) |
+| `uv run uvicorn app.main:app` | Start dev server (port 8000) |
 | `uv run pytest` | Run all backend tests |
 | `uv run ruff check .` | Lint Python code |
 | `uv run ruff format .` | Format Python code |
