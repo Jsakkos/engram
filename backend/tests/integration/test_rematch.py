@@ -109,6 +109,29 @@ async def test_bulk_rematch_returns_200(client, job_with_matched_title):
 
 
 @pytest.mark.asyncio
+async def test_bulk_rematch_rejects_non_review_state(client, engram_review_job):
+    """Re-match all on a job that is not in review must be rejected, not silently
+    backgrounded — otherwise the UI navigates away while matching runs invisibly."""
+    job, _ = engram_review_job
+
+    async with async_session() as session:
+        reloaded = await session.get(DiscJob, job.id)
+        reloaded.state = JobState.FAILED
+        session.add(reloaded)
+        await session.commit()
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/rematch",
+        json={"source_preference": "engram"},
+    )
+    assert resp.status_code == 409
+
+    async with async_session() as session:
+        unchanged = await session.get(DiscJob, job.id)
+        assert unchanged.state == JobState.FAILED
+
+
+@pytest.mark.asyncio
 async def test_reassign_episode_returns_200(client, job_with_matched_title):
     """POST /api/jobs/{id}/titles/{tid}/reassign should return 200 and update DB."""
     job, title = job_with_matched_title
@@ -229,8 +252,11 @@ async def test_bulk_rematch_dispatches_matching(client, engram_review_job, monke
     )
     assert resp.status_code == 200
 
-    # Background tasks are fire-and-forget; let the event loop run them.
-    await asyncio.sleep(0.1)
+    # Background tasks are fire-and-forget; yield until dispatched (with a hard
+    # timeout) rather than a fixed sleep, which is racy under CI load.
+    deadline = asyncio.get_running_loop().time() + 2.0
+    while mock_match.await_count == 0 and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0)
 
     assert mock_match.await_count == 1
     dispatched_job_id, dispatched_title_id, _path = mock_match.await_args.args
