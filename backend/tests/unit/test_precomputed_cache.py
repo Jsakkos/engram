@@ -15,6 +15,7 @@ from app.matcher.episode_identification import (
     TfidfMatcher,
     load_precomputed_manifest,
     precomputed_covers_season,
+    precomputed_episode_codes,
 )
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
@@ -199,6 +200,24 @@ class TestPrecomputedCoversSeason:
         show = self._write_cache(tmp_path, {"cache_format_version": "999"})
         assert precomputed_covers_season(tmp_path, show, 1) is False
         assert load_precomputed_manifest(tmp_path) is None
+
+    def test_accepts_preloaded_manifest(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        manifest = load_precomputed_manifest(tmp_path)
+        # A caller-supplied manifest is used as-is (no re-read).
+        assert precomputed_covers_season(tmp_path, show, 1, manifest=manifest) is True
+        # A manifest that doesn't list the show wins even though files are on disk.
+        empty = {**manifest, "shows": {}}
+        assert precomputed_covers_season(tmp_path, show, 1, manifest=empty) is False
+
+    def test_episode_codes_returns_index_for_covered(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_episode_codes(tmp_path, show, 1) == ["S01E01", "S01E02"]
+
+    def test_episode_codes_none_when_uncovered(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_episode_codes(tmp_path, show, 2) is None
+        assert precomputed_episode_codes(tmp_path, "Other Show", 1) is None
 
 
 @pytest.mark.unit

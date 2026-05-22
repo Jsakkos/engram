@@ -201,6 +201,39 @@ class TestDownloadSubtitles:
         assert all(ep["status"] != "precomputed" for ep in result["episodes"])
         addic7ed_client.get_best_subtitle.assert_called()
 
+    @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
+    @patch("app.matcher.testing_service.fetch_season_details")
+    @patch("app.matcher.testing_service.fetch_show_id")
+    @patch("app.services.config_service.get_config_sync")
+    def test_precomputed_skip_does_not_touch_tmdb(
+        self,
+        mock_config_sync,
+        mock_show_id,
+        mock_season,
+        mock_show_details,
+        mock_addic7ed,
+        tmp_path,
+    ):
+        """The precomputed fast path must work without any TMDB call (offline)."""
+        mock_config = Mock()
+        mock_config.subtitles_cache_path = str(tmp_path)
+        mock_config_sync.return_value = mock_config
+
+        # Any TMDB access would blow up — proving the fast path is network-free.
+        boom = AssertionError("TMDB must not be called on the precomputed fast path")
+        mock_show_id.side_effect = boom
+        mock_show_details.side_effect = boom
+        mock_season.side_effect = boom
+
+        _write_precomputed_cache(tmp_path, "Arrested Development", season=1)
+
+        result = download_subtitles("Arrested Development", 1)
+
+        assert result["total_episodes"] == 3
+        assert all(ep["status"] == "precomputed" for ep in result["episodes"])
+        mock_show_id.assert_not_called()
+
     @patch("app.matcher.testing_service.fetch_show_id")
     def test_tmdb_show_not_found_raises_error(self, mock_show_id):
         """Test that ValueError is raised when show not found on TMDB."""

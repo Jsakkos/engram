@@ -60,15 +60,19 @@ def load_precomputed_manifest(cache_dir) -> dict | None:
     return manifest
 
 
-def precomputed_covers_season(cache_dir, show_name: str, season: int) -> bool:
+def precomputed_covers_season(cache_dir, show_name: str, season: int, manifest=None) -> bool:
     """Return True when the precomputed vector cache fully covers show+season.
 
     Mirrors the gate EpisodeMatcher applies at match time (manifest validity,
     show/season listing, and on-disk .npz/.index.json files) WITHOUT loading
     vectors, so a True result guarantees the matcher will use the cache. The
     show name must be the canonical name the matcher resolves to.
+
+    ``manifest`` may be a pre-loaded manifest dict to avoid re-reading and
+    re-validating manifest.json (callers holding a cached copy pass it in).
     """
-    manifest = load_precomputed_manifest(cache_dir)
+    if manifest is None:
+        manifest = load_precomputed_manifest(cache_dir)
     if not manifest:
         return False
 
@@ -80,6 +84,26 @@ def precomputed_covers_season(cache_dir, show_name: str, season: int) -> bool:
     npz_path = show_dir / f"S{season:02d}.npz"
     index_path = show_dir / f"S{season:02d}.index.json"
     return npz_path.exists() and index_path.exists()
+
+
+def precomputed_episode_codes(cache_dir, show_name: str, season: int) -> list[str] | None:
+    """Episode codes the precomputed cache holds for show+season, else None.
+
+    None means the cache doesn't cover it (caller should download/scrape).
+    Lets callers size a result from the cache itself without a TMDB round-trip.
+    """
+    if not precomputed_covers_season(cache_dir, show_name, season):
+        return None
+
+    index_path = (
+        Path(cache_dir) / "precomputed" / sanitize_filename(show_name) / f"S{season:02d}.index.json"
+    )
+    try:
+        with open(index_path, encoding="utf-8") as fh:
+            codes = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return codes if isinstance(codes, list) and codes else None
 
 
 class SubtitleCache:
@@ -529,10 +553,15 @@ class EpisodeMatcher:
         Returns (ref_matrix, episode_codes, idf_array) when the shipped cache
         covers the show+season, otherwise None (caller falls back to scraping).
         """
-        if not precomputed_covers_season(self.cache_dir, self.show_name, season_number):
+        # Use the instance-cached manifest (warms the sentinel on first call) and
+        # reuse it for the coverage gate so we read+validate manifest.json at most
+        # once per matcher instance instead of once per title.
+        manifest = self._load_precomputed_manifest()
+        if not precomputed_covers_season(
+            self.cache_dir, self.show_name, season_number, manifest=manifest
+        ):
             # Surface the common misconfiguration: manifest lists the season but
             # the vector files never made it to disk.
-            manifest = self._load_precomputed_manifest()
             show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
             if show_entry and season_number in show_entry.get("seasons", []):
                 logger.warning(
