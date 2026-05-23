@@ -38,6 +38,8 @@ for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
+        # Stream is already UTF-8, or is a wrapped/captured stream (e.g. pytest,
+        # a pipe) that doesn't support reconfigure() — safe to leave as-is.
         pass
 
 TEMP_SUFFIX = ".engram-tmp"
@@ -312,6 +314,8 @@ def build_apply_plan(
     if not net:
         return None, {}
 
+    # net is non-empty here (guarded above) and, since build_apply_plan runs once
+    # per SeasonTarget, every MISMATCH file shares the same season directory.
     directory = next(iter(net)).parent
     listing = [p for p in directory.iterdir() if p.is_file()]
     full = expand_sidecars(net, listing)
