@@ -215,13 +215,23 @@ class JobManager:
         """Handle drive insertion/removal events from the Sentinel."""
         logger.info(f"Drive event: {drive_letter} {event} (label: {volume_label})")
 
-        if event == "inserted":
-            # Create the job before broadcasting so clients see it on first fetch.
-            await self._create_job_for_disc(drive_letter, volume_label)
-            await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
-        elif event == "removed":
-            await self._cancel_jobs_for_drive(drive_letter)
-            await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
+        try:
+            if event == "inserted":
+                # Create the job before broadcasting so clients see it on first fetch.
+                await self._create_job_for_disc(drive_letter, volume_label)
+                await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
+            elif event == "removed":
+                await self._cancel_jobs_for_drive(drive_letter)
+                await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
+        except Exception:
+            # A failure here (e.g. a DiscJob INSERT error) must never be silently
+            # swallowed by the Sentinel's generic callback handler — log it with a
+            # full traceback so the disc-detection path stays observable.
+            logger.error(
+                f"Failed to handle drive event ({event}) for {drive_letter} "
+                f"(label: {volume_label})",
+                exc_info=True,
+            )
 
     async def _on_staging_event(self, event: str, staging_dir: str, label: str) -> None:
         """Handle new staging directory detection from StagingWatcher."""
@@ -295,6 +305,7 @@ class JobManager:
                 self._last_job_created_at[drive_letter] = time.monotonic()
 
                 task = asyncio.create_task(self._identification.identify_disc(job.id))
+                task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
 
     async def create_job_from_staging(
@@ -338,6 +349,7 @@ class JobManager:
         await event_broadcaster.broadcast_drive_inserted("staging", volume_label)
 
         task = asyncio.create_task(self._identification.identify_from_staging(job_id))
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
         return job_id
