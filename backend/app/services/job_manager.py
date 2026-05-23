@@ -1210,6 +1210,10 @@ class JobManager:
 
         Returns True when the job was sent to REVIEW_NEEDED (caller should stop).
         """
+        # job_id reaches this method from the /jobs/{job_id}/... review path param
+        # (apply_review -> _run_ripping), so it is user-provided — sanitize before
+        # logging to prevent CR/LF log forging (py/log-injection).
+        safe_job = sanitize_log_value(job_id)
         discdb_maps = self._matching.get_discdb_mappings(job_id)
         main_movie_idx = next((m.index for m in discdb_maps if m.title_type == "MainMovie"), None)
         if main_movie_idx is not None:
@@ -1218,11 +1222,9 @@ class JobManager:
                 dt.is_extra = dt.title_index != main_movie_idx
                 session.add(dt)
             await session.commit()
-            # int() coerces the disc-derived index to a number — a numeric value
-            # cannot carry CR/LF, so it is not a log-injection vector.
             logger.info(
-                f"Job {job_id}: TheDiscDB auto-selected MainMovie "
-                f"title index {int(main_movie_idx)}, skipping review"
+                f"Job {safe_job}: TheDiscDB auto-selected MainMovie "
+                f"title index {main_movie_idx}, skipping review"
             )
             return False
 
@@ -1246,17 +1248,15 @@ class JobManager:
             await ws_manager.broadcast_job_update(
                 job_id, JobState.REVIEW_NEEDED.value, error=reason
             )
-            # Log counts only — the raw indices are disc-derived; counts (len) and
-            # int-coerced ids below are numeric and cannot carry log-injection.
             logger.info(
-                f"Job {job_id}: {len(decision.candidate_indices)} feature candidates "
-                f"ripped — waiting for user selection."
+                f"Job {safe_job}: {len(decision.candidate_indices)} feature candidates "
+                f"{decision.candidate_indices} ripped — waiting for user selection."
             )
             return True
 
         logger.info(
-            f"Job {job_id}: auto-selected feature title {int(decision.feature_index)}; "
-            f"tagged {len(decision.extra_indices)} extras (no review)."
+            f"Job {safe_job}: auto-selected feature title {decision.feature_index}; "
+            f"tagged {decision.extra_indices} as extras (no review)."
         )
         return False
 
