@@ -1132,44 +1132,10 @@ class JobManager:
                     ripped_titles = [t for t in disc_titles if t.is_selected]
 
                     if len(ripped_titles) > 1:
-                        discdb_maps = self._matching.get_discdb_mappings(job_id)
-                        main_movie_idx = None
-                        for m in discdb_maps:
-                            if m.title_type == "MainMovie":
-                                main_movie_idx = m.index
-                                break
-
-                        if main_movie_idx is not None:
-                            for dt in ripped_titles:
-                                if dt.title_index == main_movie_idx:
-                                    dt.is_selected = True
-                                else:
-                                    dt.is_selected = False
-                                session.add(dt)
-                            await session.commit()
-                            ripped_titles = [
-                                t for t in ripped_titles if t.title_index == main_movie_idx
-                            ]
-                            logger.info(
-                                f"Job {job_id}: TheDiscDB auto-selected MainMovie "
-                                f"title index {main_movie_idx}, skipping review"
-                            )
-                        else:
-                            await state_machine.transition_to_review(
-                                job,
-                                session,
-                                reason="Multiple versions ripped. Please select the correct one.",
-                                broadcast=False,
-                            )
-                            await ws_manager.broadcast_job_update(
-                                job_id,
-                                JobState.REVIEW_NEEDED.value,
-                                error="Multiple versions ripped. Please select the correct one.",
-                            )
-                            logger.info(
-                                f"Job {job_id}: Multiple movie versions ripped. "
-                                f"Waiting for user selection."
-                            )
+                        sent_to_review = await self._resolve_multi_title_movie(
+                            job, job_id, ripped_titles, session
+                        )
+                        if sent_to_review:
                             return
 
                     # Single title flow (Standard Movie)
@@ -1226,6 +1192,101 @@ class JobManager:
             except Exception as e:
                 logger.exception(f"Error ripping job {job_id}")
                 await state_machine.transition_to_failed(job, session, error_message=str(e))
+
+    async def _resolve_multi_title_movie(
+        self,
+        job: DiscJob,
+        job_id: int,
+        ripped_titles: list[DiscTitle],
+        session,
+    ) -> bool:
+        """Decide what to do when a movie rip produced more than one title.
+
+        Prefers a TheDiscDB ``MainMovie`` tag; otherwise distinguishes the real
+        feature from long bonus tracks via the movie's TMDB runtime (with a
+        duration/bitrate fallback). Tags non-feature titles as extras. Only
+        genuinely competing features (alternate cuts / obfuscation playlists)
+        require a review.
+
+        Returns True when the job was sent to REVIEW_NEEDED (caller should stop).
+        """
+        discdb_maps = self._matching.get_discdb_mappings(job_id)
+        main_movie_idx = next((m.index for m in discdb_maps if m.title_type == "MainMovie"), None)
+        if main_movie_idx is not None:
+            for dt in ripped_titles:
+                dt.is_selected = dt.title_index == main_movie_idx
+                dt.is_extra = dt.title_index != main_movie_idx
+                session.add(dt)
+            await session.commit()
+            logger.info(
+                f"Job {job_id}: TheDiscDB auto-selected MainMovie "
+                f"title index {main_movie_idx}, skipping review"
+            )
+            return False
+
+        decision = await self._resolve_movie_feature(job, ripped_titles)
+
+        for dt in ripped_titles:
+            if dt.title_index in decision.extra_indices:
+                dt.is_extra = True
+                if decision.needs_review:
+                    # Keep extras out of the version picker.
+                    dt.is_selected = False
+                session.add(dt)
+        await session.commit()
+
+        if decision.needs_review:
+            reason = (
+                decision.review_reason
+                or "Multiple feature-length titles found. Please select the correct version."
+            )
+            await state_machine.transition_to_review(job, session, reason=reason, broadcast=False)
+            await ws_manager.broadcast_job_update(
+                job_id, JobState.REVIEW_NEEDED.value, error=reason
+            )
+            logger.info(
+                f"Job {job_id}: {len(decision.candidate_indices)} feature candidates "
+                f"{decision.candidate_indices} ripped — waiting for user selection."
+            )
+            return True
+
+        logger.info(
+            f"Job {job_id}: auto-selected feature title {decision.feature_index}; "
+            f"tagged {decision.extra_indices} as extras (no review)."
+        )
+        return False
+
+    async def _resolve_movie_feature(self, job: DiscJob, ripped_titles: list[DiscTitle]):
+        """Decide which ripped title is the movie's main feature.
+
+        Uses the movie's TMDB runtime (when available) plus a duration/bitrate
+        fallback so long bonus tracks aren't mistaken for the feature. Returns a
+        ``MainFeatureDecision`` (see ``select_movie_main_feature``).
+        """
+        from app.core.analyst import TitleInfo, select_movie_main_feature
+        from app.matcher.tmdb_client import fetch_movie_runtime
+        from app.services.config_service import get_config
+
+        runtime = None
+        if job.tmdb_id:
+            try:
+                runtime = await asyncio.to_thread(fetch_movie_runtime, str(job.tmdb_id))
+            except Exception as e:
+                logger.warning(f"Job {job.id}: movie runtime lookup failed: {e}")
+
+        config = await get_config()
+        infos = [
+            TitleInfo(
+                index=t.title_index,
+                duration_seconds=t.duration_seconds or 0,
+                size_bytes=t.file_size_bytes or 0,
+                chapter_count=t.chapter_count or 0,
+            )
+            for t in ripped_titles
+        ]
+        return select_movie_main_feature(
+            infos, runtime, min_feature_duration=config.analyst_movie_min_duration
+        )
 
     async def _on_title_ripped(
         self, job_id: int, rip_index: int, path: Path, sorted_titles: list[DiscTitle]

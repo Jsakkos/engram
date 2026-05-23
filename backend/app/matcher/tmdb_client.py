@@ -837,6 +837,31 @@ def fetch_movie_id(movie_name: str) -> str | None:
     return None
 
 
+def fetch_movie_runtime(movie_id: str) -> int | None:
+    """Fetch a movie's canonical runtime (minutes) from TMDB.
+
+    Used to identify the main feature among a disc's titles. Returns None when
+    the key is missing, the request fails, or TMDB reports no runtime (0/null).
+    """
+    from app.services.config_service import get_config_sync
+
+    tmdb_api_key = get_config_sync().tmdb_api_key
+    if not tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return None
+
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}"
+    data = _tmdb_get_json(url, tmdb_api_key)
+    if not data:
+        return None
+    runtime = data.get("runtime") or 0
+    if runtime <= 0:
+        logger.info(f"TMDB reports no runtime for movie {movie_id}")
+        return None
+    logger.info(f"TMDB runtime for movie {movie_id}: {runtime} min")
+    return int(runtime)
+
+
 def clear_caches() -> None:
     """Clear all TMDB caches — both in-process LRU and the on-disk SQLite layer.
 
