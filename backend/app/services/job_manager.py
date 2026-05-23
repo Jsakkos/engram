@@ -225,7 +225,15 @@ class JobManager:
                 await self._create_job_for_disc(drive_letter, volume_label)
                 await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
             elif event == "removed":
-                await self._cancel_jobs_for_drive(drive_letter)
+                # Cancellation failure must not suppress the removal broadcast —
+                # otherwise clients are stuck believing the disc is still present.
+                try:
+                    await self._cancel_jobs_for_drive(drive_letter)
+                except Exception:
+                    logger.error(
+                        f"Failed to cancel jobs for {drive_letter}",
+                        exc_info=True,
+                    )
                 await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
         except Exception:
             # A failure here (e.g. a DiscJob INSERT error) must never be silently

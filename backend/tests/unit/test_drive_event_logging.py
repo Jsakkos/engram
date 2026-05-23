@@ -61,3 +61,33 @@ async def test_identification_task_failure_is_logged(monkeypatch, caplog):
     assert any("identify boom" in str(r.exc_info[1]) for r in failures), (
         "identification task failure was silently swallowed (no done-callback)"
     )
+
+
+@pytest.mark.asyncio
+async def test_drive_removal_broadcasts_even_when_cancellation_fails(monkeypatch, caplog):
+    """Clients must learn the disc is gone even if job cancellation errors out."""
+    import importlib
+
+    jm_mod = importlib.import_module("app.services.job_manager")
+
+    jm = JobManager()
+
+    async def boom(_drive):
+        raise RuntimeError("cancellation blew up mid-DB-write")
+
+    removed_broadcasts: list[tuple[str, str]] = []
+
+    async def fake_broadcast_removed(drive, label):
+        removed_broadcasts.append((drive, label))
+
+    monkeypatch.setattr(jm, "_cancel_jobs_for_drive", boom)
+    monkeypatch.setattr(jm_mod.event_broadcaster, "broadcast_drive_removed", fake_broadcast_removed)
+
+    caplog.set_level(logging.ERROR, logger="app.services.job_manager")
+
+    await jm._on_drive_event("E:", "removed", "TEST_LABEL")
+
+    # The removal broadcast fired despite the cancellation failure...
+    assert removed_broadcasts == [("E:", "TEST_LABEL")]
+    # ...and the cancellation failure was still logged with a traceback.
+    assert any(r.exc_info for r in caplog.records if r.levelno == logging.ERROR)
