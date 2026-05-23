@@ -408,3 +408,65 @@ class TestExecutableValidationHardening:
         assert result.valid is False
         assert "FFmpeg executable" in result.error
         mock_run.assert_not_called()
+
+
+class TestMakeMKVVersionExtraction:
+    """Parse MakeMKV version from real makemkvcon output.
+
+    Regression: makemkvcon with no arguments only prints usage text (no version),
+    so version detection must read the robot-mode (-r) MSG:1005 startup banner.
+    """
+
+    # Verbatim robot-mode startup line captured from makemkvcon64.exe v1.18.3.
+    ROBOT_BANNER = (
+        'MSG:1005,0,1,"MakeMKV v1.18.3 win(x64-release) started",'
+        '"%1 started","MakeMKV v1.18.3 win(x64-release)"\n'
+        'DRV:0,1,999,0,"BD-RE PIONEER BD-RW   BDR-S13U 1.03","","F:"\n'
+    )
+
+    # No-arg invocation output — usage text with no version anywhere.
+    HELP_TEXT = (
+        "Use: makemkvcon [switches] Command [Parameters]\n"
+        "\n"
+        "Commands:\n"
+        "  info <source>\n"
+        "      prints info about disc\n"
+        "  reg <key string or file name>\n"
+        "      enter registration key into program\n"
+    )
+
+    def test_extracts_version_from_robot_banner(self):
+        """The robot banner yields a clean product+version+platform string."""
+        from app.api.validation import _extract_makemkv_version
+
+        assert _extract_makemkv_version(self.ROBOT_BANNER) == "MakeMKV v1.18.3 win(x64-release)"
+
+    def test_extracts_linux_banner(self):
+        """Platform tag varies by OS — the Linux banner parses too."""
+        from app.api.validation import _extract_makemkv_version
+
+        output = 'MSG:1005,0,1,"MakeMKV v1.17.7 linux(x64-release) started","%1 started",""\n'
+        assert _extract_makemkv_version(output) == "MakeMKV v1.17.7 linux(x64-release)"
+
+    def test_help_text_falls_back(self):
+        """Usage text has no version, so the fallback string is returned."""
+        from app.api.validation import _extract_makemkv_version
+
+        assert _extract_makemkv_version(self.HELP_TEXT) == "MakeMKV (version not detectable)"
+
+    def test_validate_binary_probes_robot_mode_for_version(self):
+        """End-to-end: validity comes from the no-arg call, version from the -r probe."""
+        from app.api.validation import _validate_makemkv_binary
+
+        def fake_run(cmd, **kwargs):
+            mock = MagicMock()
+            mock.stdout = self.ROBOT_BANNER if "-r" in cmd else self.HELP_TEXT
+            mock.stderr = ""
+            mock.returncode = 1
+            return mock
+
+        with patch("app.api.validation.subprocess.run", side_effect=fake_run):
+            result = _validate_makemkv_binary("C:/MakeMKV/makemkvcon64.exe")
+
+        assert result.found is True
+        assert result.version == "MakeMKV v1.18.3 win(x64-release)"

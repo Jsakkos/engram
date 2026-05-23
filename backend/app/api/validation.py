@@ -1,6 +1,7 @@
 """Validation endpoints for pre-flight checks."""
 
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -98,12 +99,50 @@ def _get_ffmpeg_search_paths() -> list[str]:
     ]
 
 
+_VERSION_NOT_DETECTABLE = "MakeMKV (version not detectable)"
+
+# Robot mode (-r) prints a startup banner naming the version, e.g.
+#   MSG:1005,0,1,"MakeMKV v1.18.3 win(x64-release) started",...
+# Capture "MakeMKV v1.18.3 win(x64-release)" — product, semantic version, and the
+# optional platform tag — while dropping the trailing " started".
+_MAKEMKV_VERSION_RE = re.compile(
+    r"MakeMKV\s+v\d+(?:\.\d+)*(?:\s+\w+\([^)]*\))?",
+    re.IGNORECASE,
+)
+
+
 def _extract_makemkv_version(output: str) -> str:
     """Extract a MakeMKV version string from command output."""
+    match = _MAKEMKV_VERSION_RE.search(output)
+    if match:
+        return match.group(0).strip()
+    # Fallback for output that names a version on its own line without the banner.
     for line in output.split("\n"):
         if "version" in line.lower() or "v1." in line or "v2." in line:
             return line.strip()
-    return "MakeMKV (version not detectable)"
+    return _VERSION_NOT_DETECTABLE
+
+
+def _probe_makemkv_version(path_str: str) -> str:
+    """Best-effort version read via robot mode.
+
+    Running with no arguments only prints usage text (no version), so the version
+    comes from the robot-mode (-r) startup banner. Robot mode enumerates optical
+    drives, so this is kept separate from the binary validity check and never
+    blocks detection on a slow or busy drive. The out-of-range ``disc:99999``
+    index can't open a real disc — it just triggers the banner.
+    """
+    try:
+        result = subprocess.run(
+            [path_str, "-r", "info", "disc:99999"],
+            capture_output=True,
+            timeout=20,
+            text=True,
+        )
+    except Exception as e:
+        logger.debug(f"MakeMKV version probe failed: {e}")
+        return _VERSION_NOT_DETECTABLE
+    return _extract_makemkv_version(result.stdout + result.stderr)
 
 
 def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
@@ -120,7 +159,7 @@ def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
             return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
 
         return ToolDetectionResult(
-            found=True, path=path_str, version=_extract_makemkv_version(output)
+            found=True, path=path_str, version=_probe_makemkv_version(path_str)
         )
     except subprocess.TimeoutExpired:
         return ToolDetectionResult(found=False, path=path_str, error="Command timeout (10s)")
