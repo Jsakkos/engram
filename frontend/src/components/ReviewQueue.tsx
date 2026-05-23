@@ -294,6 +294,30 @@ function ReviewQueue() {
         }
     };
 
+    // Deep re-match every title claiming a contested episode (denser sampling +
+    // stricter votes) so a collision can resolve either way.
+    const handleRematchConflict = async (episodeCode: string) => {
+        setIsRematching(true);
+        setError(null);
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/rematch-conflict`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ episode_code: episodeCode }),
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Deep re-match failed: ${text}`);
+            }
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('Failed to deep re-match conflict:', err);
+            setError(err instanceof Error ? err.message : 'Failed to deep re-match');
+        } finally {
+            setIsRematching(false);
+        }
+    };
+
     // POST every pending episode selection to the review endpoint.
     // Throws on the first failure so callers can abort their follow-up step.
     const submitPendingSelections = async () => {
@@ -760,6 +784,7 @@ function ReviewQueue() {
                                 onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}
                                 onAction={(a) => handleTitleAction(selectedTitle.id, a)}
                                 onRematch={handleRematch}
+                                onDeepRematch={handleRematchConflict}
                             />
                         ) : (
                             <SvPanel pad={24}>

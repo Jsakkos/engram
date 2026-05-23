@@ -44,6 +44,7 @@ export function Inspector({
     onAssign,
     onAction,
     onRematch,
+    onDeepRematch,
 }: {
     title: DiscTitle;
     job: Job;
@@ -60,6 +61,7 @@ export function Inspector({
     onAssign: (code: string) => void;
     onAction: (action: TitleAction) => void;
     onRematch: (titleId: number, source: string) => void;
+    onDeepRematch: (episodeCode: string) => void;
 }) {
     const details = parseMatchDetails(title);
     const fileExists = details.error === 'file_exists';
@@ -69,6 +71,11 @@ export function Inspector({
     // season roster is unavailable.
     const takenByOther = (code: string): number[] =>
         (holders.get(code) ?? []).filter((id) => id !== title.id);
+
+    // This title's current pick collides with another title's pick.
+    const selectionIsCode = !!selection && /^S\d+E\d+$/i.test(selection);
+    const conflictWith = selectionIsCode ? takenByOther(selection as string) : [];
+    const inConflict = conflictWith.length > 0;
 
     const stateBadge = fileExists ? (
         <SvBadge state="warn" dot>File exists</SvBadge>
@@ -102,6 +109,29 @@ export function Inspector({
                 {fileExists && details.message && (
                     <div style={{ marginBottom: 14 }}>
                         <SvNotice tone="warn">{details.message}</SvNotice>
+                    </div>
+                )}
+
+                {/* Conflict → deep re-match all titles claiming this episode */}
+                {inConflict && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', marginBottom: 14, border: `1px solid ${sv.red}`, background: `${sv.red}12` }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: sv.display, fontSize: 13, color: sv.red }}>
+                                ⚠ {selection} also claimed by {conflictWith.map((id) => `#${titleIndexById[id] ?? id}`).join(', ')}
+                            </div>
+                            <div style={{ ...monoFaint, marginTop: 2, fontSize: 10.5 }}>
+                                Deep re-match re-runs every claiming title with denser sampling + stricter votes to break the tie.
+                            </div>
+                        </div>
+                        <SvActionButton
+                            tone="magenta"
+                            size="sm"
+                            onClick={() => onDeepRematch(selection as string)}
+                            disabled={isRematching}
+                        >
+                            <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
+                            <span style={{ marginLeft: 6 }}>{isRematching ? 'Re-matching…' : 'Deep re-match'}</span>
+                        </SvActionButton>
                     </div>
                 )}
 
