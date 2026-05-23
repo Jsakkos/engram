@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 from app.database import async_session, init_db
 from app.main import app
-from app.models import AppConfig
+from app.models import AppConfig, ContentType, DiscJob, DiscTitle, JobState, TitleState
 
 
 @pytest.fixture(autouse=True)
@@ -686,3 +686,92 @@ class TestJobCompletionFromMatching:
             )
             # Should accept the review
             assert review_response.status_code in (200, 400)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestProcessMatchedGuard:
+    """The /process-matched endpoint must tolerate a job that a preceding
+    /review call already finalized.
+
+    Regression: clicking "Process" in the review UI fires submitPendingSelections()
+    (which loops POST /review and can auto-finalize the job) and then POST
+    /process-matched. When the review loop resolved the last unresolved title, the
+    job is already COMPLETED, so /process-matched used to return 400 "Job is not
+    awaiting review" and the UI got stuck on the review screen with a spurious error.
+    """
+
+    async def _make_tv_job(self, state: JobState) -> int:
+        """Insert a TV job directly in a given state and return its id."""
+        async with async_session() as session:
+            job = DiscJob(
+                drive_id="TEST:",
+                volume_label="GUARD_TEST_S1D1",
+                content_type=ContentType.TV,
+                detected_title="Guard Test",
+                detected_season=1,
+                state=state,
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            return job.id
+
+    async def test_process_matched_on_completed_job_is_idempotent(self, client):
+        """A job finalized by a preceding /review returns success, not 400."""
+        job_id = await self._make_tv_job(JobState.COMPLETED)
+
+        response = await client.post(f"/api/jobs/{job_id}/process-matched")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "already_finalized"
+        assert body["unresolved"] == 0
+        assert body["organized"] == 0
+        assert body["conflicts"] == 0
+
+    async def test_process_matched_on_organizing_job_is_noop(self, client):
+        """A request landing while organization is in flight is a no-op, not 400.
+
+        ORGANIZING is mid-flight (not finished), so the response reports the honest
+        "organizing" status rather than claiming the job is already finalized.
+        """
+        job_id = await self._make_tv_job(JobState.ORGANIZING)
+
+        response = await client.post(f"/api/jobs/{job_id}/process-matched")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "organizing"
+
+    async def test_process_matched_on_failed_job_rejected(self, client):
+        """A genuinely invalid state (FAILED) still returns 400."""
+        job_id = await self._make_tv_job(JobState.FAILED)
+
+        response = await client.post(f"/api/jobs/{job_id}/process-matched")
+
+        assert response.status_code == 400
+
+    async def test_process_matched_partial_resolution_stays_in_review(self, client):
+        """When titles remain unresolved, the job processes and stays in review."""
+        job_id = await self._make_tv_job(JobState.REVIEW_NEEDED)
+        async with async_session() as session:
+            session.add(
+                DiscTitle(
+                    job_id=job_id,
+                    title_index=0,
+                    duration_seconds=1200,
+                    matched_episode=None,
+                    state=TitleState.REVIEW,
+                )
+            )
+            await session.commit()
+
+        response = await client.post(f"/api/jobs/{job_id}/process-matched")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "processed"
+        assert body["unresolved"] >= 1
+
+        detail = await client.get(f"/api/jobs/{job_id}")
+        assert detail.json()["state"] == "review_needed"
