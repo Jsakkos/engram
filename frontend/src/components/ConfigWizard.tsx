@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { FEATURES } from '../config/constants';
 import './ConfigWizard.css';
 
@@ -282,7 +283,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
             onComplete();
         } catch (error) {
             console.error('Failed to save config:', error);
-            alert(`Failed to save configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            toast.error(`Failed to save configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsSaving(false);
         }
