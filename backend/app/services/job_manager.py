@@ -21,6 +21,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, RipProgress
 from app.core.organizer import movie_organizer
+from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.core.staging_watcher import StagingWatcher
 from app.database import async_session
@@ -213,7 +214,10 @@ class JobManager:
         volume_label: str,
     ) -> None:
         """Handle drive insertion/removal events from the Sentinel."""
-        logger.info(f"Drive event: {drive_letter} {event} (label: {volume_label})")
+        # The volume label is disc-controlled, so sanitize it before logging to
+        # prevent CR/LF log forging (py/log-injection).
+        safe_label = sanitize_log_value(volume_label)
+        logger.info(f"Drive event: {drive_letter} {event} (label: {safe_label})")
 
         try:
             if event == "inserted":
@@ -228,8 +232,7 @@ class JobManager:
             # swallowed by the Sentinel's generic callback handler — log it with a
             # full traceback so the disc-detection path stays observable.
             logger.error(
-                f"Failed to handle drive event ({event}) for {drive_letter} "
-                f"(label: {volume_label})",
+                f"Failed to handle drive event ({event}) for {drive_letter} (label: {safe_label})",
                 exc_info=True,
             )
 

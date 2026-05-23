@@ -1,13 +1,17 @@
-"""Security helpers: SSRF URL validation and executable allowlisting.
+"""Security helpers: SSRF URL validation, executable allowlisting, log sanitizing.
 
-These back the hardening of CodeQL-flagged sinks. Each helper is a boolean
-*predicate* — it returns ``True``/``False`` rather than raising or returning a
-sanitized value, so the validation is recognised as a barrier guard by static
-analysis at the call site (``if not guard(x): ...``):
+These back the hardening of CodeQL-flagged sinks:
 
 - ``is_allowed_image_url`` — guards the ``fetch_cover`` outbound HTTP request.
 - ``executable_basename_allowed`` — constrains the tool-validation subprocess
   calls to executables that actually look like the expected tool.
+- ``sanitize_log_value`` — strips line breaks/control characters from
+  disc/user-controlled values before they are written to logs.
+
+The first two are boolean *predicates* — they return ``True``/``False`` so the
+validation is recognised as a barrier guard by static analysis at the call site
+(``if not guard(x): ...``). ``sanitize_log_value`` instead returns the cleaned
+value, the recognised barrier shape for log injection.
 """
 
 from __future__ import annotations
@@ -82,3 +86,17 @@ def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> 
     """
     name = os.path.basename(path.replace("\\", "/")).lower()
     return name in {allowed.lower() for allowed in allowed_basenames}
+
+
+def sanitize_log_value(value: object) -> str:
+    """Strip line breaks and control characters from a value before logging.
+
+    Disc/user-controlled strings — most notably optical-disc volume labels read
+    via ``GetVolumeInformationW``/``blkid`` — can contain CR/LF, which would let
+    an attacker forge or split log entries (py/log-injection). Removing the
+    newline characters is the barrier recognised by static analysis; remaining
+    C0/DEL control characters (e.g. terminal escapes) are stripped as defence in
+    depth. Tabs and ordinary (incl. non-ASCII) text are preserved.
+    """
+    text = str(value).replace("\r", "").replace("\n", "")
+    return "".join(ch for ch in text if ch == "\t" or (0x20 <= ord(ch) and ord(ch) != 0x7F))
