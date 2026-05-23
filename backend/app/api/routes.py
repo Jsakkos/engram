@@ -1,5 +1,6 @@
 """REST API routes for Engram."""
 
+import asyncio
 import json
 import logging
 import platform
@@ -21,6 +22,7 @@ from sqlmodel import select
 from app.config import settings
 from app.core.security import is_allowed_image_url
 from app.database import get_session
+from app.matcher.tmdb_client import fetch_season_episodes
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 
@@ -474,6 +476,112 @@ async def get_job_titles(
         select(DiscTitle).where(DiscTitle.job_id == job.id).order_by(DiscTitle.title_index)
     )
     return list(result.scalars().all())
+
+
+_EPISODE_CODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
+
+
+class RosterEpisode(BaseModel):
+    """One episode slot in the season roster with cross-disc coverage."""
+
+    episode_code: str
+    episode_number: int
+    name: str
+    status: Literal["assigned", "duplicate", "missing", "off"]
+    assigned_title_ids: list[int]
+
+
+class SeasonRosterResponse(BaseModel):
+    """Season episode list (code + name) plus per-episode coverage.
+
+    ``status`` reflects the persisted state: ``assigned`` (one title),
+    ``duplicate`` (two+ titles share the episode), ``missing`` (no title but
+    inside the disc's covered range — a gap to fill) and ``off`` (outside the
+    range, i.e. on another disc). The frontend recomputes status live as the
+    user edits unsaved selections.
+    """
+
+    available: bool
+    season_number: int | None = None
+    show_id: int | None = None
+    episodes: list[RosterEpisode] = []
+    reason: str | None = None
+
+
+@router.get("/jobs/{job_id}/season-roster", response_model=SeasonRosterResponse)
+async def get_season_roster(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> SeasonRosterResponse:
+    """Season episode list with per-episode coverage for the review UI."""
+    if job.content_type != ContentType.TV:
+        return SeasonRosterResponse(available=False, reason="Not a TV disc")
+    if not job.tmdb_id or job.detected_season is None:
+        return SeasonRosterResponse(
+            available=False,
+            season_number=job.detected_season,
+            show_id=job.tmdb_id,
+            reason="Show or season not identified yet",
+        )
+
+    season = job.detected_season
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    # fetch_season_episodes does a synchronous requests.get; run it off the
+    # event loop so a slow TMDB call doesn't stall other requests / WS pushes.
+    episodes_raw = await asyncio.to_thread(
+        fetch_season_episodes, str(job.tmdb_id), season, config.tmdb_api_key
+    )
+    if not episodes_raw:
+        return SeasonRosterResponse(
+            available=False,
+            season_number=season,
+            show_id=job.tmdb_id,
+            reason="Could not load season episodes from TMDB",
+        )
+
+    # Map this season's matched episodes → the title ids claiming them.
+    result = await session.execute(
+        select(DiscTitle).where(DiscTitle.job_id == job.id).order_by(DiscTitle.title_index)
+    )
+    assigned: dict[int, list[int]] = {}
+    for title in result.scalars().all():
+        if not title.matched_episode:
+            continue
+        match = _EPISODE_CODE_RE.search(title.matched_episode)
+        if not match or int(match.group(1)) != season:
+            continue
+        assigned.setdefault(int(match.group(2)), []).append(title.id)
+
+    present = sorted(assigned)
+    lo, hi = (present[0], present[-1]) if present else (0, -1)
+
+    episodes = [
+        RosterEpisode(
+            episode_code=f"S{season:02d}E{ep['episode_number']:02d}",
+            episode_number=ep["episode_number"],
+            name=ep.get("name") or "",
+            status=(
+                "duplicate"
+                if len(assigned.get(ep["episode_number"], [])) > 1
+                else "assigned"
+                if len(assigned.get(ep["episode_number"], [])) == 1
+                else "missing"
+                if lo <= ep["episode_number"] <= hi
+                else "off"
+            ),
+            assigned_title_ids=assigned.get(ep["episode_number"], []),
+        )
+        for ep in episodes_raw
+    ]
+
+    return SeasonRosterResponse(
+        available=True,
+        season_number=season,
+        show_id=job.tmdb_id,
+        episodes=episodes,
+    )
 
 
 @router.get("/jobs/{job_id}/detail", response_model=JobDetailResponse)
@@ -1770,6 +1878,40 @@ async def rematch_job(
     await job_manager.rerun_matching(job.id, request.source_preference)
 
     return {"status": "rematching", "job_id": job.id}
+
+
+class RematchConflictRequest(BaseModel):
+    """Request model for re-matching all titles claiming one episode."""
+
+    episode_code: str
+
+
+@router.post("/jobs/{job_id}/rematch-conflict")
+async def rematch_conflict(
+    request: RematchConflictRequest,
+    job: DiscJob = Depends(get_job_or_404),
+):
+    """Deep re-match every title currently claiming ``episode_code``.
+
+    Re-runs the audio matcher with stricter parameters (denser sampling + a
+    higher vote requirement) for each contested title so a same-episode
+    collision can resolve either way.
+    """
+    from app.services.job_manager import job_manager
+
+    result = await job_manager.rematch_conflict(job.id, request.episode_code)
+    if not result["dispatched"] and not result["skipped"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No titles are currently matched to {request.episode_code}",
+        )
+
+    return {
+        "status": "rematching",
+        "episode_code": request.episode_code,
+        "title_ids": result["dispatched"],
+        "skipped": result["skipped"],
+    }
 
 
 @router.post("/jobs/{job_id}/titles/{title_id}/reassign")

@@ -875,9 +875,23 @@ class EpisodeMatcher:
             logger.error(f"Error during full file fallback: {e}", exc_info=True)
             return None
 
-    def identify_episode(self, video_file, temp_dir, season_number, progress_callback=None):
+    def identify_episode(
+        self,
+        video_file,
+        temp_dir,
+        season_number,
+        progress_callback=None,
+        num_points=None,
+        min_vote_count=None,
+    ):
         """
         Identify episode using ranked voting with weighted confidence scoring.
+
+        ``num_points`` overrides the number of evenly-spaced audio scan points
+        (default 10); a denser scan yields more robust votes and a clearer
+        score gap — used by the "deep re-match" path to disambiguate conflicts.
+        ``min_vote_count`` overrides the minimum matched-chunk count required to
+        accept a match (default ``self.min_vote_count``).
 
         Process:
         1. Extract audio chunks using sparse sampling strategy
@@ -990,7 +1004,8 @@ class EpisodeMatcher:
 
             # TF-IDF matching is fast (~1ms/query) and accurate. More sample
             # points reduce false positives from commentary/alternate audio tracks.
-            num_points = 10
+            # Caller may request a denser scan (deep re-match) for disambiguation.
+            num_points = num_points if num_points and num_points > 1 else 10
 
             # Calculate actual interval to evenly distribute points across available duration
             interval = available_duration / (num_points - 1)
@@ -1209,21 +1224,25 @@ class EpisodeMatcher:
                     f"total_weight={result['total_weight']:.4f}"
                 )
 
+            effective_min_votes = (
+                min_vote_count if min_vote_count is not None else self.min_vote_count
+            )
+
             if best_match and best_match["score"] > self.match_threshold:
                 vote_count = best_match["match_details"]["vote_count"]
 
                 logger.info(
                     f"Best match evaluation: "
                     f"score {best_match['score']:.3f} vs threshold {self.match_threshold}, "
-                    f"votes {vote_count} vs minimum {self.min_vote_count}"
+                    f"votes {vote_count} vs minimum {effective_min_votes}"
                 )
 
-                if vote_count < self.min_vote_count:
+                if vote_count < effective_min_votes:
                     logger.warning(
                         f"⚠ Match rejected: insufficient evidence. "
                         f"Episode: {best_match['match_details']['episode']}, "
                         f"score: {best_match['score']:.3f}, "
-                        f"votes: {vote_count}/{self.min_vote_count}, "
+                        f"votes: {vote_count}/{effective_min_votes}, "
                         f"coverage: {best_match['match_details']['file_cov']:.1%}, "
                         f"matched_at: {best_match['matched_at']}s"
                     )

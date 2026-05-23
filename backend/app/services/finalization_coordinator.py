@@ -114,7 +114,18 @@ class FinalizationCoordinator:
         has_completed = any(t.state == TitleState.COMPLETED for t in titles)
         all_failed = all(t.state == TitleState.FAILED for t in titles)
 
-        if has_matched:
+        # Review takes priority: while ANY title still needs manual review, do
+        # not organize anything — hold the whole disc in staging until it is
+        # fully resolved. (finalize_disc_job also guards against conflicts it
+        # creates mid-run; this avoids even starting finalization when the
+        # matcher already flagged a title for review.)
+        if has_review:
+            await self._state_machine.transition_to_review(
+                job,
+                session,
+                reason=f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
+            )
+        elif has_matched:
             try:
                 await self.finalize_disc_job(job_id)
             except Exception as e:
@@ -122,12 +133,6 @@ class FinalizationCoordinator:
                 await self._state_machine.transition_to_failed(
                     job, session, error_message=f"Finalization failed: {e}"
                 )
-        elif has_review:
-            await self._state_machine.transition_to_review(
-                job,
-                session,
-                reason=f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
-            )
         elif all_failed and not has_completed:
             await self._state_machine.transition_to_failed(
                 job, session, error_message="All titles failed to process"
@@ -290,6 +295,24 @@ class FinalizationCoordinator:
 
                 if not reassigned_any:
                     break
+
+            # Defer organization: if conflict resolution left any title needing
+            # review, organize NOTHING — hold the entire disc in staging until
+            # the user resolves the remaining title(s). Organizing only the
+            # winners here would move files out from under an unresolved disc.
+            if any(t.state == TitleState.REVIEW for t in titles):
+                await session.commit()
+                review_count = sum(1 for t in titles if t.state == TitleState.REVIEW)
+                logger.info(
+                    f"Job {job_id}: {review_count} title(s) need review — "
+                    f"deferring organization until the disc is fully resolved"
+                )
+                await self._state_machine.transition_to_review(
+                    job,
+                    session,
+                    reason=f"{review_count} title(s) need manual episode assignment",
+                )
+                return
 
             # Organize all MATCHED winners
             for t in titles:

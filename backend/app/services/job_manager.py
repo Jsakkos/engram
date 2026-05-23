@@ -21,6 +21,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, RipProgress
 from app.core.organizer import movie_organizer
+from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.core.staging_watcher import StagingWatcher
 from app.database import async_session
@@ -31,7 +32,11 @@ from app.services.event_broadcaster import EventBroadcaster
 from app.services.finalization_coordinator import FinalizationCoordinator
 from app.services.identification_coordinator import IdentificationCoordinator
 from app.services.job_state_machine import JobStateMachine
-from app.services.matching_coordinator import MatchingCoordinator
+from app.services.matching_coordinator import (
+    STRICT_MIN_VOTES,
+    STRICT_SCAN_POINTS,
+    MatchingCoordinator,
+)
 from app.services.ripping_helpers import (
     SpeedCalculator,
     resolve_title_from_filename,
@@ -212,15 +217,30 @@ class JobManager:
         event: str,
         volume_label: str,
     ) -> None:
-        """Handle drive insertion/removal events from the Sentinel."""
-        logger.info(f"Drive event: {drive_letter} {event} (label: {volume_label})")
+        """Handle drive insertion/removal events from the Sentinel.
+
+        Job-creation failures are allowed to propagate: the Sentinel's ``_notify``
+        backstop logs them with a traceback, and the direct API caller
+        (``/simulate/trigger-real-scan``) still surfaces a 500 rather than a bogus
+        success. Swallowing here would hide both.
+        """
+        # drive_letter and volume_label can be caller/disc-controlled, so sanitize
+        # them before logging to prevent CR/LF log forging (py/log-injection).
+        safe_drive = sanitize_log_value(drive_letter)
+        safe_label = sanitize_log_value(volume_label)
+        logger.info(f"Drive event: {safe_drive} {event} (label: {safe_label})")
 
         if event == "inserted":
             # Create the job before broadcasting so clients see it on first fetch.
             await self._create_job_for_disc(drive_letter, volume_label)
             await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
         elif event == "removed":
-            await self._cancel_jobs_for_drive(drive_letter)
+            # A cancellation failure must not suppress the removal broadcast —
+            # otherwise clients are stuck believing the disc is still present.
+            try:
+                await self._cancel_jobs_for_drive(drive_letter)
+            except Exception:
+                logger.error(f"Failed to cancel jobs for {safe_drive}", exc_info=True)
             await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
 
     async def _on_staging_event(self, event: str, staging_dir: str, label: str) -> None:
@@ -292,10 +312,13 @@ class JobManager:
                 await session.refresh(job)
 
                 logger.info(f"Created job {job.id} for disc in {drive_letter}")
-                self._last_job_created_at[drive_letter] = time.monotonic()
 
                 task = asyncio.create_task(self._identification.identify_disc(job.id))
+                task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
+                # Stamp the cooldown only after the task is scheduled, so a failure
+                # to spawn it doesn't silently block retries for the next 15s.
+                self._last_job_created_at[drive_letter] = time.monotonic()
 
     async def create_job_from_staging(
         self,
@@ -338,6 +361,7 @@ class JobManager:
         await event_broadcaster.broadcast_drive_inserted("staging", volume_label)
 
         task = asyncio.create_task(self._identification.identify_from_staging(job_id))
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
         return job_id
@@ -563,6 +587,18 @@ class JobManager:
     ) -> None:
         """Re-match a single title. Delegates to matching coordinator."""
         await self._matching.rematch_single_title(job_id, title_id, source_preference)
+
+    async def rematch_conflict(self, job_id: int, episode_code: str) -> dict:
+        """Deep re-match every title claiming ``episode_code`` (strict params).
+
+        Returns ``{"dispatched": [...], "skipped": [{"title_id", "reason"}]}``.
+        """
+        return await self._matching.rematch_conflict(
+            job_id,
+            episode_code,
+            num_points=STRICT_SCAN_POINTS,
+            min_vote_count=STRICT_MIN_VOTES,
+        )
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job."""
@@ -1293,7 +1329,13 @@ class JobManager:
         if task.cancelled():
             logger.info(f"Job {job_id} task was cancelled")
         elif exc := task.exception():
-            logger.error(f"Job {job_id} task failed with exception: {exc}", exc_info=exc)
+            # Pass an explicit (type, value, tb) tuple — the portable form
+            # accepted by logging on every supported Python version — so the
+            # traceback is always captured.
+            logger.error(
+                f"Job {job_id} task failed with exception: {exc}",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def _cancel_jobs_for_drive(self, drive_letter: str) -> None:
         """Cancel jobs that need the disc; leave post-ripping jobs running."""
