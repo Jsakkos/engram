@@ -169,6 +169,7 @@ function ReviewQueue() {
     const [selectedEditions, setSelectedEditions] = useState<Record<number, string>>({});
     const [titleActions, setTitleActions] = useState<Record<number, TitleAction>>({});
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
+    const [rematchNotice, setRematchNotice] = useState<string | null>(null);
 
     const { roster, error: rosterError, episodeName } = useSeasonRoster(jobId);
 
@@ -301,6 +302,7 @@ function ReviewQueue() {
     const handleRematchConflict = async (episodeCode: string) => {
         setIsRematching(true);
         setError(null);
+        setRematchNotice(null);
         try {
             const response = await fetch(`/api/jobs/${jobId}/rematch-conflict`, {
                 method: 'POST',
@@ -310,6 +312,19 @@ function ReviewQueue() {
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(`Deep re-match failed: ${text}`);
+            }
+            const data = await response.json();
+            const skipped: Array<{ title_id: number }> = data.skipped || [];
+            if (skipped.length > 0) {
+                const labels = skipped
+                    .map((s) => {
+                        const t = titles.find((x) => x.id === s.title_id);
+                        return `#${t ? t.title_index : s.title_id}`;
+                    })
+                    .join(', ');
+                setRematchNotice(
+                    `Re-matched ${data.title_ids?.length ?? 0} title(s); skipped ${labels} (already organized or file not in staging).`,
+                );
             }
             await fetchJobDetails();
         } catch (err) {
@@ -686,6 +701,7 @@ function ReviewQueue() {
                         › SEASON ROSTER UNAVAILABLE — RELOAD TO RETRY.
                     </SvNotice>
                 )}
+                {rematchNotice && <SvNotice tone="warn">› {rematchNotice}</SvNotice>}
 
                 {/* Season roster */}
                 {roster?.available && rosterEpisodes.length > 0 && (
