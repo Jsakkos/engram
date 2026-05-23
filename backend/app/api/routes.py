@@ -1867,6 +1867,12 @@ async def rematch_job(
     job: DiscJob = Depends(get_job_or_404),
 ):
     """Re-match all titles for a job."""
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot re-match in state: {job.state.value}",
+        )
+
     from app.services.job_manager import job_manager
 
     await job_manager.rerun_matching(job.id, request.source_preference)

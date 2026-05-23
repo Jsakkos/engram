@@ -3,9 +3,14 @@
 These cover the CodeQL-flagged sinks:
 - is_allowed_image_url: py/full-ssrf in the fetch_cover endpoint
 - executable_basename_allowed: py/command-line-injection in validate_makemkv/ffmpeg
+- sanitize_log_value: py/log-injection in disc-event logging
 """
 
-from app.core.security import executable_basename_allowed, is_allowed_image_url
+from app.core.security import (
+    executable_basename_allowed,
+    is_allowed_image_url,
+    sanitize_log_value,
+)
 
 
 class TestIsAllowedImageUrl:
@@ -109,3 +114,26 @@ class TestExecutableBasenameAllowed:
 
     def test_match_is_case_insensitive(self):
         assert executable_basename_allowed("/opt/MakeMKVcon", self._MAKEMKV)
+
+
+class TestSanitizeLogValue:
+    """Log-injection guard for disc/user-controlled values written to logs."""
+
+    def test_strips_crlf_forged_entry(self):
+        # A crafted volume label must not be able to inject a second log line.
+        forged = "DISC\r\n2026-01-01 00:00:00 | INFO | forged: admin login"
+        assert "\n" not in sanitize_log_value(forged)
+        assert "\r" not in sanitize_log_value(forged)
+
+    def test_strips_lone_newline(self):
+        assert sanitize_log_value("a\nb") == "ab"
+
+    def test_strips_other_control_chars(self):
+        # ESC (terminal escape) and NUL removed; surrounding text preserved.
+        assert sanitize_log_value("a\x1b[31mb\x00c") == "a[31mbc"
+
+    def test_keeps_tab_and_unicode(self):
+        assert sanitize_log_value("col1\tcol2 café") == "col1\tcol2 café"
+
+    def test_coerces_non_str(self):
+        assert sanitize_log_value(123) == "123"

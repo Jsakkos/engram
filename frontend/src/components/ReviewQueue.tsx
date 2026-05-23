@@ -288,7 +288,8 @@ function ReviewQueue() {
                 const text = await response.text();
                 throw new Error(`Failed to re-match all: ${text}`);
             }
-            await fetchJobDetails();
+            // The job moves to MATCHING; the dashboard's live view shows progress.
+            navigate('/');
         } catch (err) {
             console.error('Failed to re-match all:', err);
             setError(err instanceof Error ? err.message : 'Failed to re-match all');

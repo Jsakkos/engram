@@ -21,6 +21,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, RipProgress
 from app.core.organizer import movie_organizer
+from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.core.staging_watcher import StagingWatcher
 from app.database import async_session
@@ -216,15 +217,30 @@ class JobManager:
         event: str,
         volume_label: str,
     ) -> None:
-        """Handle drive insertion/removal events from the Sentinel."""
-        logger.info(f"Drive event: {drive_letter} {event} (label: {volume_label})")
+        """Handle drive insertion/removal events from the Sentinel.
+
+        Job-creation failures are allowed to propagate: the Sentinel's ``_notify``
+        backstop logs them with a traceback, and the direct API caller
+        (``/simulate/trigger-real-scan``) still surfaces a 500 rather than a bogus
+        success. Swallowing here would hide both.
+        """
+        # drive_letter and volume_label can be caller/disc-controlled, so sanitize
+        # them before logging to prevent CR/LF log forging (py/log-injection).
+        safe_drive = sanitize_log_value(drive_letter)
+        safe_label = sanitize_log_value(volume_label)
+        logger.info(f"Drive event: {safe_drive} {event} (label: {safe_label})")
 
         if event == "inserted":
             # Create the job before broadcasting so clients see it on first fetch.
             await self._create_job_for_disc(drive_letter, volume_label)
             await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
         elif event == "removed":
-            await self._cancel_jobs_for_drive(drive_letter)
+            # A cancellation failure must not suppress the removal broadcast —
+            # otherwise clients are stuck believing the disc is still present.
+            try:
+                await self._cancel_jobs_for_drive(drive_letter)
+            except Exception:
+                logger.error(f"Failed to cancel jobs for {safe_drive}", exc_info=True)
             await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
 
     async def _on_staging_event(self, event: str, staging_dir: str, label: str) -> None:
@@ -296,10 +312,13 @@ class JobManager:
                 await session.refresh(job)
 
                 logger.info(f"Created job {job.id} for disc in {drive_letter}")
-                self._last_job_created_at[drive_letter] = time.monotonic()
 
                 task = asyncio.create_task(self._identification.identify_disc(job.id))
+                task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
+                # Stamp the cooldown only after the task is scheduled, so a failure
+                # to spawn it doesn't silently block retries for the next 15s.
+                self._last_job_created_at[drive_letter] = time.monotonic()
 
     async def create_job_from_staging(
         self,
@@ -342,6 +361,7 @@ class JobManager:
         await event_broadcaster.broadcast_drive_inserted("staging", volume_label)
 
         task = asyncio.create_task(self._identification.identify_from_staging(job_id))
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
         return job_id
@@ -541,6 +561,21 @@ class JobManager:
             retry_args = (
                 (job_id, job.detected_title, job.detected_season) if needs_subtitle_retry else None
             )
+
+            # Leave REVIEW_NEEDED for MATCHING so the dashboard's live (WebSocket)
+            # view follows the re-matching that now runs in the background. Without
+            # this the static review page stays mounted showing only cleared matches.
+            if job is not None and job.state == JobState.REVIEW_NEEDED:
+                job.state = JobState.MATCHING
+                job.updated_at = datetime.now(UTC)
+                await session.commit()
+                await ws_manager.broadcast_job_update(
+                    job_id,
+                    JobState.MATCHING.value,
+                    content_type=job.content_type.value,
+                    detected_title=job.detected_title,
+                    detected_season=job.detected_season,
+                )
 
         if retry_args is not None:
             await self._matching.restart_subtitle_download(*retry_args)
@@ -1294,7 +1329,13 @@ class JobManager:
         if task.cancelled():
             logger.info(f"Job {job_id} task was cancelled")
         elif exc := task.exception():
-            logger.error(f"Job {job_id} task failed with exception: {exc}", exc_info=exc)
+            # Pass an explicit (type, value, tb) tuple — the portable form
+            # accepted by logging on every supported Python version — so the
+            # traceback is always captured.
+            logger.error(
+                f"Job {job_id} task failed with exception: {exc}",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def _cancel_jobs_for_drive(self, drive_letter: str) -> None:
         """Cancel jobs that need the disc; leave post-ripping jobs running."""
