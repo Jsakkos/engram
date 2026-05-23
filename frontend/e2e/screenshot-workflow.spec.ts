@@ -81,8 +81,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
             await page.screenshot({ path: `${SCREENSHOT_DIR}/16-cancel-button.png`, fullPage: true, animations: 'disabled' });
         }
 
-        // 04: Track grid visible
-        await expect(card.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
+        // 04: Track grid visible (already awaited before the 03 capture above)
         await page.screenshot({ path: `${SCREENSHOT_DIR}/04-track-grid-visible.png`, fullPage: true, animations: 'disabled' });
 
         // 05: Per-track RIPPING state on individual tracks
@@ -196,17 +195,22 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         // Generic label disc triggers NamePromptModal (no detected_title + force_review_needed)
         await simulateInsertDisc(GENERIC_LABEL_DISC);
 
-        // 18: Modal open in movie mode (default)
-        // toBeVisible resolves as soon as the Framer Motion element enters the DOM (opacity 0).
-        // A 250ms pause lets the spring animation advance past the transparent initial frame
-        // without exceeding the backend's short review_needed window (~500ms before auto-advance).
+        // 18: Modal open in movie mode (default). The settle is load-bearing:
+        // reducedMotion only drops transform/layout (it keeps Framer's opacity
+        // fade), and animations:'disabled' cancels an in-flight entrance to its
+        // *initial* transparent frame — capturing too early yields an invisible
+        // modal. Keep it short so we stay inside the backend's review_needed
+        // window (~500ms before auto-advance).
         await expect(page.getByText('Identify Disc')).toBeVisible({ timeout: 10000 });
         await page.waitForTimeout(250);
         await page.screenshot({ path: `${SCREENSHOT_DIR}/18-name-prompt-modal.png`, fullPage: true, animations: 'disabled' });
 
-        // 19: Switch to TV Show mode
+        // 19: Switch to TV Show mode. Wait for the season field (the modal's only
+        // number input) to mount, then let its opacity/height entrance settle —
+        // same Framer + animations:'disabled' caveat as the modal entrance above.
         await page.locator('button:has-text("TV Show")').click();
-        await page.waitForTimeout(300); // let the season field animate in
+        await expect(page.getByRole('spinbutton')).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(300);
         await page.screenshot({ path: `${SCREENSHOT_DIR}/19-name-prompt-tv-mode.png`, fullPage: true, animations: 'disabled' });
 
         // Close without submitting

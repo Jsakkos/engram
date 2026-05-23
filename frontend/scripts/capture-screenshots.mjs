@@ -43,6 +43,9 @@ const run = spawnSync("playwright test e2e/screenshot-workflow.spec.ts", {
     shell: true,
 });
 if (run.status !== 0) {
+    // spawnSync sets run.error (and leaves status null) when the child fails to
+    // launch — e.g. the playwright binary isn't on PATH.
+    if (run.error) console.error("Failed to launch playwright:", run.error.message);
     console.error("\nPlaywright run failed; screenshots not copied.");
     process.exit(run.status ?? 1);
 }
