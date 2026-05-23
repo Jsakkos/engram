@@ -513,9 +513,7 @@ class TestFetchMovieRuntime:
         mock_get.return_value = Mock(
             status_code=200, json=lambda: {"runtime": 149}, raise_for_status=Mock()
         )
-        with patch("app.services.config_service.get_config_sync") as cfg:
-            cfg.return_value.tmdb_api_key = "test_key"
-            assert tmdb_client.fetch_movie_runtime("1317288") == 149
+        assert tmdb_client.fetch_movie_runtime("1317288", "test_key") == 149
         assert "/movie/1317288" in mock_get.call_args[0][0]
 
     @patch("app.matcher.tmdb_client.requests.get")
@@ -524,15 +522,11 @@ class TestFetchMovieRuntime:
         mock_get.return_value = Mock(
             status_code=200, json=lambda: {"runtime": 0}, raise_for_status=Mock()
         )
-        with patch("app.services.config_service.get_config_sync") as cfg:
-            cfg.return_value.tmdb_api_key = "test_key"
-            assert tmdb_client.fetch_movie_runtime("123") is None
+        assert tmdb_client.fetch_movie_runtime("123", "test_key") is None
 
     @patch("app.matcher.tmdb_client.requests.get")
     def test_no_api_key_returns_none(self, mock_get):
-        with patch("app.services.config_service.get_config_sync") as cfg:
-            cfg.return_value.tmdb_api_key = ""
-            assert tmdb_client.fetch_movie_runtime("123") is None
+        assert tmdb_client.fetch_movie_runtime("123", "") is None
         assert mock_get.call_count == 0
 
     @patch("app.matcher.tmdb_client.requests.get")
@@ -540,6 +534,4 @@ class TestFetchMovieRuntime:
         err = Mock(status_code=500)
         err.raise_for_status = Mock(side_effect=requests.exceptions.HTTPError("500 Server Error"))
         mock_get.return_value = err
-        with patch("app.services.config_service.get_config_sync") as cfg:
-            cfg.return_value.tmdb_api_key = "test_key"
-            assert tmdb_client.fetch_movie_runtime("123") is None
+        assert tmdb_client.fetch_movie_runtime("123", "test_key") is None

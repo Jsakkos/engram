@@ -30,7 +30,7 @@ async def session():
 
 
 def _cfg():
-    return types.SimpleNamespace(analyst_movie_min_duration=4800)
+    return types.SimpleNamespace(analyst_movie_min_duration=4800, tmdb_api_key="test_key")
 
 
 async def _make_movie_job(session, title_specs):

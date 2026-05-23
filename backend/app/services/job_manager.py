@@ -1220,7 +1220,7 @@ class JobManager:
             await session.commit()
             logger.info(
                 f"Job {job_id}: TheDiscDB auto-selected MainMovie "
-                f"title index {main_movie_idx}, skipping review"
+                f"title index {sanitize_log_value(main_movie_idx)}, skipping review"
             )
             return False
 
@@ -1246,13 +1246,15 @@ class JobManager:
             )
             logger.info(
                 f"Job {job_id}: {len(decision.candidate_indices)} feature candidates "
-                f"{decision.candidate_indices} ripped — waiting for user selection."
+                f"{sanitize_log_value(decision.candidate_indices)} ripped — "
+                f"waiting for user selection."
             )
             return True
 
         logger.info(
-            f"Job {job_id}: auto-selected feature title {decision.feature_index}; "
-            f"tagged {decision.extra_indices} as extras (no review)."
+            f"Job {job_id}: auto-selected feature title "
+            f"{sanitize_log_value(decision.feature_index)}; "
+            f"tagged {sanitize_log_value(decision.extra_indices)} as extras (no review)."
         )
         return False
 
@@ -1267,14 +1269,17 @@ class JobManager:
         from app.matcher.tmdb_client import fetch_movie_runtime
         from app.services.config_service import get_config
 
+        config = await get_config()
+
         runtime = None
-        if job.tmdb_id:
+        if job.tmdb_id and config.tmdb_api_key:
             try:
-                runtime = await asyncio.to_thread(fetch_movie_runtime, str(job.tmdb_id))
+                runtime = await asyncio.to_thread(
+                    fetch_movie_runtime, str(job.tmdb_id), config.tmdb_api_key
+                )
             except Exception as e:
                 logger.warning(f"Job {job.id}: movie runtime lookup failed: {e}")
 
-        config = await get_config()
         infos = [
             TitleInfo(
                 index=t.title_index,
