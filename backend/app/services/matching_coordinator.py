@@ -23,6 +23,12 @@ from app.services.ripping_helpers import find_staging_file
 
 logger = logging.getLogger(__name__)
 
+# Stricter matcher parameters for the "deep re-match" conflict path: sample more
+# audio chunks (vs the default 10) for more robust votes + a clearer score gap,
+# and require more matched chunks before accepting (vs the default 2).
+STRICT_SCAN_POINTS = 25
+STRICT_MIN_VOTES = 4
+
 
 class MatchingCoordinator:
     """Coordinates episode matching: subtitle download, audio fingerprinting, DiscDB assignment."""
@@ -171,8 +177,58 @@ class MatchingCoordinator:
 
         return True
 
+    async def rematch_conflict(
+        self,
+        job_id: int,
+        episode_code: str,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> dict:
+        """Re-run audio matching for every title currently claiming ``episode_code``.
+
+        Used to break a same-episode collision: each contested title is re-matched
+        (engram) with stricter parameters so the tie can resolve either way.
+        Returns ``{"dispatched": [ids], "skipped": [{"title_id", "reason"}]}`` so
+        callers can tell the user which titles could not be re-matched (e.g. their
+        ripped file is no longer in staging).
+        """
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+            )
+            title_ids = [
+                t.id
+                for t in result.scalars().all()
+                if t.matched_episode and t.matched_episode.upper() == episode_code.upper()
+            ]
+
+        dispatched: list[int] = []
+        skipped: list[dict] = []
+        for tid in title_ids:
+            try:
+                await self.rematch_single_title(
+                    job_id,
+                    tid,
+                    source_preference="engram",
+                    num_points=num_points,
+                    min_vote_count=min_vote_count,
+                )
+                dispatched.append(tid)
+            except ValueError as e:
+                # e.g. staging file missing for a title that was matched earlier
+                # but whose ripped file is no longer present — skip it rather
+                # than failing the whole conflict re-match, and report it.
+                logger.warning(f"Conflict re-match: skipping title {tid} (job {job_id}): {e}")
+                skipped.append({"title_id": tid, "reason": str(e)})
+        return {"dispatched": dispatched, "skipped": skipped}
+
     async def rematch_single_title(
-        self, job_id: int, title_id: int, source_preference: str | None = None
+        self,
+        job_id: int,
+        title_id: int,
+        source_preference: str | None = None,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
     ) -> None:
         """Re-match a single title with the specified source preference.
 
@@ -180,6 +236,9 @@ class MatchingCoordinator:
             "discdb" — restore from stored discdb_match_details
             "engram" — clear match and re-run audio fingerprinting
             None — try discdb first if available, else engram
+
+        ``num_points``/``min_vote_count`` override the matcher scan density and
+        vote gate for the engram path (deep re-match); None keeps defaults.
         """
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -243,13 +302,26 @@ class MatchingCoordinator:
             await ws_manager.broadcast_title_update(job_id, title.id, TitleState.MATCHING.value)
 
         # Fire-and-forget: matching runs in background, progress via WebSocket
-        match_task = asyncio.create_task(self.match_single_file(job_id, title_id, file_path))
+        match_task = asyncio.create_task(
+            self.match_single_file(job_id, title_id, file_path, num_points, min_vote_count)
+        )
         match_task.add_done_callback(
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
         )
 
-    async def match_single_file(self, job_id: int, title_id: int, file_path: Path) -> None:
-        """Run matching for a single ripped file."""
+    async def match_single_file(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> None:
+        """Run matching for a single ripped file.
+
+        ``num_points``/``min_vote_count`` override the matcher's scan density and
+        vote gate (deep re-match); None keeps defaults.
+        """
         logger.info(
             f"[MATCH] Title {title_id} (Job {job_id}): match task started for {file_path.name}"
         )
@@ -413,7 +485,9 @@ class MatchingCoordinator:
 
         # 7. Run matching
         try:
-            await self._match_single_file_inner(job_id, title_id, file_path)
+            await self._match_single_file_inner(
+                job_id, title_id, file_path, num_points, min_vote_count
+            )
         except Exception as e:
             logger.exception(
                 f"[MATCH] Title {title_id} (Job {job_id}): error in _match_single_file_inner: {e}"
@@ -424,7 +498,14 @@ class MatchingCoordinator:
                 self._match_semaphore.release()
                 logger.info(f"[MATCH] Title {title_id} (Job {job_id}): released match semaphore")
 
-    async def _match_single_file_inner(self, job_id: int, title_id: int, file_path: Path) -> None:
+    async def _match_single_file_inner(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> None:
         """Inner matching logic, called under the match semaphore."""
         match_start = time.monotonic()
 
@@ -488,6 +569,8 @@ class MatchingCoordinator:
                     series_name=job.detected_title,
                     season=job.detected_season,
                     progress_callback=on_progress,
+                    num_points=num_points,
+                    min_vote_count=min_vote_count,
                 )
 
                 elapsed = time.monotonic() - match_start
