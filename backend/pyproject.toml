@@ -75,7 +75,14 @@ quote-style = "double"
 source = ["app"]
 branch = true
 omit = [
-    "app/matcher/*",
+    # Investigation/evaluation scripts — not part of the runtime pipeline.
+    "app/matcher/scripts/*",
+    # ASR / model-registry modules require audio libs + downloaded ML models,
+    # which CI cannot exercise (it runs `-m "not requires_audio"`). Measuring
+    # them would peg the floor to code the test suite can never reach.
+    "app/matcher/asr_models.py",
+    "app/matcher/asr_provider.py",
+    "app/matcher/model_registry.py",
     "tests/*",
 ]
 
