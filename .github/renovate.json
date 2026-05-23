@@ -28,8 +28,10 @@
     },
     {
       "description": "Group Radix UI packages together",
-      "matchPackagePatterns": ["^@radix-ui/"],
-      "groupName": "radix-ui"
+      "groupName": "radix-ui",
+      "matchPackageNames": [
+        "/^@radix-ui//"
+      ]
     },
     {
       "description": "Group all Playwright + testing-library updates",
@@ -43,8 +45,10 @@
     },
     {
       "description": "Group pytest ecosystem",
-      "matchPackagePatterns": ["^pytest"],
-      "groupName": "pytest-ecosystem"
+      "groupName": "pytest-ecosystem",
+      "matchPackageNames": [
+        "/^pytest/"
+      ]
     },
     {
       "description": "Major updates require manual review",
