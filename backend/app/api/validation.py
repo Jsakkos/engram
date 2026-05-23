@@ -101,6 +101,7 @@ def _get_ffmpeg_search_paths() -> list[str]:
 
 
 _VERSION_NOT_DETECTABLE = "MakeMKV (version not detectable)"
+_VERSION_PROBE_TIMEOUT = "MakeMKV (version probe timed out)"
 
 # Robot mode (-r) prints a startup banner naming the version, e.g.
 #   MSG:1005,0,1,"MakeMKV v1.18.3 win(x64-release) started",...
@@ -113,14 +114,15 @@ _MAKEMKV_VERSION_RE = re.compile(
 
 
 def _extract_makemkv_version(output: str) -> str:
-    """Extract a MakeMKV version string from command output."""
+    """Extract a MakeMKV version string from robot-mode command output.
+
+    Matches only the MSG:1005 banner pattern. A looser line-scan would
+    false-match the verbose drive-enumeration output (e.g. a ``DRV:`` line or a
+    ``"v1.0 codec loaded"`` message) and return garbage as the version string.
+    """
     match = _MAKEMKV_VERSION_RE.search(output)
     if match:
         return match.group(0).strip()
-    # Fallback for output that names a version on its own line without the banner.
-    for line in output.split("\n"):
-        if "version" in line.lower() or "v1." in line or "v2." in line:
-            return line.strip()
     return _VERSION_NOT_DETECTABLE
 
 
@@ -145,6 +147,11 @@ def _probe_makemkv_version(path_str: str) -> str:
             timeout=20,
             text=True,
         )
+    except subprocess.TimeoutExpired:
+        # Distinct from "not detectable" so operators can tell a slow/busy drive
+        # apart from a binary that simply never emitted a parseable version.
+        logger.warning("MakeMKV version probe timed out (20s)")
+        return _VERSION_PROBE_TIMEOUT
     except Exception as e:
         logger.debug(f"MakeMKV version probe failed: {e}")
         return _VERSION_NOT_DETECTABLE
@@ -164,17 +171,18 @@ def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
             timeout=10,
             text=True,
         )
-        output = result.stdout + result.stderr
-        if "makemkvcon" not in output.lower() and "makemkv" not in output.lower():
-            return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
-
-        return ToolDetectionResult(
-            found=True, path=path_str, version=_probe_makemkv_version(path_str)
-        )
     except subprocess.TimeoutExpired:
         return ToolDetectionResult(found=False, path=path_str, error="Command timeout (10s)")
     except Exception as e:
         return ToolDetectionResult(found=False, error=f"Execution failed: {e}")
+
+    output = result.stdout + result.stderr
+    if "makemkvcon" not in output.lower() and "makemkv" not in output.lower():
+        return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
+
+    # Probe is decoupled from the validity check above: it self-catches all its
+    # own errors, so its subprocess lifetime never interacts with this try block.
+    return ToolDetectionResult(found=True, path=path_str, version=_probe_makemkv_version(path_str))
 
 
 def _validate_ffmpeg_binary(path_str: str) -> ToolDetectionResult:

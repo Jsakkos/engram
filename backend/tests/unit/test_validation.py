@@ -429,6 +429,41 @@ class TestExecutableValidationHardening:
         assert result.found is False
         mock_run.assert_not_called()
 
+    def test_probe_timeout_returns_distinct_string(self):
+        """A probe timeout is surfaced distinctly, not masked as 'not detectable'."""
+        import subprocess
+
+        from app.api.validation import _probe_makemkv_version
+
+        with patch(
+            "app.api.validation.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="makemkvcon64", timeout=20),
+        ):
+            version = _probe_makemkv_version("C:/MakeMKV/makemkvcon64.exe")
+
+        assert version == "MakeMKV (version probe timed out)"
+
+    def test_validate_binary_surfaces_probe_timeout(self):
+        """A found binary whose probe times out reports found=True with the timeout string."""
+        import subprocess
+
+        from app.api.validation import _validate_makemkv_binary
+
+        def fake_run(cmd, **kwargs):
+            if "-r" in cmd:  # the version probe
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=20)
+            mock = MagicMock()  # the no-arg validity check
+            mock.stdout = "Use: makemkvcon [switches] Command [Parameters]\n"
+            mock.stderr = ""
+            mock.returncode = 1
+            return mock
+
+        with patch("app.api.validation.subprocess.run", side_effect=fake_run):
+            result = _validate_makemkv_binary("C:/MakeMKV/makemkvcon64.exe")
+
+        assert result.found is True
+        assert result.version == "MakeMKV (version probe timed out)"
+
 
 class TestMakeMKVVersionExtraction:
     """Parse MakeMKV version from real makemkvcon output.
@@ -473,6 +508,24 @@ class TestMakeMKVVersionExtraction:
         from app.api.validation import _extract_makemkv_version
 
         assert _extract_makemkv_version(self.HELP_TEXT) == "MakeMKV (version not detectable)"
+
+    def test_spurious_v1_lines_do_not_match(self):
+        """Verbose robot output without a banner must not return a spurious 'v1.' line."""
+        from app.api.validation import _extract_makemkv_version
+
+        noisy = (
+            'DRV:0,1,999,1,"BD-RE PIONEER BD-RW   BDR-S13U 1.03","","F:"\n'
+            'MSG:5010,0,0,"v1.0 codec loaded","%1 loaded","v1.0"\n'
+            'MSG:3007,0,0,"using direct disc access","",""\n'
+        )
+        assert _extract_makemkv_version(noisy) == "MakeMKV (version not detectable)"
+
+    def test_banner_wins_over_noise(self):
+        """The real banner is extracted even when spurious 'v1.' lines precede it."""
+        from app.api.validation import _extract_makemkv_version
+
+        output = 'MSG:5010,0,0,"v1.0 codec loaded","%1 loaded","v1.0"\n' + self.ROBOT_BANNER
+        assert _extract_makemkv_version(output) == "MakeMKV v1.18.3 win(x64-release)"
 
     def test_validate_binary_probes_robot_mode_for_version(self):
         """End-to-end: validity comes from the no-arg call, version from the -r probe."""
