@@ -3,8 +3,14 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { apiFetch, apiFetchVoid } from '../../api/client';
 import type { Job, DiscTitle, WebSocketMessage } from '../../types';
+
+// Trailing-debounce window for refetches triggered by a burst of unknown
+// `job_update` messages, so we issue one fetch instead of N.
+const UNKNOWN_JOB_REFETCH_DEBOUNCE_MS = 400;
 
 // Title state ordering used when merging REST snapshots with WebSocket-derived
 // state. WebSocket state (e.g. "ripping") is more current than a stale REST
@@ -30,57 +36,115 @@ export function useJobManagement(devMode: boolean = false) {
     // When running on localhost:5173, connects to ws://localhost:5173/ws (proxied to backend)
     // In production, uses the same host as the frontend
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
-    const { isConnected, addMessageListener } = useWebSocket(wsUrl);
 
-    // Stable ref to fetchJobsAndTitles so the listener closure doesn't go stale
+    // Stable ref to fetchJobsAndTitles so the listener/onOpen closures don't go stale
     const fetchRef = useRef<() => Promise<void>>();
+    // Trailing-debounce timer for unknown-job refetches.
+    const debouncedRefetchRef = useRef<number | null>(null);
+    // Guards against the very first onOpen (initial connect) double-fetching,
+    // since the mount effect already performs the initial load.
+    const initialConnectRef = useRef(true);
+
+    // Merge a job's REST titles snapshot with any newer WebSocket-derived state.
+    const mergeTitles = useCallback((jobId: number, titlesData: DiscTitle[]) => {
+        setTitlesMap(prev => {
+            const existing = prev[jobId];
+            if (import.meta.env.DEV) {
+                console.log('🔄 fetchJobsAndTitles merge:', {
+                    job_id: jobId,
+                    restTitleStates: titlesData.map(t => `${t.id}:${t.state}`),
+                    existingTitleStates: existing?.map(t => `${t.id}:${t.state}`) ?? 'NONE',
+                });
+            }
+            if (!existing) {
+                return { ...prev, [jobId]: titlesData };
+            }
+            // Merge: for each title, keep the more-recent state.
+            const merged = titlesData.map(restTitle => {
+                const wsTitle = existing.find(t => t.id === restTitle.id);
+                if (!wsTitle) return restTitle;
+                const restPriority = STATE_PRIORITY[restTitle.state] ?? 0;
+                const wsPriority = STATE_PRIORITY[wsTitle.state] ?? 0;
+                // Keep whichever has the more advanced state
+                if (wsPriority > restPriority) {
+                    return { ...restTitle, ...wsTitle };
+                }
+                return restTitle;
+            });
+            return { ...prev, [jobId]: merged };
+        });
+    }, []);
 
     const fetchJobsAndTitles = useCallback(async () => {
         try {
             if (import.meta.env.DEV) {
                 console.log('🔄 fetchJobsAndTitles called');
             }
-            const jobsRes = await fetch('/api/jobs');
-            const jobsData: Job[] = await jobsRes.json();
+            const jobsData = await apiFetch<Job[]>('/api/jobs');
             setJobs(jobsData);
 
-            // Fetch titles for each job, merging with existing WebSocket state
-            for (const job of jobsData) {
-                const titlesRes = await fetch(`/api/jobs/${job.id}/titles`);
-                const titlesData: DiscTitle[] = await titlesRes.json();
-                setTitlesMap(prev => {
-                    const existing = prev[job.id];
-                    if (import.meta.env.DEV) {
-                        console.log('🔄 fetchJobsAndTitles merge:', {
-                            job_id: job.id,
-                            restTitleStates: titlesData.map(t => `${t.id}:${t.state}`),
-                            existingTitleStates: existing?.map(t => `${t.id}:${t.state}`) ?? 'NONE',
-                        });
-                    }
-                    if (!existing) {
-                        return { ...prev, [job.id]: titlesData };
-                    }
-                    // Merge: for each title, keep the more-recent state.
-                    const merged = titlesData.map(restTitle => {
-                        const wsTitle = existing.find(t => t.id === restTitle.id);
-                        if (!wsTitle) return restTitle;
-                        const restPriority = STATE_PRIORITY[restTitle.state] ?? 0;
-                        const wsPriority = STATE_PRIORITY[wsTitle.state] ?? 0;
-                        // Keep whichever has the more advanced state
-                        if (wsPriority > restPriority) {
-                            return { ...restTitle, ...wsTitle };
-                        }
-                        return restTitle;
-                    });
-                    return { ...prev, [job.id]: merged };
-                });
+            // Fetch titles for all jobs in parallel; merge each as it resolves.
+            const results = await Promise.allSettled(
+                jobsData.map(async (job) => {
+                    const titlesData = await apiFetch<DiscTitle[]>(`/api/jobs/${job.id}/titles`);
+                    return { jobId: job.id, titlesData };
+                }),
+            );
+
+            let failures = 0;
+            for (const result of results) {
+                if (result.status === 'fulfilled') {
+                    mergeTitles(result.value.jobId, result.value.titlesData);
+                } else {
+                    failures += 1;
+                    console.error('Failed to fetch job titles:', result.reason);
+                }
+            }
+            if (failures > 0) {
+                toast.error(
+                    `Couldn't load tracks for ${failures} job${failures === 1 ? '' : 's'}. Some details may be missing.`,
+                );
             }
         } catch (error) {
+            // Top-level failure (job list itself) — surface it; leave state intact.
             console.error('Failed to fetch jobs:', error);
+            toast.error('Failed to load jobs from the server. Retrying on the next update.');
         }
-    }, []);
+    }, [mergeTitles]);
 
     fetchRef.current = fetchJobsAndTitles;
+
+    const scheduleUnknownJobRefetch = useCallback(() => {
+        if (debouncedRefetchRef.current !== null) {
+            window.clearTimeout(debouncedRefetchRef.current);
+        }
+        debouncedRefetchRef.current = window.setTimeout(() => {
+            debouncedRefetchRef.current = null;
+            fetchRef.current?.();
+        }, UNKNOWN_JOB_REFETCH_DEBOUNCE_MS);
+    }, []);
+
+    // Resync on (re)connect so the UI recovers from any drift while disconnected.
+    const handleSocketOpen = useCallback(() => {
+        if (initialConnectRef.current) {
+            // The mount effect already performs the first load; skip it here.
+            initialConnectRef.current = false;
+            return;
+        }
+        if (import.meta.env.DEV) {
+            console.log('🔌 WebSocket reconnected — resyncing jobs');
+        }
+        fetchRef.current?.();
+    }, []);
+
+    const { isConnected, addMessageListener } = useWebSocket(wsUrl, { onOpen: handleSocketOpen });
+
+    // Clean up the debounce timer on unmount.
+    useEffect(() => () => {
+        if (debouncedRefetchRef.current !== null) {
+            window.clearTimeout(debouncedRefetchRef.current);
+        }
+    }, []);
 
     // Initial data fetch
     useEffect(() => {
@@ -91,23 +155,27 @@ export function useJobManagement(devMode: boolean = false) {
 
     async function cancelJob(jobId: string) {
         try {
-            await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
+            await apiFetchVoid(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
             // Job will update via WebSocket
         } catch (error) {
             console.error('Failed to cancel job:', error);
+            toast.error('Failed to cancel the job. Please try again.');
         }
     }
 
     async function clearCompleted() {
         try {
             const completedJobs = jobs.filter(j => j.state === 'completed');
-            for (const job of completedJobs) {
-                await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' });
-            }
+            await Promise.all(
+                completedJobs.map(job =>
+                    apiFetchVoid(`/api/jobs/${job.id}`, { method: 'DELETE' }),
+                ),
+            );
             // Refresh jobs
             await fetchJobsAndTitles();
         } catch (error) {
             console.error('Failed to clear completed jobs:', error);
+            toast.error('Failed to clear completed jobs. Please try again.');
         }
     }
 
@@ -118,7 +186,7 @@ export function useJobManagement(devMode: boolean = false) {
         season?: number,
     ) {
         try {
-            await fetch(`/api/jobs/${jobId}/set-name`, {
+            await apiFetchVoid(`/api/jobs/${jobId}/set-name`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, content_type: contentType, season: season ?? null }),
@@ -126,6 +194,7 @@ export function useJobManagement(devMode: boolean = false) {
             // Job will update via WebSocket
         } catch (error) {
             console.error('Failed to set job name:', error);
+            toast.error('Failed to save the disc name. Please try again.');
         }
     }
 
@@ -137,7 +206,7 @@ export function useJobManagement(devMode: boolean = false) {
         tmdbId?: number,
     ) {
         try {
-            await fetch(`/api/jobs/${jobId}/re-identify`, {
+            await apiFetchVoid(`/api/jobs/${jobId}/re-identify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -150,6 +219,7 @@ export function useJobManagement(devMode: boolean = false) {
             // Job will update via WebSocket
         } catch (error) {
             console.error('Failed to re-identify job:', error);
+            toast.error('Failed to re-identify the disc. Please try again.');
         }
     }
 
@@ -167,8 +237,9 @@ export function useJobManagement(devMode: boolean = false) {
                                 job.id === message.job_id ? { ...job, ...message } : job
                             );
                         }
-                        // Unknown job — trigger a fetch
-                        fetchRef.current?.();
+                        // Unknown job — trigger a (debounced) fetch so a burst
+                        // of unknown updates collapses into a single refetch.
+                        scheduleUnknownJobRefetch();
                         return prev;
                     });
                     break;
@@ -277,7 +348,7 @@ export function useJobManagement(devMode: boolean = false) {
         });
 
         return unsubscribe;
-    }, [addMessageListener, devMode]);
+    }, [addMessageListener, devMode, scheduleUnknownJobRefetch]);
 
     return {
         jobs,

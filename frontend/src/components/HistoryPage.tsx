@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
+import { apiFetch } from "../api/client";
 import {
   CheckCircle2,
   XCircle,
@@ -974,10 +976,12 @@ export default function HistoryPage() {
   const perPage = 20;
 
   useEffect(() => {
-    fetch("/api/jobs/stats")
-      .then((r) => r.json())
+    apiFetch<Stats>("/api/jobs/stats")
       .then(setStats)
-      .catch(() => {});
+      .catch((error) => {
+        console.error("Failed to load history stats:", error);
+        toast.error("Failed to load history statistics.");
+      });
   }, []);
 
   const fetchHistory = useCallback(() => {
@@ -988,13 +992,15 @@ export default function HistoryPage() {
     if (filterType) params.set("content_type", filterType);
     if (filterState) params.set("state", filterState);
 
-    fetch(`/api/jobs/history?${params}`)
-      .then((r) => r.json())
+    apiFetch<HistoryJob[]>(`/api/jobs/history?${params}`)
       .then((data: HistoryJob[]) => {
         setHistory(data);
         setHasMore(data.length === perPage);
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.error("Failed to load job history:", error);
+        toast.error("Failed to load job history.");
+      });
   }, [page, filterType, filterState]);
 
   useEffect(() => {
@@ -1008,16 +1014,14 @@ export default function HistoryPage() {
       return;
     }
     setDetailLoading(true);
-    fetch(`/api/jobs/${selectedJobId}/detail`)
-      .then((r) => {
-        if (!r.ok) throw new Error("Not found");
-        return r.json();
-      })
+    apiFetch<JobDetail>(`/api/jobs/${selectedJobId}/detail`)
       .then((data: JobDetail) => {
         setJobDetail(data);
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("Failed to load job detail:", error);
         setJobDetail(null);
+        toast.error("Failed to load job details.");
       })
       .finally(() => {
         setDetailLoading(false);
