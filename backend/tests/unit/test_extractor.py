@@ -111,6 +111,13 @@ class TestComputeContentHash:
             md5.update(struct.pack("<q", size))
         return md5.hexdigest().upper()
 
+    @pytest.fixture(autouse=True)
+    def _force_linux(self, monkeypatch):
+        # These tests drive the mount-point (Linux) code path; on a Windows
+        # runner compute_content_hash would otherwise take the drive-letter
+        # branch and ignore the _find_linux_mount_point patch.
+        monkeypatch.setattr("app.core.extractor.sys.platform", "linux")
+
     def test_bluray_hash(self, tmp_path):
         stream = tmp_path / "BDMV" / "STREAM"
         stream.mkdir(parents=True)
