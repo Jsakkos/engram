@@ -213,36 +213,31 @@ class JobManager:
         event: str,
         volume_label: str,
     ) -> None:
-        """Handle drive insertion/removal events from the Sentinel."""
-        # The volume label is disc-controlled, so sanitize it before logging to
-        # prevent CR/LF log forging (py/log-injection).
-        safe_label = sanitize_log_value(volume_label)
-        logger.info(f"Drive event: {drive_letter} {event} (label: {safe_label})")
+        """Handle drive insertion/removal events from the Sentinel.
 
-        try:
-            if event == "inserted":
-                # Create the job before broadcasting so clients see it on first fetch.
-                await self._create_job_for_disc(drive_letter, volume_label)
-                await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
-            elif event == "removed":
-                # Cancellation failure must not suppress the removal broadcast —
-                # otherwise clients are stuck believing the disc is still present.
-                try:
-                    await self._cancel_jobs_for_drive(drive_letter)
-                except Exception:
-                    logger.error(
-                        f"Failed to cancel jobs for {drive_letter}",
-                        exc_info=True,
-                    )
-                await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
-        except Exception:
-            # A failure here (e.g. a DiscJob INSERT error) must never be silently
-            # swallowed by the Sentinel's generic callback handler — log it with a
-            # full traceback so the disc-detection path stays observable.
-            logger.error(
-                f"Failed to handle drive event ({event}) for {drive_letter} (label: {safe_label})",
-                exc_info=True,
-            )
+        Job-creation failures are allowed to propagate: the Sentinel's ``_notify``
+        backstop logs them with a traceback, and the direct API caller
+        (``/simulate/trigger-real-scan``) still surfaces a 500 rather than a bogus
+        success. Swallowing here would hide both.
+        """
+        # drive_letter and volume_label can be caller/disc-controlled, so sanitize
+        # them before logging to prevent CR/LF log forging (py/log-injection).
+        safe_drive = sanitize_log_value(drive_letter)
+        safe_label = sanitize_log_value(volume_label)
+        logger.info(f"Drive event: {safe_drive} {event} (label: {safe_label})")
+
+        if event == "inserted":
+            # Create the job before broadcasting so clients see it on first fetch.
+            await self._create_job_for_disc(drive_letter, volume_label)
+            await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
+        elif event == "removed":
+            # A cancellation failure must not suppress the removal broadcast —
+            # otherwise clients are stuck believing the disc is still present.
+            try:
+                await self._cancel_jobs_for_drive(drive_letter)
+            except Exception:
+                logger.error(f"Failed to cancel jobs for {safe_drive}", exc_info=True)
+            await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
 
     async def _on_staging_event(self, event: str, staging_dir: str, label: str) -> None:
         """Handle new staging directory detection from StagingWatcher."""
@@ -313,11 +308,13 @@ class JobManager:
                 await session.refresh(job)
 
                 logger.info(f"Created job {job.id} for disc in {drive_letter}")
-                self._last_job_created_at[drive_letter] = time.monotonic()
 
                 task = asyncio.create_task(self._identification.identify_disc(job.id))
                 task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
+                # Stamp the cooldown only after the task is scheduled, so a failure
+                # to spawn it doesn't silently block retries for the next 15s.
+                self._last_job_created_at[drive_letter] = time.monotonic()
 
     async def create_job_from_staging(
         self,
@@ -1316,7 +1313,13 @@ class JobManager:
         if task.cancelled():
             logger.info(f"Job {job_id} task was cancelled")
         elif exc := task.exception():
-            logger.error(f"Job {job_id} task failed with exception: {exc}", exc_info=exc)
+            # Pass an explicit (type, value, tb) tuple — the portable form
+            # accepted by logging on every supported Python version — so the
+            # traceback is always captured.
+            logger.error(
+                f"Job {job_id} task failed with exception: {exc}",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def _cancel_jobs_for_drive(self, drive_letter: str) -> None:
         """Cancel jobs that need the disc; leave post-ripping jobs running."""
