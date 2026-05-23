@@ -12,6 +12,7 @@
         "test:e2e": "playwright test",
         "test:e2e:ui": "playwright test --ui",
         "test:e2e:headed": "playwright test --headed",
+        "screenshots": "node scripts/capture-screenshots.mjs",
         "brand:export": "node scripts/render-svg-sources.mjs && node scripts/generate-brand-assets.mjs"
     },
     "dependencies": {
