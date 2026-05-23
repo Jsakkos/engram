@@ -105,6 +105,28 @@ class TestRematchConflict:
             assert npts == STRICT_SCAN_POINTS
             assert mv == STRICT_MIN_VOTES
 
+    async def test_skips_titles_whose_staging_file_is_missing(self, client, monkeypatch):
+        """A missing staging file for one claimant must not fail the whole batch."""
+        job = await _seed_job()
+        t1 = await _seed_title(job.id, 0, "S01E05")  # file present
+        t2 = await _seed_title(job.id, 1, "S01E05")  # file missing → ValueError
+
+        from app.services.job_manager import job_manager
+
+        async def fake_rematch_single(job_id, title_id, source_preference=None, **kw):
+            if title_id == t2.id:
+                raise ValueError("Staging file not found")
+
+        monkeypatch.setattr(job_manager._matching, "rematch_single_title", fake_rematch_single)
+
+        resp = await client.post(
+            f"/api/jobs/{job.id}/rematch-conflict", json={"episode_code": "S01E05"}
+        )
+
+        assert resp.status_code == 200
+        # Only the title whose file existed was re-matched.
+        assert resp.json()["title_ids"] == [t1.id]
+
     async def test_404_when_no_title_claims_the_episode(self, client, monkeypatch):
         job = await _seed_job()
         await _seed_title(job.id, 0, "S01E01")

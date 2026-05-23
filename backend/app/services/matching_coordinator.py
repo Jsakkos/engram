@@ -200,15 +200,23 @@ class MatchingCoordinator:
                 if t.matched_episode and t.matched_episode.upper() == episode_code.upper()
             ]
 
+        dispatched: list[int] = []
         for tid in title_ids:
-            await self.rematch_single_title(
-                job_id,
-                tid,
-                source_preference="engram",
-                num_points=num_points,
-                min_vote_count=min_vote_count,
-            )
-        return title_ids
+            try:
+                await self.rematch_single_title(
+                    job_id,
+                    tid,
+                    source_preference="engram",
+                    num_points=num_points,
+                    min_vote_count=min_vote_count,
+                )
+                dispatched.append(tid)
+            except ValueError as e:
+                # e.g. staging file missing for a title that was matched earlier
+                # but whose ripped file is no longer present — skip it rather
+                # than failing the whole conflict re-match.
+                logger.warning(f"Conflict re-match: skipping title {tid} (job {job_id}): {e}")
+        return dispatched
 
     async def rematch_single_title(
         self,
