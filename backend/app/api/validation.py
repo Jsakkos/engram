@@ -1,5 +1,6 @@
 """Validation endpoints for pre-flight checks."""
 
+import asyncio
 import logging
 import re
 import shutil
@@ -242,11 +243,13 @@ def detect_ffmpeg() -> ToolDetectionResult:
 @router.get("/detect-tools", response_model=DetectToolsResponse)
 async def detect_tools() -> DetectToolsResponse:
     """Auto-detect MakeMKV and FFmpeg installations."""
-    return DetectToolsResponse(
-        makemkv=detect_makemkv(),
-        ffmpeg=detect_ffmpeg(),
-        platform=sys.platform,
+    # Detection shells out to the tools (blocking, multi-second on slow/busy
+    # drives), so run it off the event loop to avoid stalling other requests.
+    makemkv, ffmpeg = await asyncio.gather(
+        asyncio.to_thread(detect_makemkv),
+        asyncio.to_thread(detect_ffmpeg),
     )
+    return DetectToolsResponse(makemkv=makemkv, ffmpeg=ffmpeg, platform=sys.platform)
 
 
 @router.post("/validate/makemkv", response_model=ValidationResponse)
@@ -267,7 +270,8 @@ async def validate_makemkv(request: ValidationRequest) -> ValidationResponse:
         return ValidationResponse(valid=False, error="Path is not a file")
 
     # MakeMKV returns exit code 1 for help, so the helper checks output content instead.
-    result = _validate_makemkv_binary(str(makemkv_path))
+    # Runs blocking subprocesses, so offload to a thread to keep the event loop free.
+    result = await asyncio.to_thread(_validate_makemkv_binary, str(makemkv_path))
     if not result.found:
         error = result.error
         if error == "Command timeout (10s)":
@@ -297,7 +301,7 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
             return ValidationResponse(valid=False, error="FFmpeg not found in system PATH")
         ffmpeg_path_str = ffmpeg_cmd_found
 
-    result = _validate_ffmpeg_binary(ffmpeg_path_str)
+    result = await asyncio.to_thread(_validate_ffmpeg_binary, ffmpeg_path_str)
     if not result.found:
         error = result.error
         if error == "Non-zero exit code":

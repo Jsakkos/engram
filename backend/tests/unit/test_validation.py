@@ -490,3 +490,38 @@ class TestMakeMKVVersionExtraction:
 
         assert result.found is True
         assert result.version == "MakeMKV v1.18.3 win(x64-release)"
+
+
+class TestDetectionOffloadsBlockingWork:
+    """Tool detection shells out (blocking), so it must not run on the event loop."""
+
+    def test_detect_tools_runs_detection_off_event_loop(self):
+        """detect_tools offloads blocking detection to a worker thread."""
+        import asyncio
+        import threading
+
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult, detect_tools
+
+        loop_thread = threading.get_ident()
+        observed: dict[str, int] = {}
+
+        def fake_makemkv() -> ToolDetectionResult:
+            observed["makemkv"] = threading.get_ident()
+            return ToolDetectionResult(found=True, path="m", version="MakeMKV v1.18.3")
+
+        def fake_ffmpeg() -> ToolDetectionResult:
+            observed["ffmpeg"] = threading.get_ident()
+            return ToolDetectionResult(found=True, path="f", version="ffmpeg 6.0")
+
+        with (
+            patch.object(validation, "detect_makemkv", fake_makemkv),
+            patch.object(validation, "detect_ffmpeg", fake_ffmpeg),
+        ):
+            result = asyncio.run(detect_tools())
+
+        assert result.makemkv.version == "MakeMKV v1.18.3"
+        assert result.ffmpeg.version == "ffmpeg 6.0"
+        # Both detections ran on worker threads, never the event loop thread.
+        assert observed["makemkv"] != loop_thread
+        assert observed["ffmpeg"] != loop_thread

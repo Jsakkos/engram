@@ -1,5 +1,6 @@
 """FastAPI application entry point for Engram."""
 
+import asyncio
 import mimetypes
 import os
 import sys
@@ -47,7 +48,7 @@ async def lifespan(app: FastAPI):
 
     # Auto-detect MakeMKV if path is empty
     if not config.makemkv_path:
-        makemkv_result = detect_makemkv()
+        makemkv_result = await asyncio.to_thread(detect_makemkv)
         if makemkv_result.found:
             await update_config(makemkv_path=makemkv_result.path)
             logger.info(f"Auto-detected MakeMKV: {makemkv_result.path} ({makemkv_result.version})")
@@ -56,7 +57,7 @@ async def lifespan(app: FastAPI):
             logger.warning("Please install MakeMKV or configure path in Settings")
     else:
         # Validate existing configured path
-        makemkv_result = detect_makemkv()
+        makemkv_result = await asyncio.to_thread(detect_makemkv)
         if makemkv_result.found:
             # Update DB if stored path doesn't match the detected path
             if makemkv_result.path != config.makemkv_path:
@@ -70,7 +71,7 @@ async def lifespan(app: FastAPI):
 
     # Auto-detect FFmpeg if path is empty
     if not config.ffmpeg_path:
-        ffmpeg_result = detect_ffmpeg()
+        ffmpeg_result = await asyncio.to_thread(detect_ffmpeg)
         if ffmpeg_result.found:
             await update_config(ffmpeg_path=ffmpeg_result.path)
             logger.info(f"Auto-detected FFmpeg: {ffmpeg_result.path} ({ffmpeg_result.version})")
@@ -78,7 +79,7 @@ async def lifespan(app: FastAPI):
             logger.warning(f"FFmpeg not found: {ffmpeg_result.error}")
             logger.warning("Please install FFmpeg or configure path in Settings")
     else:
-        ffmpeg_result = detect_ffmpeg()
+        ffmpeg_result = await asyncio.to_thread(detect_ffmpeg)
         if ffmpeg_result.found:
             if ffmpeg_result.path != config.ffmpeg_path:
                 await update_config(ffmpeg_path=ffmpeg_result.path)
@@ -95,8 +96,6 @@ async def lifespan(app: FastAPI):
     # Download/refresh the precomputed subtitle-vector cache in the background.
     # Fire-and-forget: a slow or failed download must never block startup, and
     # subtitle scraping remains the fallback until the cache lands.
-    import asyncio
-
     from app.services.precomputed_cache_service import ensure_precomputed_cache
 
     app.state.precomputed_cache_task = asyncio.create_task(ensure_precomputed_cache())
