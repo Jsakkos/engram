@@ -415,18 +415,15 @@ function ReviewQueue() {
                 throw new Error(`Processing failed: ${text}`);
             }
             const result = await response.json();
-            if (result.status === 'processed') {
-                // We organized the matched subset. If titles still need review, stay
-                // and refresh; otherwise everything is done.
-                if (result.unresolved === 0) {
-                    navigate('/');
-                } else {
-                    await fetchJobDetails();
-                }
-            } else {
-                // already_finalized / organizing: the job has left review and is being
-                // handled elsewhere (and shows on the dashboard).
+            // Navigate home once nothing remains to resolve. Every success response
+            // (processed / already_finalized / organizing) reports unresolved: 0 when
+            // the job has left review, so this single check covers them all — and if a
+            // response ever reports unresolved > 0, we stay and refresh rather than
+            // silently skipping the remaining titles.
+            if (result.unresolved === 0) {
                 navigate('/');
+            } else {
+                await fetchJobDetails();
             }
         } catch (err) {
             console.error('Failed to process matched:', err);
