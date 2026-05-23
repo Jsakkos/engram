@@ -6,7 +6,6 @@ Extracted from JobManager to isolate matching concerns.
 import asyncio
 import json
 import logging
-import re
 import time
 from pathlib import Path
 
@@ -29,8 +28,6 @@ logger = logging.getLogger(__name__)
 # and require more matched chunks before accepting (vs the default 2).
 STRICT_SCAN_POINTS = 25
 STRICT_MIN_VOTES = 4
-
-_EPISODE_CODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
 
 
 class MatchingCoordinator:
