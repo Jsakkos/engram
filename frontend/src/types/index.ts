@@ -160,3 +160,12 @@ export interface Config {
     library_tv_path: string;
     tmdb_api_key: string;
 }
+
+export interface DiagnosticsReport {
+    app_version: string;
+    python_version: string;
+    os: string;
+    makemkv_version: string | null;
+    ffmpeg_version: string | null;
+    github_url: string;
+}

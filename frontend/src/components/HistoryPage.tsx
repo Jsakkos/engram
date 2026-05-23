@@ -25,6 +25,7 @@ import {
   formatDurationCoarse,
   formatDurationShort,
 } from "../utils/formatting";
+import type { DiagnosticsReport } from "../types";
 
 interface HistoryJob {
   id: number;
@@ -374,6 +375,24 @@ function JobDetailPanel({
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
+
+  // Fetch environment/tool info once the panel opens. These fields are
+  // job-independent, and tool versions are cached server-side, so the request
+  // is cheap. Failures are swallowed — the Environment section just hides.
+  useEffect(() => {
+    if (!detail) return;
+    let cancelled = false;
+    fetch("/api/diagnostics/report")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: DiagnosticsReport | null) => {
+        if (!cancelled) setDiagnostics(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [detail]);
 
   // Close on click outside or Escape key
   useEffect(() => {
@@ -753,6 +772,24 @@ function JobDetailPanel({
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: sv.mono, fontSize: 11 }}>
                     {detail.staging_path && <KvRow label="Staging" value={detail.staging_path} truncate />}
                     {detail.final_path && <KvRow label="Library" value={detail.final_path} truncate />}
+                  </div>
+                </SvPanel>
+              </div>
+            </div>
+          )}
+
+          {/* Environment — tool/runtime versions from the diagnostics report */}
+          {diagnostics && (
+            <div>
+              <SvLabel>Environment</SvLabel>
+              <div style={{ marginTop: 8 }}>
+                <SvPanel pad={12}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: sv.mono, fontSize: 11 }}>
+                    <KvRow label="Engram" value={diagnostics.app_version} />
+                    <KvRow label="OS" value={diagnostics.os} />
+                    <KvRow label="Python" value={diagnostics.python_version} />
+                    <KvRow label="MakeMKV" value={diagnostics.makemkv_version ?? "not detected"} truncate />
+                    <KvRow label="FFmpeg" value={diagnostics.ffmpeg_version ?? "not detected"} truncate />
                   </div>
                 </SvPanel>
               </div>

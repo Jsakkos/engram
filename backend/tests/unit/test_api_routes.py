@@ -4,6 +4,8 @@ Tests the REST API endpoints including job management, configuration,
 and validation. Uses async client with in-memory DB (patched via conftest.py).
 """
 
+from urllib.parse import unquote
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -253,3 +255,39 @@ class TestErrorHandling:
         list_resp = await client.get("/api/jobs")
         job_ids = [j["id"] for j in list_resp.json()]
         assert job.id not in job_ids
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics report
+# ---------------------------------------------------------------------------
+
+
+class TestDiagnosticsReport:
+    """Test the bug-report/diagnostics endpoint."""
+
+    async def test_report_includes_cached_makemkv_version(self, client):
+        """The cached MakeMKV version appears in both the report dict and issue body."""
+        app.state.makemkv_version = "MakeMKV v1.18.3 win(x64-release)"
+        try:
+            response = await client.get("/api/diagnostics/report")
+        finally:
+            del app.state.makemkv_version
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["makemkv_version"] == "MakeMKV v1.18.3 win(x64-release)"
+        # The version is embedded in the pre-filled GitHub issue body (url-encoded).
+        assert "MakeMKV v1.18.3 win(x64-release)" in unquote(data["github_url"])
+
+    async def test_report_handles_missing_version(self, client):
+        """A missing cached version never breaks the report; it reads 'not detected'."""
+        # Ensure no version is cached (other tests may have left state behind).
+        if hasattr(app.state, "makemkv_version"):
+            del app.state.makemkv_version
+
+        response = await client.get("/api/diagnostics/report")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["makemkv_version"] is None
+        assert "**MakeMKV**: not detected" in unquote(data["github_url"])

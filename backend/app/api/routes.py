@@ -13,7 +13,7 @@ from typing import Literal
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1369,6 +1369,7 @@ async def get_recent_logs(
 
 @router.get("/diagnostics/report")
 async def generate_bug_report(
+    request: Request,
     job_id: int | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -1377,6 +1378,12 @@ async def generate_bug_report(
     from app.services.config_service import get_config
 
     config = await get_config()
+
+    # Tool versions are detected once at startup and cached on app.state, so the
+    # bug report never re-runs the (slow) MakeMKV probe per request. getattr keeps
+    # this resilient if startup detection was skipped or the attr is missing.
+    makemkv_version = getattr(request.app.state, "makemkv_version", None)
+    ffmpeg_version = getattr(request.app.state, "ffmpeg_version", None)
 
     # --- Job summary (optional) ---
     job_summary = None
@@ -1421,6 +1428,8 @@ async def generate_bug_report(
         "app_version": __version__,
         "python_version": sys.version.split()[0],
         "os": f"{platform.system()} {platform.release()}",
+        "makemkv_version": makemkv_version,
+        "ffmpeg_version": ffmpeg_version,
         "job": job_summary,
         "recent_errors": recent_errors,
         "config": redacted_config,
@@ -1433,6 +1442,8 @@ async def generate_bug_report(
         f"**Engram version**: {__version__}",
         f"**OS**: {report['os']}",
         f"**Python**: {report['python_version']}",
+        f"**MakeMKV**: {makemkv_version or 'not detected'}",
+        f"**FFmpeg**: {ffmpeg_version or 'not detected'}",
         "",
     ]
     if job_summary:

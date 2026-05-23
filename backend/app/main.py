@@ -67,6 +67,10 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning(f"Configured MakeMKV path not working: {makemkv_result.error}")
 
+    # Cache the detected version so the diagnostics report can include it
+    # without re-running the (potentially slow) detection probe per request.
+    app.state.makemkv_version = makemkv_result.version if makemkv_result.found else None
+
     # Auto-detect FFmpeg if path is empty
     if not config.ffmpeg_path:
         ffmpeg_result = detect_ffmpeg()
@@ -87,6 +91,8 @@ async def lifespan(app: FastAPI):
             logger.info(f"FFmpeg validated: {ffmpeg_result.version}")
         else:
             logger.warning(f"Configured FFmpeg path not working: {ffmpeg_result.error}")
+
+    app.state.ffmpeg_version = ffmpeg_result.version if ffmpeg_result.found else None
 
     await job_manager.start()
     logger.info("Job manager started")
