@@ -842,12 +842,19 @@ def fetch_movie_runtime(movie_id: str, api_key: str) -> int | None:
 
     Used to identify the main feature among a disc's titles. The caller supplies
     the TMDB key (avoids importing the config service from the matcher layer, the
-    same pattern as ``fetch_season_episodes``). Returns None when the key is
+    same pattern as ``fetch_season_episodes``). Positive results are cached in the
+    persistent SQLite layer with a long TTL (runtimes are stable) so re-rips don't
+    re-hit the API; failures/None are not cached. Returns None when the key is
     missing, the request fails, or TMDB reports no runtime (0/null).
     """
     if not api_key:
         logger.warning("TMDB API key not configured")
         return None
+
+    persistent_key = f"movie_runtime:{movie_id}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return cached
 
     url = f"https://api.themoviedb.org/3/movie/{movie_id}"
     data = _tmdb_get_json(url, api_key)
@@ -857,8 +864,10 @@ def fetch_movie_runtime(movie_id: str, api_key: str) -> int | None:
     if runtime <= 0:
         logger.info(f"TMDB reports no runtime for movie {movie_id}")
         return None
+    runtime = int(runtime)
+    tmdb_persistent_cache.put(persistent_key, runtime, tmdb_persistent_cache.TTL_MOVIE)
     logger.info(f"TMDB runtime for movie {movie_id}: {runtime} min")
-    return int(runtime)
+    return runtime
 
 
 def clear_caches() -> None:

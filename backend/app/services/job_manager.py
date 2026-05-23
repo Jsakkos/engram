@@ -1218,10 +1218,11 @@ class JobManager:
                 dt.is_extra = dt.title_index != main_movie_idx
                 session.add(dt)
             await session.commit()
-            safe_main_idx = sanitize_log_value(main_movie_idx)
+            # int() coerces the disc-derived index to a number — a numeric value
+            # cannot carry CR/LF, so it is not a log-injection vector.
             logger.info(
                 f"Job {job_id}: TheDiscDB auto-selected MainMovie "
-                f"title index {safe_main_idx}, skipping review"
+                f"title index {int(main_movie_idx)}, skipping review"
             )
             return False
 
@@ -1245,18 +1246,17 @@ class JobManager:
             await ws_manager.broadcast_job_update(
                 job_id, JobState.REVIEW_NEEDED.value, error=reason
             )
-            safe_candidates = sanitize_log_value(decision.candidate_indices)
+            # Log counts only — the raw indices are disc-derived; counts (len) and
+            # int-coerced ids below are numeric and cannot carry log-injection.
             logger.info(
                 f"Job {job_id}: {len(decision.candidate_indices)} feature candidates "
-                f"{safe_candidates} ripped — waiting for user selection."
+                f"ripped — waiting for user selection."
             )
             return True
 
-        safe_feature = sanitize_log_value(decision.feature_index)
-        safe_extras = sanitize_log_value(decision.extra_indices)
         logger.info(
-            f"Job {job_id}: auto-selected feature title {safe_feature}; "
-            f"tagged {safe_extras} as extras (no review)."
+            f"Job {job_id}: auto-selected feature title {int(decision.feature_index)}; "
+            f"tagged {len(decision.extra_indices)} extras (no review)."
         )
         return False
 
