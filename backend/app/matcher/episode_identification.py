@@ -341,8 +341,12 @@ def _attach_calibrated_confidence(
     vote_count = md.get("vote_count", 0)
     processed_coverage = (target_votes * chunk_len / video_duration) if video_duration > 0 else 0.0
 
+    # Use top1 (not best_match["score"]) as the denominator so separation
+    # (score_gap / score) is self-consistent: both derive from results_summary.
+    # They are equal by construction (best_match is the top-scoring candidate),
+    # but sourcing both here removes the implicit cross-reference invariant.
     confidence, components = calibrate_confidence(
-        score=best_match.get("score", 0.0),
+        score=top1,
         score_gap=score_gap,
         vote_count=vote_count,
         target_votes=target_votes,
@@ -372,8 +376,10 @@ def _attach_calibrated_confidence(
             }
         )
     runner_ups = runner_ups[:5]
+    # Distinct list objects: curator shallow-copies match_details but not the
+    # inner list, so a shared reference could let one mutation corrupt the other.
     best_match["runner_ups"] = runner_ups
-    md["runner_ups"] = runner_ups
+    md["runner_ups"] = runner_ups[:]
 
 
 class TfidfMatcher:
@@ -1240,6 +1246,11 @@ class EpisodeMatcher:
             match = self._match_full_file(video_file, model_config, reference_files, video_duration)
 
             if match:
+                # Intentional exception to calibration: the full-file fallback
+                # compares whole transcription vs whole subtitle ("bucket vs
+                # bucket"), so its cosine lands on a higher scale than chunk
+                # cosines and is already > min_confidence by construction. We pass
+                # it through uncalibrated; curator's review gate reads it directly.
                 match["score"] = match[
                     "confidence"
                 ]  # Full file score is just confidence (coverage=1.0)

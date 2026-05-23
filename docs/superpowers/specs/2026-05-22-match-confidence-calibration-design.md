@@ -1,7 +1,7 @@
 # Match-confidence calibration — design
 
 **Date:** 2026-05-22
-**Status:** Approved (design); implementation in progress
+**Status:** Implemented (PR #169)
 
 ## Problem
 

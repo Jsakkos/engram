@@ -209,6 +209,22 @@ def test_attach_runner_up_confidence_scaled_below_winner():
     assert runner_ups[1]["confidence"] < runner_ups[0]["confidence"]
 
 
+def test_attach_runner_ups_not_shared_between_keys():
+    """best_match['runner_ups'] and match_details['runner_ups'] must be distinct
+    list objects so a downstream in-place mutation of one cannot corrupt the
+    other (curator shallow-copies match_details but not the inner list)."""
+    best = _make_best_match(0.18, 6)
+    rs = _results_summary(("S1E13", 0.18, 6), ("S1E07", 0.09, 2))
+    _attach_calibrated_confidence(best, rs, video_duration=1320)
+
+    top_level = best["runner_ups"]
+    nested = best["match_details"]["runner_ups"]
+    assert top_level == nested  # same contents
+    assert top_level is not nested  # but independent objects
+    nested.append({"episode": "X", "score": 0.0, "confidence": 0.0})
+    assert len(best["runner_ups"]) == 2  # unaffected by mutating the nested list
+
+
 def test_attach_reports_independent_metrics():
     best = _make_best_match(0.165, 8)
     rs = _results_summary(("S1E13", 0.165, 8))
