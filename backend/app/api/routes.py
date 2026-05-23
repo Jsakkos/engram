@@ -1411,8 +1411,12 @@ async def generate_bug_report(
     config = await get_config()
 
     # --- External tool versions (detection runs subprocesses; keep off the loop) ---
-    mk = await asyncio.to_thread(detect_makemkv)
-    ff = await asyncio.to_thread(detect_ffmpeg)
+    # Run concurrently — each spawns a subprocess with up to a 10 s timeout, so
+    # serial detection would double the worst-case latency before the modal opens.
+    mk, ff = await asyncio.gather(
+        asyncio.to_thread(detect_makemkv),
+        asyncio.to_thread(detect_ffmpeg),
+    )
     makemkv_version = mk.version if mk.found else (mk.error or "not found")
     ffmpeg_version = ff.version if ff.found else (ff.error or "not found")
 
@@ -1441,6 +1445,7 @@ async def generate_bug_report(
             error_lines = [ln for ln in all_lines if "ERROR" in ln or "CRITICAL" in ln]
             recent_errors = [_sanitize_line(line) for line in error_lines[-20:]]
         except Exception:
+            logger.warning(f"Failed to read log file for bug report: {log_path}", exc_info=True)
             recent_errors = ["(could not read log file)"]
 
     # --- Redacted config ---

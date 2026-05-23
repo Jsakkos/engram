@@ -34,7 +34,12 @@ async def client():
 
 @pytest.fixture
 def fake_tools(monkeypatch):
-    """Patch tool detection so the test does not depend on installed binaries."""
+    """Patch tool detection so the test does not depend on installed binaries.
+
+    The endpoint resolves these names lazily (``from app.api.validation import
+    ...`` inside the handler), so we patch them on the source module — that is
+    where the lookup happens at call time.
+    """
     monkeypatch.setattr(
         "app.api.validation.detect_makemkv",
         lambda: ToolDetectionResult(
