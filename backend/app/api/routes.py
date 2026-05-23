@@ -1405,9 +1405,16 @@ async def generate_bug_report(
 ) -> dict:
     """Generate a sanitized bug report with optional job context."""
     from app import __version__
+    from app.api.validation import detect_ffmpeg, detect_makemkv
     from app.services.config_service import get_config
 
     config = await get_config()
+
+    # --- External tool versions (detection runs subprocesses; keep off the loop) ---
+    mk = await asyncio.to_thread(detect_makemkv)
+    ff = await asyncio.to_thread(detect_ffmpeg)
+    makemkv_version = mk.version if mk.found else (mk.error or "not found")
+    ffmpeg_version = ff.version if ff.found else (ff.error or "not found")
 
     # --- Job summary (optional) ---
     job_summary = None
@@ -1452,6 +1459,8 @@ async def generate_bug_report(
         "app_version": __version__,
         "python_version": sys.version.split()[0],
         "os": f"{platform.system()} {platform.release()}",
+        "makemkv_version": makemkv_version,
+        "ffmpeg_version": ffmpeg_version,
         "job": job_summary,
         "recent_errors": recent_errors,
         "config": redacted_config,
@@ -1464,6 +1473,8 @@ async def generate_bug_report(
         f"**Engram version**: {__version__}",
         f"**OS**: {report['os']}",
         f"**Python**: {report['python_version']}",
+        f"**MakeMKV**: {makemkv_version}",
+        f"**FFmpeg**: {ffmpeg_version}",
         "",
     ]
     if job_summary:
@@ -1504,6 +1515,7 @@ async def generate_bug_report(
     )
 
     report["github_url"] = github_url
+    report["markdown"] = issue_body
     return report
 
 
