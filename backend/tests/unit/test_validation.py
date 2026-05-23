@@ -578,3 +578,352 @@ class TestDetectionOffloadsBlockingWork:
         # Both detections ran on worker threads, never the event loop thread.
         assert observed["makemkv"] != loop_thread
         assert observed["ffmpeg"] != loop_thread
+
+
+def _run(coro):
+    import asyncio
+
+    return asyncio.run(coro)
+
+
+class TestFfmpegBinaryValidation:
+    """Direct tests for the FFmpeg binary validator (subprocess stubbed)."""
+
+    @staticmethod
+    def _fake_run(returncode=0, stdout="ffmpeg version 6.0\nbuilt with gcc\n"):
+        def run(cmd, **kwargs):
+            m = MagicMock()
+            m.returncode = returncode
+            m.stdout = stdout
+            m.stderr = ""
+            return m
+
+        return run
+
+    def test_success_returns_first_stdout_line_as_version(self):
+        from app.api.validation import _validate_ffmpeg_binary
+
+        with patch("app.api.validation.subprocess.run", side_effect=self._fake_run()):
+            result = _validate_ffmpeg_binary("/usr/bin/ffmpeg")
+        assert result.found is True
+        assert result.version == "ffmpeg version 6.0"
+        assert result.path == "/usr/bin/ffmpeg"
+
+    def test_non_zero_exit_is_not_found(self):
+        from app.api.validation import _validate_ffmpeg_binary
+
+        with patch("app.api.validation.subprocess.run", side_effect=self._fake_run(returncode=1)):
+            result = _validate_ffmpeg_binary("/usr/bin/ffmpeg")
+        assert result.found is False
+        assert result.error == "Non-zero exit code"
+
+    def test_timeout(self):
+        import subprocess
+
+        from app.api.validation import _validate_ffmpeg_binary
+
+        with patch(
+            "app.api.validation.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=10),
+        ):
+            result = _validate_ffmpeg_binary("/usr/bin/ffmpeg")
+        assert result.found is False
+        assert result.error == "Command timeout (10s)"
+
+    def test_execution_failure(self):
+        from app.api.validation import _validate_ffmpeg_binary
+
+        with patch("app.api.validation.subprocess.run", side_effect=OSError("boom")):
+            result = _validate_ffmpeg_binary("/usr/bin/ffmpeg")
+        assert result.found is False
+        assert "Execution failed" in result.error
+
+
+class TestToolDetection:
+    """Auto-detection across PATH and common install locations."""
+
+    def test_detect_makemkv_found_on_path(self):
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult
+
+        with (
+            patch.object(validation.shutil, "which", return_value="/usr/bin/makemkvcon64"),
+            patch.object(
+                validation,
+                "_validate_makemkv_binary",
+                return_value=ToolDetectionResult(
+                    found=True, path="/usr/bin/makemkvcon64", version="MakeMKV v1.18.3"
+                ),
+            ),
+        ):
+            result = validation.detect_makemkv()
+        assert result.found is True
+        assert result.version == "MakeMKV v1.18.3"
+
+    def test_detect_makemkv_found_in_common_location(self, tmp_path):
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult
+
+        exe = tmp_path / "makemkvcon64"
+        exe.write_text("")
+        with (
+            patch.object(validation.shutil, "which", return_value=None),
+            patch.object(validation, "_get_makemkv_search_paths", return_value=[str(exe)]),
+            patch.object(
+                validation,
+                "_validate_makemkv_binary",
+                return_value=ToolDetectionResult(found=True, path=str(exe), version="v"),
+            ),
+        ):
+            result = validation.detect_makemkv()
+        assert result.found is True
+
+    def test_detect_makemkv_not_found(self):
+        from app.api import validation
+
+        with (
+            patch.object(validation.shutil, "which", return_value=None),
+            patch.object(validation, "_get_makemkv_search_paths", return_value=[]),
+        ):
+            result = validation.detect_makemkv()
+        assert result.found is False
+        assert "not found" in result.error.lower()
+
+    def test_detect_ffmpeg_found_on_path(self):
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult
+
+        with (
+            patch.object(validation.shutil, "which", return_value="/usr/bin/ffmpeg"),
+            patch.object(
+                validation,
+                "_validate_ffmpeg_binary",
+                return_value=ToolDetectionResult(
+                    found=True, path="/usr/bin/ffmpeg", version="ffmpeg 6.0"
+                ),
+            ),
+        ):
+            result = validation.detect_ffmpeg()
+        assert result.found is True
+        assert result.version == "ffmpeg 6.0"
+
+    def test_detect_ffmpeg_found_in_common_location(self, tmp_path):
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult
+
+        exe = tmp_path / "ffmpeg"
+        exe.write_text("")
+        with (
+            patch.object(validation.shutil, "which", return_value=None),
+            patch.object(validation, "_get_ffmpeg_search_paths", return_value=[str(exe)]),
+            patch.object(
+                validation,
+                "_validate_ffmpeg_binary",
+                return_value=ToolDetectionResult(found=True, path=str(exe), version="v"),
+            ),
+        ):
+            result = validation.detect_ffmpeg()
+        assert result.found is True
+
+    def test_detect_ffmpeg_not_found(self):
+        from app.api import validation
+
+        with (
+            patch.object(validation.shutil, "which", return_value=None),
+            patch.object(validation, "_get_ffmpeg_search_paths", return_value=[]),
+        ):
+            result = validation.detect_ffmpeg()
+        assert result.found is False
+        assert "not found" in result.error.lower()
+
+
+class TestSearchPaths:
+    """Platform-specific search path lists."""
+
+    def test_linux_paths_nonempty(self):
+        from app.api import validation
+
+        with patch.object(validation.sys, "platform", "linux"):
+            assert validation._get_makemkv_search_paths()
+            assert validation._get_ffmpeg_search_paths()
+
+    def test_windows_paths(self):
+        from app.api import validation
+
+        with patch.object(validation.sys, "platform", "win32"):
+            mk = validation._get_makemkv_search_paths()
+            ff = validation._get_ffmpeg_search_paths()
+        assert any("makemkvcon64.exe" in p for p in mk)
+        assert any("ffmpeg.exe" in p for p in ff)
+
+
+class TestValidateMakemkvEndpoint:
+    """The /validate/makemkv endpoint's existence + relabel branches."""
+
+    def test_file_not_found(self):
+        from app.api.validation import ValidationRequest, validate_makemkv
+
+        result = _run(validate_makemkv(ValidationRequest(path="/nope/makemkvcon64.exe")))
+        assert result.valid is False
+        assert "File not found" in result.error
+
+    def test_path_is_not_a_file(self, tmp_path):
+        from app.api.validation import ValidationRequest, validate_makemkv
+
+        d = tmp_path / "makemkvcon"  # allowed basename, but a directory
+        d.mkdir()
+        result = _run(validate_makemkv(ValidationRequest(path=str(d))))
+        assert result.valid is False
+        assert "not a file" in result.error.lower()
+
+    def test_success_omits_path(self, tmp_path):
+        from app.api import validation
+        from app.api.validation import (
+            ToolDetectionResult,
+            ValidationRequest,
+            validate_makemkv,
+        )
+
+        exe = tmp_path / "makemkvcon64.exe"
+        exe.write_text("")
+        with patch.object(
+            validation,
+            "_validate_makemkv_binary",
+            return_value=ToolDetectionResult(found=True, version="MakeMKV v1.18.3"),
+        ):
+            result = _run(validate_makemkv(ValidationRequest(path=str(exe))))
+        assert result.valid is True
+        assert result.version == "MakeMKV v1.18.3"
+        assert result.path is None
+
+    def test_timeout_is_relabeled(self, tmp_path):
+        from app.api import validation
+        from app.api.validation import (
+            ToolDetectionResult,
+            ValidationRequest,
+            validate_makemkv,
+        )
+
+        exe = tmp_path / "makemkvcon64.exe"
+        exe.write_text("")
+        with patch.object(
+            validation,
+            "_validate_makemkv_binary",
+            return_value=ToolDetectionResult(found=False, error="Command timeout (10s)"),
+        ):
+            result = _run(validate_makemkv(ValidationRequest(path=str(exe))))
+        assert result.valid is False
+        assert result.error == "MakeMKV command timeout (10s)"
+
+
+class TestValidateFfmpegEndpoint:
+    """The /validate/ffmpeg endpoint, including the empty-path PATH lookup."""
+
+    def test_empty_path_found_on_system_path(self):
+        from app.api import validation
+        from app.api.validation import (
+            ToolDetectionResult,
+            ValidationRequest,
+            validate_ffmpeg,
+        )
+
+        with (
+            patch.object(validation.shutil, "which", return_value="/usr/bin/ffmpeg"),
+            patch.object(
+                validation,
+                "_validate_ffmpeg_binary",
+                return_value=ToolDetectionResult(
+                    found=True, path="/usr/bin/ffmpeg", version="ffmpeg 6.0"
+                ),
+            ),
+        ):
+            result = _run(validate_ffmpeg(ValidationRequest(path="")))
+        assert result.valid is True
+        assert result.path == "/usr/bin/ffmpeg"
+
+    def test_empty_path_not_on_system_path(self):
+        from app.api import validation
+        from app.api.validation import ValidationRequest, validate_ffmpeg
+
+        with patch.object(validation.shutil, "which", return_value=None):
+            result = _run(validate_ffmpeg(ValidationRequest(path="")))
+        assert result.valid is False
+        assert "PATH" in result.error
+
+    def test_file_path_not_found(self):
+        from app.api.validation import ValidationRequest, validate_ffmpeg
+
+        result = _run(validate_ffmpeg(ValidationRequest(path="/nope/ffmpeg")))
+        assert result.valid is False
+        assert "File not found" in result.error
+
+    def test_non_zero_is_relabeled(self, tmp_path):
+        from app.api import validation
+        from app.api.validation import (
+            ToolDetectionResult,
+            ValidationRequest,
+            validate_ffmpeg,
+        )
+
+        exe = tmp_path / "ffmpeg"
+        exe.write_text("")
+        with patch.object(
+            validation,
+            "_validate_ffmpeg_binary",
+            return_value=ToolDetectionResult(found=False, error="Non-zero exit code"),
+        ):
+            result = _run(validate_ffmpeg(ValidationRequest(path=str(exe))))
+        assert result.valid is False
+        assert result.error == "FFmpeg returned non-zero exit code"
+
+    def test_timeout_is_relabeled(self, tmp_path):
+        from app.api import validation
+        from app.api.validation import (
+            ToolDetectionResult,
+            ValidationRequest,
+            validate_ffmpeg,
+        )
+
+        exe = tmp_path / "ffmpeg"
+        exe.write_text("")
+        with patch.object(
+            validation,
+            "_validate_ffmpeg_binary",
+            return_value=ToolDetectionResult(found=False, error="Command timeout (10s)"),
+        ):
+            result = _run(validate_ffmpeg(ValidationRequest(path=str(exe))))
+        assert result.valid is False
+        assert result.error == "FFmpeg command timeout (10s)"
+
+
+class TestTmdbValidationRemainingBranches:
+    """The status/timeout/generic-exception branches not covered elsewhere."""
+
+    @patch("app.api.validation.requests.get")
+    def test_unexpected_status_code(self, mock_get):
+        from app.api.validation import TmdbValidationRequest, validate_tmdb
+
+        mock_get.return_value = MagicMock(status_code=500)
+        result = _run(validate_tmdb(TmdbValidationRequest(api_key="k")))
+        assert result.valid is False
+        assert "status 500" in result.error
+
+    @patch("app.api.validation.requests.get")
+    def test_timeout(self, mock_get):
+        import requests as req_lib
+
+        from app.api.validation import TmdbValidationRequest, validate_tmdb
+
+        mock_get.side_effect = req_lib.exceptions.Timeout()
+        result = _run(validate_tmdb(TmdbValidationRequest(api_key="k")))
+        assert result.valid is False
+        assert "timeout" in result.error.lower()
+
+    @patch("app.api.validation.requests.get")
+    def test_generic_exception(self, mock_get):
+        from app.api.validation import TmdbValidationRequest, validate_tmdb
+
+        mock_get.side_effect = RuntimeError("weird")
+        result = _run(validate_tmdb(TmdbValidationRequest(api_key="k")))
+        assert result.valid is False
+        assert "Validation failed" in result.error
