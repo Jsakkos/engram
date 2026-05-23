@@ -99,6 +99,7 @@ class JobManager:
             on_task_done=self._on_task_done,
             active_jobs=self._active_jobs,
             match_single_file=self._matching.match_single_file,
+            rematch_conflict=self._matching.rematch_conflict,
         )
         self._simulation.set_callbacks(
             subtitle_ready=self._matching._subtitle_ready,
@@ -110,6 +111,7 @@ class JobManager:
         # Register terminal job state callbacks
         state_machine.on_terminal_state(self._cleanup.on_job_terminal)
         state_machine.on_terminal_state(self._matching.clear_job_caches)
+        state_machine.on_terminal_state(self._finalization.on_terminal_clear_conflicts)
 
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
@@ -546,6 +548,8 @@ class JobManager:
 
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
+        # A full re-match starts conflict escalation over from the first tier.
+        self._finalization.reset_conflict_passes(job_id)
         # If a previous subtitle download failed (e.g. unresolvable label that
         # has since been corrected via re-identification), give the user a
         # recovery path: retry subtitles when they hit "Re-match all".
@@ -567,6 +571,7 @@ class JobManager:
             # this the static review page stays mounted showing only cleared matches.
             if job is not None and job.state == JobState.REVIEW_NEEDED:
                 job.state = JobState.MATCHING
+                job.conflict_status = None  # drop any stale escalation note
                 job.updated_at = datetime.now(UTC)
                 await session.commit()
                 await ws_manager.broadcast_job_update(
@@ -575,6 +580,7 @@ class JobManager:
                     content_type=job.content_type.value,
                     detected_title=job.detected_title,
                     detected_season=job.detected_season,
+                    conflict_status="",  # "" overwrites the merged-in stale value
                 )
 
         if retry_args is not None:

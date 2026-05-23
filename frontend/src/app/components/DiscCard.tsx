@@ -69,6 +69,7 @@ export interface DiscData {
   subtitleStatus?: string;
   startedAt?: string;
   needsReview?: boolean;
+  conflictStatus?: string;
 }
 
 interface DiscCardProps {
@@ -436,6 +437,18 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   >
                     › MATCHING EPISODES…
                   </PulseCaption>
+                  {disc.conflictStatus && (
+                    <div
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 11,
+                        color: sv.amber,
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {disc.conflictStatus}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: "grid",
