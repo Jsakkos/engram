@@ -369,15 +369,15 @@ function ReviewQueue() {
         }
     };
 
-    // Re-fetch the job to check whether a preceding /review already organized it.
-    const jobAlreadyFinalized = async (): Promise<boolean> => {
+    // Re-fetch the job to inspect the state a preceding /review may have left it in.
+    const fetchCurrentJob = async (): Promise<Job | null> => {
         try {
             const res = await fetch(`/api/jobs/${jobId}`);
-            if (!res.ok) return false;
-            const data = await res.json();
-            return data.state === 'completed' || data.state === 'organizing';
-        } catch {
-            return false;
+            if (!res.ok) return null;
+            return (await res.json()) as Job;
+        } catch (e) {
+            console.warn('[handleProcessMatched] job re-fetch failed:', e);
+            return null;
         }
     };
 
@@ -387,23 +387,41 @@ function ReviewQueue() {
         try {
             // Submit pending selections first. Resolving the last unresolved title
             // makes the backend finalize the job inline, so it may already be
-            // organizing/completed by the time process-matched runs.
+            // organizing/completed/failed by the time process-matched runs.
             await submitPendingSelections();
             // Then process any remaining matched titles.
             const response = await fetch(`/api/jobs/${jobId}/process-matched`, { method: 'POST' });
             if (!response.ok) {
                 const text = await response.text();
                 // A preceding /review may have already finalized the job (older
-                // backends returned 400 here). If the work is actually done,
-                // return to the dashboard instead of surfacing a spurious error.
-                if (response.status === 400 && (await jobAlreadyFinalized())) {
-                    navigate('/');
-                    return;
+                // backends returned 400 here). Decide based on the job's real state.
+                if (response.status === 400) {
+                    const current = await fetchCurrentJob();
+                    if (current?.state === 'completed' || current?.state === 'organizing') {
+                        navigate('/');
+                        return;
+                    }
+                    if (current?.state === 'failed') {
+                        // The inline finalize organized but the move failed — surface
+                        // why instead of the cryptic "not awaiting review" text.
+                        setError(
+                            current.error_message
+                                ? `Job failed during organization: ${current.error_message}`
+                                : 'Job failed during organization.',
+                        );
+                        return;
+                    }
                 }
                 throw new Error(`Processing failed: ${text}`);
             }
             const result = await response.json();
-            if (result.unresolved === 0 || result.status === 'already_finalized') {
+            // already_finalized/organizing mean the job has left review and is being
+            // handled (and shows on the dashboard); unresolved === 0 means we're done.
+            if (
+                result.unresolved === 0 ||
+                result.status === 'already_finalized' ||
+                result.status === 'organizing'
+            ) {
                 navigate('/');
             } else {
                 // Some titles still need review — refresh to show the updated state.

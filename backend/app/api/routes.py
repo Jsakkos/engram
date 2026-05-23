@@ -807,13 +807,28 @@ async def process_matched_titles(job: DiscJob = Depends(get_job_or_404)) -> dict
     The review UI submits each pending selection via POST /review before calling
     this endpoint. Resolving the last unresolved title makes apply_review finalize
     the job inline, so by the time this runs the job may already be ORGANIZING or
-    COMPLETED. Treat that as a benign no-op rather than an error, otherwise the UI
+    COMPLETED. Treat those as benign no-ops rather than an error, otherwise the UI
     surfaces a spurious "not awaiting review" failure and stays stuck on the
-    review screen even though the files were organized.
+    review screen even though apply_review already handled the titles.
+
+    The ``organized``/``conflicts``/``unresolved`` counts report work done by THIS
+    call. They are 0 here because apply_review did the organizing (and emitted its
+    own broadcasts); this is not the cumulative total for the job.
     """
-    if job.state in (JobState.ORGANIZING, JobState.COMPLETED):
+    if job.state == JobState.COMPLETED:
         return {
             "status": "already_finalized",
+            "job_id": job.id,
+            "organized": 0,
+            "conflicts": 0,
+            "unresolved": 0,
+        }
+    if job.state == JobState.ORGANIZING:
+        # Mid-flight: another path is actively moving files. Don't start a second
+        # organize pass, and report progress honestly rather than claiming the job
+        # is finished.
+        return {
+            "status": "organizing",
             "job_id": job.id,
             "organized": 0,
             "conflicts": 0,

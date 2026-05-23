@@ -730,14 +730,18 @@ class TestProcessMatchedGuard:
         assert body["organized"] == 0
         assert body["conflicts"] == 0
 
-    async def test_process_matched_on_organizing_job_is_idempotent(self, client):
-        """A request landing while /review is mid-organize is a no-op, not 400."""
+    async def test_process_matched_on_organizing_job_is_noop(self, client):
+        """A request landing while organization is in flight is a no-op, not 400.
+
+        ORGANIZING is mid-flight (not finished), so the response reports the honest
+        "organizing" status rather than claiming the job is already finalized.
+        """
         job_id = await self._make_tv_job(JobState.ORGANIZING)
 
         response = await client.post(f"/api/jobs/{job_id}/process-matched")
 
         assert response.status_code == 200
-        assert response.json()["status"] == "already_finalized"
+        assert response.json()["status"] == "organizing"
 
     async def test_process_matched_on_failed_job_rejected(self, client):
         """A genuinely invalid state (FAILED) still returns 400."""
