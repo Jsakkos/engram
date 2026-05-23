@@ -415,17 +415,18 @@ function ReviewQueue() {
                 throw new Error(`Processing failed: ${text}`);
             }
             const result = await response.json();
-            // already_finalized/organizing mean the job has left review and is being
-            // handled (and shows on the dashboard); unresolved === 0 means we're done.
-            if (
-                result.unresolved === 0 ||
-                result.status === 'already_finalized' ||
-                result.status === 'organizing'
-            ) {
-                navigate('/');
+            if (result.status === 'processed') {
+                // We organized the matched subset. If titles still need review, stay
+                // and refresh; otherwise everything is done.
+                if (result.unresolved === 0) {
+                    navigate('/');
+                } else {
+                    await fetchJobDetails();
+                }
             } else {
-                // Some titles still need review — refresh to show the updated state.
-                await fetchJobDetails();
+                // already_finalized / organizing: the job has left review and is being
+                // handled elsewhere (and shows on the dashboard).
+                navigate('/');
             }
         } catch (err) {
             console.error('Failed to process matched:', err);
