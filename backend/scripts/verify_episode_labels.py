@@ -239,12 +239,19 @@ def _ensure_references(
     downloads real subtitles for the whole season — needed for reliable
     verification when the precomputed cache covers only some episodes.
     """
+    # Import is intentionally outside the try: a missing app package is a setup
+    # error that should surface as a traceback, not a per-season "unverifiable".
     from app.matcher.testing_service import download_subtitles
 
     try:
         result = download_subtitles(show_name, season, use_precomputed=not full_references)
-    except Exception as e:  # ValueError (TMDB miss) or network/provider failure
-        return False, str(e)
+    except Exception as e:
+        # Broad on purpose: a TMDB miss (ValueError), a provider network error, or
+        # any other download failure should mark THIS season unverifiable and let
+        # the run continue to other seasons (and still write the CSV) rather than
+        # abort everything. Surface the exception type so unexpected failures are
+        # still debuggable from the printed message.
+        return False, f"{type(e).__name__}: {e}"
 
     episodes = result.get("episodes", [])
     ok = sum(1 for ep in episodes if ep["status"] in ("downloaded", "cached", "precomputed"))
@@ -312,10 +319,8 @@ def build_apply_plan(
     return plan, net
 
 
-def execute_plan(plan: RenamePlan, directory: Path) -> Path:
-    """Run the rename steps and write an undo log; returns the log path."""
-    for src, dst in plan.steps:
-        src.rename(dst)
+def _write_undo_log(plan: RenamePlan, directory: Path) -> Path:
+    """Persist the full rename plan so it can be replayed/reverted."""
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     log_path = directory / f"engram_label_undo_{ts}.json"
     log_path.write_text(
@@ -331,9 +336,24 @@ def execute_plan(plan: RenamePlan, directory: Path) -> Path:
     return log_path
 
 
+def execute_plan(plan: RenamePlan, directory: Path) -> Path:
+    """Write the undo log FIRST, then run the rename steps; returns the log path.
+
+    Logging before mutating is deliberate: if a ``rename`` fails midway (disk full,
+    permission error, killed process), the log already on disk lets ``--undo``
+    recover any files left stranded under ``.engram-tmp``.
+    """
+    log_path = _write_undo_log(plan, directory)
+    for src, dst in plan.steps:
+        src.rename(dst)
+    return log_path
+
+
 def undo_from_log(log_path: Path) -> int:
     """Reverse a previous --apply run. Returns the number of files moved back."""
     data = json.loads(log_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or "steps" not in data:
+        raise ValueError(f"Not a valid undo log (missing 'steps'): {log_path}")
     steps = [(Path(s), Path(d)) for s, d in data["steps"]]
     moved = 0
     for src, dst in reversed(steps):
@@ -444,6 +464,17 @@ def write_csv(csv_path: Path, all_results: list[tuple[int, FileResult]]) -> None
 # --------------------------------------------------------------------------- #
 
 
+def default_csv_path(plan: ScopePlan, override: str | None) -> Path:
+    """Where to write the CSV: explicit override, else show root (show mode) or
+    the season directory (season mode)."""
+    if override:
+        return Path(override)
+    if plan.mode == "show":
+        # targets are Season subdirs of the show root; write to the root itself.
+        return plan.targets[0].directory.parent / "engram_label_check.csv"
+    return plan.targets[0].directory / "engram_label_check.csv"
+
+
 def _process(plan: ScopePlan, show_name: str, args: argparse.Namespace) -> None:
     all_results: list[tuple[int, FileResult]] = []
 
@@ -497,11 +528,7 @@ def _process(plan: ScopePlan, show_name: str, args: argparse.Namespace) -> None:
         all_results.extend((season, r) for r in results)
 
     if all_results:
-        csv_path = (
-            Path(args.csv)
-            if args.csv
-            else Path(plan.targets[0].directory) / ("engram_label_check.csv")
-        )
+        csv_path = default_csv_path(plan, args.csv)
         write_csv(csv_path, all_results)
         print(f"\nCSV written: {csv_path}")
 
@@ -530,7 +557,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.undo:
-        moved = undo_from_log(Path(args.undo))
+        undo_path = Path(args.undo)
+        if not undo_path.is_file():
+            parser.error(f"undo log not found: {undo_path}")
+        moved = undo_from_log(undo_path)
         print(f"Reverted {moved} file(s) from {args.undo}")
         return 0
 

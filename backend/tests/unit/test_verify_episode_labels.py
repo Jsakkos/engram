@@ -182,3 +182,59 @@ class TestPlanTwoPhase:
 
         assert a.read_text() == "content-B"
         assert b.read_text() == "content-A"
+
+
+class TestDefaultCsvPath:
+    def test_season_mode_uses_target_dir(self, tmp_path):
+        season_dir = tmp_path / "Show" / "Season 03"
+        plan = vel.ScopePlan("season", "Show", [vel.SeasonTarget(3, season_dir)])
+        assert vel.default_csv_path(plan, None) == season_dir / "engram_label_check.csv"
+
+    def test_show_mode_uses_show_root(self, tmp_path):
+        show_dir = tmp_path / "Show"
+        targets = [
+            vel.SeasonTarget(1, show_dir / "Season 01"),
+            vel.SeasonTarget(2, show_dir / "Season 02"),
+        ]
+        plan = vel.ScopePlan("show", "Show", targets)
+        # CSV should land at the show root, not inside Season 01
+        assert vel.default_csv_path(plan, None) == show_dir / "engram_label_check.csv"
+
+    def test_override_wins(self, tmp_path):
+        plan = vel.ScopePlan("season", "Show", [vel.SeasonTarget(3, tmp_path)])
+        assert vel.default_csv_path(plan, "X:/out/custom.csv") == Path("X:/out/custom.csv")
+
+
+class TestUndoLog:
+    def test_rejects_log_without_steps(self, tmp_path):
+        import json
+
+        bad = tmp_path / "bad_undo.json"
+        bad.write_text(json.dumps({"created": "20260523-000000"}), encoding="utf-8")
+        try:
+            vel.undo_from_log(bad)
+            raise AssertionError("expected ValueError for malformed log")
+        except ValueError:
+            pass
+
+    def test_recovers_files_stranded_after_partial_apply(self, tmp_path):
+        # Simulate a crash after phase 1: the log (written first) must let --undo
+        # recover the .engram-tmp files.
+        a = tmp_path / "a.mkv"
+        b = tmp_path / "b.mkv"
+        a.write_text("A")
+        b.write_text("B")
+
+        plan = vel.plan_two_phase({a: b, b: a}, existing={a, b})
+        log_path = vel._write_undo_log(plan, tmp_path)
+
+        # Execute ONLY phase 1 (everyone -> temp), then "crash".
+        phase1 = plan.steps[: len(plan.steps) // 2]
+        for src, dst in phase1:
+            src.rename(dst)
+
+        moved = vel.undo_from_log(log_path)
+
+        assert moved == 2
+        assert a.read_text() == "A"
+        assert b.read_text() == "B"
