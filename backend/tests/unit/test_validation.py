@@ -409,6 +409,26 @@ class TestExecutableValidationHardening:
         assert "FFmpeg executable" in result.error
         mock_run.assert_not_called()
 
+    def test_probe_version_refuses_non_makemkv_path(self):
+        """The version probe self-guards: a non-MakeMKV basename never reaches subprocess."""
+        from app.api.validation import _probe_makemkv_version
+
+        with patch("app.api.validation.subprocess.run") as mock_run:
+            version = _probe_makemkv_version("/bin/sh")
+
+        assert version == "MakeMKV (version not detectable)"
+        mock_run.assert_not_called()
+
+    def test_validate_binary_refuses_non_makemkv_path(self):
+        """The binary validator self-guards: a non-MakeMKV basename never reaches subprocess."""
+        from app.api.validation import _validate_makemkv_binary
+
+        with patch("app.api.validation.subprocess.run") as mock_run:
+            result = _validate_makemkv_binary("/usr/bin/python3")
+
+        assert result.found is False
+        mock_run.assert_not_called()
+
 
 class TestMakeMKVVersionExtraction:
     """Parse MakeMKV version from real makemkvcon output.

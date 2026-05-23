@@ -132,6 +132,11 @@ def _probe_makemkv_version(path_str: str) -> str:
     blocks detection on a slow or busy drive. The out-of-range ``disc:99999``
     index can't open a real disc — it just triggers the banner.
     """
+    # Refuse to launch anything that isn't a MakeMKV executable, so a
+    # user-supplied config path can't coerce this into running an arbitrary
+    # binary (py/command-line-injection). Mirrors the endpoint-level guard.
+    if not executable_basename_allowed(path_str, _MAKEMKV_EXE_NAMES):
+        return _VERSION_NOT_DETECTABLE
     try:
         result = subprocess.run(
             [path_str, "-r", "info", "disc:99999"],
@@ -147,6 +152,10 @@ def _probe_makemkv_version(path_str: str) -> str:
 
 def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
     """Validate a MakeMKV binary and extract version info."""
+    # Self-guard the subprocess sink: never execute a path whose basename isn't
+    # a known MakeMKV executable, independent of the caller (py/command-line-injection).
+    if not executable_basename_allowed(path_str, _MAKEMKV_EXE_NAMES):
+        return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
     try:
         result = subprocess.run(
             [path_str],
