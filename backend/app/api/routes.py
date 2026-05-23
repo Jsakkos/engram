@@ -802,7 +802,23 @@ async def retry_subtitle_download(
 
 @router.post("/jobs/{job_id}/process-matched")
 async def process_matched_titles(job: DiscJob = Depends(get_job_or_404)) -> dict:
-    """Process all matched titles for a job without waiting for unresolved ones."""
+    """Process all matched titles for a job without waiting for unresolved ones.
+
+    The review UI submits each pending selection via POST /review before calling
+    this endpoint. Resolving the last unresolved title makes apply_review finalize
+    the job inline, so by the time this runs the job may already be ORGANIZING or
+    COMPLETED. Treat that as a benign no-op rather than an error, otherwise the UI
+    surfaces a spurious "not awaiting review" failure and stays stuck on the
+    review screen even though the files were organized.
+    """
+    if job.state in (JobState.ORGANIZING, JobState.COMPLETED):
+        return {
+            "status": "already_finalized",
+            "job_id": job.id,
+            "organized": 0,
+            "conflicts": 0,
+            "unresolved": 0,
+        }
     if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(status_code=400, detail="Job is not awaiting review")
 

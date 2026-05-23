@@ -369,23 +369,44 @@ function ReviewQueue() {
         }
     };
 
+    // Re-fetch the job to check whether a preceding /review already organized it.
+    const jobAlreadyFinalized = async (): Promise<boolean> => {
+        try {
+            const res = await fetch(`/api/jobs/${jobId}`);
+            if (!res.ok) return false;
+            const data = await res.json();
+            return data.state === 'completed' || data.state === 'organizing';
+        } catch {
+            return false;
+        }
+    };
+
     const handleProcessMatched = async () => {
         setIsProcessing(true);
         setError(null);
         try {
-            // First submit all pending selections
+            // Submit pending selections first. Resolving the last unresolved title
+            // makes the backend finalize the job inline, so it may already be
+            // organizing/completed by the time process-matched runs.
             await submitPendingSelections();
-            // Then process matched titles
+            // Then process any remaining matched titles.
             const response = await fetch(`/api/jobs/${jobId}/process-matched`, { method: 'POST' });
             if (!response.ok) {
                 const text = await response.text();
+                // A preceding /review may have already finalized the job (older
+                // backends returned 400 here). If the work is actually done,
+                // return to the dashboard instead of surfacing a spurious error.
+                if (response.status === 400 && (await jobAlreadyFinalized())) {
+                    navigate('/');
+                    return;
+                }
                 throw new Error(`Processing failed: ${text}`);
             }
             const result = await response.json();
-            if (result.unresolved === 0) {
+            if (result.unresolved === 0 || result.status === 'already_finalized') {
                 navigate('/');
             } else {
-                // Refresh to see updated state
+                // Some titles still need review — refresh to show the updated state.
                 await fetchJobDetails();
             }
         } catch (err) {
