@@ -293,6 +293,37 @@ class TestEscalation:
             job = await session.get(DiscJob, job_id)
             assert job.conflict_status is None
 
+    async def test_rerun_matching_clears_db_note_from_matching(self, monkeypatch):
+        """rerun_matching must clear the persisted note even from MATCHING, not
+        just REVIEW_NEEDED — "rerun starts over" applies to the DB column too."""
+        from app.services.job_manager import job_manager
+
+        async with _unit_session_factory() as session:
+            job = DiscJob(
+                drive_id="E:",
+                volume_label="SHOW",
+                content_type=ContentType.TV,
+                state=JobState.MATCHING,
+                conflict_status="Resolving episode conflicts — pass 2 of 3",
+                staging_path="/tmp/s",
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            job_id = job.id
+
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(job_manager, "_rerun_matching", _noop)
+        monkeypatch.setattr(job_manager._matching, "restart_subtitle_download", _noop)
+
+        await job_manager.rerun_matching(job_id)
+
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            assert job.conflict_status is None
+
     async def test_reset_conflict_passes(self):
         coord = _coord_with(None)
         coord._conflict_passes[42] = 50

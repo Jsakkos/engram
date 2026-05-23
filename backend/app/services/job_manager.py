@@ -582,6 +582,15 @@ class JobManager:
                     detected_season=job.detected_season,
                     conflict_status="",  # "" overwrites the merged-in stale value
                 )
+            elif job is not None and job.conflict_status is not None:
+                # Re-matching from a non-review state (e.g. an escalation pass is
+                # in flight): the in-memory counter was already reset above, so
+                # clear the persisted note too — "rerun starts over" must apply
+                # to the DB column, not just the counter.
+                job.conflict_status = None
+                job.updated_at = datetime.now(UTC)
+                await session.commit()
+                await ws_manager.broadcast_job_update(job_id, job.state.value, conflict_status="")
 
         if retry_args is not None:
             await self._matching.restart_subtitle_download(*retry_args)
