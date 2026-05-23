@@ -1893,14 +1893,19 @@ async def rematch_conflict(
     """
     from app.services.job_manager import job_manager
 
-    title_ids = await job_manager.rematch_conflict(job.id, request.episode_code)
-    if not title_ids:
+    result = await job_manager.rematch_conflict(job.id, request.episode_code)
+    if not result["dispatched"] and not result["skipped"]:
         raise HTTPException(
             status_code=404,
             detail=f"No titles are currently matched to {request.episode_code}",
         )
 
-    return {"status": "rematching", "episode_code": request.episode_code, "title_ids": title_ids}
+    return {
+        "status": "rematching",
+        "episode_code": request.episode_code,
+        "title_ids": result["dispatched"],
+        "skipped": result["skipped"],
+    }
 
 
 @router.post("/jobs/{job_id}/titles/{title_id}/reassign")

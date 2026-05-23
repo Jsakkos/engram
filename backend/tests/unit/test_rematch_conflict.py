@@ -124,8 +124,12 @@ class TestRematchConflict:
         )
 
         assert resp.status_code == 200
-        # Only the title whose file existed was re-matched.
-        assert resp.json()["title_ids"] == [t1.id]
+        body = resp.json()
+        # Only the title whose file existed was re-matched...
+        assert body["title_ids"] == [t1.id]
+        # ...and the skipped one is reported with a reason.
+        assert [s["title_id"] for s in body["skipped"]] == [t2.id]
+        assert "not found" in body["skipped"][0]["reason"].lower()
 
     async def test_404_when_no_title_claims_the_episode(self, client, monkeypatch):
         job = await _seed_job()

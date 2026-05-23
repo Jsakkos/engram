@@ -183,12 +183,14 @@ class MatchingCoordinator:
         episode_code: str,
         num_points: int | None = None,
         min_vote_count: int | None = None,
-    ) -> list[int]:
+    ) -> dict:
         """Re-run audio matching for every title currently claiming ``episode_code``.
 
         Used to break a same-episode collision: each contested title is re-matched
         (engram) with stricter parameters so the tie can resolve either way.
-        Returns the ids of the titles that were re-matched.
+        Returns ``{"dispatched": [ids], "skipped": [{"title_id", "reason"}]}`` so
+        callers can tell the user which titles could not be re-matched (e.g. their
+        ripped file is no longer in staging).
         """
         async with async_session() as session:
             result = await session.execute(
@@ -201,6 +203,7 @@ class MatchingCoordinator:
             ]
 
         dispatched: list[int] = []
+        skipped: list[dict] = []
         for tid in title_ids:
             try:
                 await self.rematch_single_title(
@@ -214,9 +217,10 @@ class MatchingCoordinator:
             except ValueError as e:
                 # e.g. staging file missing for a title that was matched earlier
                 # but whose ripped file is no longer present — skip it rather
-                # than failing the whole conflict re-match.
+                # than failing the whole conflict re-match, and report it.
                 logger.warning(f"Conflict re-match: skipping title {tid} (job {job_id}): {e}")
-        return dispatched
+                skipped.append({"title_id": tid, "reason": str(e)})
+        return {"dispatched": dispatched, "skipped": skipped}
 
     async def rematch_single_title(
         self,

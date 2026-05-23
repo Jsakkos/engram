@@ -553,8 +553,11 @@ class JobManager:
         """Re-match a single title. Delegates to matching coordinator."""
         await self._matching.rematch_single_title(job_id, title_id, source_preference)
 
-    async def rematch_conflict(self, job_id: int, episode_code: str) -> list[int]:
-        """Deep re-match every title claiming ``episode_code`` (strict params)."""
+    async def rematch_conflict(self, job_id: int, episode_code: str) -> dict:
+        """Deep re-match every title claiming ``episode_code`` (strict params).
+
+        Returns ``{"dispatched": [...], "skipped": [{"title_id", "reason"}]}``.
+        """
         return await self._matching.rematch_conflict(
             job_id,
             episode_code,
