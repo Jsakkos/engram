@@ -88,10 +88,12 @@ function extractFinalMatchInfo(title: DiscTitle): { confidence: number; votes: n
 
   const details = parseMatchDetails(title);
 
-  // For matched tracks, the winning match info is at the top level
+  // For matched tracks, the winning match info is at the top level. Prefer the
+  // calibrated `confidence` (0-1, reviewer-facing); fall back to raw `score` for
+  // match_details that predate calibration.
   if (details.score !== undefined && details.vote_count !== undefined) {
     return {
-      confidence: details.score || 0,
+      confidence: details.confidence ?? details.score ?? 0,
       votes: details.vote_count ?? 0,
       targetVotes: details.target_votes ?? details.total_chunks ?? 5
     };
@@ -168,7 +170,8 @@ interface RunnerUp {
 
 interface MatchDetails {
   runner_ups?: RunnerUp[];
-  score?: number;
+  score?: number;        // raw ranked_voting_score
+  confidence?: number;   // calibrated 0-1, reviewer-facing
   vote_count?: number;
   target_votes?: number;
   total_chunks?: number;
@@ -190,7 +193,9 @@ function extractMatchCandidates(title: DiscTitle): MatchCandidate[] | undefined 
   if (details.runner_ups && Array.isArray(details.runner_ups) && details.runner_ups.length > 0) {
     return details.runner_ups.map((ru: RunnerUp) => ({
       episode: ru.episode || 'Unknown',
-      confidence: ru.score || ru.confidence || 0,     // Backend uses 'score'
+      // Prefer calibrated `confidence` (?? keeps a legitimate 0 for zero-vote
+      // losers); fall back to raw `score` for pre-calibration match_details.
+      confidence: ru.confidence ?? ru.score ?? 0,
       votes: ru.vote_count ?? Math.floor((ru.score || 0) * 5),  // Use actual vote_count (0 is valid!)
       targetVotes: ru.target_votes ?? details.target_votes ?? details.total_chunks ?? 5
     }));
@@ -202,7 +207,7 @@ function extractMatchCandidates(title: DiscTitle): MatchCandidate[] | undefined 
   if (details.score !== undefined && details.vote_count !== undefined) {
     return [{
       episode: details.episode || title.matched_episode || 'Matching...',
-      confidence: details.score || 0,
+      confidence: details.confidence ?? details.score ?? 0,
       votes: details.vote_count ?? 0,
       targetVotes: details.target_votes ?? details.total_chunks ?? 5
     }];

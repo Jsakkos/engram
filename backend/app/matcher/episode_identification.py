@@ -216,6 +216,166 @@ def _is_watermark_block(block_text: str, block_lines: list[str], subtitle_start:
     return False
 
 
+# --- Confidence calibration --------------------------------------------------
+#
+# The matcher's raw ``ranked_voting_score`` is the mean TF-IDF cosine of the
+# chunks that voted for the winning episode. Comparing a 30s ASR snippet to a
+# full ~22-minute subtitle file ("teaspoon vs bucket") keeps that cosine small
+# (~0.15-0.21) even for a correct match, so it is uninterpretable as a
+# percentage. ``calibrate_confidence`` translates the raw signals into a 0-1
+# confidence a human reviewer can read. It answers "how sure are we this is the
+# right episode?" rather than "how much text overlapped?".
+#
+# Rationale for the constants lives in
+# docs/superpowers/specs/2026-05-22-match-confidence-calibration-design.md.
+
+# Cosine at which a matched chunk counts as full-quality. Votes require >0.15
+# and observed-correct chunks cluster ~0.15-0.21, so the discriminative band is
+# razor-thin; normalized_score is a mild guard, mostly reported for transparency.
+QUALITY_REF_COSINE = 0.18
+# Processed fraction treated as full coverage. ~22-min episodes sample ~0.23, so
+# typical TV reads 1.0 while longer episodes (covered proportionally less) read
+# lower -- the correct direction (the rejected score/coverage design did the
+# opposite, leaking episode length into confidence).
+COVERAGE_REF = 0.15
+# Evidence is a weighted blend of the three independent reported metrics.
+# Consensus (how many sampled chunks agreed) is the strongest, so it dominates.
+W_CONSENSUS = 0.5
+W_NORMALIZED_SCORE = 0.25
+W_COVERAGE = 0.25
+# Floor so a decisive sweep with thin evidence still reads meaningfully, while
+# minimal evidence lands just under the 0.7 review gate.
+EVIDENCE_FLOOR = 0.30
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def calibrate_confidence(
+    *,
+    score: float,
+    score_gap: float,
+    vote_count: int,
+    target_votes: int,
+    processed_coverage: float,
+) -> tuple[float, dict[str, float]]:
+    """Translate raw match signals into a 0-1 reviewer-facing confidence.
+
+    Args:
+        score: winner's ranked_voting_score (mean matched-chunk cosine).
+        score_gap: top1 - top2 (decisiveness; == score when uncontested).
+        vote_count: chunks that voted for the winner.
+        target_votes: total chunks sampled.
+        processed_coverage: fraction of the file run through the matcher
+            (samples * chunk_len / video_duration), NOT the matched fraction.
+
+    Returns:
+        (confidence, components) where components reports the three independent
+        metrics (separation, consensus, normalized_score, coverage) plus the
+        derived evidence term, each in [0, 1].
+
+    Formula:
+        confidence = separation * evidence
+        evidence   = EVIDENCE_FLOOR + (1-FLOOR) * (
+                         W_CONSENSUS*consensus
+                       + W_NORMALIZED_SCORE*normalized_score
+                       + W_COVERAGE*coverage_norm)
+
+    Separation is the safety gate: a near-tie (two plausible episodes) craters
+    confidence regardless of how strong the evidence is, because none of the
+    evidence metrics looks at the runner-up.
+    """
+    eps = 1e-9
+    separation = _clamp01(score_gap / score) if score > eps else 0.0
+    consensus = _clamp01(vote_count / target_votes) if target_votes > 0 else 0.0
+    normalized_score = _clamp01(score / QUALITY_REF_COSINE)
+    coverage_norm = _clamp01(processed_coverage / COVERAGE_REF)
+
+    evidence_raw = (
+        W_CONSENSUS * consensus + W_NORMALIZED_SCORE * normalized_score + W_COVERAGE * coverage_norm
+    )
+    evidence = EVIDENCE_FLOOR + (1.0 - EVIDENCE_FLOOR) * evidence_raw
+    confidence = _clamp01(separation * evidence)
+
+    components = {
+        "separation": separation,
+        "consensus": consensus,
+        "normalized_score": normalized_score,
+        # Report the actual processed fraction (the metric), not the normalized
+        # form used inside the formula.
+        "coverage": _clamp01(processed_coverage),
+        "evidence": evidence,
+    }
+    return confidence, components
+
+
+def _attach_calibrated_confidence(
+    best_match: dict,
+    results_summary: list[dict],
+    video_duration: float,
+    chunk_len: int = 30,
+) -> None:
+    """Mutate ``best_match`` in place with calibrated confidence + leaderboard.
+
+    Sets ``best_match["confidence"]`` to the calibrated value (this is what flows
+    to ``DiscTitle.match_confidence``) while leaving ``best_match["score"]`` and
+    ``match_details["score"]`` as the raw ranked_voting_score that the accept-vs-
+    fallback gate and conflict resolution depend on. Adds the reported metrics to
+    ``match_details`` and builds ``runner_ups`` where each entry keeps its raw
+    ``score`` (for cascading reassignment) and gains a calibrated ``confidence``
+    scaled to the winner so the winner's leaderboard entry equals the headline.
+    """
+    if not results_summary:
+        return
+
+    # results_summary is sorted by score descending by the caller.
+    top1 = results_summary[0]["score"]
+    if len(results_summary) >= 2:
+        score_gap = top1 - results_summary[1]["score"]
+    else:
+        score_gap = top1
+
+    md = best_match.setdefault("match_details", {})
+    target_votes = md.get("target_votes", 0)
+    vote_count = md.get("vote_count", 0)
+    processed_coverage = (target_votes * chunk_len / video_duration) if video_duration > 0 else 0.0
+
+    confidence, components = calibrate_confidence(
+        score=best_match.get("score", 0.0),
+        score_gap=score_gap,
+        vote_count=vote_count,
+        target_votes=target_votes,
+        processed_coverage=processed_coverage,
+    )
+
+    best_match["confidence"] = confidence
+    md["confidence"] = confidence
+    md["score_gap"] = score_gap
+    md["separation"] = components["separation"]
+    md["normalized_score"] = components["normalized_score"]
+    md["consensus"] = components["consensus"]
+    md["coverage"] = components["coverage"]
+
+    runner_ups = []
+    for r in results_summary:
+        if r["score"] <= 0:
+            continue
+        ru_confidence = _clamp01(confidence * (r["score"] / top1)) if top1 > 0 else 0.0
+        runner_ups.append(
+            {
+                "episode": r["episode"],
+                "score": r["score"],  # raw, for conflict resolution
+                "confidence": ru_confidence,  # calibrated, for display
+                "vote_count": r["vote_count"],
+                "target_votes": r.get("target_votes", target_votes),
+            }
+        )
+    runner_ups = runner_ups[:5]
+    best_match["runner_ups"] = runner_ups
+    md["runner_ups"] = runner_ups
+
+
 class TfidfMatcher:
     """
     Episode matcher using TF-IDF cosine similarity.
@@ -1007,46 +1167,31 @@ class EpisodeMatcher:
                     "runner_ups": [],
                 }
 
-            # Add ALL candidates (including the best match) so the UI can display
-            # the full voting leaderboard. Previously excluded the best match, but
-            # for decisive matches with a single candidate this left runner_ups empty.
-            runner_ups = []
-            if results_summary:
-                results_summary.sort(key=lambda x: x["score"], reverse=True)
-                runner_ups = [
-                    {
-                        "episode": r["episode"],
-                        "score": r["score"],
-                        "vote_count": r["vote_count"],
-                        "target_votes": len(scan_points),
-                    }
-                    for r in results_summary
-                    if r["score"] > 0
-                ][:5]
-                best_match["runner_ups"] = runner_ups
-
-            # Merge stats into match_details
+            # Merge stats into match_details before calibration so the helper
+            # operates on the full per-winner detail dict.
             best_match["match_details"].update(match_stats)
-            best_match["match_details"]["runner_ups"] = runner_ups
 
-            # Log top candidates with voting details and score gap analysis
+            # Sort candidates so the calibrator sees top1/top2 in order, then
+            # translate the raw signals into a 0-1 reviewer-facing confidence and
+            # build the runner-up leaderboard. This sets best_match["confidence"]
+            # (calibrated, -> DiscTitle.match_confidence) while leaving
+            # best_match["score"] raw for the accept-gate and conflict resolution.
+            # All candidates (incl. the winner) appear in runner_ups so the UI can
+            # show the full leaderboard. See calibrate_confidence for rationale.
+            results_summary.sort(key=lambda x: x["score"], reverse=True)
+            _attach_calibrated_confidence(best_match, results_summary, video_duration)
+
+            score_gap = best_match["match_details"].get("score_gap", 0.0)
+
+            # Log top candidates with voting + calibration analysis
             voting_method = "ranked voting" if self.use_ranked_voting else "weighted score"
             logger.info(f"{voting_method.capitalize()} results for {video_file.name}:")
-
-            # Compute score gap between top-1 and top-2 (strong correctness signal)
-            score_gap = 0.0
-            if len(results_summary) >= 2:
-                score_gap = results_summary[0]["score"] - results_summary[1]["score"]
-                logger.info(
-                    f"  Score gap (top1-top2): {score_gap:.4f} {'(decisive)' if score_gap > 0.01 else '(LOW - uncertain match)'}"
-                )
-            elif len(results_summary) == 1:
-                # Only one candidate, gap equals its score
-                score_gap = results_summary[0]["score"]
-
-            # Add score_gap to match_details for UI transparency
-            if best_match and best_match.get("match_details"):
-                best_match["match_details"]["score_gap"] = score_gap
+            logger.info(
+                f"  Calibrated confidence: {best_match['confidence']:.3f} "
+                f"(raw score={best_match['score']:.3f}, "
+                f"score_gap={score_gap:.4f} "
+                f"{'decisive' if score_gap > 0.01 else 'LOW-uncertain'})"
+            )
 
             for i, result in enumerate(results_summary[:5], 1):
                 logger.info(

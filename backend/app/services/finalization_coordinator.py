@@ -234,7 +234,10 @@ class FinalizationCoordinator:
                             current_claimants = candidates.get(alt_ep, [])
                             if not current_claimants:
                                 loser.matched_episode = alt_ep
-                                loser.match_confidence = ru["score"]
+                                # Ranking uses raw score; the stored confidence is
+                                # the calibrated value (falls back to raw for old
+                                # match_details that predate calibration).
+                                loser.match_confidence = ru.get("confidence", ru["score"])
                                 candidates.setdefault(alt_ep, []).append(loser)
                                 reassigned = True
                                 reassigned_any = True
@@ -248,7 +251,7 @@ class FinalizationCoordinator:
                                 claimant_score, _, _, _ = _get_metrics(claimant)
                                 if ru["score"] > claimant_score:
                                     loser.matched_episode = alt_ep
-                                    loser.match_confidence = ru["score"]
+                                    loser.match_confidence = ru.get("confidence", ru["score"])
                                     candidates[alt_ep].append(loser)
                                     reassigned = True
                                     reassigned_any = True

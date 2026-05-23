@@ -203,4 +203,46 @@ describe("extractMatchCandidates (via track transform)", () => {
     const result = transformJobToDiscData(job, [title]);
     expect(result.tracks![0].matchCandidates).toBeUndefined();
   });
+
+  it("prefers calibrated confidence over raw score for runner_ups", () => {
+    // Backend now ships both raw `score` (small cosine) and calibrated
+    // `confidence` (reviewer-facing). The UI must show the calibrated value.
+    const matchDetails = JSON.stringify({
+      score: 0.18,
+      confidence: 0.92,
+      vote_count: 8,
+      runner_ups: [
+        { episode: "S01E13", score: 0.18, confidence: 0.92, vote_count: 8, target_votes: 10 },
+        { episode: "S01E07", score: 0.0, confidence: 0.0, vote_count: 0, target_votes: 10 },
+      ],
+    });
+    const title = makeTitle({
+      state: "matched",
+      matched_episode: "S01E13",
+      match_confidence: 0.92,
+      match_details: matchDetails,
+    });
+    const track = transformJobToDiscData(makeJob(), [title]).tracks![0];
+
+    expect(track.matchCandidates![0].confidence).toBe(0.92); // not 0.18
+    expect(track.matchCandidates![1].confidence).toBe(0); // zero-vote loser stays 0
+  });
+
+  it("uses calibrated confidence for the headline finalMatchConfidence", () => {
+    const matchDetails = JSON.stringify({
+      score: 0.165,
+      confidence: 0.9,
+      vote_count: 8,
+      target_votes: 10,
+    });
+    const title = makeTitle({
+      state: "matched",
+      matched_episode: "S01E13",
+      match_confidence: 0.9,
+      match_details: matchDetails,
+    });
+    const track = transformJobToDiscData(makeJob(), [title]).tracks![0];
+
+    expect(track.finalMatchConfidence).toBe(0.9); // not the raw 0.165
+  });
 });
