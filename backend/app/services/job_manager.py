@@ -209,6 +209,10 @@ class JobManager:
             logger.info(f"Cancelled job {job_id}")
 
         self._active_jobs.clear()
+
+        # Drain any MakeMKV subprocesses so none survive shutdown as orphans.
+        await self._extractor.shutdown()
+
         logger.info("Job manager stopped")
 
     # --- Drive/Staging Event Handlers ---

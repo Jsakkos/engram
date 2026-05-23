@@ -67,6 +67,10 @@ class MatchingCoordinator:
         """
         self._episode_runtimes.pop(job_id, None)
         self._discdb_mappings.pop(job_id, None)
+        self._subtitle_ready.pop(job_id, None)
+        task = self._subtitle_tasks.pop(job_id, None)
+        if task is not None and not task.done():
+            task.cancel()
 
     def get_discdb_mappings(self, job_id: int) -> list:
         """Get DiscDB mappings for a job."""
@@ -559,7 +563,17 @@ class MatchingCoordinator:
                             match_progress=percent,
                             match_details=details,
                         )
-                        asyncio.run_coroutine_threadsafe(coro, loop)
+                        fut = asyncio.run_coroutine_threadsafe(coro, loop)
+
+                        def _log_broadcast_error(f) -> None:
+                            try:
+                                f.result()
+                            except Exception as exc:
+                                logger.warning(
+                                    f"[MATCH] Title {title_id}: progress broadcast failed: {exc}"
+                                )
+
+                        fut.add_done_callback(_log_broadcast_error)
                     except Exception as e:
                         logger.warning(f"[MATCH] Title {title_id}: progress callback error: {e}")
 
