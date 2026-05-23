@@ -6,6 +6,7 @@ import { DiscTitle } from '../../types';
 import { MatchDetails } from './types';
 import { MATCHING_CONFIG } from '../../config/constants';
 import { formatSizeGB, formatDurationLong } from '../../utils/formatting';
+import { sv } from '../../app/components/synapse';
 
 /**
  * Format file size in bytes to human-readable format.
@@ -54,6 +55,24 @@ export function getReviewReasons(title: DiscTitle): string[] {
     }
 
     return reasons;
+}
+
+/**
+ * Display name for a title — filename basename, or a generic fallback.
+ */
+export function titleDisplayName(title: DiscTitle): string {
+    return title.output_filename
+        ? title.output_filename.split(/[/\\]/).pop() ?? `Title ${title.title_index}`
+        : `Title ${title.title_index}`;
+}
+
+/**
+ * Color a confidence score: green (auto-match), yellow (plausible), red (weak).
+ */
+export function confidenceColor(confidence: number): string {
+    if (confidence >= MATCHING_CONFIG.AUTO_MATCH_THRESHOLD) return sv.green;
+    if (confidence >= MATCHING_CONFIG.MIN_CONFIDENCE) return sv.yellow;
+    return sv.red;
 }
 
 /**

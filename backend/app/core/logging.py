@@ -5,6 +5,7 @@ Intercepts standard library logging and routes it through Loguru.
 Configures file rotation, retention, and compression.
 """
 
+import inspect
 import logging
 import sys
 from pathlib import Path
@@ -27,9 +28,13 @@ class InterceptHandler(logging.Handler):
         except ValueError:
             level = record.levelno
 
-        # Find caller from where originated the logged message
-        frame, depth = logging.currentframe(), 2
-        while frame.f_code.co_filename == logging.__file__:
+        # Find the caller that originated the logged message. Start from this
+        # emit() frame (depth 0) and walk outward past every frame that lives in
+        # the stdlib logging module, so Loguru attributes the record to the real
+        # call site instead of logging.callHandlers. The `frame and` guard stops
+        # cleanly if the walk reaches the top of the stack.
+        frame, depth = inspect.currentframe(), 0
+        while frame and (depth == 0 or frame.f_code.co_filename == logging.__file__):
             frame = frame.f_back
             depth += 1
 

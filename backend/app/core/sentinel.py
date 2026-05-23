@@ -352,5 +352,8 @@ class DriveMonitor:
         if self._async_callback:
             try:
                 await self._async_callback(drive, event, label)
-            except Exception as e:
-                logger.error(f"Error in async callback: {e}")
+            except Exception:
+                logger.error(
+                    f"Error in async drive-event callback for {drive} {event}",
+                    exc_info=True,
+                )
