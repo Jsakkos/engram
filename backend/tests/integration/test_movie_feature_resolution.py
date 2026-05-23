@@ -87,8 +87,9 @@ async def test_long_bonus_tracks_no_review(jm, session, mocker):
 
     assert sent_to_review is False
     assert job.state == JobState.RIPPING  # not pushed to review
-    assert titles[0].is_extra is False
-    assert all(t.is_extra for t in titles[1:])
+    assert titles[0].is_extra is False and titles[0].is_selected is True
+    # Extras are tagged and deselected so they never read as the feature.
+    assert all(t.is_extra and t.is_selected is False for t in titles[1:])
 
 
 async def test_two_real_features_needs_review(jm, session, mocker):

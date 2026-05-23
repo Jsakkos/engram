@@ -1218,9 +1218,10 @@ class JobManager:
                 dt.is_extra = dt.title_index != main_movie_idx
                 session.add(dt)
             await session.commit()
+            safe_main_idx = sanitize_log_value(main_movie_idx)
             logger.info(
                 f"Job {job_id}: TheDiscDB auto-selected MainMovie "
-                f"title index {sanitize_log_value(main_movie_idx)}, skipping review"
+                f"title index {safe_main_idx}, skipping review"
             )
             return False
 
@@ -1228,10 +1229,10 @@ class JobManager:
 
         for dt in ripped_titles:
             if dt.title_index in decision.extra_indices:
+                # Extras are never the selected feature, in either path: deselected so
+                # the version picker (review) and downstream state stay consistent.
                 dt.is_extra = True
-                if decision.needs_review:
-                    # Keep extras out of the version picker.
-                    dt.is_selected = False
+                dt.is_selected = False
                 session.add(dt)
         await session.commit()
 
@@ -1244,17 +1245,18 @@ class JobManager:
             await ws_manager.broadcast_job_update(
                 job_id, JobState.REVIEW_NEEDED.value, error=reason
             )
+            safe_candidates = sanitize_log_value(decision.candidate_indices)
             logger.info(
                 f"Job {job_id}: {len(decision.candidate_indices)} feature candidates "
-                f"{sanitize_log_value(decision.candidate_indices)} ripped — "
-                f"waiting for user selection."
+                f"{safe_candidates} ripped — waiting for user selection."
             )
             return True
 
+        safe_feature = sanitize_log_value(decision.feature_index)
+        safe_extras = sanitize_log_value(decision.extra_indices)
         logger.info(
-            f"Job {job_id}: auto-selected feature title "
-            f"{sanitize_log_value(decision.feature_index)}; "
-            f"tagged {sanitize_log_value(decision.extra_indices)} as extras (no review)."
+            f"Job {job_id}: auto-selected feature title {safe_feature}; "
+            f"tagged {safe_extras} as extras (no review)."
         )
         return False
 
@@ -1278,7 +1280,7 @@ class JobManager:
                     fetch_movie_runtime, str(job.tmdb_id), config.tmdb_api_key
                 )
             except Exception as e:
-                logger.warning(f"Job {job.id}: movie runtime lookup failed: {e}")
+                logger.warning(f"Job {job.id}: movie runtime lookup failed: {e}", exc_info=True)
 
         infos = [
             TitleInfo(
