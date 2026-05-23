@@ -9,6 +9,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
+from app import __version__
 from app.api import manager as ws_manager
 from app.api import router as api_router
 from app.api import test_router
@@ -111,19 +112,12 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete")
 
 
-# Read version from pyproject.toml metadata (falls back for frozen builds)
-try:
-    from importlib.metadata import version as _pkg_version
-
-    _version = _pkg_version("engram-backend")
-except Exception:
-    _version = "0.0.0"
-
-# Create FastAPI application
+# Create FastAPI application (version sourced from app/__init__.py — the single
+# source of truth, which also resolves correctly in frozen builds).
 app = FastAPI(
     title="Engram API",
     description="Glass-Box automation for disc ripping and organization",
-    version=_version,
+    version=__version__,
     lifespan=lifespan,
 )
 
