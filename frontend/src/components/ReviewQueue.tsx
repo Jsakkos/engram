@@ -9,7 +9,7 @@ import { formatDuration, formatSize, titleDisplayName } from './ReviewQueue/util
 import { MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
-import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, suggestGapCode } from './ReviewQueue/coverage';
+import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
@@ -197,7 +197,9 @@ function ReviewQueue() {
                 const actions: Record<number, TitleAction> = {};
                 titlesData.forEach((title: DiscTitle) => {
                     if (title.matched_episode) {
-                        episodes[title.id] = title.matched_episode;
+                        // Canonicalize so unpadded matcher output (e.g. "S1E14")
+                        // dedupes/collides against padded codes and the roster.
+                        episodes[title.id] = normalizeEpisodeCode(title.matched_episode);
                         actions[title.id] = 'episode';
                     }
                 });
@@ -224,7 +226,7 @@ function ReviewQueue() {
     }, [titles, selectedTitleId]);
 
     const handleEpisodeChange = (titleId: number, episodeCode: string) => {
-        setSelectedEpisodes(prev => ({ ...prev, [titleId]: episodeCode }));
+        setSelectedEpisodes(prev => ({ ...prev, [titleId]: normalizeEpisodeCode(episodeCode) }));
         setTitleActions(prev => ({ ...prev, [titleId]: 'episode' }));
     };
 

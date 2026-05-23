@@ -79,4 +79,31 @@ describe('buildCandidates', () => {
         expect(cands[0].episodeName).toBe('Seven Minutes of Terror');
         expect(cands[1].voteCount).toBe(4);
     });
+
+    it('normalizes unpadded codes to canonical zero-padded form', () => {
+        const title = {
+            matched_episode: 'S3E5',
+            match_confidence: 0.18,
+            match_details: JSON.stringify({ runner_ups: [{ episode: 'S3E4', confidence: 0.1 }] }),
+        } as unknown as DiscTitle;
+        const names: Record<string, string> = { S03E05: 'Charity Drive' };
+        const cands = buildCandidates(title, (code) => names[code] ?? '');
+        expect(cands[0].episodeCode).toBe('S03E05');
+        expect(cands[0].episodeName).toBe('Charity Drive'); // name lookup uses padded code
+        expect(cands[1].episodeCode).toBe('S03E04');
+    });
+});
+
+describe('episode-code normalization across padding', () => {
+    it('treats unpadded and padded selections as the same episode (collision)', () => {
+        // Real-world: matcher emitted "S3E5" for one title, "S03E05" for another.
+        const cov = computeCoverage({ 10: 'S3E5', 11: 'S03E05' }, episodes);
+        expect(cov['S03E05'].status).toBe('duplicate');
+        expect([...cov['S03E05'].titleIds].sort()).toEqual([10, 11]);
+    });
+
+    it('collidingCodes flags the collision regardless of padding', () => {
+        const set = collidingCodes({ 10: 'S3E5', 11: 'S03E05' });
+        expect(set.has('S03E05')).toBe(true);
+    });
 });

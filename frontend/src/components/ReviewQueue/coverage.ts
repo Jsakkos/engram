@@ -42,14 +42,28 @@ function episodeNumber(code: string): number | null {
     return m ? parseInt(m[2], 10) : null;
 }
 
+/**
+ * Canonicalize an episode code to zero-padded `SxxExx`. The matcher's main path
+ * emits padded codes, but a fallback path can produce unpadded ones (e.g.
+ * "S1E14"); without normalizing, "S1E14" and "S01E14" wouldn't dedupe/collide
+ * against each other or the (always-padded) season roster. Non-codes
+ * ('extra'/'skip'/'') pass through unchanged.
+ */
+export function normalizeEpisodeCode(code: string): string {
+    const m = CODE_RE.exec(code);
+    if (!m) return code;
+    return `S${m[1].padStart(2, '0')}E${m[2].padStart(2, '0')}`;
+}
+
 /** Group the live selections by episode code → the title ids claiming it. */
 export function assignmentsByCode(selections: Record<number, string>): Map<string, number[]> {
     const map = new Map<string, number[]>();
     for (const [titleId, code] of Object.entries(selections)) {
         if (!code || !isRealCode(code)) continue;
-        const ids = map.get(code) ?? [];
+        const key = normalizeEpisodeCode(code);
+        const ids = map.get(key) ?? [];
         ids.push(Number(titleId));
-        map.set(code, ids);
+        map.set(key, ids);
     }
     return map;
 }
@@ -117,23 +131,26 @@ export function buildCandidates(
     const seen = new Set<string>();
 
     if (title.matched_episode) {
+        const code = normalizeEpisodeCode(title.matched_episode);
         out.push({
-            episodeCode: title.matched_episode,
-            episodeName: nameOf(title.matched_episode),
+            episodeCode: code,
+            episodeName: nameOf(code),
             score: title.match_confidence ?? 0,
             voteCount: details.vote_count,
             targetVotes: details.target_votes,
             isBest: true,
         });
-        seen.add(title.matched_episode);
+        seen.add(code);
     }
 
     for (const alt of details.runner_ups ?? []) {
-        if (!alt.episode || seen.has(alt.episode)) continue;
-        seen.add(alt.episode);
+        if (!alt.episode) continue;
+        const code = normalizeEpisodeCode(alt.episode);
+        if (seen.has(code)) continue;
+        seen.add(code);
         out.push({
-            episodeCode: alt.episode,
-            episodeName: nameOf(alt.episode),
+            episodeCode: code,
+            episodeName: nameOf(code),
             score: alt.confidence ?? 0,
             voteCount: alt.vote_count,
             targetVotes: alt.target_votes,
