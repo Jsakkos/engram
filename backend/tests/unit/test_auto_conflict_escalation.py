@@ -272,6 +272,27 @@ class TestEscalation:
         assert result is False
         assert job_id not in coord._conflict_passes
 
+    async def test_terminal_hook_clears_db_conflict_status(self, monkeypatch):
+        # The hook opens its own session; point it at the test DB.
+        monkeypatch.setattr(
+            "app.services.finalization_coordinator.async_session", _unit_session_factory
+        )
+        job_id = await _seed_conflict()
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            job.conflict_status = "Resolving episode conflicts — pass 1 of 3"
+            await session.commit()
+
+        coord = _coord_with(None)
+        coord._conflict_passes[job_id] = 25
+
+        await coord.on_terminal_clear_conflicts(job_id, JobState.FAILED)
+
+        assert job_id not in coord._conflict_passes
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            assert job.conflict_status is None
+
     async def test_reset_conflict_passes(self):
         coord = _coord_with(None)
         coord._conflict_passes[42] = 50

@@ -131,6 +131,32 @@ class TestRematchConflict:
         assert [s["title_id"] for s in body["skipped"]] == [t2.id]
         assert "not found" in body["skipped"][0]["reason"].lower()
 
+    async def test_non_value_error_is_skipped_not_raised(self, client, monkeypatch):
+        """A non-ValueError (e.g. transient DB/IO error) must be reported as
+        skipped, not escape the loop — otherwise the auto-escalation caller never
+        records its pass and re-dispatches the same depth indefinitely."""
+        job = await _seed_job()
+        t1 = await _seed_title(job.id, 0, "S01E05")
+        t2 = await _seed_title(job.id, 1, "S01E05")
+
+        from app.services.job_manager import job_manager
+
+        async def fake_rematch_single(job_id, title_id, source_preference=None, **kw):
+            if title_id == t2.id:
+                raise RuntimeError("db lock timeout")
+
+        monkeypatch.setattr(job_manager._matching, "rematch_single_title", fake_rematch_single)
+
+        resp = await client.post(
+            f"/api/jobs/{job.id}/rematch-conflict", json={"episode_code": "S01E05"}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["title_ids"] == [t1.id]
+        assert [s["title_id"] for s in body["skipped"]] == [t2.id]
+        assert "lock timeout" in body["skipped"][0]["reason"].lower()
+
     async def test_404_when_no_title_claims_the_episode(self, client, monkeypatch):
         job = await _seed_job()
         await _seed_title(job.id, 0, "S01E01")

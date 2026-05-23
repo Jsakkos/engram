@@ -214,10 +214,13 @@ class MatchingCoordinator:
                     min_vote_count=min_vote_count,
                 )
                 dispatched.append(tid)
-            except ValueError as e:
-                # e.g. staging file missing for a title that was matched earlier
-                # but whose ripped file is no longer present — skip it rather
-                # than failing the whole conflict re-match, and report it.
+            except Exception as e:
+                # e.g. staging file missing (ValueError) or a transient DB/IO
+                # error — skip this title rather than failing the whole conflict
+                # re-match, and report it. Catching broadly (but NOT BaseException,
+                # so asyncio.CancelledError still propagates) keeps the auto-
+                # escalation caller from leaving its pass counter unset, which
+                # would otherwise re-dispatch the same depth indefinitely.
                 logger.warning(f"Conflict re-match: skipping title {tid} (job {job_id}): {e}")
                 skipped.append({"title_id": tid, "reason": str(e)})
         return {"dispatched": dispatched, "skipped": skipped}

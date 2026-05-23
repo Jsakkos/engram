@@ -141,8 +141,18 @@ class FinalizationCoordinator:
         self._conflict_passes.pop(job_id, None)
 
     async def on_terminal_clear_conflicts(self, job_id: int, _state) -> None:
-        """Terminal-state hook: drop conflict-escalation tracking for the job."""
+        """Terminal-state hook: drop conflict-escalation tracking for the job.
+
+        Also clears the persisted ``conflict_status`` so a job forced to a
+        terminal state mid-escalation (e.g. finalization throws on a later
+        pass) doesn't leave a stale "Resolving…" note in the DB.
+        """
         self.reset_conflict_passes(job_id)
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job is not None and job.conflict_status is not None:
+                job.conflict_status = None
+                await session.commit()
 
     async def _clear_conflict_state(self, session, job) -> None:
         """Drop escalation tracking and clear the transient dashboard note."""
@@ -359,7 +369,12 @@ class FinalizationCoordinator:
                 candidates = {}
                 for t in titles:
                     if t.state == TitleState.MATCHED and t.matched_episode:
-                        candidates.setdefault(t.matched_episode, []).append(t)
+                        # Normalize so padded/unpadded variants of the same episode
+                        # ("S1E3" vs "S01E03") group together — otherwise a real
+                        # collision is missed and both files organize to one path.
+                        candidates.setdefault(
+                            _normalize_episode_code(t.matched_episode), []
+                        ).append(t)
 
                 conflicts = {ep: tlist for ep, tlist in candidates.items() if len(tlist) > 1}
                 if not conflicts:
@@ -410,7 +425,9 @@ class FinalizationCoordinator:
                         reassigned = False
 
                         for ru in cand["runner_ups"]:
-                            alt_ep = ru["episode"]
+                            # Canonicalize to match the normalized candidates keys
+                            # (and to store a consistent code on reassignment).
+                            alt_ep = _normalize_episode_code(ru["episode"])
                             current_claimants = candidates.get(alt_ep, [])
                             if not current_claimants:
                                 loser.matched_episode = alt_ep
