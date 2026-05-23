@@ -1874,6 +1874,35 @@ async def rematch_job(
     return {"status": "rematching", "job_id": job.id}
 
 
+class RematchConflictRequest(BaseModel):
+    """Request model for re-matching all titles claiming one episode."""
+
+    episode_code: str
+
+
+@router.post("/jobs/{job_id}/rematch-conflict")
+async def rematch_conflict(
+    request: RematchConflictRequest,
+    job: DiscJob = Depends(get_job_or_404),
+):
+    """Deep re-match every title currently claiming ``episode_code``.
+
+    Re-runs the audio matcher with stricter parameters (denser sampling + a
+    higher vote requirement) for each contested title so a same-episode
+    collision can resolve either way.
+    """
+    from app.services.job_manager import job_manager
+
+    title_ids = await job_manager.rematch_conflict(job.id, request.episode_code)
+    if not title_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No titles are currently matched to {request.episode_code}",
+        )
+
+    return {"status": "rematching", "episode_code": request.episode_code, "title_ids": title_ids}
+
+
 @router.post("/jobs/{job_id}/titles/{title_id}/reassign")
 async def reassign_episode(
     title_id: int,

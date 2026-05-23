@@ -31,7 +31,11 @@ from app.services.event_broadcaster import EventBroadcaster
 from app.services.finalization_coordinator import FinalizationCoordinator
 from app.services.identification_coordinator import IdentificationCoordinator
 from app.services.job_state_machine import JobStateMachine
-from app.services.matching_coordinator import MatchingCoordinator
+from app.services.matching_coordinator import (
+    STRICT_MIN_VOTES,
+    STRICT_SCAN_POINTS,
+    MatchingCoordinator,
+)
 from app.services.ripping_helpers import (
     SpeedCalculator,
     resolve_title_from_filename,
@@ -548,6 +552,15 @@ class JobManager:
     ) -> None:
         """Re-match a single title. Delegates to matching coordinator."""
         await self._matching.rematch_single_title(job_id, title_id, source_preference)
+
+    async def rematch_conflict(self, job_id: int, episode_code: str) -> list[int]:
+        """Deep re-match every title claiming ``episode_code`` (strict params)."""
+        return await self._matching.rematch_conflict(
+            job_id,
+            episode_code,
+            num_points=STRICT_SCAN_POINTS,
+            min_vote_count=STRICT_MIN_VOTES,
+        )
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job."""
