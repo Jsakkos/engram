@@ -2,6 +2,11 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [0.7.1] - 2026-05-23
+
+### Fixed
+- **Frozen-build database upgrades**: the packaged app now drops columns removed from the model on startup, fixing a crash when inserting a disc (`NOT NULL constraint failed: disc_jobs.is_transcoding_enabled`) for users upgrading from a build that still had the removed "Enable transcoding" setting (#190).
+
 ## [0.7.0] - 2026-05-23
 
 ### Added
