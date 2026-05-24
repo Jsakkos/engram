@@ -85,24 +85,22 @@ class TestConfigServiceWiring:
     """update_config must register a changed MakeMKV key with makemkvcon."""
 
     async def test_update_config_registers_makemkv_key(self, monkeypatch):
-        import app.core.makemkv_registration as reg
         from app.services import config_service
 
         # Override the conftest no-op with a recording mock (lazy import in
         # update_config re-reads this attribute at call time).
         mock_write = MagicMock(return_value=True)
-        monkeypatch.setattr(reg, "write_makemkv_settings", mock_write)
+        monkeypatch.setattr("app.core.makemkv_registration.write_makemkv_settings", mock_write)
 
         await config_service.update_config(makemkv_key="T-wired-key")
 
         mock_write.assert_called_once_with("T-wired-key")
 
     async def test_update_config_skips_registration_without_key(self, monkeypatch):
-        import app.core.makemkv_registration as reg
         from app.services import config_service
 
         mock_write = MagicMock(return_value=True)
-        monkeypatch.setattr(reg, "write_makemkv_settings", mock_write)
+        monkeypatch.setattr("app.core.makemkv_registration.write_makemkv_settings", mock_write)
 
         await config_service.update_config(staging_path="/tmp/x")
 

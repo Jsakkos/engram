@@ -15,6 +15,8 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# vite.config.ts reads the app version from the backend package (../backend/app/__init__.py).
+COPY backend/app/__init__.py /build/backend/app/__init__.py
 RUN npm run build
 # Output: /build/frontend/dist
 
