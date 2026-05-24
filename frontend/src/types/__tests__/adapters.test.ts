@@ -37,7 +37,7 @@ describe("mapTitleStateToTrackState", () => {
     ["ripping", "ripping"],
     ["matching", "matching"],
     ["matched", "matched"],
-    ["review", "matched"],
+    ["review", "review"],
     ["completed", "completed"],
     ["failed", "failed"],
   ];

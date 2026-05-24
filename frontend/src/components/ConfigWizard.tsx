@@ -52,6 +52,11 @@ interface ConfigData {
     maxConcurrentMatches: number;
     ffmpegPath: string;
     conflictResolutionDefault: string;
+    watchdogEnabled: boolean;
+    timeoutIdentifyingSeconds: number;
+    timeoutRippingSeconds: number;
+    timeoutMatchingSeconds: number;
+    timeoutOrganizingSeconds: number;
     stagingCleanupPolicy: string;
     stagingCleanupDays: number;
     extrasPolicy: string;
@@ -98,6 +103,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         maxConcurrentMatches: 2,
         ffmpegPath: '',
         conflictResolutionDefault: 'ask',
+        watchdogEnabled: true,
+        timeoutIdentifyingSeconds: 600,
+        timeoutRippingSeconds: 1200,
+        timeoutMatchingSeconds: 1800,
+        timeoutOrganizingSeconds: 600,
         stagingCleanupPolicy: 'on_success',
         stagingCleanupDays: 7,
         extrasPolicy: 'keep',
@@ -154,6 +164,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     maxConcurrentMatches: data.max_concurrent_matches ?? 2,
                     ffmpegPath: data.ffmpeg_path || '',
                     conflictResolutionDefault: data.conflict_resolution_default || 'ask',
+                    watchdogEnabled: data.watchdog_enabled ?? true,
+                    timeoutIdentifyingSeconds: data.timeout_identifying_seconds ?? 600,
+                    timeoutRippingSeconds: data.timeout_ripping_seconds ?? 1200,
+                    timeoutMatchingSeconds: data.timeout_matching_seconds ?? 1800,
+                    timeoutOrganizingSeconds: data.timeout_organizing_seconds ?? 600,
                     stagingCleanupPolicy: data.staging_cleanup_policy || 'on_success',
                     stagingCleanupDays: data.staging_cleanup_days ?? 7,
                     extrasPolicy: data.extras_policy || 'keep',
@@ -251,6 +266,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     max_concurrent_matches: config.maxConcurrentMatches,
                     ffmpeg_path: config.ffmpegPath,
                     conflict_resolution_default: config.conflictResolutionDefault,
+                    watchdog_enabled: config.watchdogEnabled,
+                    timeout_identifying_seconds: config.timeoutIdentifyingSeconds,
+                    timeout_ripping_seconds: config.timeoutRippingSeconds,
+                    timeout_matching_seconds: config.timeoutMatchingSeconds,
+                    timeout_organizing_seconds: config.timeoutOrganizingSeconds,
                     staging_cleanup_policy: config.stagingCleanupPolicy,
                     staging_cleanup_days: config.stagingCleanupDays,
                     extras_policy: config.extrasPolicy,
@@ -810,6 +830,71 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 />
                                 <span className="form-hint">
                                     Delete staging files older than this many days.
+                                </span>
+                            </div>
+                        )}
+
+                        <div className="form-group">
+                            <label htmlFor="watchdogEnabled">Stale-Job Watchdog</label>
+                            <select
+                                id="watchdogEnabled"
+                                value={config.watchdogEnabled ? 'on' : 'off'}
+                                onChange={(e) => handleInputChange('watchdogEnabled', e.target.value === 'on')}
+                            >
+                                <option value="on">Enabled (auto-advance stuck jobs)</option>
+                                <option value="off">Disabled</option>
+                            </select>
+                            <span className="form-hint">
+                                When a job stops making progress for longer than its phase timeout, Engram
+                                resolves the stuck tracks (ripped-but-unmatched → review) and moves the job
+                                forward instead of leaving it stuck. You can also force this manually per job.
+                            </span>
+                        </div>
+
+                        {config.watchdogEnabled && (
+                            <div className="form-group">
+                                <label>Phase Timeouts (seconds of no progress)</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+                                        Identifying
+                                        <input
+                                            type="number"
+                                            min={30}
+                                            value={config.timeoutIdentifyingSeconds}
+                                            onChange={(e) => handleInputChange('timeoutIdentifyingSeconds', Math.max(30, parseInt(e.target.value) || 600))}
+                                        />
+                                    </label>
+                                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+                                        Ripping
+                                        <input
+                                            type="number"
+                                            min={60}
+                                            value={config.timeoutRippingSeconds}
+                                            onChange={(e) => handleInputChange('timeoutRippingSeconds', Math.max(60, parseInt(e.target.value) || 1200))}
+                                        />
+                                    </label>
+                                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+                                        Matching
+                                        <input
+                                            type="number"
+                                            min={60}
+                                            value={config.timeoutMatchingSeconds}
+                                            onChange={(e) => handleInputChange('timeoutMatchingSeconds', Math.max(60, parseInt(e.target.value) || 1800))}
+                                        />
+                                    </label>
+                                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+                                        Organizing
+                                        <input
+                                            type="number"
+                                            min={30}
+                                            value={config.timeoutOrganizingSeconds}
+                                            onChange={(e) => handleInputChange('timeoutOrganizingSeconds', Math.max(30, parseInt(e.target.value) || 600))}
+                                        />
+                                    </label>
+                                </div>
+                                <span className="form-hint">
+                                    Ripping leans on MakeMKV&apos;s own no-growth stall watchdog; this is an
+                                    additional ceiling on total silence per phase.
                                 </span>
                             </div>
                         )}

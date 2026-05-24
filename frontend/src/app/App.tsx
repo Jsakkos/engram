@@ -111,7 +111,7 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, cancelJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, cancelJob, advanceJob, skipTrack, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
 
   // Show the full-screen Splash with a "RECONNECTING…" label when the
@@ -502,6 +502,8 @@ function MainDashboard() {
                   key={disc.id}
                   disc={disc}
                   onCancel={disc.state !== 'completed' && disc.state !== 'error' ? () => cancelJob(disc.id) : undefined}
+                  onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
+                  onSkipTrack={(trackId) => skipTrack(disc.id, trackId)}
                   onReview={disc.needsReview ? () => navigate(`/review/${disc.id}`) : undefined}
                   onReIdentify={disc.needsReview && disc.title ? () => {
                     const job = jobs.find(j => String(j.id) === disc.id);

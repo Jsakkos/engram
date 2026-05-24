@@ -215,6 +215,13 @@ class ConfigResponse(BaseModel):
     ripping_file_ready_timeout: float
     # Sentinel monitoring
     sentinel_poll_interval: float
+    # Stale-job watchdog
+    watchdog_enabled: bool
+    watchdog_poll_seconds: int
+    timeout_identifying_seconds: int
+    timeout_ripping_seconds: int
+    timeout_matching_seconds: int
+    timeout_organizing_seconds: int
     # Staging cleanup
     staging_cleanup_policy: str
     staging_cleanup_days: int
@@ -270,6 +277,13 @@ class ConfigUpdate(BaseModel):
     ripping_file_ready_timeout: float | None = None
     # Sentinel monitoring
     sentinel_poll_interval: float | None = None
+    # Stale-job watchdog
+    watchdog_enabled: bool | None = None
+    watchdog_poll_seconds: int | None = None
+    timeout_identifying_seconds: int | None = None
+    timeout_ripping_seconds: int | None = None
+    timeout_matching_seconds: int | None = None
+    timeout_organizing_seconds: int | None = None
     # Staging cleanup
     staging_cleanup_policy: str | None = None
     staging_cleanup_days: int | None = None
@@ -659,6 +673,58 @@ async def cancel_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     return {"status": "cancelled", "job_id": job.id}
 
 
+@router.post("/jobs/{job_id}/advance")
+async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """Force a stuck job forward to its next resting state.
+
+    Reconciles tracks still ripping/matching (ripped-but-unmatched → review,
+    no-file → failed), then organizes whatever matched and lands the job in
+    completed or review_needed. The manual counterpart to the stale-job watchdog.
+    """
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    from app.services.job_manager import job_manager
+
+    advanced = await job_manager.reconcile_and_advance(job.id, reason="manual advance")
+    if not advanced:
+        raise HTTPException(status_code=400, detail="Job could not be advanced")
+    return {"status": "advanced", "job_id": job.id}
+
+
+class SkipTitleRequest(BaseModel):
+    """Request model for skipping a single stuck title."""
+
+    target: str = "review"  # "review" | "fail"
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/skip")
+async def skip_title(
+    title_id: int,
+    req: SkipTitleRequest | None = None,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Skip a single track stuck in ripping/matching, without forcing the whole job."""
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    target = (req.target if req else "review").lower()
+    if target not in ("review", "fail"):
+        raise HTTPException(status_code=400, detail="target must be 'review' or 'fail'")
+
+    from app.models.disc_job import TitleState
+    from app.services.job_manager import job_manager
+
+    target_state = TitleState.FAILED if target == "fail" else TitleState.REVIEW
+    skipped = await job_manager.skip_title(job.id, title_id, target=target_state)
+    if not skipped:
+        raise HTTPException(
+            status_code=400,
+            detail="Title not found, not part of this job, or already resolved",
+        )
+    return {"status": "skipped", "job_id": job.id, "title_id": title_id, "target": target}
+
+
 @router.post("/jobs/{job_id}/review")
 async def submit_review(
     review: ReviewRequest,
@@ -875,6 +941,13 @@ async def get_config() -> ConfigResponse:
         ripping_file_ready_timeout=config.ripping_file_ready_timeout,
         # Sentinel monitoring
         sentinel_poll_interval=config.sentinel_poll_interval,
+        # Stale-job watchdog
+        watchdog_enabled=config.watchdog_enabled,
+        watchdog_poll_seconds=config.watchdog_poll_seconds,
+        timeout_identifying_seconds=config.timeout_identifying_seconds,
+        timeout_ripping_seconds=config.timeout_ripping_seconds,
+        timeout_matching_seconds=config.timeout_matching_seconds,
+        timeout_organizing_seconds=config.timeout_organizing_seconds,
         # Staging cleanup
         staging_cleanup_policy=config.staging_cleanup_policy,
         staging_cleanup_days=config.staging_cleanup_days,

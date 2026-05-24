@@ -163,6 +163,31 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
+    async function advanceJob(jobId: string) {
+        try {
+            await apiFetchVoid(`/api/jobs/${jobId}/advance`, { method: 'POST' });
+            toast.success('Forcing the job to its next step.');
+            // Job will update via WebSocket
+        } catch (error) {
+            console.error('Failed to advance job:', error);
+            toast.error('Failed to advance the job. Please try again.');
+        }
+    }
+
+    async function skipTrack(jobId: string, titleId: string, target: 'review' | 'fail' = 'review') {
+        try {
+            await apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/skip`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target }),
+            });
+            // Title + job will update via WebSocket
+        } catch (error) {
+            console.error('Failed to skip track:', error);
+            toast.error('Failed to skip the track. Please try again.');
+        }
+    }
+
     async function clearCompleted() {
         try {
             const completedJobs = jobs.filter(j => j.state === 'completed');
@@ -355,6 +380,8 @@ export function useJobManagement(devMode: boolean = false) {
         titlesMap,
         isConnected,
         cancelJob,
+        advanceJob,
+        skipTrack,
         clearCompleted,
         setJobName,
         reIdentifyJob,

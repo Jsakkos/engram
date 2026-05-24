@@ -14,7 +14,7 @@ import { formatEta } from "../../utils/formatting";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "review_needed" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
-export type TrackState = "pending" | "ripping" | "matching" | "matched" | "failed" | "completed";
+export type TrackState = "pending" | "ripping" | "matching" | "matched" | "review" | "failed" | "completed";
 
 export interface MatchCandidate {
   episode: string;
@@ -77,6 +77,8 @@ interface DiscCardProps {
   onCancel?: () => void;
   onReview?: () => void;
   onReIdentify?: () => void;
+  onAdvance?: () => void;
+  onSkipTrack?: (trackId: string) => void;
 }
 
 /**
@@ -170,7 +172,7 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onReview, onReIdentify }, ref) => {
+  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onSkipTrack }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
@@ -349,6 +351,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onCancel={onCancel}
                     onReview={onReview}
                     onReIdentify={onReIdentify}
+                    onAdvance={onAdvance}
                   />
                 </div>
               </div>
@@ -418,7 +421,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       color={sv.yellow}
                     />
                   </div>
-                  <TrackGrid tracks={disc.tracks} />
+                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
                 </div>
               )}
 
@@ -472,7 +475,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       color={sv.inkDim}
                     />
                   </div>
-                  <TrackGrid tracks={disc.tracks} />
+                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
                 </div>
               )}
 
@@ -500,7 +503,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       color={sv.purple}
                     />
                   </div>
-                  <TrackGrid tracks={disc.tracks} />
+                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
                 </div>
               )}
 
@@ -510,7 +513,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   <PulseCaption color={sv.amber}>
                     › PROCESSING…
                   </PulseCaption>
-                  <TrackGrid tracks={disc.tracks} />
+                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
                 </div>
               )}
 

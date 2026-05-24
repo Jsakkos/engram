@@ -68,6 +68,9 @@ class JobManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
         self._staging_watcher: StagingWatcher | None = None
+        # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
+        self._last_activity: dict[int, float] = {}
+        self._watchdog_task: asyncio.Task | None = None
 
         # Create coordinators
         self._cleanup = CleanupService()
@@ -81,6 +84,7 @@ class JobManager:
         # Wire cross-coordinator callbacks
         self._matching.set_callbacks(
             check_job_completion=self._finalization.check_job_completion,
+            note_activity=self._note_activity,
         )
         self._identification.set_callbacks(
             get_discdb_mappings=self._matching.get_discdb_mappings,
@@ -112,6 +116,9 @@ class JobManager:
         state_machine.on_terminal_state(self._cleanup.on_job_terminal)
         state_machine.on_terminal_state(self._matching.clear_job_caches)
         state_machine.on_terminal_state(self._finalization.on_terminal_clear_conflicts)
+
+        # Reset the watchdog activity clock whenever a job changes phase.
+        state_machine.on_transition(self._note_activity_on_transition)
 
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
@@ -151,6 +158,10 @@ class JobManager:
             self._staging_watcher = StagingWatcher(config.staging_path, config=config)
             self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
             self._staging_watcher.start()
+
+        # Start the stale-job watchdog
+        if config.watchdog_enabled:
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
         logger.info(f"Job manager started (max_concurrent_matches={concurrency})")
 
@@ -203,6 +214,14 @@ class JobManager:
         self._drive_monitor.stop()
         if self._staging_watcher:
             self._staging_watcher.stop()
+
+        if self._watchdog_task:
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+            self._watchdog_task = None
 
         for job_id, task in self._active_jobs.items():
             task.cancel()
@@ -505,6 +524,268 @@ class JobManager:
                 await state_machine.transition_to_failed(
                     job, session, error_message="Cancelled by user"
                 )
+
+    # --- Stale-job watchdog + force-progress engine ---
+
+    def _note_activity(self, job_id: int) -> None:
+        """Record that a job made progress just now (watchdog activity clock)."""
+        self._last_activity[job_id] = time.monotonic()
+
+    def _note_activity_on_transition(self, job_id: int, state: JobState) -> None:
+        """on_transition observer: reset the clock on phase change, drop it on terminal."""
+        if state in (JobState.COMPLETED, JobState.FAILED):
+            self._last_activity.pop(job_id, None)
+        else:
+            self._last_activity[job_id] = time.monotonic()
+
+    @staticmethod
+    def _find_title_file(title: DiscTitle, staging: Path | None) -> Path | None:
+        """Locate a title's ripped .mkv: its recorded output, else a staging glob."""
+        if title.output_filename:
+            p = Path(title.output_filename)
+            if p.exists():
+                return p
+        if staging:
+            matches = list(staging.glob(f"*_t{title.title_index:02d}.mkv"))
+            if matches:
+                return matches[0]
+        return None
+
+    async def reconcile_stuck_titles(self, job_id: int) -> None:
+        """Resolve selected titles orphaned in PENDING/RIPPING after a rip finishes.
+
+        A title whose staging file exists is routed into the normal completion path
+        (TV → DiscDB assignment or matching; movie → MATCHED); one with no file is
+        marked FAILED. Guarantees no selected title is stranded in RIPPING once the
+        MakeMKV subprocess has exited (the orphaned-last-title bug). Recovers work
+        rather than discarding it.
+        """
+        recovered: list[tuple[int, Path]] = []
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            stuck = [
+                t
+                for t in result.scalars().all()
+                if t.is_selected and t.state in (TitleState.PENDING, TitleState.RIPPING)
+            ]
+            if not stuck:
+                return
+
+            staging = Path(job.staging_path) if job.staging_path else None
+            is_tv = job.content_type == ContentType.TV
+
+            for title in stuck:
+                file_path = self._find_title_file(title, staging)
+                if file_path is None:
+                    title.state = TitleState.FAILED
+                    if not title.match_details:
+                        title.match_details = json.dumps(
+                            {"reason": "Ripping ended with no output file"}
+                        )
+                    session.add(title)
+                    logger.warning(
+                        f"Job {job_id}: title {title.title_index} stuck with no file → FAILED"
+                    )
+                    await ws_manager.broadcast_title_update(
+                        job_id,
+                        title.id,
+                        TitleState.FAILED.value,
+                        error="Ripping ended with no output file",
+                    )
+                    continue
+
+                title.output_filename = str(file_path)
+                title.state = TitleState.MATCHING if is_tv else TitleState.MATCHED
+                session.add(title)
+                logger.info(
+                    f"Job {job_id}: recovered orphaned title {title.title_index} "
+                    f"({file_path.name}) → {title.state.value}"
+                )
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    title.id,
+                    title.state.value,
+                    output_filename=str(file_path),
+                )
+                if is_tv:
+                    recovered.append((title.id, file_path))
+            await session.commit()
+
+        # Queue matching for recovered TV titles (mirrors _on_title_ripped), each
+        # outside the session above so match tasks own their own sessions.
+        for title_id, file_path in recovered:
+            async with async_session() as session:
+                title = await session.get(DiscTitle, title_id)
+                applied = await self._matching.try_discdb_assignment(job_id, title, session)
+                if applied:
+                    await self._finalization.check_job_completion(session, job_id)
+            if not applied:
+                task = asyncio.create_task(
+                    self._matching.match_single_file(job_id, title_id, file_path)
+                )
+                task.add_done_callback(
+                    lambda t, jid=job_id, tid=title_id: self._matching.on_match_task_done(
+                        t, jid, tid
+                    )
+                )
+
+    async def reconcile_and_advance(self, job_id: int, *, reason: str = "forced") -> bool:
+        """Force a stuck job to its next resting state (watchdog + manual advance).
+
+        Cancels any in-flight rip, resolves every still-active title (PENDING/RIPPING/
+        MATCHING) — to REVIEW if its ripped file exists (so the user can assign it),
+        else FAILED — then runs the normal completion check, which organizes whatever
+        matched and lands the job in COMPLETED or REVIEW_NEEDED. Returns True if the
+        job was non-terminal and processed.
+        """
+        # Stop any in-flight rip/processing task so it can't race the reconcile.
+        if job_id in self._active_jobs:
+            self._active_jobs[job_id].cancel()
+            del self._active_jobs[job_id]
+        self._extractor.cancel(job_id)
+
+        active = (TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING)
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job or job.state in (JobState.COMPLETED, JobState.FAILED):
+                return False
+
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            staging = Path(job.staging_path) if job.staging_path else None
+
+            for title in result.scalars().all():
+                if not title.is_selected or title.state not in active:
+                    continue
+                file_path = self._find_title_file(title, staging)
+                if file_path is not None:
+                    title.output_filename = str(file_path)
+                    title.state = TitleState.REVIEW
+                    err = None
+                else:
+                    title.state = TitleState.FAILED
+                    err = "Force-advanced with no output file"
+                    if not title.match_details:
+                        title.match_details = json.dumps({"reason": err})
+                session.add(title)
+                logger.info(
+                    f"Job {job_id}: force-advance ({reason}) — title "
+                    f"{title.title_index} → {title.state.value}"
+                )
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    title.id,
+                    title.state.value,
+                    error=err,
+                    output_filename=title.output_filename,
+                )
+            await session.commit()
+
+            await self._finalization.check_job_completion(session, job_id)
+        return True
+
+    async def skip_title(
+        self, job_id: int, title_id: int, *, target: TitleState = TitleState.REVIEW
+    ) -> bool:
+        """Skip one stuck title: mark it REVIEW (default) or FAILED, then re-check completion.
+
+        Only acts on titles still in an active state (PENDING/RIPPING/MATCHING). Lets the
+        user unblock a single track without forcing the whole job forward.
+        """
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                return False
+            if title.state not in (TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING):
+                return False
+
+            title.state = target
+            err = "Skipped by user" if target == TitleState.FAILED else None
+            if target == TitleState.FAILED and not title.match_details:
+                title.match_details = json.dumps({"reason": "Skipped by user"})
+            session.add(title)
+            await session.commit()
+            logger.info(f"Job {job_id}: title {title.title_index} skipped → {target.value}")
+            await ws_manager.broadcast_title_update(job_id, title.id, target.value, error=err)
+
+            await self._finalization.check_job_completion(session, job_id)
+        return True
+
+    @staticmethod
+    def _phase_timeout(config, state: JobState) -> int | None:
+        """Per-phase no-activity ceiling (seconds), or None for resting/untimed states."""
+        return {
+            JobState.IDENTIFYING: config.timeout_identifying_seconds,
+            JobState.RIPPING: config.timeout_ripping_seconds,
+            JobState.MATCHING: config.timeout_matching_seconds,
+            JobState.ORGANIZING: config.timeout_organizing_seconds,
+        }.get(state)
+
+    async def _watchdog_loop(self) -> None:
+        """Periodically auto-advance jobs that have stopped making progress."""
+        from app.services.config_service import get_config
+
+        watched = (
+            JobState.IDENTIFYING,
+            JobState.RIPPING,
+            JobState.MATCHING,
+            JobState.ORGANIZING,
+        )
+        try:
+            while True:
+                config = None
+                try:
+                    config = await get_config()
+                except Exception as e:
+                    logger.warning(f"Watchdog: could not load config: {e}")
+                poll = (config.watchdog_poll_seconds if config else 60) or 60
+                await asyncio.sleep(poll)
+
+                if config is None or not config.watchdog_enabled:
+                    continue
+
+                try:
+                    async with async_session() as session:
+                        result = await session.execute(
+                            select(DiscJob).where(DiscJob.state.in_(watched))
+                        )
+                        jobs = result.scalars().all()
+
+                    now = time.monotonic()
+                    for job in jobs:
+                        timeout = self._phase_timeout(config, job.state)
+                        if not timeout or timeout <= 0:
+                            continue
+                        last = self._last_activity.get(job.id)
+                        if last is None:
+                            # First sighting — seed the clock so we time from now, not
+                            # from an unknown past (avoids an instant false trip).
+                            self._last_activity[job.id] = now
+                            continue
+                        idle = now - last
+                        if idle >= timeout:
+                            logger.warning(
+                                f"Watchdog: job {job.id} idle {idle:.0f}s in "
+                                f"{job.state.value} (timeout {timeout}s) → auto-advancing"
+                            )
+                            try:
+                                await self.reconcile_and_advance(
+                                    job.id, reason=f"stale timeout in {job.state.value}"
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"Watchdog: auto-advance of job {job.id} failed: {e}",
+                                    exc_info=True,
+                                )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.error(f"Watchdog loop iteration failed: {e}", exc_info=True)
+        except asyncio.CancelledError:
+            logger.info("Watchdog loop cancelled")
+            raise
 
     async def apply_review(
         self,
@@ -926,6 +1207,7 @@ class JobManager:
                 rip_indices = None
 
             def _fire_progress(p):
+                self._note_activity(job_id)
                 t = asyncio.create_task(progress_callback(p))
                 _background_tasks.add(t)
                 t.add_done_callback(_background_tasks.discard)
@@ -1120,6 +1402,10 @@ class JobManager:
             if content_type == ContentType.TV:
                 await self._backfill_unmatched_titles(job_id, output_dir, sorted_titles)
 
+                # Recover any title the rip left stranded in PENDING/RIPPING (e.g. the
+                # final title whose completion callback never fired) before advancing.
+                await self.reconcile_stuck_titles(job_id)
+
                 async with async_session() as session:
                     job = await session.get(DiscJob, job_id)
                     if not job:
@@ -1144,6 +1430,11 @@ class JobManager:
 
             else:
                 # Movie post-ripping flow
+
+                # Recover any title stranded in PENDING/RIPPING (movie titles move to
+                # MATCHED) so the main-feature selection below sees every ripped file.
+                await self.reconcile_stuck_titles(job_id)
+
                 async with async_session() as session:
                     job = await session.get(DiscJob, job_id)
                     if not job:

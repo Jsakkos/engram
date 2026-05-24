@@ -48,12 +48,14 @@ class MatchingCoordinator:
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
 
-        # Cross-coordinator callback
+        # Cross-coordinator callbacks
         self._check_job_completion: callable = None
+        self._note_activity: callable | None = None
 
-    def set_callbacks(self, *, check_job_completion) -> None:
+    def set_callbacks(self, *, check_job_completion, note_activity=None) -> None:
         """Set cross-coordinator callbacks."""
         self._check_job_completion = check_job_completion
+        self._note_activity = note_activity
 
     def init_semaphore(self, concurrency: int) -> None:
         """Initialize the match semaphore with the given concurrency."""
@@ -543,6 +545,11 @@ class MatchingCoordinator:
                 _json_dumps = json.dumps
 
                 def on_progress(stage: str, percent: float, vote_data: list | None = None):
+                    if self._note_activity:
+                        try:
+                            self._note_activity(job_id)
+                        except Exception:
+                            pass
                     try:
                         details = None
                         if vote_data:
@@ -621,7 +628,12 @@ class MatchingCoordinator:
                     except Exception as e:
                         logger.error(f"Failed to dump match_details: {e}")
 
-                title.match_source = "engram"
+                # Only attribute the match to Engram when an episode match was
+                # actually recorded. A title routed to REVIEW with no episode must
+                # not carry the "ENGRAM" provider badge — that implies a confident
+                # auto-match the matcher never made.
+                if title.state == TitleState.MATCHED:
+                    title.match_source = "engram"
 
                 # Extract match stats for broadcast
                 matches_found = 1
