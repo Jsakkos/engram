@@ -88,10 +88,19 @@ async def isolate_database(monkeypatch):
 
     _config_mod = importlib.import_module("app.services.config_service")
     _jm_mod = importlib.import_module("app.services.job_manager")
+    # Terminal-state callbacks (registered on the JobStateMachine) open their own
+    # sessions through these modules' own `async_session` bindings. They must be
+    # patched too, or the callbacks hit the real engine on COMPLETED/FAILED.
+    _cleanup_mod = importlib.import_module("app.services.cleanup_service")
+    _final_mod = importlib.import_module("app.services.finalization_coordinator")
+    _match_mod = importlib.import_module("app.services.matching_coordinator")
 
     monkeypatch.setattr(_db_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_config_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_jm_mod, "async_session", _unit_session_factory)
+    monkeypatch.setattr(_cleanup_mod, "async_session", _unit_session_factory)
+    monkeypatch.setattr(_final_mod, "async_session", _unit_session_factory)
+    monkeypatch.setattr(_match_mod, "async_session", _unit_session_factory)
 
     # Redirect the cached sync engine in config_service so get_config_sync()
     # uses the in-memory test database instead of connecting to engram.db.
