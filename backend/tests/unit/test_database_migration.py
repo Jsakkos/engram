@@ -324,7 +324,6 @@ class TestSchemaMigration:
         with 'NOT NULL constraint failed: disc_jobs.is_transcoding_enabled'.
         """
         import app.database as db_mod
-        from app.database import _drop_extra_columns, _get_actual_columns, _get_expected_columns
 
         original_engine = db_mod.engine
         db_mod.engine = migration_engine
@@ -356,14 +355,16 @@ class TestSchemaMigration:
 
             # Sanity: the extra column is present before reconciliation
             async with migration_engine.connect() as conn:
-                assert "is_transcoding_enabled" in await _get_actual_columns(conn, "disc_jobs")
+                assert "is_transcoding_enabled" in await db_mod._get_actual_columns(
+                    conn, "disc_jobs"
+                )
 
-            await _drop_extra_columns()
+            await db_mod._drop_extra_columns()
 
             # Extra column gone; schema matches the model exactly
             async with migration_engine.connect() as conn:
-                actual = await _get_actual_columns(conn, "disc_jobs")
-                expected = _get_expected_columns("disc_jobs")
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
+                expected = db_mod._get_expected_columns("disc_jobs")
                 assert "is_transcoding_enabled" not in actual
                 assert actual == expected
 
@@ -401,5 +402,39 @@ class TestSchemaMigration:
                     actual = await db_mod._get_actual_columns(conn, table)
                     expected = db_mod._get_expected_columns(table)
                     assert actual == expected
+        finally:
+            db_mod.engine = original_engine
+
+    async def test_drop_extra_columns_is_best_effort_on_failure(self, migration_engine):
+        """A column that can't be dropped must not block dropping the others.
+
+        SQLite refuses DROP COLUMN on an indexed column. Each drop therefore
+        needs its own transaction: batching them all in one transaction means
+        the first failure invalidates it, so the remaining (droppable) columns
+        are skipped and the commit on block-exit can even crash startup.
+        """
+        import app.database as db_mod
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            async with migration_engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+                # Two columns the model no longer defines: one indexed
+                # (undroppable in SQLite) and one plain (droppable).
+                await conn.execute(text("ALTER TABLE disc_jobs ADD COLUMN legacy_indexed VARCHAR"))
+                await conn.execute(text("ALTER TABLE disc_jobs ADD COLUMN legacy_plain VARCHAR"))
+                await conn.execute(
+                    text("CREATE INDEX ix_legacy_indexed ON disc_jobs(legacy_indexed)")
+                )
+
+            # Must not raise even though one column cannot be dropped
+            await db_mod._drop_extra_columns()
+
+            # The droppable column is gone despite the undroppable one failing
+            async with migration_engine.connect() as conn:
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
+            assert "legacy_plain" not in actual
         finally:
             db_mod.engine = original_engine
