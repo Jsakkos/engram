@@ -11,6 +11,10 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "sqlmodel>=0.0.14",
     "aiosqlite>=0.19.0",
+    # SQLAlchemy only requires greenlet on certain arches (its marker omits
+    # macOS arm64), so declare it directly to guarantee the async engine — and
+    # the PyInstaller bundle — has it on every platform.
+    "greenlet>=3.0.0",
     "pywin32>=306; sys_platform == 'win32'",
     "python-dotenv>=1.0.0",
     "pydantic-settings>=2.1.0",
