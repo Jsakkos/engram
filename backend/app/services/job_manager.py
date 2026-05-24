@@ -1161,17 +1161,25 @@ class JobManager:
                         if sent_to_review:
                             return
 
-                    # Single title flow (Standard Movie)
+                    # Single title flow (Standard Movie). Commit ORGANIZING and
+                    # release the session before the blocking organize so no DB
+                    # connection is held across it (mirrors the rip itself).
                     job.state = JobState.ORGANIZING
                     await session.commit()
-                    await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
 
-                    organize_result = await asyncio.to_thread(
-                        movie_organizer.organize,
-                        output_dir,
-                        volume_label,
-                        detected_title,
-                    )
+                await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
+
+                organize_result = await asyncio.to_thread(
+                    movie_organizer.organize,
+                    output_dir,
+                    volume_label,
+                    detected_title,
+                )
+
+                async with async_session() as session:
+                    job = await session.get(DiscJob, job_id)
+                    if not job:
+                        return
 
                     if organize_result["success"]:
                         job.final_path = str(organize_result["main_file"])
@@ -1199,7 +1207,7 @@ class JobManager:
                         await session.commit()
 
                         await state_machine.transition_to_completed(job, session)
-                        logger.info(f"Job {job_id} completed: {organize_result['main_file']}")
+                        logger.info(f"Job {safe_job} completed: {organize_result['main_file']}")
                     else:
                         await state_machine.transition_to_failed(
                             job,
@@ -1209,10 +1217,25 @@ class JobManager:
 
         except asyncio.CancelledError:
             logger.info(f"Job {safe_job} was cancelled")
-            await self._fail_job(job_id, "Cancelled by user")
+            try:
+                await self._fail_job(job_id, "Cancelled by user")
+            except Exception:
+                logger.warning(
+                    f"Job {safe_job}: _fail_job raised during cancellation recovery",
+                    exc_info=True,
+                )
+            # Re-raise so the task is actually marked cancelled (asyncio convention).
+            raise
         except Exception as e:
             logger.exception(f"Error ripping job {safe_job}")
-            await self._fail_job(job_id, str(e))
+            try:
+                await self._fail_job(job_id, str(e))
+            except Exception:
+                # Don't let a recovery failure shadow the original error above.
+                logger.warning(
+                    f"Job {safe_job}: _fail_job raised during error recovery",
+                    exc_info=True,
+                )
 
     async def _fail_job(self, job_id: int, error_message: str | None) -> None:
         """Fail a job on its own short-lived session.

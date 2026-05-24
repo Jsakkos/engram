@@ -232,7 +232,10 @@ class TestRunRippingSessionScoping:
 
         await job_manager._run_ripping(job.id)
 
-        assert captured["open_at_rip"] == 0
+        assert captured.get("open_at_rip") == 0, (
+            f"Expected 0 open JobManager sessions when rip_titles was awaited, "
+            f"got {captured.get('open_at_rip')!r} (None means rip_titles was never reached)"
+        )
 
     async def test_tv_path_transitions_to_matching(self, rip_env, monkeypatch):
         job, _title = await _seed(
