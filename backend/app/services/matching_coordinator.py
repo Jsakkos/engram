@@ -549,6 +549,7 @@ class MatchingCoordinator:
                         try:
                             self._note_activity(job_id)
                         except Exception:
+                            # Best-effort watchdog heartbeat; never let it disrupt matching.
                             pass
                     try:
                         details = None

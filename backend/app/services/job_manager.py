@@ -220,6 +220,7 @@ class JobManager:
             try:
                 await self._watchdog_task
             except asyncio.CancelledError:
+                # Expected: we just cancelled the watchdog loop above.
                 pass
             self._watchdog_task = None
 
@@ -587,7 +588,8 @@ class JobManager:
                         )
                     session.add(title)
                     logger.warning(
-                        f"Job {job_id}: title {title.title_index} stuck with no file → FAILED"
+                        f"Job {job_id}: title {sanitize_log_value(title.title_index)} "
+                        "stuck with no file → FAILED"
                     )
                     await ws_manager.broadcast_title_update(
                         job_id,
@@ -601,8 +603,9 @@ class JobManager:
                 title.state = TitleState.MATCHING if is_tv else TitleState.MATCHED
                 session.add(title)
                 logger.info(
-                    f"Job {job_id}: recovered orphaned title {title.title_index} "
-                    f"({file_path.name}) → {title.state.value}"
+                    f"Job {job_id}: recovered orphaned title "
+                    f"{sanitize_log_value(title.title_index)} "
+                    f"({sanitize_log_value(file_path.name)}) → {title.state.value}"
                 )
                 await ws_manager.broadcast_title_update(
                     job_id,
@@ -672,7 +675,7 @@ class JobManager:
                 session.add(title)
                 logger.info(
                     f"Job {job_id}: force-advance ({reason}) — title "
-                    f"{title.title_index} → {title.state.value}"
+                    f"{sanitize_log_value(title.title_index)} → {title.state.value}"
                 )
                 await ws_manager.broadcast_title_update(
                     job_id,
@@ -707,7 +710,10 @@ class JobManager:
                 title.match_details = json.dumps({"reason": "Skipped by user"})
             session.add(title)
             await session.commit()
-            logger.info(f"Job {job_id}: title {title.title_index} skipped → {target.value}")
+            logger.info(
+                f"Job {job_id}: title {sanitize_log_value(title.title_index)} "
+                f"skipped → {target.value}"
+            )
             await ws_manager.broadcast_title_update(job_id, title.id, target.value, error=err)
 
             await self._finalization.check_job_completion(session, job_id)
