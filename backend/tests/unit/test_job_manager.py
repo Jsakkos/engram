@@ -7,16 +7,22 @@ and websocket layer are stubbed.
 """
 
 import asyncio
+import importlib
 import json
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.api.websocket import manager as ws_manager
+from app.core.extractor import RipResult
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_manager import job_manager
 from tests.unit.conftest import _unit_session_factory
+
+# Resolve the actual module (not the JobManager singleton, which shadows the
+# submodule name in the app.services package namespace) — matches conftest.
+jm_mod = importlib.import_module("app.services.job_manager")
 
 
 @pytest.fixture(autouse=True)
@@ -163,3 +169,122 @@ class TestRerunMatching:
     async def test_missing_job_is_noop(self):
         # Must not raise for an unknown job id.
         await job_manager._rerun_matching(999999)
+
+
+@pytest.fixture
+def rip_env(monkeypatch, tmp_path):
+    """Neutralize the side-effecting steps in _run_ripping that are orthogonal
+    to DB-session scoping: physical eject, the makemkv log directory, and the
+    terminal-state callbacks (staging cleanup / cache clearing)."""
+    import app.core.discdb_exporter as exporter_mod
+    import app.core.sentinel as sentinel_mod
+
+    monkeypatch.setattr(sentinel_mod, "eject_disc", lambda drive_id: None)
+    monkeypatch.setattr(exporter_mod, "get_makemkv_log_dir", lambda job_id: tmp_path)
+    monkeypatch.setattr(jm_mod.state_machine, "_on_terminal_callbacks", [])
+    return tmp_path
+
+
+def _mock_rip(monkeypatch, result, on_call=None):
+    """Replace the real (multi-hour, makemkvcon) rip with an instant no-op."""
+
+    async def _run(*args, **kwargs):
+        if on_call is not None:
+            on_call()
+        return result
+
+    monkeypatch.setattr(job_manager._extractor, "rip_titles", AsyncMock(side_effect=_run))
+
+
+@pytest.mark.unit
+class TestRunRippingSessionScoping:
+    async def test_setup_session_closed_before_rip(self, rip_env, monkeypatch):
+        """The setup session must be released before the long rip is awaited —
+        no JobManager DB session may be held while rip_titles is in flight."""
+        job, _title = await _seed(
+            content_type=ContentType.TV, staging=str(rip_env), is_selected=True
+        )
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+
+        open_sessions = {"count": 0}
+
+        class _TrackingSession:
+            def __init__(self):
+                self._real = _unit_session_factory()
+
+            async def __aenter__(self):
+                open_sessions["count"] += 1
+                return await self._real.__aenter__()
+
+            async def __aexit__(self, *exc):
+                result = await self._real.__aexit__(*exc)
+                open_sessions["count"] -= 1
+                return result
+
+        monkeypatch.setattr(jm_mod, "async_session", _TrackingSession)
+
+        captured = {}
+        _mock_rip(
+            monkeypatch,
+            RipResult(success=True, output_files=[]),
+            on_call=lambda: captured.__setitem__("open_at_rip", open_sessions["count"]),
+        )
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["open_at_rip"] == 0
+
+    async def test_tv_path_transitions_to_matching(self, rip_env, monkeypatch):
+        job, _title = await _seed(
+            content_type=ContentType.TV, staging=str(rip_env), is_selected=True
+        )
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+        _mock_rip(
+            monkeypatch,
+            RipResult(success=True, output_files=[rip_env / "show_t00.mkv"]),
+        )
+
+        await job_manager._run_ripping(job.id)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job.id)
+        assert refreshed.state == JobState.MATCHING
+
+    async def test_movie_single_title_completes(self, rip_env, monkeypatch):
+        job, _title = await _seed(
+            content_type=ContentType.MOVIE, staging=str(rip_env), is_selected=True
+        )
+        out_file = rip_env / "movie.mkv"
+        monkeypatch.setattr(
+            jm_mod.movie_organizer,
+            "organize",
+            lambda *a, **k: {"success": True, "main_file": out_file},
+        )
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job.id)
+        assert refreshed.state == JobState.COMPLETED
+        assert refreshed.final_path == str(out_file)
+
+    async def test_rip_failure_fails_job(self, rip_env, monkeypatch):
+        job, _title = await _seed(
+            content_type=ContentType.TV, staging=str(rip_env), is_selected=True
+        )
+        _mock_rip(
+            monkeypatch,
+            RipResult(success=False, output_files=[], error_message="disc read error"),
+        )
+
+        await job_manager._run_ripping(job.id)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job.id)
+        assert refreshed.state == JobState.FAILED
+        assert refreshed.error_message == "disc read error"
+
+    async def test_fail_job_helper_missing_job_is_noop(self):
+        # Must not raise for an unknown job id.
+        await job_manager._fail_job(999999, "boom")
