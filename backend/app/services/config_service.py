@@ -137,6 +137,14 @@ async def update_config(**kwargs) -> AppConfig:
 
             clear_caches()
 
+        # Bridge a changed MakeMKV key into MakeMKV's own settings.conf so
+        # makemkvcon picks it up — Engram's config DB and MakeMKV's settings
+        # file are otherwise unconnected. No-op for blank keys.
+        if "makemkv_key" in kwargs and config.makemkv_key:
+            from app.core.makemkv_registration import write_makemkv_settings
+
+            write_makemkv_settings(config.makemkv_key)
+
         logger.info(f"Updated configuration: {list(kwargs.keys())}")
         return config
 

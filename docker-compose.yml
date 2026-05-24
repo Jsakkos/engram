@@ -1,0 +1,55 @@
+# Engram — Linux deployment.
+#
+# Quick start:
+#   1. Put your MakeMKV license/beta key in MAKEMKV_APP_KEY below (or leave blank
+#      and enter it in the setup wizard).
+#   2. Adjust the optical drive path under `devices` if yours isn't /dev/sr0.
+#   3. `docker compose up -d`, then open http://localhost:8000 and complete setup.
+#      In the wizard, set the library/staging paths to the in-container mount
+#      points: /media/movies, /media/tv, /staging.
+#
+# First start is slow: it compiles MakeMKV into ./config and downloads the
+# speech-recognition model. Both are cached in ./config and reused afterwards.
+
+services:
+  engram:
+    # Pull the published image:
+    image: ghcr.io/jsakkos/engram:latest
+    # ...or build locally instead by commenting out `image:` above and
+    # uncommenting:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    container_name: engram
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    # Pass the optical drive through to the container. `ls -l /dev/sr*` on the
+    # host to confirm the device. Add more lines for multiple drives.
+    devices:
+      - "/dev/sr0:/dev/sr0"
+
+    environment:
+      # Match these to your host user so library files aren't root-owned
+      # (`id -u` / `id -g`).
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "Etc/UTC"
+      # MakeMKV license or current beta key (https://www.makemkv.com/forum/viewtopic.php?t=1053).
+      # The beta key rotates ~monthly; refresh it here or in the setup wizard.
+      MAKEMKV_APP_KEY: ""
+      # "latest" tracks the current MakeMKV release; pin a version (e.g. 1.18.1)
+      # for reproducible builds.
+      MAKEMKV_VERSION: "latest"
+
+    volumes:
+      # Persistent app state: database, caches, logs, the compiled MakeMKV, and
+      # MakeMKV's settings.conf. Back this up.
+      - ./config:/config
+      # Your media library (point the wizard at /media/movies and /media/tv).
+      - ./media/movies:/media/movies
+      - ./media/tv:/media/tv
+      # Working area for in-progress rips (point the wizard at /staging).
+      - ./staging:/staging
