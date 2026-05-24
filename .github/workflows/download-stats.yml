@@ -32,10 +32,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit changes
+      - name: Publish stats to download-stats branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/badges/ docs/downloads-chart.svg
+
+          # Preserve the generated artifacts; switching branches wipes the working tree.
+          tmp="$(mktemp -d)"
+          cp -r docs/badges "$tmp/badges"
+          cp docs/downloads-chart.svg "$tmp/chart.svg"
+
+          # Check out the dedicated, unprotected branch (creating it on first run).
+          # main is protection-gated and rejects direct bot pushes, so generated
+          # artifacts live on download-stats and are served via raw.githubusercontent.
+          if git ls-remote --exit-code --heads origin download-stats >/dev/null 2>&1; then
+            git fetch origin download-stats
+            git checkout -f -B download-stats FETCH_HEAD
+          else
+            git checkout -f --orphan download-stats
+            git rm -rf --cached . >/dev/null 2>&1 || true
+            git clean -fdx >/dev/null 2>&1 || true
+          fi
+
+          # Restore the artifacts and publish.
+          mkdir -p docs/badges
+          cp "$tmp/badges/"*.json docs/badges/
+          cp "$tmp/chart.svg" docs/downloads-chart.svg
+          git add docs/badges docs/downloads-chart.svg
           git diff --cached --quiet || git commit -m "chore: update download stats"
-          git push
+          git push origin download-stats
