@@ -27,8 +27,11 @@ interface ActionButtonsProps {
     onAdvance?: () => void;
 }
 
-// States where a job is actively processing and can be force-advanced/cancelled.
+// States where Force-advance makes sense (job is actively processing).
 const ACTIVE_STATES = ["scanning", "ripping", "matching", "organizing", "processing"];
+// Cancel was historically shown only during rip-phase states; keep that scope so it
+// doesn't surface during organizing, where cancelling could leave files partially moved.
+const CANCELABLE_STATES = ["scanning", "ripping", "processing"];
 
 interface Tone {
     fg: string;        // foreground / icon / text
@@ -131,7 +134,7 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0 }:
 }
 
 export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance }: ActionButtonsProps) {
-    const showCancel = !!onCancel && (isHovered || ACTIVE_STATES.includes(state));
+    const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
 

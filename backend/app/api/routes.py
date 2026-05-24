@@ -695,7 +695,7 @@ async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
 class SkipTitleRequest(BaseModel):
     """Request model for skipping a single stuck title."""
 
-    target: str = "review"  # "review" | "fail"
+    target: Literal["review", "fail"] = "review"
 
 
 @router.post("/jobs/{job_id}/titles/{title_id}/skip")
@@ -708,9 +708,7 @@ async def skip_title(
     if job.state in (JobState.COMPLETED, JobState.FAILED):
         raise HTTPException(status_code=400, detail="Job has already finished")
 
-    target = (req.target if req else "review").lower()
-    if target not in ("review", "fail"):
-        raise HTTPException(status_code=400, detail="target must be 'review' or 'fail'")
+    target = req.target if req else "review"
 
     from app.models.disc_job import TitleState
     from app.services.job_manager import job_manager

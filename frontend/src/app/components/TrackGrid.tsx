@@ -11,7 +11,9 @@ interface TrackGridProps {
   onSkip?: (trackId: string) => void;
 }
 
-// Track states where a per-track "skip" makes sense (still in flight).
+// Track states where a per-track "skip" makes sense (still in flight). PENDING is
+// intentionally excluded — selected titles only briefly sit there before ripping, and
+// the backend skip endpoint still accepts PENDING if ever needed.
 const SKIPPABLE: ReadonlyArray<TrackState> = ["ripping", "matching"];
 
 interface StateConfig {

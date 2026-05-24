@@ -95,9 +95,10 @@ class TestForceProgressApi:
         resp = await client.post(f"/api/jobs/{job_id}/titles/888888/skip")
         assert resp.status_code == 400
 
-    async def test_skip_invalid_target_400(self, client, tmp_path):
+    async def test_skip_invalid_target_422(self, client, tmp_path):
+        # Literal["review", "fail"] → Pydantic rejects unknown values before the handler.
         job_id, title_id = await _job_with_stuck_title(tmp_path)
         resp = await client.post(
             f"/api/jobs/{job_id}/titles/{title_id}/skip", json={"target": "nope"}
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422

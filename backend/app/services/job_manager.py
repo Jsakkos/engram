@@ -620,8 +620,15 @@ class JobManager:
         # Queue matching for recovered TV titles (mirrors _on_title_ripped), each
         # outside the session above so match tasks own their own sessions.
         for title_id, file_path in recovered:
+            applied = False
             async with async_session() as session:
                 title = await session.get(DiscTitle, title_id)
+                if title is None:
+                    logger.warning(
+                        f"Job {job_id}: recovered title {sanitize_log_value(title_id)} "
+                        "vanished before re-queue"
+                    )
+                    continue
                 applied = await self._matching.try_discdb_assignment(job_id, title, session)
                 if applied:
                     await self._finalization.check_job_completion(session, job_id)
@@ -745,7 +752,7 @@ class JobManager:
                 try:
                     config = await get_config()
                 except Exception as e:
-                    logger.warning(f"Watchdog: could not load config: {e}")
+                    logger.warning(f"Watchdog: could not load config: {e}", exc_info=True)
                 poll = (config.watchdog_poll_seconds if config else 60) or 60
                 await asyncio.sleep(poll)
 
