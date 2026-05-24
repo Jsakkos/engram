@@ -712,6 +712,10 @@ class JobManager:
         detached, so every post-rip transition re-fetches the row on its own
         short-lived session, and failures route through :meth:`_fail_job`.
         """
+        # job_id originates from the review path param (apply_review -> _run_ripping),
+        # so it is user-provided — sanitize before logging to prevent CR/LF log
+        # forging (py/log-injection).
+        safe_job = sanitize_log_value(job_id)
         try:
             # --- Setup: short-lived session, released before the long rip ---
             async with async_session() as session:
@@ -865,6 +869,7 @@ class JobManager:
                                         _title_file_cache[tidx] = matches[0]
                                         actual_bytes = matches[0].stat().st_size
                             except OSError:
+                                # Best-effort size probe; a missing/locked file is fine.
                                 pass
                             await ws_manager.broadcast_title_update(
                                 job_id,
@@ -981,7 +986,7 @@ class JobManager:
                                                     )
                                         except Exception:
                                             logger.debug(
-                                                f"Job {job_id}: failed to set title {t.id} "
+                                                f"Job {safe_job}: failed to set title {t.id} "
                                                 f"to RIPPING in fs monitor",
                                                 exc_info=True,
                                             )
@@ -1023,7 +1028,7 @@ class JobManager:
                                         await prog_session.commit()
                             except Exception:
                                 logger.debug(
-                                    f"Job {job_id}: failed to update progress in DB",
+                                    f"Job {safe_job}: failed to update progress in DB",
                                     exc_info=True,
                                 )
 
@@ -1040,7 +1045,7 @@ class JobManager:
                         raise
                     except Exception:
                         logger.debug(
-                            f"Job {job_id}: filesystem progress monitor error",
+                            f"Job {safe_job}: filesystem progress monitor error",
                             exc_info=True,
                         )
 
@@ -1068,6 +1073,7 @@ class JobManager:
                 try:
                     await monitor_task
                 except asyncio.CancelledError:
+                    # Expected: the monitor task was just cancelled above.
                     pass
 
             if not result.success and not result.stalled_titles:
@@ -1092,7 +1098,7 @@ class JobManager:
                                     {"reason": "Ripping stalled — possible disc damage"}
                                 )
                                 logger.warning(
-                                    f"Job {job_id}: title {db_title.title_index} "
+                                    f"Job {safe_job}: title {db_title.title_index} "
                                     f"marked FAILED (ripping stall, fallback)"
                                 )
                                 await ws_manager.broadcast_title_update(
@@ -1202,10 +1208,10 @@ class JobManager:
                         )
 
         except asyncio.CancelledError:
-            logger.info(f"Job {job_id} was cancelled")
+            logger.info(f"Job {safe_job} was cancelled")
             await self._fail_job(job_id, "Cancelled by user")
         except Exception as e:
-            logger.exception(f"Error ripping job {job_id}")
+            logger.exception(f"Error ripping job {safe_job}")
             await self._fail_job(job_id, str(e))
 
     async def _fail_job(self, job_id: int, error_message: str | None) -> None:
