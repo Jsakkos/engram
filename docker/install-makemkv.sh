@@ -44,10 +44,20 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 cd "${WORK}"
 
+# NOTE: MakeMKV publishes no checksums on its download page, so these tarballs
+# are trusted on the basis of HTTPS to makemkv.com alone. Operators wanting a
+# stronger guarantee can cross-check the SHA256 hashes posted in the MakeMKV
+# forum release thread (https://www.makemkv.com/forum/viewtopic.php?t=1053).
 for part in oss bin; do
     echo "    downloading makemkv-${part}-${VERSION}.tar.gz"
     curl -fSL -o "makemkv-${part}.tar.gz" "${DL_BASE}/makemkv-${part}-${VERSION}.tar.gz"
     tar xzf "makemkv-${part}.tar.gz"
+    # Fail clearly if the archive didn't expand to the expected directory rather
+    # than cd'ing into a missing/unexpected path later.
+    if [ ! -d "makemkv-${part}-${VERSION}" ]; then
+        echo "ERROR: makemkv-${part}-${VERSION}.tar.gz did not extract to the expected directory" >&2
+        exit 1
+    fi
 done
 
 # 1. Open-source part: shared libraries + makemkvcon, GUI disabled.

@@ -45,9 +45,8 @@ def write_makemkv_settings(key: str, settings_path: Path | None = None) -> bool:
     path = settings_path or makemkv_settings_path()
     new_line = f'app_Key = "{key}"'
 
-    existing_lines: list[str] = []
-    if path.exists():
-        existing_lines = path.read_text(encoding="utf-8").splitlines()
+    original_text = path.read_text(encoding="utf-8") if path.exists() else ""
+    existing_lines = original_text.splitlines()
 
     replaced = False
     out_lines: list[str] = []
@@ -64,14 +63,14 @@ def write_makemkv_settings(key: str, settings_path: Path | None = None) -> bool:
         out_lines.append(new_line)
 
     new_contents = "\n".join(out_lines) + "\n"
-    if path.exists() and path.read_text(encoding="utf-8") == new_contents:
+    if original_text == new_contents:
         return False  # Idempotent: nothing to do.
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(new_contents, encoding="utf-8")
     except OSError as e:
-        logger.warning(f"Could not write MakeMKV settings to {path}: {e}")
+        logger.warning(f"Could not write MakeMKV settings to {path}: {e}", exc_info=True)
         return False
 
     logger.info(f"Registered MakeMKV key in {path}")

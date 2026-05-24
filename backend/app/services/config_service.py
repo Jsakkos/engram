@@ -3,6 +3,7 @@
 Provides functions to get and update configuration stored in SQLite.
 """
 
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -143,7 +144,7 @@ async def update_config(**kwargs) -> AppConfig:
         if "makemkv_key" in kwargs and config.makemkv_key:
             from app.core.makemkv_registration import write_makemkv_settings
 
-            write_makemkv_settings(config.makemkv_key)
+            await asyncio.to_thread(write_makemkv_settings, config.makemkv_key)
 
         logger.info(f"Updated configuration: {list(kwargs.keys())}")
         return config

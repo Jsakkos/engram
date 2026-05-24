@@ -42,11 +42,16 @@ fi
 # 4. Seed the MakeMKV license from MAKEMKV_APP_KEY (merge, don't clobber).
 if [ -n "${MAKEMKV_APP_KEY:-}" ]; then
     touch "${SETTINGS}"
-    if grep -qE '^[[:space:]]*app_Key[[:space:]]*=' "${SETTINGS}"; then
-        sed -i -E "s|^[[:space:]]*app_Key[[:space:]]*=.*|app_Key = \"${MAKEMKV_APP_KEY}\"|" "${SETTINGS}"
-    else
-        echo "app_Key = \"${MAKEMKV_APP_KEY}\"" >> "${SETTINGS}"
-    fi
+    # Rebuild the file with the new app_Key first, then the other lines. Using
+    # printf '%s' (not sed) keeps the key value out of any regex/replacement
+    # context, so a key with characters special to sed can't corrupt the file.
+    {
+        printf 'app_Key = "%s"\n' "${MAKEMKV_APP_KEY}"
+        grep -vE '^[[:space:]]*app_Key[[:space:]]*=' "${SETTINGS}" || true
+    } > "${SETTINGS}.tmp"
+    mv "${SETTINGS}.tmp" "${SETTINGS}"
+    # The server runs as PUID and (re)writes this file on startup, so it must own it.
+    chown "${PUID}:${PGID}" "${SETTINGS}"
 fi
 
 # 5. Optical-drive access: the host's /dev/sr0 group GID varies, so add the
@@ -62,8 +67,15 @@ if [ -e /dev/sr0 ]; then
     fi
 fi
 
-# 6. Own the persistent state as the runtime user.
-chown -R "${PUID}:${PGID}" /config
+# 6. Own the persistent state as the runtime user. A recursive chown over the
+#    whole volume (whisper models, caches) is slow, so only run it when the
+#    PUID/PGID change — tracked by a stamp file. Files the app creates later are
+#    already owned correctly because it runs as this user.
+OWNERSHIP_STAMP="/config/.ownership-${PUID}-${PGID}"
+if [ ! -f "${OWNERSHIP_STAMP}" ]; then
+    chown -R "${PUID}:${PGID}" /config
+    touch "${OWNERSHIP_STAMP}"
+fi
 
 # 7. Drop privileges (gosu by name applies the user's supplementary groups,
 #    including the optical group joined above) and exec the server.
