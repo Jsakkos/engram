@@ -175,7 +175,14 @@ class TestRerunMatching:
 def rip_env(monkeypatch, tmp_path):
     """Neutralize the side-effecting steps in _run_ripping that are orthogonal
     to DB-session scoping: physical eject, the makemkv log directory, and the
-    terminal-state callbacks (staging cleanup / cache clearing)."""
+    terminal-state callbacks (staging cleanup / cache clearing).
+
+    Stubbing the terminal callbacks is purely for isolation, not error
+    avoidance: as of PR #186 conftest patches their async_session bindings to
+    the in-memory engine, so they no longer raise "no such table". They are
+    still stubbed here so completing-job tests don't trigger real staging
+    deletion (default policy is on_success) or cache clearing, which are
+    irrelevant to what these scoping tests assert."""
     import app.core.discdb_exporter as exporter_mod
     import app.core.sentinel as sentinel_mod
 
