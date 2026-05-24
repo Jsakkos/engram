@@ -215,7 +215,7 @@ else:
         """Root endpoint - API status (dev mode only, no bundled frontend)."""
         return {
             "name": "Engram",
-            "version": "0.1.0",
+            "version": __version__,
             "status": "running",
         }
 
