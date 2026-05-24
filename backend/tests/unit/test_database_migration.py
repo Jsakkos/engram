@@ -38,14 +38,14 @@ class TestSchemaMigration:
 
     async def test_migration_is_idempotent_on_correct_schema(self, migration_engine):
         """Running migration on a correct schema should be a no-op."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create correct schema
         async with migration_engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
 
         # Running migration should not raise
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Tables should still exist and be correct
         async with migration_engine.connect() as conn:
@@ -57,7 +57,7 @@ class TestSchemaMigration:
 
     async def test_migration_preserves_app_config_data(self, migration_engine, migration_factory):
         """Migration should preserve existing app_config values when schema changes."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create schema with an extra obsolete column to trigger migration
         async with migration_engine.begin() as conn:
@@ -78,7 +78,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run migration — should detect extra column and rebuild
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Verify config data is preserved
         async with migration_factory() as session:
@@ -95,7 +95,7 @@ class TestSchemaMigration:
         self, migration_engine, migration_factory
     ):
         """App config migration should not affect disc_jobs/disc_titles (Alembic handles those)."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create schema and add extra column to disc_jobs
         async with migration_engine.begin() as conn:
@@ -116,7 +116,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run app_config migration
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Disc tables should be untouched (data preserved)
         async with migration_factory() as session:
@@ -126,7 +126,7 @@ class TestSchemaMigration:
 
     async def test_migration_handles_missing_columns(self, migration_engine, migration_factory):
         """Migration should handle tables missing columns that the model expects."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create a minimal app_config table missing many columns
         async with migration_engine.begin() as conn:
@@ -165,7 +165,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run migration — should detect missing columns and rebuild
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Preserved values should survive, new columns should have defaults
         async with migration_factory() as session:
@@ -190,7 +190,6 @@ class TestSchemaMigration:
         """
         # Patch the module-level engine so _add_missing_columns uses our test engine
         import app.database as db_mod
-        from app.database import _add_missing_columns, _get_actual_columns, _get_expected_columns
 
         original_engine = db_mod.engine
         db_mod.engine = migration_engine
@@ -250,18 +249,18 @@ class TestSchemaMigration:
 
             # Verify columns are missing before migration
             async with migration_engine.connect() as conn:
-                actual = await _get_actual_columns(conn, "disc_jobs")
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
                 assert "classification_confidence" not in actual
                 assert "content_hash" not in actual
                 assert "discdb_slug" not in actual
 
             # Run the migration
-            await _add_missing_columns()
+            await db_mod._add_missing_columns()
 
             # Verify missing columns were added
             async with migration_engine.connect() as conn:
-                actual = await _get_actual_columns(conn, "disc_jobs")
-                expected = _get_expected_columns("disc_jobs")
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
+                expected = db_mod._get_expected_columns("disc_jobs")
                 assert expected - actual == set(), f"Still missing columns: {expected - actual}"
 
             # Verify existing data is preserved

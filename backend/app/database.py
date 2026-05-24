@@ -196,8 +196,11 @@ async def _drop_extra_columns() -> None:
                         sa_text(f'ALTER TABLE {table_name} DROP COLUMN "{col_name}"')
                     )
                     logger.info(f"Dropped obsolete column: {table_name}.{col_name}")
-                except Exception as e:
-                    logger.warning(f"Could not drop obsolete column {table_name}.{col_name}: {e}")
+                except sqlalchemy.exc.OperationalError as e:
+                    logger.warning(
+                        f"Could not drop obsolete column {table_name}.{col_name}: {e}",
+                        exc_info=True,
+                    )
 
 
 async def _migrate_app_config(target_engine: AsyncEngine | None = None) -> None:
