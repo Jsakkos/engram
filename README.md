@@ -35,6 +35,12 @@
   </tr>
 </table>
 
+## Downloads
+
+<p align="center">
+  <img src="docs/downloads-chart.svg" alt="Downloads per release" />
+</p>
+
 ## Features
 
 - **Automatic disc detection** — monitors optical drives and starts processing on insertion
