@@ -88,9 +88,10 @@ async def isolate_database(monkeypatch):
 
     _config_mod = importlib.import_module("app.services.config_service")
     _jm_mod = importlib.import_module("app.services.job_manager")
-    # Terminal-state callbacks (registered on the JobStateMachine) open their own
-    # sessions through these modules' own `async_session` bindings. They must be
-    # patched too, or the callbacks hit the real engine on COMPLETED/FAILED.
+    # cleanup_service and finalization_coordinator open DB sessions inside their
+    # terminal callbacks — patch so they hit the in-memory engine, not engram.db.
+    # matching_coordinator.clear_job_caches is in-memory only; patched defensively
+    # in case it gains DB access in the future.
     _cleanup_mod = importlib.import_module("app.services.cleanup_service")
     _final_mod = importlib.import_module("app.services.finalization_coordinator")
     _match_mod = importlib.import_module("app.services.matching_coordinator")
