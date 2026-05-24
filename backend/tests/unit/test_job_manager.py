@@ -291,3 +291,43 @@ class TestRunRippingSessionScoping:
     async def test_fail_job_helper_missing_job_is_noop(self):
         # Must not raise for an unknown job id.
         await job_manager._fail_job(999999, "boom")
+
+    async def test_stalled_titles_marked_failed_and_job_continues(self, rip_env, monkeypatch):
+        # A rip that reports stalled titles must NOT fail the job: the stalled
+        # title is marked FAILED and the job proceeds to MATCHING.
+        job, title = await _seed(
+            content_type=ContentType.TV, staging=str(rip_env), is_selected=True, title_index=0
+        )
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+        _mock_rip(
+            monkeypatch,
+            RipResult(success=False, output_files=[], stalled_titles=[1]),
+        )
+
+        await job_manager._run_ripping(job.id)
+
+        async with _unit_session_factory() as session:
+            refreshed_job = await session.get(DiscJob, job.id)
+            refreshed_title = await session.get(DiscTitle, title.id)
+        assert refreshed_title.state == TitleState.FAILED
+        assert refreshed_job.state == JobState.MATCHING
+
+    async def test_cancelled_rip_fails_job_and_reraises(self, rip_env, monkeypatch):
+        # Cancelling the rip must fail the job AND re-raise so the task is
+        # actually marked cancelled (asyncio convention).
+        job, _title = await _seed(
+            content_type=ContentType.TV, staging=str(rip_env), is_selected=True
+        )
+
+        async def _cancel(*args, **kwargs):
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(job_manager._extractor, "rip_titles", AsyncMock(side_effect=_cancel))
+
+        with pytest.raises(asyncio.CancelledError):
+            await job_manager._run_ripping(job.id)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job.id)
+        assert refreshed.state == JobState.FAILED
+        assert refreshed.error_message == "Cancelled by user"
