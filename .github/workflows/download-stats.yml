@@ -14,13 +14,12 @@ concurrency:
 permissions:
   contents: write
 
-env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 jobs:
   update-stats:
     name: Update Download Stats
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
 
@@ -48,7 +47,8 @@ jobs:
 
           cd "$work"
           git init -q -b badges
-          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git config credential.helper '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f'
           git add docs
           git commit -q -m "chore: update download stats"
           git push -f origin badges
