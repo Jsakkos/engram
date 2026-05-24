@@ -588,8 +588,8 @@ class JobManager:
                         )
                     session.add(title)
                     logger.warning(
-                        f"Job {job_id}: title {sanitize_log_value(title.title_index)} "
-                        "stuck with no file → FAILED"
+                        f"Job {sanitize_log_value(job_id)}: title "
+                        f"{sanitize_log_value(title.title_index)} stuck with no file → FAILED"
                     )
                     await ws_manager.broadcast_title_update(
                         job_id,
@@ -603,7 +603,7 @@ class JobManager:
                 title.state = TitleState.MATCHING if is_tv else TitleState.MATCHED
                 session.add(title)
                 logger.info(
-                    f"Job {job_id}: recovered orphaned title "
+                    f"Job {sanitize_log_value(job_id)}: recovered orphaned title "
                     f"{sanitize_log_value(title.title_index)} "
                     f"({sanitize_log_value(file_path.name)}) → {title.state.value}"
                 )
@@ -625,8 +625,8 @@ class JobManager:
                 title = await session.get(DiscTitle, title_id)
                 if title is None:
                     logger.warning(
-                        f"Job {job_id}: recovered title {sanitize_log_value(title_id)} "
-                        "vanished before re-queue"
+                        f"Job {sanitize_log_value(job_id)}: recovered title "
+                        f"{sanitize_log_value(title_id)} vanished before re-queue"
                     )
                     continue
                 applied = await self._matching.try_discdb_assignment(job_id, title, session)
@@ -681,7 +681,7 @@ class JobManager:
                         title.match_details = json.dumps({"reason": err})
                 session.add(title)
                 logger.info(
-                    f"Job {job_id}: force-advance ({reason}) — title "
+                    f"Job {sanitize_log_value(job_id)}: force-advance ({reason}) — title "
                     f"{sanitize_log_value(title.title_index)} → {title.state.value}"
                 )
                 await ws_manager.broadcast_title_update(
@@ -718,8 +718,8 @@ class JobManager:
             session.add(title)
             await session.commit()
             logger.info(
-                f"Job {job_id}: title {sanitize_log_value(title.title_index)} "
-                f"skipped → {target.value}"
+                f"Job {sanitize_log_value(job_id)}: title "
+                f"{sanitize_log_value(title.title_index)} skipped → {target.value}"
             )
             await ws_manager.broadcast_title_update(job_id, title.id, target.value, error=err)
 
