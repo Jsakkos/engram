@@ -313,3 +313,93 @@ class TestSchemaMigration:
                 assert actual == expected
         finally:
             db_mod.engine = original_engine
+
+    async def test_drop_extra_columns_from_disc_jobs(self, migration_engine, migration_factory):
+        """Columns removed from the model must be dropped from existing databases.
+
+        Regression: a column removed from the model (e.g. is_transcoding_enabled)
+        is dropped via Alembic in dev, but frozen/PyInstaller builds ship no
+        alembic.ini so that migration never runs. The stale NOT NULL column then
+        lingered; because the ORM omits it on INSERT, every new disc job crashed
+        with 'NOT NULL constraint failed: disc_jobs.is_transcoding_enabled'.
+        """
+        import app.database as db_mod
+        from app.database import _drop_extra_columns, _get_actual_columns, _get_expected_columns
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            # Current model schema, plus a leftover column the model no longer has
+            async with migration_engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+                await conn.execute(
+                    text(
+                        "ALTER TABLE disc_jobs ADD COLUMN is_transcoding_enabled "
+                        "BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+
+            # Seed a row so we can prove data is preserved across the drop
+            async with migration_factory() as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO disc_jobs (drive_id, volume_label, state, content_type, "
+                        "current_speed, eta_seconds, progress_percent, current_title, "
+                        "total_titles, subtitles_downloaded, subtitles_total, subtitles_failed, "
+                        "disc_number, created_at, updated_at) VALUES "
+                        "('E:', 'KEEP_ME', 'completed', 'tv', '0', 0, 0, 0, 0, 0, 0, 0, 1, "
+                        "datetime('now'), datetime('now'))"
+                    )
+                )
+                await session.commit()
+
+            # Sanity: the extra column is present before reconciliation
+            async with migration_engine.connect() as conn:
+                assert "is_transcoding_enabled" in await _get_actual_columns(conn, "disc_jobs")
+
+            await _drop_extra_columns()
+
+            # Extra column gone; schema matches the model exactly
+            async with migration_engine.connect() as conn:
+                actual = await _get_actual_columns(conn, "disc_jobs")
+                expected = _get_expected_columns("disc_jobs")
+                assert "is_transcoding_enabled" not in actual
+                assert actual == expected
+
+            # Existing data is preserved
+            async with migration_factory() as session:
+                row = (
+                    await session.execute(
+                        text("SELECT volume_label, state FROM disc_jobs WHERE id = 1")
+                    )
+                ).fetchone()
+                assert row == ("KEEP_ME", "completed")
+
+            # A model-shaped insert (which omits the dropped column) now succeeds
+            async with migration_factory() as session:
+                session.add(DiscJob(drive_id="F:", volume_label="NEW_DISC"))
+                await session.commit()
+        finally:
+            db_mod.engine = original_engine
+
+    async def test_drop_extra_columns_is_idempotent(self, migration_engine):
+        """Running _drop_extra_columns on a correct schema should be a no-op."""
+        import app.database as db_mod
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            async with migration_engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+
+            await db_mod._drop_extra_columns()
+
+            async with migration_engine.connect() as conn:
+                for table in ("disc_jobs", "disc_titles", "app_config"):
+                    actual = await db_mod._get_actual_columns(conn, table)
+                    expected = db_mod._get_expected_columns(table)
+                    assert actual == expected
+        finally:
+            db_mod.engine = original_engine
