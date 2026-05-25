@@ -95,9 +95,9 @@ class TestMovieTitleTransitions:
 class TestOnTitleRippedNoStateChange:
     """_on_title_ripped should NOT change title state from PENDING.
 
-    The progress_callback is the authority on which title is actively RIPPING.
-    _on_title_ripped fires when a file is complete — it should only set the
-    output_filename, not transition state.
+    The filesystem progress monitor is the authority on which title is actively
+    RIPPING. _on_title_ripped fires when a file is complete — it should only set
+    the output_filename, not transition state.
     """
 
     def test_on_title_ripped_should_not_promote_pending_to_ripping(self):
@@ -116,12 +116,12 @@ class TestOnTitleRippedNoStateChange:
         assert final_state == TitleState.RIPPING
 
     def test_only_one_title_ripping_at_a_time(self):
-        """During progress_callback updates, only 1 title should be in RIPPING state."""
-        # Simulate a sequence of 5 titles where progress_callback updates one at a time
+        """During fs-monitor updates, only 1 title should be in RIPPING state."""
+        # Simulate a sequence of 5 titles where the fs monitor updates one at a time
         titles = [TitleState.PENDING] * 5
 
         for active_idx in range(5):
-            # progress_callback sets the active title to RIPPING
+            # the fs monitor sets the active title to RIPPING
             # and transitions the previous one out
             if active_idx > 0:
                 titles[active_idx - 1] = TitleState.MATCHED

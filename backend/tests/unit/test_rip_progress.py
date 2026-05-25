@@ -1,14 +1,14 @@
 """Unit tests for rip progress monitoring.
 
-Tests filesystem-based progress calculation, PRGV percent parsing,
-and progress callback logic.
+Covers the filesystem-based progress calculation the rip monitor relies on, plus
+regression guards documenting MakeMKV's robot-mode PRGC/PRGV format — the reason
+per-title progress is derived from output-file sizes, not from PRGC/PRGV.
 """
 
+import re
 from dataclasses import dataclass
 
 import pytest
-
-from app.core.extractor import RipProgress
 
 # --- Helpers ---
 
@@ -40,33 +40,6 @@ def calc_filesystem_progress(sorted_titles, output_dir, total_job_bytes):
     else:
         pct = 0.0
     return pct, current_title_num
-
-
-def calc_prgv_percent(current, total, max_val):
-    """Replicate the fixed PRGV percent calculation from extractor.py."""
-    if max_val > 0:
-        divisor = total if total > 0 else max_val
-        return (current / divisor) * 100
-    return 0.0
-
-
-def calc_global_progress(progress: RipProgress, sorted_titles, total_job_bytes):
-    """Replicate the progress callback's global percent calculation."""
-    current_idx = progress.current_title
-    cumulative_previous = 0
-    active_title_size = 0
-
-    if 0 <= (current_idx - 1) < len(sorted_titles):
-        active_title_size = sorted_titles[current_idx - 1].file_size_bytes
-        for i in range(current_idx - 1):
-            cumulative_previous += sorted_titles[i].file_size_bytes
-
-    current_title_bytes = int((progress.percent / 100.0) * active_title_size)
-    total_bytes_done = cumulative_previous + current_title_bytes
-
-    if total_job_bytes > 0:
-        return (total_bytes_done / total_job_bytes) * 100.0
-    return 0.0
 
 
 # --- Filesystem progress tests ---
@@ -131,85 +104,45 @@ class TestFilesystemProgressCalculation:
         assert pct == pytest.approx(100.0, abs=0.1)
 
 
-# --- PRGV parsing tests ---
+# --- MakeMKV robot-format regression guards ---
 
 
-class TestPRGVParsing:
-    """Test the fixed PRGV percent calculation."""
+class TestMakeMKVRobotFormat:
+    """Lock the real robot-mode PRGC/PRGV format (verbatim from a saved rip.log).
 
-    def test_single_title_percent(self):
-        """Single-title rip: current/total gives per-title %."""
-        # PRGV:5000,10000,10000 → total == max, so 50%
-        pct = calc_prgv_percent(current=5000, total=10000, max_val=10000)
-        assert pct == pytest.approx(50.0)
+    Guards against reviving the old misparse, where PRGC's leading field was
+    treated as a 0-based title index and PRGV percent was computed as
+    ``current / total`` (both produced nonsense — see extractor.py). Per-title
+    progress is owned by the filesystem monitor, not these codes.
+    """
 
-    def test_all_mode_uses_total_not_max(self):
-        """All-mode rip: uses total (per-title) not max (overall)."""
-        # PRGV:2500,10000,80000
-        # Old buggy code: 2500/80000 = 3.1%
-        # Fixed code: 2500/10000 = 25%
-        pct = calc_prgv_percent(current=2500, total=10000, max_val=80000)
-        assert pct == pytest.approx(25.0)
-
-    def test_zero_total_falls_back_to_max(self):
-        """If total is 0, fall back to max_val."""
-        pct = calc_prgv_percent(current=5000, total=0, max_val=10000)
-        assert pct == pytest.approx(50.0)
-
-    def test_zero_max_returns_zero(self):
-        """If max_val is 0, return 0 (avoid division by zero)."""
-        pct = calc_prgv_percent(current=5000, total=10000, max_val=0)
-        assert pct == 0.0
-
-
-# --- Progress callback calculation tests ---
-
-
-class TestProgressCallbackCalculation:
-    """Test the global progress calculation in the progress callback."""
-
-    def test_nonzero_percent_produces_nonzero_global(self):
-        """If PRGV reports 50% on title 1, global_percent should be > 0."""
-        titles = [
-            FakeTitle(title_index=0, file_size_bytes=500_000),
-            FakeTitle(title_index=1, file_size_bytes=500_000),
+    def test_prgc_leading_field_is_a_message_code_not_a_title_index(self):
+        # Verbatim PRGC lines from ~/.engram/logs/makemkv/<job>/rip.log.
+        # Format is PRGC:code,id,"name" — code is a message code, id is 0.
+        lines = [
+            'PRGC:5018,0,"Scanning CD-ROM devices"',
+            'PRGC:5017,0,"Saving to MKV file"',
+            'PRGC:3103,0,"Processing titles"',
         ]
-        total_bytes = 1_000_000
-        progress = RipProgress(percent=50.0, current_title=1, total_titles=2)
+        for line in lines:
+            m = re.match(r"PRGC:(\d+),(\d+),", line)
+            assert m, line
+            code, id_field = int(m.group(1)), int(m.group(2))
+            # A real disc never has thousands of titles — this is a message code,
+            # so the old `prgc_current_title = code + 1` was always garbage.
+            assert code >= 1000
+            assert id_field == 0
 
-        global_pct = calc_global_progress(progress, titles, total_bytes)
-        # 50% of title 1 (500KB) = 250KB / 1MB total = 25%
-        assert global_pct == pytest.approx(25.0, abs=0.1)
+    def test_prgv_is_value_over_fixed_max_not_current_over_total(self):
+        # Verbatim PRGV line: current=36541, total=6084, max=65536.
+        line = "PRGV:36541,6084,65536"
+        m = re.match(r"PRGV:\s*(\d+),\s*(\d+),\s*(\d+)", line)
+        assert m
+        current, total, max_val = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
 
-    def test_second_title_includes_previous(self):
-        """Progress on title 2 should include completed title 1."""
-        titles = [
-            FakeTitle(title_index=0, file_size_bytes=400_000),
-            FakeTitle(title_index=1, file_size_bytes=600_000),
-        ]
-        total_bytes = 1_000_000
-        progress = RipProgress(percent=50.0, current_title=2, total_titles=2)
+        # `max` is MakeMKV's fixed progress scale; each bar is value/max.
+        assert max_val == 65536
+        assert current / max_val * 100 == pytest.approx(55.76, abs=0.1)
 
-        global_pct = calc_global_progress(progress, titles, total_bytes)
-        # title 1 done (400K) + 50% of title 2 (300K) = 700K / 1M = 70%
-        assert global_pct == pytest.approx(70.0, abs=0.1)
-
-    def test_all_titles_complete_reaches_100(self):
-        """After all titles report 100%, global_percent should be ~100%."""
-        titles = [
-            FakeTitle(title_index=0, file_size_bytes=500_000),
-            FakeTitle(title_index=1, file_size_bytes=500_000),
-        ]
-        total_bytes = 1_000_000
-        progress = RipProgress(percent=100.0, current_title=2, total_titles=2)
-
-        global_pct = calc_global_progress(progress, titles, total_bytes)
-        assert global_pct == pytest.approx(100.0, abs=0.1)
-
-    def test_zero_total_bytes_returns_zero(self):
-        """If total_job_bytes is 0, progress should be 0."""
-        titles = [FakeTitle(title_index=0, file_size_bytes=0)]
-        progress = RipProgress(percent=50.0, current_title=1, total_titles=1)
-
-        global_pct = calc_global_progress(progress, titles, 0)
-        assert global_pct == 0.0
+        # The removed code computed current/total, which exceeds 100% — the bug.
+        assert (current / total) * 100 > 100
