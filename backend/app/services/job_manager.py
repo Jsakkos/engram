@@ -1390,7 +1390,10 @@ class JobManager:
                             ):
                                 db_title.state = TitleState.FAILED
                                 db_title.match_details = json.dumps(
-                                    {"reason": "Ripping stalled — possible disc damage"}
+                                    {
+                                        "reason": "Ripping stalled — no progress, "
+                                        "title skipped. The disc may be dirty or damaged."
+                                    }
                                 )
                                 logger.warning(
                                     f"Job {safe_job}: title {db_title.title_index} "

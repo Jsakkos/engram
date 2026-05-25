@@ -36,6 +36,16 @@ def _to_drive_spec(drive: str) -> str:
     return drive
 
 
+def _is_stalled(now: float, last_progress: float, timeout: float) -> bool:
+    """Whether a rip is stalled: no progress for `timeout` seconds.
+
+    "Progress" is any liveness signal — output-file growth OR MakeMKV stdout
+    activity — recorded in ``last_progress``. A tiny track that has finished
+    writing but is still emitting progress lines is therefore NOT stalled.
+    """
+    return (now - last_progress) >= timeout
+
+
 def _extract_created_mkv(line: str, output_dir: Path) -> Path | None:
     """Extract the created .mkv path from a MakeMKV output line, if present."""
     if ".mkv" not in line or "created" not in line:
@@ -495,17 +505,23 @@ class MakeMKVExtractor:
             prgc_current_title: int = 1
             # Tracks which commands were terminated due to stall detection
             stalled_commands: set[int] = set()
+            # Liveness timestamp shared with the stdout reader. It is bumped both on
+            # MakeMKV progress lines (see PRGC/PRGV parsing below) and on output-file
+            # growth, so a small/fast track that has finished writing but is still
+            # being finalized — while MakeMKV keeps emitting progress — is not flagged
+            # as stalled. Single-element list write/read is atomic under the GIL.
+            last_progress = [time.monotonic()]
 
             def _stall_watchdog(proc, watch_dir, timeout, poll_interval=5.0):
-                """Kill MakeMKV if no file growth for timeout seconds.
+                """Terminate MakeMKV if it shows no liveness for `timeout` seconds.
 
-                Runs in a daemon thread alongside each MakeMKV subprocess.
-                Monitors .mkv file sizes in the output directory. If no file
-                grows for `timeout` seconds, terminates the process so the
-                command loop can skip to the next title.
+                Runs in a daemon thread alongside each MakeMKV subprocess. Liveness
+                is output-file growth OR MakeMKV stdout activity (recorded in
+                ``last_progress`` by the reader loop). Using stdout — not file growth
+                alone — avoids false positives on tiny tracks that finish writing in
+                one burst while MakeMKV is still emitting progress.
                 """
                 prev_sizes: dict[str, int] = {}
-                stall_start = None
 
                 while proc.poll() is None:
                     time.sleep(poll_interval)
@@ -522,39 +538,34 @@ class MakeMKVExtractor:
                     except OSError:
                         continue
 
-                    # Check if any file grew since last poll
-                    any_growth = False
+                    # File growth counts as liveness.
                     for name, size in current_sizes.items():
                         if size > prev_sizes.get(name, 0):
-                            any_growth = True
+                            last_progress[0] = time.monotonic()
                             break
 
-                    if current_sizes and not any_growth:
-                        if stall_start is None:
-                            stall_start = time.monotonic()
-                        elif time.monotonic() - stall_start >= timeout:
-                            logger.warning(
-                                f"Ripping stall detected: no file growth for "
-                                f"{timeout}s. Terminating MakeMKV process "
-                                f"(command {current_title_idx}/{len(commands)})"
+                    if _is_stalled(time.monotonic(), last_progress[0], timeout):
+                        logger.warning(
+                            f"Ripping stall detected: no progress for "
+                            f"{timeout:.0f}s. Terminating MakeMKV process "
+                            f"(command {current_title_idx}/{len(commands)})"
+                        )
+                        stalled_commands.add(current_title_idx)
+                        # Fire error callback immediately so the UI
+                        # shows the title as FAILED right away
+                        if title_error_callback:
+                            _safe_callback(
+                                title_error_callback,
+                                current_title_idx,
+                                f"Ripping stalled — no progress for {timeout:.0f}s, "
+                                "title skipped. The disc may be dirty or damaged.",
+                                label="title_error_callback",
                             )
-                            stalled_commands.add(current_title_idx)
-                            # Fire error callback immediately so the UI
-                            # shows the title as FAILED right away
-                            if title_error_callback:
-                                _safe_callback(
-                                    title_error_callback,
-                                    current_title_idx,
-                                    "Ripping stalled — possible disc damage",
-                                    label="title_error_callback",
-                                )
-                            try:
-                                proc.terminate()
-                            except (ProcessLookupError, PermissionError):
-                                pass
-                            return
-                    else:
-                        stall_start = None
+                        try:
+                            proc.terminate()
+                        except (ProcessLookupError, PermissionError):
+                            pass
+                        return
 
                     prev_sizes = current_sizes
 
@@ -583,6 +594,8 @@ class MakeMKVExtractor:
                     # Start stall watchdog thread if timeout is configured
                     watchdog_thread = None
                     if stall_timeout and stall_timeout > 0:
+                        # Fresh liveness baseline for this title's watchdog.
+                        last_progress[0] = time.monotonic()
                         watchdog_thread = threading.Thread(
                             target=_stall_watchdog,
                             args=(process, output_dir, stall_timeout),
@@ -601,6 +614,11 @@ class MakeMKVExtractor:
                             continue
 
                         output_lines.append(line)
+
+                        # MakeMKV progress codes are liveness — feed the stall
+                        # watchdog so a tiny track being finalized isn't killed.
+                        if line.startswith(("PRGV:", "PRGC:", "PRGT:")):
+                            last_progress[0] = time.monotonic()
 
                         # Parse progress messages
                         if line.startswith("PRGC:"):
