@@ -19,7 +19,7 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
-from app.core.extractor import STALL_FAILURE_REASON, MakeMKVExtractor, RipProgress
+from app.core.extractor import STALL_FAILURE_REASON, MakeMKVExtractor
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
@@ -538,6 +538,25 @@ class JobManager:
             self._last_activity.pop(job_id, None)
         else:
             self._last_activity[job_id] = time.monotonic()
+
+    @staticmethod
+    def _has_complete_output(output_dir: Path, title_index: int) -> bool:
+        """Whether a non-empty ``*_tNN.mkv`` for this title exists in staging.
+
+        Used by the one-pass rip fallback to tell which selected titles a single
+        'all' invocation actually produced (vs. ones it never reached after a
+        stall), so only the truly-missing titles are re-ripped individually.
+        """
+        for mkv in output_dir.glob(f"*_t{title_index:02d}.mkv"):
+            try:
+                if mkv.stat().st_size > 0:
+                    return True
+            except OSError:
+                # File vanished or is unreadable between glob and stat (e.g.
+                # MakeMKV still finalizing). Treat as "not yet complete" and
+                # keep scanning the remaining matches.
+                continue
+        return False
 
     @staticmethod
     def _find_title_file(title: DiscTitle, staging: Path | None) -> Path | None:
@@ -1092,86 +1111,8 @@ class JobManager:
             speed_calc = SpeedCalculator(total_job_bytes)
 
             _titles_marked_ripping: set[int] = set()
-            _last_title_idx: int | None = None
-            _title_file_cache: dict[int, Path] = {}
             _progress_lock = asyncio.Lock()
             _background_tasks: set[asyncio.Task] = set()
-
-            # Progress callback
-            async def progress_callback(progress: RipProgress) -> None:
-                nonlocal _last_title_idx
-
-                async with _progress_lock:
-                    logger.debug(
-                        f"Job {job_id}: PRGV progress update — "
-                        f"title={progress.current_title}, percent={progress.percent:.1f}%, "
-                        f"total_titles={progress.total_titles}"
-                    )
-                    current_idx = progress.current_title
-
-                    active_title_size = 0
-                    active_title = None
-
-                    if 0 <= (current_idx - 1) < len(sorted_titles):
-                        active_title = sorted_titles[current_idx - 1]
-                        active_title_size = active_title.file_size_bytes
-
-                    current_title_bytes = int((progress.percent / 100.0) * active_title_size)
-
-                    if _last_title_idx is not None and current_idx != _last_title_idx:
-                        prev_list_idx = _last_title_idx - 1
-                        if 0 <= prev_list_idx < len(sorted_titles):
-                            prev_title = sorted_titles[prev_list_idx]
-                            await self._transition_title_out_of_ripping(
-                                job_id,
-                                prev_title.id,
-                                content_type,
-                                expected_size=prev_title.file_size_bytes,
-                                actual_size=prev_title.file_size_bytes,
-                                on_error_level=logging.WARNING,
-                            )
-                    _last_title_idx = current_idx
-
-                    if active_title and active_title.id not in _titles_marked_ripping:
-                        async with async_session() as prog_session:
-                            title_db = await prog_session.get(DiscTitle, active_title.id)
-                            if title_db and title_db.state == TitleState.PENDING:
-                                title_db.state = TitleState.RIPPING
-                                prog_session.add(title_db)
-                                await prog_session.commit()
-                                await ws_manager.broadcast_title_update(
-                                    job_id,
-                                    title_db.id,
-                                    TitleState.RIPPING.value,
-                                    duration_seconds=title_db.duration_seconds,
-                                    file_size_bytes=title_db.file_size_bytes,
-                                    expected_size_bytes=title_db.file_size_bytes,
-                                    actual_size_bytes=0,
-                                )
-                        _titles_marked_ripping.add(active_title.id)
-
-                    if active_title and active_title.file_size_bytes:
-                        if active_title.id in _titles_marked_ripping:
-                            actual_bytes = current_title_bytes
-                            tidx = active_title.title_index
-                            try:
-                                if tidx in _title_file_cache:
-                                    actual_bytes = _title_file_cache[tidx].stat().st_size
-                                else:
-                                    matches = list(output_dir.glob(f"*_t{tidx:02d}.mkv"))
-                                    if matches:
-                                        _title_file_cache[tidx] = matches[0]
-                                        actual_bytes = matches[0].stat().st_size
-                            except OSError:
-                                # Best-effort size probe; a missing/locked file is fine.
-                                pass
-                            await ws_manager.broadcast_title_update(
-                                job_id,
-                                active_title.id,
-                                TitleState.RIPPING.value,
-                                expected_size_bytes=active_title.file_size_bytes,
-                                actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
-                            )
 
             # Title complete callback — called from extractor thread
             def on_title_complete(idx: int, path: Path):
@@ -1214,23 +1155,27 @@ class JobManager:
             rip_indices = [t.title_index for t in sorted_titles]
             stall_timeout = rip_config.ripping_stall_timeout if rip_config else 120.0
 
-            # Pass title_indices=None (rip everything) only when no stall
-            # timeout is set and every disc title is selected.
-            if not (stall_timeout and stall_timeout > 0) and len(rip_indices) == len(disc_titles):
+            # Rip the whole disc in a single MakeMKV invocation when every title
+            # is selected — one disc open instead of one per title. MakeMKV
+            # re-opens and re-scans the disc on every invocation, so per-title
+            # looping thrashes a disc with many titles/extras. If the single pass
+            # stalls or errors and leaves titles missing, they are recovered
+            # individually after the rip (one-pass + per-title fallback below).
+            rip_all = len(rip_indices) == len(disc_titles)
+            if rip_all:
                 rip_indices = None
 
-            def _fire_progress(p):
-                self._note_activity(job_id)
-                t = asyncio.create_task(progress_callback(p))
-                _background_tasks.add(t)
-                t.add_done_callback(_background_tasks.discard)
-
-            # Filesystem-based progress monitor
+            # Filesystem-based progress monitor — the single source of truth for
+            # per-title and overall rip progress. (MakeMKV's PRGC/PRGV robot
+            # codes carry no usable per-title index, so the output-file sizes are
+            # the only signal that reliably maps to a specific title.)
             async def _filesystem_progress_monitor():
                 _prev_file_sizes: dict[int, int] = {}
 
                 while True:
-                    await asyncio.sleep(2.0)
+                    # Poll faster than a title can rip so sub-2s extras still get
+                    # a visible RIPPING frame instead of flashing past unnoticed.
+                    await asyncio.sleep(1.0)
                     try:
                         async with _progress_lock:
                             total_done = 0
@@ -1250,6 +1195,15 @@ class JobManager:
                                 prev = _prev_file_sizes.get(t.id, 0)
                                 if fsize > prev and fsize > 0:
                                     active_title_id = t.id
+
+                            # Only active file growth is evidence of rip progress
+                            # (the heartbeat the removed PRGV progress callback used
+                            # to provide). Disc-scan at the start of an 'all' pass
+                            # produces no file growth, but the watchdog seeds its
+                            # clock on first encounter of a RIPPING job, so no
+                            # heartbeat is needed until the first write.
+                            if active_title_id is not None:
+                                self._note_activity(job_id)
 
                             for i, t in enumerate(sorted_titles):
                                 if t.id not in file_sizes:
@@ -1356,7 +1310,6 @@ class JobManager:
                     drive_id,
                     output_dir,
                     title_indices=rip_indices,
-                    progress_callback=_fire_progress,
                     title_complete_callback=on_title_complete,
                     stall_timeout=stall_timeout,
                     title_error_callback=on_title_error,
@@ -1371,6 +1324,55 @@ class JobManager:
                     # Expected: the monitor task was just cancelled above.
                     pass
 
+            # One-pass + per-title fallback: a single 'all' pass that stalls or
+            # errors leaves later titles unripped. Re-rip just the still-missing
+            # selected titles individually so one bad title can't lose the rest of
+            # the disc. (Live progress isn't refreshed during this rare recovery
+            # pass — titles still finalize via the title-complete callback, and
+            # reconcile_stuck_titles is the final safety net.)
+            stall_title_list = sorted_titles
+            if rip_all:
+                async with async_session() as chk_session:
+                    missing = []
+                    for t in sorted_titles:
+                        db_t = await chk_session.get(DiscTitle, t.id)
+                        if (
+                            db_t
+                            and db_t.state in (TitleState.PENDING, TitleState.RIPPING)
+                            and not self._has_complete_output(output_dir, t.title_index)
+                        ):
+                            missing.append(t)
+                if missing:
+                    logger.warning(
+                        f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
+                        f"missing; re-ripping individually: "
+                        f"{[t.title_index for t in missing]}"
+                    )
+                    # The fs monitor (the sole stale-job heartbeat during ripping)
+                    # was cancelled above, so reset the watchdog clock to give the
+                    # fallback the full timeout_ripping_seconds window — otherwise a
+                    # slow per-title recovery could trip reconcile_and_advance.
+                    self._note_activity(job_id)
+                    result = await self._extractor.rip_titles(
+                        drive_id,
+                        output_dir,
+                        title_indices=[t.title_index for t in missing],
+                        title_complete_callback=on_title_complete,
+                        stall_timeout=stall_timeout,
+                        title_error_callback=on_title_error,
+                        log_dir=None,  # keep the informative all-pass rip.log
+                        job_id=job_id,
+                    )
+                    # Stall bookkeeping below now refers to the fallback's per-title
+                    # command order, not the original full title list.
+                    stall_title_list = missing
+                else:
+                    # The single pass produced every title. 'all'-mode stall
+                    # bookkeeping uses command indices that don't map to titles,
+                    # so discard it — nothing actually failed.
+                    result.stalled_titles = None
+                    result.success = True
+
             if not result.success and not result.stalled_titles:
                 await self._fail_job(job_id, result.error_message)
                 return
@@ -1380,8 +1382,8 @@ class JobManager:
                 async with async_session() as stall_session:
                     for cmd_idx in result.stalled_titles:
                         list_idx = cmd_idx - 1
-                        if 0 <= list_idx < len(sorted_titles):
-                            stalled_title = sorted_titles[list_idx]
+                        if 0 <= list_idx < len(stall_title_list):
+                            stalled_title = stall_title_list[list_idx]
                             db_title = await stall_session.get(DiscTitle, stalled_title.id)
                             if db_title and db_title.state not in (
                                 TitleState.COMPLETED,
