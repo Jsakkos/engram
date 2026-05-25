@@ -48,7 +48,7 @@ def resolve_startup_host(default_host: str = LOCALHOST) -> str:
 
         allow_lan = bool(get_config_sync().allow_lan_access)
     except Exception as e:  # noqa: BLE001 — startup must never crash on a config read
-        logger.warning("Could not read LAN access setting, binding localhost: %s", e)
+        logger.warning("Could not read LAN access setting, binding localhost: %s", e, exc_info=True)
         allow_lan = False
     return compute_effective_host(
         allow_lan=allow_lan, env_host=_env_host(), default_host=default_host

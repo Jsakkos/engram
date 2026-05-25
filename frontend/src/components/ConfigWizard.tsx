@@ -158,9 +158,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         }
     }, []);
 
-    // Fetch network info once when the LAN toggle is first enabled.
+    // Fetch network info when the LAN toggle is enabled; clear stale data when disabled.
     useEffect(() => {
-        if (config.allowLanAccess) fetchNetworkInfo();
+        if (config.allowLanAccess) {
+            fetchNetworkInfo();
+        } else {
+            setNetworkInfo(null);
+        }
     }, [config.allowLanAccess, fetchNetworkInfo]);
 
     // Load existing config on mount
@@ -1037,7 +1041,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                                     <button
                                                         type="button"
                                                         className="lan-copy-btn"
-                                                        onClick={() => navigator.clipboard.writeText(networkInfo.lan_url as string)}
+                                                        onClick={() => {
+                                                            navigator.clipboard?.writeText(networkInfo.lan_url as string).catch(() => {
+                                                                // HTTP context (LAN): clipboard API unavailable; select text for manual copy
+                                                                const el = document.querySelector('.lan-url') as HTMLElement;
+                                                                if (el) window.getSelection()?.selectAllChildren(el);
+                                                            });
+                                                        }}
                                                     >
                                                         Copy
                                                     </button>
@@ -1061,7 +1071,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                                     <button
                                                         type="button"
                                                         className="lan-copy-btn"
-                                                        onClick={() => navigator.clipboard.writeText(networkInfo.lan_url as string)}
+                                                        onClick={() => {
+                                                            navigator.clipboard?.writeText(networkInfo.lan_url as string).catch(() => {
+                                                                // HTTP context (LAN): clipboard API unavailable; select text for manual copy
+                                                                const el = document.querySelector('.lan-url') as HTMLElement;
+                                                                if (el) window.getSelection()?.selectAllChildren(el);
+                                                            });
+                                                        }}
                                                     >
                                                         Copy
                                                     </button>

@@ -1023,7 +1023,7 @@ async def get_network_info(request: Request) -> NetworkInfoResponse:
     port = getattr(request.app.state, "bound_port", settings.port)
 
     active_lan_bound = bound_host == ALL_INTERFACES
-    lan_ip = get_lan_ip()
+    lan_ip = await asyncio.to_thread(get_lan_ip)
     lan_url = f"http://{lan_ip}:{port}" if lan_ip else None
 
     return NetworkInfoResponse(
