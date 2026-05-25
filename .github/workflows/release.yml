@@ -188,7 +188,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-13 # Intel x64
+          - runner: macos-15-intel # Intel x64
             arch: x64
             file_arch: x86_64
           - runner: macos-14 # Apple Silicon arm64
