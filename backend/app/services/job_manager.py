@@ -552,7 +552,10 @@ class JobManager:
                 if mkv.stat().st_size > 0:
                     return True
             except OSError:
-                pass
+                # File vanished or is unreadable between glob and stat (e.g.
+                # MakeMKV still finalizing). Treat as "not yet complete" and
+                # keep scanning the remaining matches.
+                continue
         return False
 
     @staticmethod
@@ -1193,10 +1196,12 @@ class JobManager:
                                 if fsize > prev and fsize > 0:
                                     active_title_id = t.id
 
-                            # File growth is rip liveness — reset the stale-job
-                            # watchdog clock so it never auto-advances an actively
-                            # ripping job (the heartbeat the removed PRGV progress
-                            # callback used to provide).
+                            # Only active file growth is evidence of rip progress
+                            # (the heartbeat the removed PRGV progress callback used
+                            # to provide). Disc-scan at the start of an 'all' pass
+                            # produces no file growth, but the watchdog seeds its
+                            # clock on first encounter of a RIPPING job, so no
+                            # heartbeat is needed until the first write.
                             if active_title_id is not None:
                                 self._note_activity(job_id)
 
@@ -1343,6 +1348,11 @@ class JobManager:
                         f"missing; re-ripping individually: "
                         f"{[t.title_index for t in missing]}"
                     )
+                    # The fs monitor (the sole stale-job heartbeat during ripping)
+                    # was cancelled above, so reset the watchdog clock to give the
+                    # fallback the full timeout_ripping_seconds window — otherwise a
+                    # slow per-title recovery could trip reconcile_and_advance.
+                    self._note_activity(job_id)
                     result = await self._extractor.rip_titles(
                         drive_id,
                         output_dir,
@@ -1361,6 +1371,7 @@ class JobManager:
                     # bookkeeping uses command indices that don't map to titles,
                     # so discard it — nothing actually failed.
                     result.stalled_titles = None
+                    result.success = True
 
             if not result.success and not result.stalled_titles:
                 await self._fail_job(job_id, result.error_message)
