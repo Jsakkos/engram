@@ -270,10 +270,17 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
       - name: uv sync must reject Python 3.14
         shell: bash
         run: |
-          uv python install 3.14
+          # If 3.14 can't be provisioned (network, indexing, uv version gap) the
+          # guard can't run — skip rather than fail for an unrelated reason.
+          if ! uv python install 3.14; then
+            echo "Python 3.14 unavailable via uv — skipping guard."
+            exit 0
+          fi
           if uv sync --no-install-project --python 3.14; then
             echo "ERROR: uv sync unexpectedly succeeded on Python 3.14."
             echo "The requires-python cap (<3.14) is missing or onnxruntime now ships cp314 wheels."

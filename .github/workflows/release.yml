@@ -76,7 +76,8 @@ jobs:
               Get-Content smoke-stderr.log -ErrorAction SilentlyContinue
               throw "executable never became ready"
             }
-            # Fork-bomb regression guard: only the single server process should exist.
+            # Fork-bomb regression guard: a healthy onedir server is ~1 process;
+            # a spawn fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
             $count = (Get-Process engram -ErrorAction SilentlyContinue | Measure-Object).Count
             Write-Host "engram process count: $count"
             if ($count -gt 2) { throw "too many engram processes ($count) - possible multiprocessing fork-bomb" }
@@ -163,7 +164,8 @@ jobs:
             echo "executable never became ready"
             exit 1
           fi
-          # Fork-bomb regression guard: only the single server process should exist.
+          # Fork-bomb regression guard: a healthy onedir server is ~1 process;
+          # a spawn fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
           count=$(pgrep -f 'dist/engram/engram' | wc -l | tr -d ' ')
           echo "engram process count: $count"
           if [ "$count" -gt 2 ]; then
@@ -257,7 +259,8 @@ jobs:
             echo "executable never became ready"
             exit 1
           fi
-          # Fork-bomb regression guard: only the single server process should exist.
+          # Fork-bomb regression guard: a healthy onedir server is ~1 process;
+          # a spawn fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
           count=$(pgrep -f 'dist/engram/engram' | wc -l | tr -d ' ')
           echo "engram process count: $count"
           if [ "$count" -gt 2 ]; then
