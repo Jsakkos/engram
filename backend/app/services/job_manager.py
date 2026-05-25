@@ -20,6 +20,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import STALL_FAILURE_REASON, MakeMKVExtractor
+from app.core.log_context import with_job_log_context
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
@@ -339,7 +340,9 @@ class JobManager:
 
                 logger.info(f"Created job {job.id} for disc in {drive_letter}")
 
-                task = asyncio.create_task(self._identification.identify_disc(job.id))
+                task = asyncio.create_task(
+                    with_job_log_context(job.id, self._identification.identify_disc(job.id))
+                )
                 task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
                 # Stamp the cooldown only after the task is scheduled, so a failure
@@ -386,7 +389,9 @@ class JobManager:
 
         await event_broadcaster.broadcast_drive_inserted("staging", volume_label)
 
-        task = asyncio.create_task(self._identification.identify_from_staging(job_id))
+        task = asyncio.create_task(
+            with_job_log_context(job_id, self._identification.identify_from_staging(job_id))
+        )
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
@@ -404,7 +409,7 @@ class JobManager:
         """Set a user-provided name for an unlabeled disc and resume ripping."""
         await self._identification.set_name_and_resume(job_id, name, content_type_str, season)
 
-        task = asyncio.create_task(self._run_ripping(job_id))
+        task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
@@ -423,10 +428,10 @@ class JobManager:
 
         if result["has_ripped"]:
             # Post-rip: re-run matching for existing files
-            task = asyncio.create_task(self._rerun_matching(job_id))
+            task = asyncio.create_task(with_job_log_context(job_id, self._rerun_matching(job_id)))
         else:
             # Pre-rip: start ripping with corrected metadata
-            task = asyncio.create_task(self._run_ripping(job_id))
+            task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
 
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
@@ -481,7 +486,10 @@ class JobManager:
                             file_path = staging / file_path.name
                         if file_path.exists():
                             match_task = asyncio.create_task(
-                                self._matching.match_single_file(job_id, title.id, file_path)
+                                with_job_log_context(
+                                    job_id,
+                                    self._matching.match_single_file(job_id, title.id, file_path),
+                                )
                             )
                             match_task.add_done_callback(
                                 lambda t, jid=job_id, tid=title.id: (
@@ -507,7 +515,7 @@ class JobManager:
             job.updated_at = datetime.now(UTC)
             await session.commit()
 
-            task = asyncio.create_task(self._run_ripping(job_id))
+            task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
             task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
             self._active_jobs[job_id] = task
 
@@ -653,7 +661,9 @@ class JobManager:
                     await self._finalization.check_job_completion(session, job_id)
             if not applied:
                 task = asyncio.create_task(
-                    self._matching.match_single_file(job_id, title_id, file_path)
+                    with_job_log_context(
+                        job_id, self._matching.match_single_file(job_id, title_id, file_path)
+                    )
                 )
                 task.add_done_callback(
                     lambda t, jid=job_id, tid=title_id: self._matching.on_match_task_done(
@@ -1700,7 +1710,9 @@ class JobManager:
                     await self._finalization.check_job_completion(session, job_id)
                 else:
                     task = asyncio.create_task(
-                        self._matching.match_single_file(job_id, title.id, path)
+                        with_job_log_context(
+                            job_id, self._matching.match_single_file(job_id, title.id, path)
+                        )
                     )
                     task.add_done_callback(
                         lambda t, jid=job_id, tid=title.id: self._matching.on_match_task_done(

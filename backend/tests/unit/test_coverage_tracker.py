@@ -102,6 +102,59 @@ class TestIsDone:
 
 
 @pytest.mark.unit
+class TestGetShowCoverage:
+    def test_returns_all_seasons_ordered(self):
+        coverage_tracker.record(1396, 2, total=13, covered=4)
+        coverage_tracker.record(1396, 1, total=7, covered=7)
+        rows = coverage_tracker.get_show_coverage(1396)
+        assert [r["season"] for r in rows] == [1, 2]
+        assert rows[0]["covered_episodes"] == 7
+        assert rows[1]["coverage_ratio"] == pytest.approx(4 / 13)
+
+    def test_unknown_show_returns_empty(self):
+        assert coverage_tracker.get_show_coverage(42424242) == []
+
+    def test_returns_empty_when_db_absent(self, monkeypatch, tmp_path):
+        from app.matcher import tmdb_persistent_cache
+
+        tmdb_persistent_cache.close()
+        monkeypatch.setattr(
+            tmdb_persistent_cache, "CACHE_DB_PATH", tmp_path / "never_created.sqlite"
+        )
+        assert coverage_tracker.get_show_coverage(1396) == []
+
+
+@pytest.mark.unit
+class TestGetCacheStatus:
+    def test_none_tmdb_id_is_empty(self):
+        status = coverage_tracker.get_cache_status(None)
+        assert status == {
+            "coverage": [],
+            "tmdb_show_cached": False,
+            "tmdb_season_cached": False,
+        }
+
+    def test_reports_coverage_and_tmdb_presence(self):
+        from app.matcher import tmdb_persistent_cache
+
+        coverage_tracker.record(1396, 1, total=7, covered=1)
+        tmdb_persistent_cache.put("show_details:1396", {"name": "Breaking Bad"}, ttl_seconds=3600)
+        tmdb_persistent_cache.put("season:1396:1", 7, ttl_seconds=3600)
+
+        status = coverage_tracker.get_cache_status(1396, season=1)
+        assert status["tmdb_show_cached"] is True
+        assert status["tmdb_season_cached"] is True
+        assert [r["season"] for r in status["coverage"]] == [1]
+
+    def test_uncached_tmdb_reports_false(self):
+        coverage_tracker.record(2, 1, total=10, covered=2)
+        status = coverage_tracker.get_cache_status(2, season=1)
+        assert status["tmdb_show_cached"] is False
+        assert status["tmdb_season_cached"] is False
+        assert len(status["coverage"]) == 1
+
+
+@pytest.mark.unit
 class TestClear:
     def test_clear_all(self):
         coverage_tracker.record(10, 1, 5, 0)

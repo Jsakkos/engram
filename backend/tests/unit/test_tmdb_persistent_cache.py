@@ -75,6 +75,37 @@ class TestClear:
 
 
 @pytest.mark.unit
+class TestIsCached:
+    def test_true_after_put(self):
+        tmdb_persistent_cache.put("show_details:1396", {"name": "BB"}, ttl_seconds=3600)
+        assert tmdb_persistent_cache.is_cached("show_details:1396") is True
+
+    def test_false_for_missing_key(self):
+        tmdb_persistent_cache.put("show_details:1", {"a": 1}, ttl_seconds=3600)
+        assert tmdb_persistent_cache.is_cached("show_details:999") is False
+
+    def test_false_for_expired_entry_without_deleting(self, monkeypatch):
+        fake_time = {"value": 0.0}
+        monkeypatch.setattr(tmdb_persistent_cache.time, "time", lambda: fake_time["value"])
+        tmdb_persistent_cache.put("season:1:1", 7, ttl_seconds=10)
+        fake_time["value"] = 11.0
+        assert tmdb_persistent_cache.is_cached("season:1:1") is False
+        # Read-only: the expired row is NOT deleted (unlike get()).
+        conn = tmdb_persistent_cache._get_conn()
+        row = conn.execute(
+            "SELECT 1 FROM tmdb_cache WHERE cache_key = ?", ("season:1:1",)
+        ).fetchone()
+        assert row is not None
+
+    def test_false_when_db_absent_without_creating_it(self, monkeypatch, tmp_path):
+        tmdb_persistent_cache.close()
+        missing = tmp_path / "never_created.sqlite"
+        monkeypatch.setattr(tmdb_persistent_cache, "CACHE_DB_PATH", missing)
+        assert tmdb_persistent_cache.is_cached("show_details:1") is False
+        assert not missing.exists()
+
+
+@pytest.mark.unit
 class TestConcurrentReads:
     def test_many_threads_read_simultaneously(self):
         """The W4 scheduler runs one worker per provider; each reads TMDB

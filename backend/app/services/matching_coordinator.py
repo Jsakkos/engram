@@ -14,6 +14,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
 from app.core.errors import MatchingError
+from app.core.log_context import job_log_context
 from app.database import async_session
 from app.models import DiscJob
 from app.models.disc_job import DiscTitle, TitleState
@@ -321,6 +322,26 @@ class MatchingCoordinator:
         )
 
     async def match_single_file(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> None:
+        """Run matching for a single ripped file, tagging logs with the job id.
+
+        Self-tags so every matching log line carries ``job=<id>`` regardless of
+        how this is reached — task spawn, direct ``await`` from an API handler
+        (deep re-match / conflict resolution), or via the injected callback used
+        by the identification/finalization coordinators.
+        """
+        with job_log_context(job_id):
+            await self._run_match_single_file(
+                job_id, title_id, file_path, num_points, min_vote_count
+            )
+
+    async def _run_match_single_file(
         self,
         job_id: int,
         title_id: int,

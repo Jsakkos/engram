@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.websocket import manager as ws_manager
+from app.core.log_context import with_job_log_context
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -163,7 +164,10 @@ class SimulationService:
             if content_type == ContentType.TV and detected_title and detected_season:
                 self._subtitle_ready[job.id] = asyncio.Event()
                 self._subtitle_tasks[job.id] = asyncio.create_task(
-                    self._simulate_subtitle_download(job.id, len(title_params), detected_title)
+                    with_job_log_context(
+                        job.id,
+                        self._simulate_subtitle_download(job.id, len(title_params), detected_title),
+                    )
                 )
                 logger.info(
                     f"Job {job.id}: starting simulated subtitle download for "
@@ -197,7 +201,10 @@ class SimulationService:
                 )
             elif simulate_ripping:
                 task = asyncio.create_task(
-                    self._simulate_ripping(job.id, titles, rip_speed_multiplier, content_type)
+                    with_job_log_context(
+                        job.id,
+                        self._simulate_ripping(job.id, titles, rip_speed_multiplier, content_type),
+                    )
                 )
                 task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
@@ -297,7 +304,10 @@ class SimulationService:
             if content_type == ContentType.TV and detected_title and detected_season:
                 self._subtitle_ready[job.id] = asyncio.Event()
                 self._subtitle_tasks[job.id] = asyncio.create_task(
-                    self._simulate_subtitle_download(job.id, len(title_params), detected_title)
+                    with_job_log_context(
+                        job.id,
+                        self._simulate_subtitle_download(job.id, len(title_params), detected_title),
+                    )
                 )
                 logger.info(
                     f"Job {job.id}: starting simulated subtitle download for "
@@ -305,7 +315,12 @@ class SimulationService:
                 )
 
             task = asyncio.create_task(
-                self._simulate_realistic_ripping(job.id, titles, content_type, rip_speed_multiplier)
+                with_job_log_context(
+                    job.id,
+                    self._simulate_realistic_ripping(
+                        job.id, titles, content_type, rip_speed_multiplier
+                    ),
+                )
             )
             self._active_jobs[job.id] = task
 
