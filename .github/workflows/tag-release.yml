@@ -44,3 +44,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Dispatch release workflow
+        # GITHUB_TOKEN-pushed tags don't fire push:tags workflows; dispatch explicitly.
+        # Guard matches the push step so we don't re-trigger builds on an existing tag.
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 5
+          gh workflow run release.yml \
+            --ref "${{ steps.version.outputs.tag }}" \
+            --field tag="${{ steps.version.outputs.tag }}"
