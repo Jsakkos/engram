@@ -149,8 +149,13 @@ class TestBundle:
 
     async def test_bundle_redacts_secrets(self, client, fake_tools, monkeypatch):
         secret = "eyJhbGciOiJIUzITESTsupersecretpayloadvalue1234567890"
+        # error_message lands in report.md (not just job-detail.json) — it must
+        # be sanitized too.
+        err_secret = "eyJERRORtokensecretvaluethatislongenough1234567890"
         monkeypatch.setattr("app.api.routes._read_job_tagged_logs", lambda *a, **k: ([], False))
-        job = await _seed_job(volume_label="SECRET_DISC")
+        job = await _seed_job(
+            volume_label="SECRET_DISC", error_message=f"rip failed: token={err_secret}"
+        )
         async with _unit_session_factory() as session:
             session.add(
                 DiscTitle(
@@ -168,6 +173,9 @@ class TestBundle:
         zf = zipfile.ZipFile(io.BytesIO(resp.content))
         combined = b"\n".join(zf.read(n) for n in zf.namelist())
         assert secret.encode() not in combined
+        # report.md error field is sanitized, not just job-detail.json.
+        report_md = zf.read("report.md")
+        assert err_secret.encode() not in report_md
         assert b"***REDACTED***" in combined
 
     async def test_bundle_404_for_missing_job(self, client, fake_tools):
@@ -206,6 +214,15 @@ class TestJobTaggedLogReader:
         lines, is_fallback = _read_job_tagged_logs(1234, log_path=log)
         assert is_fallback is True
         assert any("something broke" in ln for ln in lines)
+
+    def test_absent_log_marks_fallback(self, tmp_path):
+        from app.api.routes import _read_job_tagged_logs
+
+        # Missing log file: empty, but flagged as fallback so the bundle never
+        # mislabels "(no logs)" as job-specific.
+        lines, is_fallback = _read_job_tagged_logs(1, log_path=tmp_path / "nope.log")
+        assert lines == []
+        assert is_fallback is True
 
 
 def test_sanitize_obj_redacts_home_and_secrets():

@@ -485,11 +485,9 @@ class JobManager:
                         if not file_path.exists():
                             file_path = staging / file_path.name
                         if file_path.exists():
+                            # match_single_file self-tags the job log context.
                             match_task = asyncio.create_task(
-                                with_job_log_context(
-                                    job_id,
-                                    self._matching.match_single_file(job_id, title.id, file_path),
-                                )
+                                self._matching.match_single_file(job_id, title.id, file_path)
                             )
                             match_task.add_done_callback(
                                 lambda t, jid=job_id, tid=title.id: (
@@ -660,10 +658,9 @@ class JobManager:
                 if applied:
                     await self._finalization.check_job_completion(session, job_id)
             if not applied:
+                # match_single_file self-tags the job log context.
                 task = asyncio.create_task(
-                    with_job_log_context(
-                        job_id, self._matching.match_single_file(job_id, title_id, file_path)
-                    )
+                    self._matching.match_single_file(job_id, title_id, file_path)
                 )
                 task.add_done_callback(
                     lambda t, jid=job_id, tid=title_id: self._matching.on_match_task_done(
@@ -1709,10 +1706,9 @@ class JobManager:
                 if discdb_applied:
                     await self._finalization.check_job_completion(session, job_id)
                 else:
+                    # match_single_file self-tags the job log context.
                     task = asyncio.create_task(
-                        with_job_log_context(
-                            job_id, self._matching.match_single_file(job_id, title.id, path)
-                        )
+                        self._matching.match_single_file(job_id, title.id, path)
                     )
                     task.add_done_callback(
                         lambda t, jid=job_id, tid=title.id: self._matching.on_match_task_done(

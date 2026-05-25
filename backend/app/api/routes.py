@@ -1573,13 +1573,15 @@ def _read_job_tagged_logs(
     that case fall back to the recent global ERROR/CRITICAL tail and flag it.
     """
     log_path = log_path or (Path.home() / ".engram" / "engram.log")
+    # No file / unreadable → mark as fallback (not job-specific) so the bundle
+    # never labels empty/placeholder content as "log lines for this job".
     if not log_path.exists():
-        return ([], False)
+        return ([], True)
     try:
         raw = log_path.read_text(encoding="utf-8", errors="replace")
     except Exception:
         logger.warning(f"Failed to read log file for bundle: {log_path}", exc_info=True)
-        return (["(could not read log file)"], False)
+        return (["(could not read log file)"], True)
     token = f"| job={job_id} |"
     matched = [ln for ln in raw.splitlines() if token in ln]
     if matched:
@@ -1702,10 +1704,11 @@ async def generate_bug_report(
         if job:
             job_summary = {
                 "id": job.id,
-                "volume_label": job.volume_label,
+                # Sanitized: these flow into the GitHub issue title/body.
+                "volume_label": _sanitize_line(job.volume_label or ""),
                 "content_type": job.content_type.value if job.content_type else "unknown",
                 "state": job.state.value if job.state else "unknown",
-                "error": job.error_message,
+                "error": _sanitize_line(job.error_message) if job.error_message else None,
                 "created_at": str(job.created_at) if job.created_at else None,
                 "completed_at": str(job.completed_at) if job.completed_at else None,
             }
@@ -1789,7 +1792,7 @@ async def download_bug_report_bundle(
         "volume_label": _sanitize_line(job.volume_label or ""),
         "content_type": job.content_type.value if job.content_type else "unknown",
         "state": job.state.value if job.state else "unknown",
-        "error": job.error_message,
+        "error": _sanitize_line(job.error_message) if job.error_message else None,
     }
     report_md = _build_bundle_markdown(env, job_summary, safe_detail, cache_status, log_is_fallback)
 

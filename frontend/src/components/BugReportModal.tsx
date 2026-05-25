@@ -148,7 +148,9 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(objectUrl);
+      // Defer revocation: Safari/some Firefox start the download asynchronously
+      // and revoking synchronously cancels it, yielding a 0-byte file.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to download bundle.");
     } finally {
