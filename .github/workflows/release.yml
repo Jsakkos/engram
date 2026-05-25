@@ -303,6 +303,7 @@ jobs:
         with:
           draft: false
           generate_release_notes: true
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
             engram-windows-x64.zip
             engram-linux-x64.tar.gz
