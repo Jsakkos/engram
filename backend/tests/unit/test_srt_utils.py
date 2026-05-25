@@ -20,3 +20,8 @@ class TestCleanText:
         # Mirror of the matcher path: "{ Sighs]" style annotations from sources
         # like tvsubtitles.net must be stripped despite the mismatched delimiters.
         assert clean_text("{ Sighs] Hello there") == "hello there"
+
+    def test_leaves_unclosed_annotation_words(self):
+        # No closing delimiter -> not stripped. Unlike _clean_subtitle_text,
+        # clean_text has no special-char scrub, so the stray "{" survives too.
+        assert clean_text("{ Scoffs I haven't slept") == "{ scoffs i haven't slept"
