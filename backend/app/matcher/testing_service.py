@@ -118,6 +118,22 @@ def get_last_quota() -> dict | None:
     return _OS.last_quota
 
 
+def probe_os_quota(config) -> int | None:
+    """Log in (cached) and return remaining daily OpenSubtitles downloads.
+
+    Public wrapper over ``_get_os_client`` for callers that only want to
+    display quota up front (e.g. the cache build script's startup banner).
+    Returns the remaining download count, or None when OpenSubtitles is
+    unavailable — missing package/credentials, login failure, or quota
+    already exhausted. The login + ``/infos/user`` probe does NOT consume
+    download quota, and this is best-effort: it never raises.
+    """
+    if _get_os_client(config) is None:
+        return None
+    quota = get_last_quota()
+    return quota.get("remaining") if quota else None
+
+
 def _get_os_client(config) -> object | None:
     """Return a logged-in OpenSubtitles client, cached for the process.
 

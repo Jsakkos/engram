@@ -104,6 +104,41 @@ def generate_subtitle_patterns(series_name: str, season: int, episode: int) -> l
     return patterns
 
 
+# "S01E01" (single) -- the only shape the harvester writes. A multi-episode file
+# ("S01E01E02") is ambiguous to vectorize as one row, so it's skipped by callers
+# that pack one vector per file. Shared with scripts/pack_subtitle_cache.py so the
+# build harvester and the disk-only packer agree on what a cached episode looks like.
+SINGLE_EP_RE = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,4})\.srt$")
+MULTI_EP_RE = re.compile(r"[Ss]\d{1,2}[Ee]\d{1,4}[Ee]\d{1,4}")
+
+
+def discover_season_srts(series_cache_dir: str | Path, season: int) -> list[tuple[str, Path]]:
+    """Return ``[(code, path)]`` for single-episode SRTs of ``season`` on disk.
+
+    Globs ``series_cache_dir`` for ``*.srt`` files, keeps only single-episode
+    files belonging to ``season``, and returns them sorted by episode number
+    with ``code`` normalized to ``S%02dE%02d``. Multi-episode and unparseable
+    filenames are ignored. Returns ``[]`` if the directory is missing — the
+    caller treats that as "not actually on disk" and falls back to harvesting.
+    """
+    d = Path(series_cache_dir)
+    if not d.is_dir():
+        return []
+    found: list[tuple[int, str, Path]] = []
+    for srt in d.glob("*.srt"):
+        if MULTI_EP_RE.search(srt.name):
+            continue
+        m = SINGLE_EP_RE.search(srt.name)
+        if not m:
+            continue
+        s, e = int(m.group(1)), int(m.group(2))
+        if s != season:
+            continue
+        found.append((e, f"S{s:02d}E{e:02d}", srt))
+    found.sort(key=lambda x: x[0])
+    return [(code, path) for _e, code, path in found]
+
+
 def find_existing_subtitle(
     series_cache_dir: str, series_name: str, season: int, episode: int
 ) -> Path | None:
