@@ -14,6 +14,20 @@ from loguru import logger
 
 from app.config import settings
 
+# Job-tagged formats. ``{extra[job_id]}`` is always present because
+# ``setup_logging`` configures a default of ``"-"`` (overridden per job via
+# ``logger.contextualize(job_id=...)``). The ``job=<id>`` token is what the
+# diagnostics bundle greps to extract a single job's lines.
+_FILE_LOG_FORMAT = (
+    "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | job={extra[job_id]} | "
+    "{name}:{function}:{line} - {message}"
+)
+_CONSOLE_LOG_FORMAT = (
+    "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | "
+    "<magenta>job={extra[job_id]}</magenta> | "
+    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+)
+
 
 class InterceptHandler(logging.Handler):
     """
@@ -56,11 +70,15 @@ def setup_logging() -> None:
     # configure loguru
     logger.remove()  # Remove default handler
 
+    # Default `extra` so the `{extra[job_id]}` placeholder is always present;
+    # per-job code overrides it via `logger.contextualize(job_id=...)`.
+    logger.configure(extra={"job_id": "-"})
+
     # 1. Console handler (stderr)
     logger.add(
         sys.stderr,
         level="DEBUG" if settings.debug else "INFO",
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        format=_CONSOLE_LOG_FORMAT,
     )
 
     # 2. File handler
@@ -73,7 +91,7 @@ def setup_logging() -> None:
         retention="1 week",  # Keep logs for 1 week
         compression="zip",  # Compress rotated logs
         level="DEBUG",  # Always log debug to file for troubleshooting
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        format=_FILE_LOG_FORMAT,
         enqueue=True,  # Thread-safe for async
         backtrace=True,
         diagnose=True,

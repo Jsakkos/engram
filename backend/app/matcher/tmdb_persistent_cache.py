@@ -155,6 +155,27 @@ def get(cache_key: str) -> Any | None:
         return None
 
 
+def is_cached(cache_key: str) -> bool:
+    """Return True iff a fresh (unexpired) entry exists for ``cache_key``.
+
+    Read-only companion to :func:`get` for diagnostics. Unlike ``get`` it
+    never creates the cache file and never deletes expired rows, so it is
+    safe to call while assembling a bug report. Returns False when the DB
+    doesn't exist yet.
+    """
+    if not CACHE_DB_PATH.exists():
+        return False
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT fetched_at, ttl_seconds FROM tmdb_cache WHERE cache_key = ?",
+        (cache_key,),
+    ).fetchone()
+    if row is None:
+        return False
+    fetched_at, ttl_seconds = row
+    return (time.time() - fetched_at) < ttl_seconds
+
+
 def put(cache_key: str, payload: Any, ttl_seconds: int) -> None:
     """Insert or replace a cache entry. ``payload`` must be JSON-serializable."""
     serialized = json.dumps(payload, default=str)

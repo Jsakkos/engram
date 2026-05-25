@@ -1,11 +1,13 @@
 """REST API routes for Engram."""
 
 import asyncio
+import io
 import json
 import logging
 import platform
 import re
 import sys
+import zipfile
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,14 +16,17 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.config import settings
+from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.security import is_allowed_image_url
 from app.database import get_session
+from app.matcher.coverage_tracker import get_cache_status
 from app.matcher.tmdb_client import fetch_season_episodes
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
@@ -598,13 +603,13 @@ async def get_season_roster(
     )
 
 
-@router.get("/jobs/{job_id}/detail", response_model=JobDetailResponse)
-async def get_job_detail(
-    job: DiscJob = Depends(get_job_or_404),
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Get full job detail with titles for history drill-down."""
-    # Fetch associated titles
+async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
+    """Assemble the full job-detail dict (job fields + ordered titles).
+
+    Shared by the history drill-down endpoint and the diagnostics bundle so
+    the two never drift. ``titles`` are ORM objects; callers that need a
+    JSON-safe form validate the result through ``JobDetailResponse``.
+    """
     titles_result = await session.execute(
         select(DiscTitle).where(DiscTitle.job_id == job.id).order_by(DiscTitle.title_index)
     )
@@ -649,6 +654,15 @@ async def get_job_detail(
         "final_path": job.final_path,
         "titles": titles,
     }
+
+
+@router.get("/jobs/{job_id}/detail", response_model=JobDetailResponse)
+async def get_job_detail(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Get full job detail with titles for history drill-down."""
+    return await build_job_detail(job, session)
 
 
 @router.post("/jobs/{job_id}/start")
@@ -1447,6 +1461,212 @@ def _sanitize_line(line: str) -> str:
     return _SENSITIVE_RE.sub("***REDACTED***", line)
 
 
+async def _collect_environment() -> dict:
+    """Gather app/OS/tool versions and a redacted config snapshot.
+
+    Shared by the diagnostics report and the diagnostics bundle. Tool
+    detection spawns subprocesses (up to a 10 s timeout each), so the two
+    probes run concurrently off the event loop.
+    """
+    from app import __version__
+    from app.api.validation import detect_ffmpeg, detect_makemkv
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    mk, ff = await asyncio.gather(
+        asyncio.to_thread(detect_makemkv),
+        asyncio.to_thread(detect_ffmpeg),
+    )
+    return {
+        "app_version": __version__,
+        "python_version": sys.version.split()[0],
+        "os": f"{platform.system()} {platform.release()}",
+        "makemkv_version": mk.version if mk.found else (mk.error or "not found"),
+        "ffmpeg_version": ff.version if ff.found else (ff.error or "not found"),
+        "config": {
+            "staging_path": _redact_home(config.staging_path),
+            "library_movies_path": _redact_home(config.library_movies_path),
+            "library_tv_path": _redact_home(config.library_tv_path),
+            "max_concurrent_matches": config.max_concurrent_matches,
+            "conflict_resolution_default": config.conflict_resolution_default,
+            "extras_policy": config.extras_policy,
+            "discdb_enabled": config.discdb_enabled,
+        },
+    }
+
+
+def _build_markdown_summary(env: dict, job_summary: dict | None, recent_errors: list[str]) -> str:
+    """Render the factual core of a bug report (env + job context + errors).
+
+    Used verbatim by the GitHub issue body and as the opening of the
+    downloadable bundle's ``report.md`` so the two never diverge.
+    """
+    parts = [
+        "## Bug Report",
+        "",
+        f"**Engram version**: {env['app_version']}",
+        f"**OS**: {env['os']}",
+        f"**Python**: {env['python_version']}",
+        f"**MakeMKV**: {env['makemkv_version']}",
+        f"**FFmpeg**: {env['ffmpeg_version']}",
+        "",
+    ]
+    if job_summary:
+        parts += [
+            "### Job Context",
+            f"- **ID**: {job_summary['id']}",
+            f"- **Label**: {job_summary['volume_label']}",
+            f"- **Type**: {job_summary['content_type']}",
+            f"- **State**: {job_summary['state']}",
+        ]
+        if job_summary["error"]:
+            parts.append(f"- **Error**: {job_summary['error']}")
+        parts.append("")
+    if recent_errors:
+        parts += ["### Recent Errors", "```"]
+        parts += recent_errors[-10:]
+        parts += ["```", ""]
+    return "\n".join(parts)
+
+
+def _read_recent_error_lines(limit: int = 20, log_path: Path | None = None) -> list[str]:
+    """Return the last ``limit`` sanitized ERROR/CRITICAL lines from the log.
+
+    The global fallback when a job has no job-tagged lines (e.g. it ran
+    before job-tagged logging existed).
+    """
+    log_path = log_path or (Path.home() / ".engram" / "engram.log")
+    if not log_path.exists():
+        return []
+    try:
+        raw = log_path.read_text(encoding="utf-8", errors="replace")
+        error_lines = [ln for ln in raw.splitlines() if "ERROR" in ln or "CRITICAL" in ln]
+        return [_sanitize_line(line) for line in error_lines[-limit:]]
+    except Exception:
+        logger.warning(f"Failed to read log file for bug report: {log_path}", exc_info=True)
+        return ["(could not read log file)"]
+
+
+def _sanitize_obj(obj: object) -> object:
+    """Recursively redact every string in a nested dict/list structure.
+
+    Reuses ``_sanitize_line`` (home path + secret patterns) so paths, volume
+    labels, detected titles, and the ``match_details``/``discdb_match_details``
+    JSON blobs are all scrubbed before leaving the machine.
+    """
+    if isinstance(obj, str):
+        return _sanitize_line(obj)
+    if isinstance(obj, dict):
+        return {k: _sanitize_obj(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_obj(v) for v in obj]
+    return obj
+
+
+def _read_job_tagged_logs(
+    job_id: int, limit: int = 2000, log_path: Path | None = None
+) -> tuple[list[str], bool]:
+    """Return ``(lines, is_fallback)`` for a job's log lines.
+
+    Filters the global log to lines carrying this job's ``| job=<id> |`` tag.
+    Jobs that ran before job-tagged logging existed have no tagged lines — in
+    that case fall back to the recent global ERROR/CRITICAL tail and flag it.
+    """
+    log_path = log_path or (Path.home() / ".engram" / "engram.log")
+    # No file / unreadable → mark as fallback (not job-specific) so the bundle
+    # never labels empty/placeholder content as "log lines for this job".
+    if not log_path.exists():
+        return ([], True)
+    try:
+        raw = log_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        logger.warning(f"Failed to read log file for bundle: {log_path}", exc_info=True)
+        return (["(could not read log file)"], True)
+    token = f"| job={job_id} |"
+    matched = [ln for ln in raw.splitlines() if token in ln]
+    if matched:
+        return ([_sanitize_line(ln) for ln in matched[-limit:]], False)
+    return (_read_recent_error_lines(log_path=log_path), True)
+
+
+def _cap_text(text: str, max_chars: int = 200_000) -> str:
+    """Keep the tail of an oversized log so the bundle stays small."""
+    if len(text) <= max_chars:
+        return text
+    return f"... (truncated; showing last {max_chars} chars)\n" + text[-max_chars:]
+
+
+def _build_track_table(detail: dict) -> str:
+    titles = detail.get("titles") or []
+    if not titles:
+        return "### Tracks\n\n_No tracks recorded._"
+    rows = [
+        "### Tracks",
+        "",
+        "| # | Duration (s) | Chapters | Resolution | State | Episode | Conf | Source |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for t in titles:
+        rows.append(
+            f"| {t.get('title_index')} | {t.get('duration_seconds')} "
+            f"| {t.get('chapter_count')} | {t.get('video_resolution') or '-'} "
+            f"| {t.get('state')} | {t.get('matched_episode') or '-'} "
+            f"| {t.get('match_confidence')} | {t.get('match_source') or '-'} |"
+        )
+    return "\n".join(rows)
+
+
+def _build_cache_table(cache_status: dict) -> str:
+    rows = [
+        "### Subtitle Cache / Coverage",
+        "",
+        f"- **TMDB show metadata cached**: {cache_status['tmdb_show_cached']}",
+        f"- **TMDB season metadata cached**: {cache_status['tmdb_season_cached']}",
+        "",
+    ]
+    coverage = cache_status.get("coverage") or []
+    if not coverage:
+        rows.append("_No subtitle-coverage records for this show._")
+        return "\n".join(rows)
+    rows += ["| Season | Covered | Total | Ratio |", "|---|---|---|---|"]
+    for row in coverage:
+        ratio = row.get("coverage_ratio")
+        ratio_str = f"{ratio:.2f}" if isinstance(ratio, (int, float)) else str(ratio)
+        rows.append(
+            f"| {row.get('season')} | {row.get('covered_episodes')} "
+            f"| {row.get('total_episodes')} | {ratio_str} |"
+        )
+    return "\n".join(rows)
+
+
+def _build_bundle_markdown(
+    env: dict,
+    job_summary: dict,
+    detail: dict,
+    cache_status: dict,
+    log_is_fallback: bool,
+) -> str:
+    parts = [
+        _build_markdown_summary(env, job_summary, []),
+        "### Configuration",
+        *[f"- **{k}**: {v}" for k, v in env["config"].items()],
+        "",
+        _build_track_table(detail),
+        "",
+        _build_cache_table(cache_status),
+        "",
+        "### Attached Files",
+        "- `job-detail.json` — full job + per-track detail",
+        (
+            "- `job-logs.txt` — recent global errors (this job predates job-tagged logging)"
+            if log_is_fallback
+            else "- `job-logs.txt` — log lines for this job"
+        ),
+        "- `scan.log` / `rip.log` — raw MakeMKV output (when present)",
+    ]
+    return "\n".join(parts)
+
+
 @router.get("/diagnostics/logs")
 async def get_recent_logs(
     lines: int = Query(default=50, ge=1, le=200),
@@ -1475,21 +1695,7 @@ async def generate_bug_report(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Generate a sanitized bug report with optional job context."""
-    from app import __version__
-    from app.api.validation import detect_ffmpeg, detect_makemkv
-    from app.services.config_service import get_config
-
-    config = await get_config()
-
-    # --- External tool versions (detection runs subprocesses; keep off the loop) ---
-    # Run concurrently — each spawns a subprocess with up to a 10 s timeout, so
-    # serial detection would double the worst-case latency before the modal opens.
-    mk, ff = await asyncio.gather(
-        asyncio.to_thread(detect_makemkv),
-        asyncio.to_thread(detect_ffmpeg),
-    )
-    makemkv_version = mk.version if mk.found else (mk.error or "not found")
-    ffmpeg_version = ff.version if ff.found else (ff.error or "not found")
+    env = await _collect_environment()
 
     # --- Job summary (optional) ---
     job_summary = None
@@ -1498,79 +1704,31 @@ async def generate_bug_report(
         if job:
             job_summary = {
                 "id": job.id,
-                "volume_label": job.volume_label,
+                # Sanitized: these flow into the GitHub issue title/body.
+                "volume_label": _sanitize_line(job.volume_label or ""),
                 "content_type": job.content_type.value if job.content_type else "unknown",
                 "state": job.state.value if job.state else "unknown",
-                "error": job.error_message,
+                "error": _sanitize_line(job.error_message) if job.error_message else None,
                 "created_at": str(job.created_at) if job.created_at else None,
                 "completed_at": str(job.completed_at) if job.completed_at else None,
             }
 
-    # --- Recent error lines from log ---
-    log_path = Path.home() / ".engram" / "engram.log"
-    recent_errors: list[str] = []
-    if log_path.exists():
-        try:
-            raw = log_path.read_text(encoding="utf-8", errors="replace")
-            all_lines = raw.splitlines()
-            error_lines = [ln for ln in all_lines if "ERROR" in ln or "CRITICAL" in ln]
-            recent_errors = [_sanitize_line(line) for line in error_lines[-20:]]
-        except Exception:
-            logger.warning(f"Failed to read log file for bug report: {log_path}", exc_info=True)
-            recent_errors = ["(could not read log file)"]
+    recent_errors = _read_recent_error_lines()
 
-    # --- Redacted config ---
-    redacted_config = {
-        "staging_path": _redact_home(config.staging_path),
-        "library_movies_path": _redact_home(config.library_movies_path),
-        "library_tv_path": _redact_home(config.library_tv_path),
-        "max_concurrent_matches": config.max_concurrent_matches,
-        "conflict_resolution_default": config.conflict_resolution_default,
-        "extras_policy": config.extras_policy,
-        "discdb_enabled": config.discdb_enabled,
-    }
-
-    # --- Build report ---
     report = {
-        "app_version": __version__,
-        "python_version": sys.version.split()[0],
-        "os": f"{platform.system()} {platform.release()}",
-        "makemkv_version": makemkv_version,
-        "ffmpeg_version": ffmpeg_version,
+        "app_version": env["app_version"],
+        "python_version": env["python_version"],
+        "os": env["os"],
+        "makemkv_version": env["makemkv_version"],
+        "ffmpeg_version": env["ffmpeg_version"],
         "job": job_summary,
         "recent_errors": recent_errors,
-        "config": redacted_config,
+        "config": env["config"],
     }
 
-    # --- Build GitHub issue body ---
+    # --- GitHub issue body (kept small; full detail lives in the bundle) ---
     body_parts = [
-        "## Bug Report",
-        "",
-        f"**Engram version**: {__version__}",
-        f"**OS**: {report['os']}",
-        f"**Python**: {report['python_version']}",
-        f"**MakeMKV**: {makemkv_version}",
-        f"**FFmpeg**: {ffmpeg_version}",
-        "",
-    ]
-    if job_summary:
-        body_parts += [
-            "### Job Context",
-            f"- **ID**: {job_summary['id']}",
-            f"- **Label**: {job_summary['volume_label']}",
-            f"- **Type**: {job_summary['content_type']}",
-            f"- **State**: {job_summary['state']}",
-        ]
-        if job_summary["error"]:
-            body_parts.append(f"- **Error**: {job_summary['error']}")
-        body_parts.append("")
-
-    if recent_errors:
-        body_parts += ["### Recent Errors", "```"]
-        body_parts += recent_errors[-10:]
-        body_parts += ["```", ""]
-
-    body_parts += [
+        _build_markdown_summary(env, job_summary, recent_errors),
         "### Steps to Reproduce",
         "1. ",
         "",
@@ -1580,7 +1738,6 @@ async def generate_bug_report(
         "### Actual Behavior",
         "",
     ]
-
     issue_body = "\n".join(body_parts)
     title = "[Bug] " + (
         f"Job {job_id} failed in {job_summary['state']}" if job_summary else "Describe the issue"
@@ -1592,7 +1749,79 @@ async def generate_bug_report(
 
     report["github_url"] = github_url
     report["markdown"] = issue_body
+
+    # Bundle-preview hints so the modal can describe the downloadable bundle
+    # without fetching it. Only meaningful for an existing job.
+    if job_summary is not None:
+        cache_status = await asyncio.to_thread(get_cache_status, job.tmdb_id, job.detected_season)
+        report["bundle_available"] = True
+        report["has_scan_log"] = (get_makemkv_log_dir(job_id) / "scan.log").exists()
+        report["coverage_seasons"] = len(cache_status["coverage"])
+        report["tmdb_cached"] = cache_status["tmdb_show_cached"]
+    else:
+        report["bundle_available"] = False
+
     return report
+
+
+@router.get("/diagnostics/report/{job_id}/bundle")
+async def download_bug_report_bundle(
+    job_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Download a sanitized diagnostic bundle (.zip) for a single job.
+
+    Bundles the full job + per-track detail, the job's tagged log lines, the
+    subtitle cache/coverage status for the series, and the raw MakeMKV scan
+    logs — everything run through the same sanitization as the inline report.
+    """
+    job = await session.get(DiscJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    detail = await build_job_detail(job, session)
+    detail_json = JobDetailResponse.model_validate(detail).model_dump(mode="json")
+    safe_detail = _sanitize_obj(detail_json)
+
+    env = await _collect_environment()
+    cache_status = await asyncio.to_thread(get_cache_status, job.tmdb_id, job.detected_season)
+    log_lines, log_is_fallback = await asyncio.to_thread(_read_job_tagged_logs, job_id)
+
+    job_summary = {
+        "id": job.id,
+        "volume_label": _sanitize_line(job.volume_label or ""),
+        "content_type": job.content_type.value if job.content_type else "unknown",
+        "state": job.state.value if job.state else "unknown",
+        "error": _sanitize_line(job.error_message) if job.error_message else None,
+    }
+    report_md = _build_bundle_markdown(env, job_summary, safe_detail, cache_status, log_is_fallback)
+
+    def _build_zip() -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("report.md", report_md)
+            zf.writestr("job-detail.json", json.dumps(safe_detail, indent=2))
+            zf.writestr("job-logs.txt", "\n".join(log_lines) if log_lines else "(no logs)")
+            log_dir = get_makemkv_log_dir(job_id)
+            for name in ("scan.log", "rip.log"):
+                p = log_dir / name
+                if not p.exists():
+                    continue
+                try:
+                    raw = p.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    continue
+                sanitized = "\n".join(_sanitize_line(ln) for ln in raw.splitlines())
+                zf.writestr(name, _cap_text(sanitized))
+        return buf.getvalue()
+
+    data = await asyncio.to_thread(_build_zip)
+    filename = f"engram-bug-report-job-{job_id}.zip"
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── TheDiscDB Contribution Endpoints ─────────────────────────────────────

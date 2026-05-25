@@ -95,6 +95,54 @@ def is_done(
     return True, row
 
 
+def get_show_coverage(tmdb_id: int) -> list[dict[str, Any]]:
+    """Return every recorded coverage row for a show, oldest season first.
+
+    Read-only; returns ``[]`` when the cache DB doesn't exist. Used by the
+    diagnostics bundle to surface why subtitle matching may have come up
+    short for a series (e.g. a season recorded at 10% coverage that the
+    skip window subsequently suppressed).
+    """
+    if not tmdb_persistent_cache.CACHE_DB_PATH.exists():
+        return []
+    conn = tmdb_persistent_cache.get_conn()
+    rows = conn.execute(
+        "SELECT season, attempted_at, total_episodes, covered_episodes, coverage_ratio "
+        "FROM subtitle_coverage WHERE tmdb_id = ? ORDER BY season",
+        (tmdb_id,),
+    ).fetchall()
+    return [
+        {
+            "season": season,
+            "attempted_at": attempted_at,
+            "total_episodes": total,
+            "covered_episodes": covered,
+            "coverage_ratio": ratio,
+        }
+        for season, attempted_at, total, covered, ratio in rows
+    ]
+
+
+def get_cache_status(tmdb_id: int | None, season: int | None = None) -> dict[str, Any]:
+    """Summarise cache state for a job's series, for the diagnostics bundle.
+
+    Returns subtitle-coverage rows for the show plus whether TMDB show and
+    season metadata are currently cached. Empty/False when ``tmdb_id`` is
+    unknown (movies, unidentified discs). All reads are read-only.
+    """
+    if tmdb_id is None:
+        return {"coverage": [], "tmdb_show_cached": False, "tmdb_season_cached": False}
+    return {
+        "coverage": get_show_coverage(tmdb_id),
+        "tmdb_show_cached": tmdb_persistent_cache.is_cached(f"show_details:{tmdb_id}"),
+        "tmdb_season_cached": (
+            tmdb_persistent_cache.is_cached(f"season:{tmdb_id}:{season}")
+            if season is not None
+            else False
+        ),
+    }
+
+
 def record(tmdb_id: int, season: int, total: int, covered: int) -> None:
     """Insert or replace the coverage row for ``(tmdb_id, season)``.
 

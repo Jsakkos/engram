@@ -80,6 +80,7 @@ interface DiscCardProps {
   onReIdentify?: () => void;
   onAdvance?: () => void;
   onSkipTrack?: (trackId: string) => void;
+  onReportBug?: () => void;
 }
 
 /**
@@ -173,7 +174,7 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onSkipTrack }, ref) => {
+  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onSkipTrack, onReportBug }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
@@ -345,6 +346,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReview={onReview}
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
+                    onReportBug={onReportBug}
                   />
                 </div>
               </div>
