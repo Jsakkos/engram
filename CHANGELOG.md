@@ -2,6 +2,28 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [0.7.2] - 2026-05-25
+
+### Fixed
+- **macOS frozen-build launch crash**: the packaged app now calls `multiprocessing.freeze_support()`
+  before spawning workers, preventing an infinite fork-bomb on macOS where the spawn start method
+  caused worker processes to re-execute the frozen entry point — opening endless browser windows and
+  crashing immediately (#206).
+- **macOS Intel binary mislabeled as x64**: `macos-latest` GitHub Actions runner is Apple Silicon,
+  so prior releases shipped an arm64 binary as `engram-macos-x64.tar.gz` (Intel Macs received
+  "bad CPU type"). CI now builds on `macos-13` (x64) and `macos-14` (arm64) separately (#206).
+- **Python 3.14 incompatibility**: `requires-python` capped to `<3.14` as `onnxruntime` (via
+  `faster-whisper`) has no cp314 wheel; backend Python pinned to 3.13 (#206).
+
+### Added
+- **macOS Apple Silicon download**: `engram-macos-arm64.tar.gz` is now published as a dedicated
+  release artifact for M1/M2/M3/M4 Macs (#206).
+
+### Changed
+- **Hardened cross-platform smoke tests**: release builds assert binary architecture with `file`
+  and a process-count guard (≤ 2 processes) catches re-spawn bugs headlessly; CI runs `uv sync`
+  resolution across Python 3.11–3.13 on Ubuntu and macOS arm64 (#206).
+
 ## [0.7.1] - 2026-05-23
 
 ### Fixed
