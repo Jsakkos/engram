@@ -51,3 +51,12 @@ export async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit):
 export async function apiFetchVoid(input: RequestInfo | URL, init?: RequestInit): Promise<void> {
   await request(input, init);
 }
+
+/**
+ * Fetch a binary response as a Blob (e.g. a downloadable .zip bundle).
+ * Throws {@link ApiError} when the response is not ok.
+ */
+export async function apiFetchBlob(input: RequestInfo | URL, init?: RequestInit): Promise<Blob> {
+  const res = await request(input, init);
+  return await res.blob();
+}

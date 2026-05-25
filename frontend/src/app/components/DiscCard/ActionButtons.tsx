@@ -14,6 +14,7 @@
 
 import { useState, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 import { motion } from "motion/react";
+import { Bug } from "lucide-react";
 import { IcoCancel, IcoError, IcoRetry, IcoPlay } from "../icons";
 import type { DiscState } from "../DiscCard";
 import { sv } from "../synapse";
@@ -25,6 +26,7 @@ interface ActionButtonsProps {
     onReview?: () => void;
     onReIdentify?: () => void;
     onAdvance?: () => void;
+    onReportBug?: () => void;
 }
 
 // States where Force-advance makes sense (job is actively processing).
@@ -102,9 +104,10 @@ interface ToneButtonProps {
     children: ReactNode;
     /** Horizontal padding in px. 0 means render as a square icon-only button. */
     paddingX?: number;
+    testId?: string;
 }
 
-function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0 }: ToneButtonProps) {
+function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, testId }: ToneButtonProps) {
     const [hovered, setHovered] = useState(false);
     const isSquare = paddingX === 0;
     return (
@@ -120,6 +123,7 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0 }:
             onBlur={() => setHovered(false)}
             title={title}
             aria-label={ariaLabel}
+            data-testid={testId}
             style={{
                 ...baseStyle(tone, hovered),
                 paddingLeft: paddingX,
@@ -133,10 +137,11 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0 }:
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance }: ActionButtonsProps) {
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onReportBug }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
+    const showReportBug = !!onReportBug && isHovered;
 
     const handleAdvance = (e: MouseEvent) => {
         e.stopPropagation();
@@ -199,6 +204,19 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                 >
                     <IcoError size={14} />
                     <span style={{ fontSize: 11 }}>Review needed</span>
+                </ToneButton>
+            )}
+
+            {showReportBug && (
+                <ToneButton
+                    tone={RED}
+                    onClick={(e) => { e.stopPropagation(); onReportBug!(); }}
+                    title="Report a bug for this job"
+                    ariaLabel="Report a bug for this job"
+                    paddingX={0}
+                    testId="disc-card-report-bug"
+                >
+                    <Bug size={14} />
                 </ToneButton>
             )}
         </div>

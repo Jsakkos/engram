@@ -93,7 +93,7 @@ Each module maps to a stage in the disc processing pipeline:
 5. **Organizer** (`organizer.py`) — File organization. Moves from staging to library with naming conventions: `Movies/Name (Year)/Name (Year).mkv` and `TV/Show/Season XX/Show - SXXEXX.mkv`.
 6. **TMDB Classifier** (`tmdb_classifier.py`) — TMDB-based content type classification. Provides strong signals for TV vs Movie detection beyond the heuristic-based Analyst.
 7. **Errors** (`errors.py`) — Custom exception hierarchy (`EngramError` base, with `MakeMKVError`, `MatchingError`, `ConfigurationError`, `OrganizationError`, `SubtitleError`, `DatabaseError`). Includes `@handle_errors` decorator for standardized error handling.
-8. **Logging** (`logging.py`) — Centralized logging configuration.
+8. **Logging** (`logging.py`) — Centralized logging configuration. Lines carry a `job=<id>` tag (`job=-` when outside a job). Per-job coroutines run inside `logger.contextualize(job_id=...)` via `app/core/log_context.py` (`with_job_log_context` wraps top-level task spawns in `job_manager.py`/`simulation_service.py`; `match_single_file` self-tags); nested `create_task`s inherit the tag. The diagnostics bundle greps the `job=<id>` token. **Caveat:** only jobs that ran *after* this change have tagged lines — older jobs fall back to the global ERROR/CRITICAL tail. Long-lived `provider_scheduler` worker threads log `job=-` (accepted gap).
 
 ### Orchestration (`backend/app/services/`)
 
@@ -126,7 +126,7 @@ Integrated from standalone `mkv-episode-matcher` project. Flattened directory st
 
 ### API (`backend/app/api/`)
 
-- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation, staging management, job history with `GET /api/jobs/history`, job detail with `GET /api/jobs/{job_id}/detail`, stats with `GET /api/jobs/stats`, diagnostics with `GET /api/diagnostics/report`)
+- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation, staging management, job history with `GET /api/jobs/history`, job detail with `GET /api/jobs/{job_id}/detail`, stats with `GET /api/jobs/stats`, diagnostics with `GET /api/diagnostics/report` and a downloadable per-job diagnostic `.zip` at `GET /api/diagnostics/report/{job_id}/bundle` — report.md + job-detail.json + job-tagged logs + raw MakeMKV scan/rip logs + subtitle cache/coverage, all sanitized via `_sanitize_obj`/`_sanitize_line`. Job-detail assembly is shared via `build_job_detail`; env/markdown via `_collect_environment`/`_build_markdown_summary`)
 - `validation.py` — Tool validation endpoints (`POST /api/validate/makemkv`, `POST /api/validate/ffmpeg`, `GET /api/detect-tools`)
 - `test_routes.py` — Standalone testing endpoints for subtitle download, transcription, matching
 - `websocket.py` — `ConnectionManager` singleton for broadcasting real-time updates to all connected clients
