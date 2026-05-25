@@ -54,7 +54,7 @@ from scipy import sparse
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache
 from app.matcher.subtitle_utils import discover_season_srts, sanitize_filename
-from app.matcher.testing_service import download_subtitles, get_last_quota
+from app.matcher.testing_service import download_subtitles, get_last_quota, probe_os_quota
 from app.matcher.tmdb_client import (
     fetch_show_details,
     fetch_show_id,
@@ -82,6 +82,12 @@ class RunTally:
     downloaded: int = 0
     cache_hits: int = 0
     not_found: int = 0
+    # Episodes shipped by the complete-on-disk fast path. Tracked separately
+    # from cache_hits (which counts the downloader's own local-cache hits) so
+    # cache_hit_rate stays a meaningful quota-consumption metric and the
+    # per-show banner doesn't mislabel "shipped from disk, no network" as
+    # "retrieved from download cache".
+    episodes_from_disk: int = 0
     seasons_done: int = 0
     seasons_from_disk: int = 0
     seasons_skipped_below_threshold: int = 0
@@ -275,7 +281,7 @@ def _harvest_show(
                 if on_disk:
                     for code, path in on_disk:
                         harvested.append((season, code, path))
-                    tally.cache_hits += len(on_disk)
+                    tally.episodes_from_disk += len(on_disk)
                     tally.seasons_done += 1
                     tally.seasons_from_disk += 1
                     logger.info(
@@ -471,20 +477,13 @@ def main() -> int:
         logger.info("OpenSubtitles API: ACTIVE — bulk season downloads enabled")
         # Probe remaining daily download quota up front so the user can see
         # whether there's budget for this run before any harvesting starts.
-        # _get_os_client logs in and queries user_info, which does NOT consume
-        # download quota; a failure here is non-fatal (the harvest will retry).
-        try:
-            from app.matcher.testing_service import _get_os_client
-
-            if _get_os_client(config) is not None:
-                quota = get_last_quota()
-                remaining = quota.get("remaining") if quota else None
-                logger.info(
-                    f"OpenSubtitles quota: {remaining if remaining is not None else 'n/a'} "
-                    f"downloads remaining today"
-                )
-        except Exception as e:  # noqa: BLE001 - quota probe must never abort the build
-            logger.warning(f"OpenSubtitles quota probe failed (non-fatal): {e}")
+        # probe_os_quota logs in and queries user_info, which does NOT consume
+        # download quota, and is best-effort (returns None on any failure).
+        remaining = probe_os_quota(config)
+        logger.info(
+            f"OpenSubtitles quota: "
+            f"{remaining if remaining is not None else 'n/a'} downloads remaining today"
+        )
     else:
         logger.warning(
             "OpenSubtitles API: INACTIVE — credentials missing; falling back to "
@@ -531,7 +530,12 @@ def main() -> int:
         shows_task = progress.add_task("Building cache", total=len(shows))
         for idx, show in enumerate(shows, 1):
             show_start = time.monotonic()
-            tally_snapshot = (tally.cache_hits, tally.downloaded, tally.not_found)
+            tally_snapshot = (
+                tally.cache_hits,
+                tally.downloaded,
+                tally.not_found,
+                tally.episodes_from_disk,
+            )
             # `transient` is a Progress() constructor argument that makes
             # the whole bar vanish on exit, not a per-task option — passing
             # it here is silently stored as task metadata and has no visual
@@ -571,10 +575,13 @@ def main() -> int:
             delta_hits = tally.cache_hits - tally_snapshot[0]
             delta_dls = tally.downloaded - tally_snapshot[1]
             delta_nf = tally.not_found - tally_snapshot[2]
+            delta_disk = tally.episodes_from_disk - tally_snapshot[3]
+            got = delta_hits + delta_dls + delta_disk
             console.log(
                 f"[green]OK[/] {show['name']} — "
-                f"{delta_hits + delta_dls}/{delta_hits + delta_dls + delta_nf} episodes "
-                f"({delta_hits} cached, {delta_dls} new, {delta_nf} missing) "
+                f"{got}/{got + delta_nf} episodes "
+                f"({delta_disk} from disk, {delta_hits} cached, {delta_dls} new, "
+                f"{delta_nf} missing) "
                 f"in {int(time.monotonic() - show_start)}s"
             )
 
@@ -694,14 +701,16 @@ def main() -> int:
         "[bold]Final summary[/]: "
         f"{len(manifest_shows)} shows, {total_episodes} episodes packaged "
         f"({size_mb:.1f} MB)\n"
-        f"  episodes seen:    {tally.cache_hits + tally.downloaded + tally.not_found}\n"
+        f"  episodes seen:    "
+        f"{tally.cache_hits + tally.downloaded + tally.not_found + tally.episodes_from_disk}\n"
+        f"  from disk:        {tally.episodes_from_disk} "
+        f"({tally.seasons_from_disk} covered seasons shipped without network)\n"
         f"  cache hits:       {tally.cache_hits}\n"
         f"  new downloads:    {tally.downloaded}\n"
         f"  not found:        {tally.not_found}\n"
         f"  cache hit rate:   {tally.cache_hit_rate:.0%}\n"
         f"  by source:        {by_source}\n"
         f"  seasons OK:       {tally.seasons_done}\n"
-        f"  seasons from disk: {tally.seasons_from_disk} (shipped without network)\n"
         f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
         f"  seasons failed:   {tally.seasons_failed}\n"
         f"  elapsed:          {tally.elapsed_str()}\n"

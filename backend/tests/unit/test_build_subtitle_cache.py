@@ -234,7 +234,10 @@ class TestHarvestShowCompleteOnDisk:
         assert sorted(code for _s, code, _p in harvested) == ["S01E01", "S01E02"]
         assert tally.seasons_from_disk == 1
         assert tally.seasons_done == 1
-        assert tally.cache_hits == 2
+        # Disk-shipped episodes count toward episodes_from_disk, NOT cache_hits —
+        # keeping cache_hit_rate a meaningful quota metric.
+        assert tally.episodes_from_disk == 2
+        assert tally.cache_hits == 0
 
     def test_record_present_but_srts_gone_falls_back_to_harvest(self, bsc, tmp_path):
         """A coverage record with no SRTs on disk (e.g. a wiped cache) must NOT
