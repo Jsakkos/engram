@@ -7,7 +7,14 @@ import { formatBytesBinary } from "../../utils/formatting";
 
 interface TrackGridProps {
   tracks: Track[];
+  /** Skip a single stuck track (ripping/matching) → sends it to review. */
+  onSkip?: (trackId: string) => void;
 }
+
+// Track states where a per-track "skip" makes sense (still in flight). PENDING is
+// intentionally excluded — selected titles only briefly sit there before ripping, and
+// the backend skip endpoint still accepts PENDING if ever needed.
+const SKIPPABLE: ReadonlyArray<TrackState> = ["ripping", "matching"];
 
 interface StateConfig {
   label: string;
@@ -22,6 +29,7 @@ const STATE: Record<TrackState, StateConfig> = {
   ripping:   { label: "RIPPING",  color: sv.magenta, border: `${sv.magenta}66`,    bg: `${sv.magenta}10`, Icon: IcoRipping },
   matching:  { label: "MATCHING", color: sv.amber,   border: `${sv.amber}55`,      bg: `${sv.amber}10`, Icon: IcoMatching },
   matched:   { label: "MATCHED",  color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: IcoComplete },
+  review:    { label: "NEEDS REVIEW", color: sv.yellow, border: `${sv.yellow}66`,  bg: `${sv.yellow}10`, Icon: IcoError  },
   failed:    { label: "FAILED",   color: sv.red,     border: `${sv.red}66`,        bg: `${sv.red}10`, Icon: IcoError    },
   completed: { label: "DONE",     color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: IcoComplete },
 };
@@ -38,7 +46,7 @@ const matchSourceLabel = (source?: string): string => {
   return "ENGRAM";
 };
 
-export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProps) {
+export const TrackGrid = React.memo(function TrackGrid({ tracks, onSkip }: TrackGridProps) {
   return (
     <div data-testid="sv-track-grid" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <SvLabel>TRACK STATUS</SvLabel>
@@ -140,18 +148,47 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                   )}
                 </div>
 
-                {Icon && (
-                  <motion.div
-                    animate={
-                      track.state === "ripping" || track.state === "matching"
-                        ? { rotate: 360 }
-                        : {}
-                    }
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  >
-                    <Icon size={14} color={config.color} />
-                  </motion.div>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {onSkip && SKIPPABLE.includes(track.state) && (
+                    <button
+                      type="button"
+                      data-testid={`track-skip-${track.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm("Skip this track and send it to review?")) {
+                          onSkip(track.id);
+                        }
+                      }}
+                      title="Skip this track — send to review"
+                      aria-label="Skip this track"
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        letterSpacing: "0.18em",
+                        color: sv.yellow,
+                        background: "transparent",
+                        border: `1px solid ${sv.yellow}66`,
+                        padding: "2px 6px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      SKIP
+                    </button>
+                  )}
+                  {Icon && (
+                    <motion.div
+                      animate={
+                        track.state === "ripping" || track.state === "matching"
+                          ? { rotate: 360 }
+                          : {}
+                      }
+                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    >
+                      <Icon size={14} color={config.color} />
+                    </motion.div>
+                  )}
+                </div>
               </div>
 
               {/* Failed: error message */}
@@ -177,6 +214,18 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks }: TrackGridProp
                 <div style={{ marginTop: 4 }}>
                   <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, letterSpacing: "0.18em" }}>
                     QUEUED
+                  </span>
+                </div>
+              )}
+
+              {/* Review: no confident match — needs manual episode assignment */}
+              {track.state === "review" && (
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.yellow, letterSpacing: "0.18em", fontWeight: 700 }}>
+                    NEEDS REVIEW
+                  </span>
+                  <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8 }}>
+                    no confident match — assign in review queue
                   </span>
                 </div>
               )}

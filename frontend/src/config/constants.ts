@@ -30,8 +30,12 @@ export const MATCHING_CONFIG = {
  * UI behavior and timing configuration
  */
 export const UI_CONFIG = {
-  /** WebSocket reconnect delay in milliseconds */
+  /** WebSocket reconnect delay in milliseconds (legacy fixed delay; superseded by backoff) */
   WEBSOCKET_RECONNECT_DELAY_MS: 3000,
+  /** Initial WebSocket reconnect backoff delay in milliseconds */
+  WEBSOCKET_RECONNECT_BASE_DELAY_MS: 1000,
+  /** Maximum WebSocket reconnect backoff delay in milliseconds */
+  WEBSOCKET_RECONNECT_MAX_DELAY_MS: 30000,
   /** Delay before retrying poster fetch in milliseconds */
   POSTER_FETCH_RETRY_DELAY_MS: 2000,
   /** Maximum number of poster fetch retries */

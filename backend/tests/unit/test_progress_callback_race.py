@@ -27,10 +27,8 @@ force the exact interleaving:
 
 import asyncio
 
-import pytest
-
+from app import database
 from app.core.extractor import RipProgress
-from app.database import async_session, init_db
 from app.models.disc_job import (
     ContentType,
     DiscJob,
@@ -39,16 +37,18 @@ from app.models.disc_job import (
     TitleState,
 )
 
-
-@pytest.fixture(autouse=True)
-async def setup_db():
-    """Initialize DB for each test."""
-    await init_db()
+# NOTE: This test relies on the autouse `isolate_database` fixture in
+# tests/unit/conftest.py, which builds the schema in an in-memory SQLite engine
+# and monkeypatches `app.database.async_session` onto it. We must therefore
+# reach the session factory through the module (`database.async_session`) at
+# call time — a `from app.database import async_session` binding would capture
+# the real-engine factory before the patch is applied and silently read/write
+# the developer's real engram.db.
 
 
 async def _create_job_with_titles(n_titles: int = 5) -> tuple[DiscJob, list[DiscTitle]]:
     """Create a movie job with n PENDING titles."""
-    async with async_session() as session:
+    async with database.async_session() as session:
         job = DiscJob(
             drive_id="E:",
             volume_label="TEST_MOVIE",
@@ -80,7 +80,7 @@ async def _create_job_with_titles(n_titles: int = 5) -> tuple[DiscJob, list[Disc
 
 async def _count_ripping(sorted_titles: list[DiscTitle]) -> list[int]:
     """Return title_indices of all titles currently in RIPPING state."""
-    async with async_session() as sess:
+    async with database.async_session() as sess:
         ripping = []
         for t in sorted_titles:
             db_t = await sess.get(DiscTitle, t.id)
@@ -127,7 +127,7 @@ class TestProgressCallbackRaceCondition:
                 prev_list_idx = _last_title_idx - 1
                 if 0 <= prev_list_idx < len(sorted_titles):
                     prev_title = sorted_titles[prev_list_idx]
-                    async with async_session() as sess:
+                    async with database.async_session() as sess:
                         prev_db = await sess.get(DiscTitle, prev_title.id)
                         if prev_db and prev_db.state == TitleState.RIPPING:
                             prev_db.state = TitleState.MATCHED
@@ -137,7 +137,7 @@ class TestProgressCallbackRaceCondition:
 
             # Set active title to RIPPING
             if active_title and active_title.id not in _titles_marked_ripping:
-                async with async_session() as sess:
+                async with database.async_session() as sess:
                     title_db = await sess.get(DiscTitle, active_title.id)
 
                     # >>> CRITICAL INTERLEAVE POINT <<<
@@ -217,7 +217,7 @@ class TestProgressCallbackRaceCondition:
                     prev_list_idx = _last_title_idx - 1
                     if 0 <= prev_list_idx < len(sorted_titles):
                         prev_title = sorted_titles[prev_list_idx]
-                        async with async_session() as sess:
+                        async with database.async_session() as sess:
                             prev_db = await sess.get(DiscTitle, prev_title.id)
                             if prev_db and prev_db.state == TitleState.RIPPING:
                                 prev_db.state = TitleState.MATCHED
@@ -226,7 +226,7 @@ class TestProgressCallbackRaceCondition:
                 _last_title_idx = current_idx
 
                 if active_title and active_title.id not in _titles_marked_ripping:
-                    async with async_session() as sess:
+                    async with database.async_session() as sess:
                         title_db = await sess.get(DiscTitle, active_title.id)
 
                         # Barriers are inside the lock — Task B can't reach
@@ -297,7 +297,7 @@ class TestProgressCallbackRaceCondition:
                     prev_list_idx = _last_title_idx - 1
                     if 0 <= prev_list_idx < len(sorted_titles):
                         prev_title = sorted_titles[prev_list_idx]
-                        async with async_session() as sess:
+                        async with database.async_session() as sess:
                             prev_db = await sess.get(DiscTitle, prev_title.id)
                             if prev_db and prev_db.state == TitleState.RIPPING:
                                 prev_db.state = TitleState.MATCHED
@@ -306,7 +306,7 @@ class TestProgressCallbackRaceCondition:
                 _last_title_idx = current_idx
 
                 if active_title and active_title.id not in _titles_marked_ripping:
-                    async with async_session() as sess:
+                    async with database.async_session() as sess:
                         title_db = await sess.get(DiscTitle, active_title.id)
                         if title_db and title_db.state == TitleState.PENDING:
                             title_db.state = TitleState.RIPPING
@@ -336,7 +336,7 @@ class TestProgressCallbackRaceCondition:
             )
 
         # After all titles, verify progression: 4 MATCHED + 1 RIPPING
-        async with async_session() as sess:
+        async with database.async_session() as sess:
             matched = 0
             for t in sorted_titles:
                 db_t = await sess.get(DiscTitle, t.id)
@@ -371,7 +371,7 @@ class TestProgressCallbackRaceCondition:
                     prev_list_idx = _last_title_idx - 1
                     if 0 <= prev_list_idx < len(sorted_titles):
                         prev_title = sorted_titles[prev_list_idx]
-                        async with async_session() as sess:
+                        async with database.async_session() as sess:
                             prev_db = await sess.get(DiscTitle, prev_title.id)
                             if prev_db and prev_db.state == TitleState.RIPPING:
                                 prev_db.state = TitleState.MATCHED
@@ -380,7 +380,7 @@ class TestProgressCallbackRaceCondition:
                 _last_title_idx = current_idx
 
                 if active_title and active_title.id not in _titles_marked_ripping:
-                    async with async_session() as sess:
+                    async with database.async_session() as sess:
                         title_db = await sess.get(DiscTitle, active_title.id)
                         if title_db and title_db.state == TitleState.PENDING:
                             title_db.state = TitleState.RIPPING

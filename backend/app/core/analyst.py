@@ -110,6 +110,115 @@ class DiscAnalysisResult:
     is_ambiguous_movie: bool = False
 
 
+# Main-feature selection tuning. A movie disc only needs review when 2+ titles
+# genuinely qualify as the feature (alternate versions / obfuscation); long bonus
+# tracks must not be mistaken for the feature.
+MOVIE_MIN_FEATURE_DURATION = 80 * 60  # floor (seconds) for a title to be feature-eligible
+MOVIE_RUNTIME_TOLERANCE_MIN = 10  # minutes a title may fall short of the TMDB runtime
+MOVIE_EXTENDED_ALLOWANCE_MIN = 45  # minutes a title may exceed runtime (extended/director's cut)
+MOVIE_FALLBACK_PROXIMITY = 0.75  # no-runtime: candidate if >= 75% of the longest eligible title
+MOVIE_CANDIDATE_BITRATE_FLOOR = 0.4  # drop candidates below 40% of the top candidate's bitrate
+
+
+@dataclass
+class MainFeatureDecision:
+    """Outcome of choosing the main feature among a movie disc's titles."""
+
+    feature_index: int | None
+    extra_indices: list[int] = field(default_factory=list)
+    candidate_indices: list[int] = field(default_factory=list)
+    needs_review: bool = False
+    review_reason: str | None = None
+
+
+def _bitrate(title: TitleInfo) -> float:
+    """Bytes per second — a proxy for video quality used to tell features from docs."""
+    if not title.duration_seconds:
+        return 0.0
+    return (title.size_bytes or 0) / title.duration_seconds
+
+
+def select_movie_main_feature(
+    titles: list[TitleInfo],
+    runtime_minutes: int | None,
+    *,
+    min_feature_duration: int = MOVIE_MIN_FEATURE_DURATION,
+) -> MainFeatureDecision:
+    """Pick the main feature among a movie disc's titles.
+
+    Uses the movie's TMDB runtime when available to identify the feature, falling
+    back to duration proximity. A low-bitrate filter rejects long documentaries
+    that happen to sit near the runtime. Review is only required when 2+ titles
+    remain plausible features (theatrical vs. extended cut, or copy-protection
+    playlist duplication); everything else is tagged as an extra.
+    """
+    if not titles:
+        return MainFeatureDecision(feature_index=None)
+
+    eligible = [t for t in titles if (t.duration_seconds or 0) >= min_feature_duration]
+
+    # No title clears the feature floor — pick the longest and move on (no review).
+    if not eligible:
+        feature = max(titles, key=lambda t: t.duration_seconds or 0)
+        return _single_feature(titles, feature)
+
+    if runtime_minutes and runtime_minutes > 0:
+        low = (runtime_minutes - MOVIE_RUNTIME_TOLERANCE_MIN) * 60
+        high = (runtime_minutes + MOVIE_EXTENDED_ALLOWANCE_MIN) * 60
+        candidates = [t for t in eligible if low <= t.duration_seconds <= high]
+        if not candidates:
+            # Runtime wildly off (e.g. wrong TMDB id) — ignore it and use duration.
+            candidates = _proximity_candidates(eligible)
+    else:
+        candidates = _proximity_candidates(eligible)
+
+    candidates = _filter_by_bitrate(candidates)
+    if not candidates:
+        candidates = [max(eligible, key=lambda t: t.duration_seconds or 0)]
+
+    if len(candidates) == 1:
+        return _single_feature(titles, candidates[0])
+
+    candidate_indices = [t.index for t in candidates]
+    extras = [t.index for t in titles if t.index not in candidate_indices]
+    return MainFeatureDecision(
+        feature_index=None,
+        extra_indices=extras,
+        candidate_indices=candidate_indices,
+        needs_review=True,
+        review_reason=(
+            "Multiple feature-length titles found. "
+            "Please select the correct version (theatrical, extended, etc.)."
+        ),
+    )
+
+
+def _single_feature(titles: list[TitleInfo], feature: TitleInfo) -> MainFeatureDecision:
+    """Build a no-review decision with one feature and everything else as extras."""
+    return MainFeatureDecision(
+        feature_index=feature.index,
+        extra_indices=[t.index for t in titles if t.index != feature.index],
+        candidate_indices=[feature.index],
+    )
+
+
+def _proximity_candidates(eligible: list[TitleInfo]) -> list[TitleInfo]:
+    """Feature candidates by duration proximity to the longest eligible title."""
+    longest = max(eligible, key=lambda t: t.duration_seconds or 0)
+    threshold = longest.duration_seconds * MOVIE_FALLBACK_PROXIMITY
+    return [t for t in eligible if (t.duration_seconds or 0) >= threshold]
+
+
+def _filter_by_bitrate(candidates: list[TitleInfo]) -> list[TitleInfo]:
+    """Drop candidates whose bitrate is far below the best — likely low-quality docs."""
+    if len(candidates) <= 1:
+        return candidates
+    top = max(_bitrate(t) for t in candidates)
+    if top <= 0:
+        return candidates
+    return [t for t in candidates if _bitrate(t) >= top * MOVIE_CANDIDATE_BITRATE_FLOOR]
+
+
 class DiscAnalyst:
     """Analyzes disc structure to classify content type."""
 

@@ -35,6 +35,7 @@ export interface Job {
     subtitles_total?: number;
     subtitles_failed?: number;
     review_reason?: string | null;
+    conflict_status?: string | null;
     created_at?: string;
 }
 
@@ -92,6 +93,7 @@ export interface JobUpdate {
     detected_title?: string;
     detected_season?: number;
     review_reason?: string | null;
+    conflict_status?: string | null;
 }
 
 export interface TitleUpdate {

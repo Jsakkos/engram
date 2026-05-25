@@ -26,7 +26,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await page.locator(SELECTORS.filterAll).click();
 
         // 01: Empty state before any disc
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/01-initial-state.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/01-initial-state.png`, fullPage: true, animations: 'disabled' });
 
         // Insert TV disc - speed 1 gives ~16s ripping + ~12s matching
         await simulateInsertDisc({
@@ -38,70 +38,82 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
 
         // 02: Card appears
         await expect(card).toBeVisible({ timeout: 10000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/02-card-appeared.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/02-card-appeared.png`, fullPage: true, animations: 'disabled' });
 
-        // 03: RIPPING state — the StateIndicator label during rip phase
+        // 03: RIPPING state — wait until the rip is visibly mid-flight (track
+        // grid populated, overall progress past 40%) so the README frame looks
+        // substantial instead of a bare rip-start moment (0/N tracks, empty log).
+        // data-value on the SvProgressBar is the deterministic signal here.
         await expect(card.getByText('RIPPING').first()).toBeVisible({ timeout: 15000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/03-ripping-state.png`, fullPage: true });
+        await expect(card.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
+        await expect
+            .poll(
+                async () => {
+                    const v = await card.locator(SELECTORS.progressBar).first().getAttribute('data-value');
+                    return v ? Number(v) : 0;
+                },
+                { timeout: 12000 },
+            )
+            .toBeGreaterThan(40);
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/03-ripping-state.png`, fullPage: true, animations: 'disabled' });
 
         // 13: TV badge explicitly visible during ripping
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/13-tv-badge.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/13-tv-badge.png`, fullPage: true, animations: 'disabled' });
 
         // 14: Speed + ETA display (e.g., "6.5x" and "5 min")
         const hasSpeed = await page.locator(SELECTORS.speed).first()
             .waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
         if (hasSpeed) {
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/14-speed-eta.png`, fullPage: true });
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/14-speed-eta.png`, fullPage: true, animations: 'disabled' });
         }
 
         // 15: Progress percentage on the main progress bar
         const hasProgress = await page.locator(SELECTORS.progressPercentage).first()
             .waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
         if (hasProgress) {
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/15-progress-percentage.png`, fullPage: true });
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/15-progress-percentage.png`, fullPage: true, animations: 'disabled' });
         }
 
         // 16: Cancel button visible during rip
         const hasCancel = await card.locator(SELECTORS.cancelButton)
             .waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
         if (hasCancel) {
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/16-cancel-button.png`, fullPage: true });
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/16-cancel-button.png`, fullPage: true, animations: 'disabled' });
         }
 
-        // 04: Track grid visible
-        await expect(card.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/04-track-grid-visible.png`, fullPage: true });
+        // 04: Track grid visible (already awaited before the 03 capture above)
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/04-track-grid-visible.png`, fullPage: true, animations: 'disabled' });
 
         // 05: Per-track RIPPING state on individual tracks
         const hasTrackRipping = await card.getByText('RIPPING').first()
             .waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
         if (hasTrackRipping) {
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/05-per-track-ripping.png`, fullPage: true });
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/05-per-track-ripping.png`, fullPage: true, animations: 'disabled' });
         }
 
         // 06: Per-track byte progress (e.g., "245 MB / 1.0 GB")
         const hasByteProgress = await card.locator(SELECTORS.trackByteProgress).first()
             .waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
         if (hasByteProgress) {
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/06-byte-progress.png`, fullPage: true });
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/06-byte-progress.png`, fullPage: true, animations: 'disabled' });
         }
 
         // 07: MATCHING state — wait for candidate rows
         const hasMatchCandidate = await card.locator(SELECTORS.matchCandidate).first()
             .waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
         if (hasMatchCandidate) {
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/07-matching-state.png`, fullPage: true });
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/07-matching-state.png`, fullPage: true, animations: 'disabled' });
 
             // 08: Closer look — wait for more votes to accumulate
             await page.waitForTimeout(2000);
-            await page.screenshot({ path: `${SCREENSHOT_DIR}/08-match-candidates.png`, fullPage: true });
+            await page.screenshot({ path: `${SCREENSHOT_DIR}/08-match-candidates.png`, fullPage: true, animations: 'disabled' });
         }
 
         // 09: COMPLETE state
         await expect(
             card.getByText('COMPLETE')
         ).toBeVisible({ timeout: 90000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/09-completed.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/09-completed.png`, fullPage: true, animations: 'disabled' });
     });
 
     test('Movie disc - ripping through completion screenshots', async ({ page }) => {
@@ -125,7 +137,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
 
         // 10: Card with MOVIE badge
         await expect(card).toBeVisible({ timeout: 10000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/10-movie-card.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/10-movie-card.png`, fullPage: true, animations: 'disabled' });
 
         // 11: Processing state — simulation may race through RIPPING/MATCHING
         // straight to COMPLETE on fast CI, so accept any post-identifying state
@@ -133,13 +145,13 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
             card.getByText(/RIPPING|MATCHING|MATCHED|COMPLETE/).first()
         ).toBeVisible({ timeout: 15000 });
         await page.waitForTimeout(1000);
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/11-movie-processing.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/11-movie-processing.png`, fullPage: true, animations: 'disabled' });
 
         // 12: COMPLETE
         await expect(
             card.getByText('COMPLETE')
         ).toBeVisible({ timeout: 30000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/12-movie-completed.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/12-movie-completed.png`, fullPage: true, animations: 'disabled' });
     });
 
     test('Failed/error card state', async ({ page }) => {
@@ -169,7 +181,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
 
         // 17: Error/failed card with ERROR badge
         await expect(page.locator(SELECTORS.stateFailed).first()).toBeVisible({ timeout: 10000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/17-error-failed-card.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/17-error-failed-card.png`, fullPage: true, animations: 'disabled' });
     });
 
     test('Name Prompt Modal - generic label disc', async ({ page }) => {
@@ -183,18 +195,23 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         // Generic label disc triggers NamePromptModal (no detected_title + force_review_needed)
         await simulateInsertDisc(GENERIC_LABEL_DISC);
 
-        // 18: Modal open in movie mode (default)
-        // toBeVisible resolves as soon as the Framer Motion element enters the DOM (opacity 0).
-        // A 250ms pause lets the spring animation advance past the transparent initial frame
-        // without exceeding the backend's short review_needed window (~500ms before auto-advance).
+        // 18: Modal open in movie mode (default). The settle is load-bearing:
+        // reducedMotion only drops transform/layout (it keeps Framer's opacity
+        // fade), and animations:'disabled' cancels an in-flight entrance to its
+        // *initial* transparent frame — capturing too early yields an invisible
+        // modal. Keep it short so we stay inside the backend's review_needed
+        // window (~500ms before auto-advance).
         await expect(page.getByText('Identify Disc')).toBeVisible({ timeout: 10000 });
         await page.waitForTimeout(250);
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/18-name-prompt-modal.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/18-name-prompt-modal.png`, fullPage: true, animations: 'disabled' });
 
-        // 19: Switch to TV Show mode
+        // 19: Switch to TV Show mode. Wait for the season field (the modal's only
+        // number input) to mount, then let its opacity/height entrance settle —
+        // same Framer + animations:'disabled' caveat as the modal entrance above.
         await page.locator('button:has-text("TV Show")').click();
-        await page.waitForTimeout(300); // let the season field animate in
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/19-name-prompt-tv-mode.png`, fullPage: true });
+        await expect(page.getByRole('spinbutton')).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/19-name-prompt-tv-mode.png`, fullPage: true, animations: 'disabled' });
 
         // Close without submitting
         await page.locator('button:has-text("Cancel")').click();
@@ -224,7 +241,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
 
         // 20: Step 1 — Library Paths
         await expect(page.locator('.step-title').first()).toContainText('Library Paths', { timeout: 5000 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/20-settings-step1-paths.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/20-settings-step1-paths.png`, fullPage: true, animations: 'disabled' });
 
         // Advance to step 2
         if (isOnboardingMode) {
@@ -235,7 +252,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await expect(page.locator('.step-title').first()).toContainText('Tools', { timeout: 5000 });
 
         // 21: Step 2 — Tools & License
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/21-settings-step2-tools.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/21-settings-step2-tools.png`, fullPage: true, animations: 'disabled' });
 
         // Advance to step 3
         if (isOnboardingMode) {
@@ -246,7 +263,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await expect(page.locator('.step-title').first()).toContainText('TMDB', { timeout: 5000 });
 
         // 22: Step 3 — TMDB Read Access Token
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/22-settings-step3-tmdb.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/22-settings-step3-tmdb.png`, fullPage: true, animations: 'disabled' });
 
         // Advance to step 4
         if (isOnboardingMode) {
@@ -257,7 +274,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await expect(page.locator('.step-title').first()).toContainText('Preferences', { timeout: 5000 });
 
         // 23: Step 4 — Preferences
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/23-settings-step4-prefs.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/23-settings-step4-prefs.png`, fullPage: true, animations: 'disabled' });
 
         // Close the wizard
         await page.locator('.modal-close').click();
@@ -289,7 +306,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 });
 
         // 24: History page with at least one completed job row
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/24-history-page.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/24-history-page.png`, fullPage: true, animations: 'disabled' });
 
         // Click the first row to open the job detail slide-out panel
         await page.locator('tbody tr').first().click();
@@ -298,7 +315,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await page.waitForTimeout(2000);
 
         // 25: History detail panel open
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/25-history-detail-panel.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/25-history-detail-panel.png`, fullPage: true, animations: 'disabled' });
     });
 
     test('Review queue page', async ({ page }) => {
@@ -322,6 +339,6 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await page.waitForTimeout(2000);
 
         // 26: Review queue page
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/26-review-page.png`, fullPage: true });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/26-review-page.png`, fullPage: true, animations: 'disabled' });
     });
 });

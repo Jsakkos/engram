@@ -10,7 +10,13 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
+from app.matcher.episode_identification import (
+    EpisodeMatcher,
+    TfidfMatcher,
+    load_precomputed_manifest,
+    precomputed_covers_season,
+    precomputed_episode_codes,
+)
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     apply_tfidf,
@@ -32,6 +38,23 @@ def _build_refs(docs=_DOCS):
     counts = build_hashing_vectorizer().transform(docs)
     idf = compute_idf(counts)
     return apply_tfidf(counts, idf), idf
+
+
+def _build_counts(docs=_DOCS):
+    """Return (uint16 counts, idf) — the on-disk shape for cache v2.
+
+    Mirrors scripts/build_subtitle_cache.py exactly, including the defensive
+    clip to uint16 range, so a future larger/pathological corpus can't
+    silently overflow here in a way the real build would have clipped.
+    """
+    counts = build_hashing_vectorizer().transform(docs)
+    idf = compute_idf(counts)
+    u16_max = np.iinfo(np.uint16).max
+    counts_u16 = sparse.csr_matrix(
+        (np.minimum(counts.data, u16_max).astype(np.uint16), counts.indices, counts.indptr),
+        shape=counts.shape,
+    )
+    return counts_u16, idf
 
 
 class TestVectorizerConfig:
@@ -78,9 +101,9 @@ class TestEpisodeMatcherCacheLoader:
         show_dir = precomputed / show  # sanitize_filename("Test Show") == "Test Show"
         show_dir.mkdir(parents=True)
 
-        ref, idf = _build_refs()
+        counts, idf = _build_counts()
         np.save(precomputed / "idf.npy", idf)
-        sparse.save_npz(show_dir / "S01.npz", ref)
+        sparse.save_npz(show_dir / "S01.npz", counts)
         (show_dir / "S01.index.json").write_text(json.dumps(["S01E01", "S01E02", "S01E03"]))
 
         manifest = {
@@ -127,6 +150,76 @@ class TestEpisodeMatcherCacheLoader:
         assert matcher._load_precomputed_season(1) is None
 
 
+class TestPrecomputedCoversSeason:
+    """The download-skip gate. Must agree with the matcher's load gate, so it
+    shares the same manifest validation. A True result means the matcher will
+    use the cache, so skipping the download can't strand a title."""
+
+    def _write_cache(self, tmp_path, manifest_overrides=None, write_files=True):
+        show = "Test Show"
+        precomputed = tmp_path / "precomputed"
+        show_dir = precomputed / show  # sanitize_filename("Test Show") == "Test Show"
+        show_dir.mkdir(parents=True)
+
+        if write_files:
+            # The gate only checks existence, not contents.
+            (precomputed / "idf.npy").write_bytes(b"")
+            (show_dir / "S01.npz").write_bytes(b"")
+            (show_dir / "S01.index.json").write_text(json.dumps(["S01E01", "S01E02"]))
+
+        manifest = {
+            "cache_format_version": CACHE_FORMAT_VERSION,
+            "vectorizer_config_hash": vectorizer_config_hash(),
+            "content_version": "test",
+            "shows": {show: {"tmdb_id": 1, "seasons": [1]}},
+        }
+        manifest.update(manifest_overrides or {})
+        (precomputed / "manifest.json").write_text(json.dumps(manifest))
+        return show
+
+    def test_covered_season_returns_true(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_covers_season(tmp_path, show, 1) is True
+
+    def test_missing_manifest_returns_false(self, tmp_path):
+        assert precomputed_covers_season(tmp_path, "Test Show", 1) is False
+
+    def test_unknown_show_returns_false(self, tmp_path):
+        self._write_cache(tmp_path)
+        assert precomputed_covers_season(tmp_path, "Other Show", 1) is False
+
+    def test_uncovered_season_returns_false(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_covers_season(tmp_path, show, 2) is False
+
+    def test_listed_but_files_missing_returns_false(self, tmp_path):
+        show = self._write_cache(tmp_path, write_files=False)
+        assert precomputed_covers_season(tmp_path, show, 1) is False
+
+    def test_format_version_mismatch_returns_false(self, tmp_path):
+        show = self._write_cache(tmp_path, {"cache_format_version": "999"})
+        assert precomputed_covers_season(tmp_path, show, 1) is False
+        assert load_precomputed_manifest(tmp_path) is None
+
+    def test_accepts_preloaded_manifest(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        manifest = load_precomputed_manifest(tmp_path)
+        # A caller-supplied manifest is used as-is (no re-read).
+        assert precomputed_covers_season(tmp_path, show, 1, manifest=manifest) is True
+        # A manifest that doesn't list the show wins even though files are on disk.
+        empty = {**manifest, "shows": {}}
+        assert precomputed_covers_season(tmp_path, show, 1, manifest=empty) is False
+
+    def test_episode_codes_returns_index_for_covered(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_episode_codes(tmp_path, show, 1) == ["S01E01", "S01E02"]
+
+    def test_episode_codes_none_when_uncovered(self, tmp_path):
+        show = self._write_cache(tmp_path)
+        assert precomputed_episode_codes(tmp_path, show, 2) is None
+        assert precomputed_episode_codes(tmp_path, "Other Show", 1) is None
+
+
 @pytest.mark.unit
 class TestPrecomputedCacheService:
     """The cache-service layer is the entry point on startup. The rolling
@@ -151,12 +244,14 @@ class TestPrecomputedCacheService:
         from app.services import precomputed_cache_service as svc
 
         # The remote manifest reports an alien format version. The local
-        # code only understands `CACHE_FORMAT_VERSION` (currently 2).
+        # code only understands `CACHE_FORMAT_VERSION` (a string); use a value
+        # we know it will never match. Earlier this concatenated `+ 100`,
+        # which TypeErrored on a string and was silently swallowed by the
+        # safety wrapper — the test passed without actually exercising the
+        # format-version branch.
         async def fake_manifest():
-            from app.matcher.vectorizer_config import CACHE_FORMAT_VERSION
-
             return {
-                "cache_format_version": CACHE_FORMAT_VERSION + 100,
+                "cache_format_version": "999",
                 "content_version": "2099-01-01",
                 "shows": {},
             }

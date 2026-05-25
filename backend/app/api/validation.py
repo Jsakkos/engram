@@ -1,6 +1,8 @@
 """Validation endpoints for pre-flight checks."""
 
+import asyncio
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -98,16 +100,70 @@ def _get_ffmpeg_search_paths() -> list[str]:
     ]
 
 
+_VERSION_NOT_DETECTABLE = "MakeMKV (version not detectable)"
+_VERSION_PROBE_TIMEOUT = "MakeMKV (version probe timed out)"
+
+# Robot mode (-r) prints a startup banner naming the version, e.g.
+#   MSG:1005,0,1,"MakeMKV v1.18.3 win(x64-release) started",...
+# Capture "MakeMKV v1.18.3 win(x64-release)" — product, semantic version, and the
+# optional platform tag — while dropping the trailing " started".
+_MAKEMKV_VERSION_RE = re.compile(
+    r"MakeMKV\s+v\d+(?:\.\d+)*(?:\s+\w+\([^)]*\))?",
+    re.IGNORECASE,
+)
+
+
 def _extract_makemkv_version(output: str) -> str:
-    """Extract a MakeMKV version string from command output."""
-    for line in output.split("\n"):
-        if "version" in line.lower() or "v1." in line or "v2." in line:
-            return line.strip()
-    return "MakeMKV (version not detectable)"
+    """Extract a MakeMKV version string from robot-mode command output.
+
+    Matches only the MSG:1005 banner pattern. A looser line-scan would
+    false-match the verbose drive-enumeration output (e.g. a ``DRV:`` line or a
+    ``"v1.0 codec loaded"`` message) and return garbage as the version string.
+    """
+    match = _MAKEMKV_VERSION_RE.search(output)
+    if match:
+        return match.group(0).strip()
+    return _VERSION_NOT_DETECTABLE
+
+
+def _probe_makemkv_version(path_str: str) -> str:
+    """Best-effort version read via robot mode.
+
+    Running with no arguments only prints usage text (no version), so the version
+    comes from the robot-mode (-r) startup banner. Robot mode enumerates optical
+    drives, so this is kept separate from the binary validity check and never
+    blocks detection on a slow or busy drive. The out-of-range ``disc:99999``
+    index can't open a real disc — it just triggers the banner.
+    """
+    # Refuse to launch anything that isn't a MakeMKV executable, so a
+    # user-supplied config path can't coerce this into running an arbitrary
+    # binary (py/command-line-injection). Mirrors the endpoint-level guard.
+    if not executable_basename_allowed(path_str, _MAKEMKV_EXE_NAMES):
+        return _VERSION_NOT_DETECTABLE
+    try:
+        result = subprocess.run(
+            [path_str, "-r", "info", "disc:99999"],
+            capture_output=True,
+            timeout=20,
+            text=True,
+        )
+    except subprocess.TimeoutExpired:
+        # Distinct from "not detectable" so operators can tell a slow/busy drive
+        # apart from a binary that simply never emitted a parseable version.
+        logger.warning("MakeMKV version probe timed out (20s)")
+        return _VERSION_PROBE_TIMEOUT
+    except Exception as e:
+        logger.debug(f"MakeMKV version probe failed: {e}")
+        return _VERSION_NOT_DETECTABLE
+    return _extract_makemkv_version(result.stdout + result.stderr)
 
 
 def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
     """Validate a MakeMKV binary and extract version info."""
+    # Self-guard the subprocess sink: never execute a path whose basename isn't
+    # a known MakeMKV executable, independent of the caller (py/command-line-injection).
+    if not executable_basename_allowed(path_str, _MAKEMKV_EXE_NAMES):
+        return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
     try:
         result = subprocess.run(
             [path_str],
@@ -115,17 +171,18 @@ def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
             timeout=10,
             text=True,
         )
-        output = result.stdout + result.stderr
-        if "makemkvcon" not in output.lower() and "makemkv" not in output.lower():
-            return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
-
-        return ToolDetectionResult(
-            found=True, path=path_str, version=_extract_makemkv_version(output)
-        )
     except subprocess.TimeoutExpired:
         return ToolDetectionResult(found=False, path=path_str, error="Command timeout (10s)")
     except Exception as e:
         return ToolDetectionResult(found=False, error=f"Execution failed: {e}")
+
+    output = result.stdout + result.stderr
+    if "makemkvcon" not in output.lower() and "makemkv" not in output.lower():
+        return ToolDetectionResult(found=False, error="Not a valid MakeMKV executable")
+
+    # Probe is decoupled from the validity check above: it self-catches all its
+    # own errors, so its subprocess lifetime never interacts with this try block.
+    return ToolDetectionResult(found=True, path=path_str, version=_probe_makemkv_version(path_str))
 
 
 def _validate_ffmpeg_binary(path_str: str) -> ToolDetectionResult:
@@ -194,11 +251,13 @@ def detect_ffmpeg() -> ToolDetectionResult:
 @router.get("/detect-tools", response_model=DetectToolsResponse)
 async def detect_tools() -> DetectToolsResponse:
     """Auto-detect MakeMKV and FFmpeg installations."""
-    return DetectToolsResponse(
-        makemkv=detect_makemkv(),
-        ffmpeg=detect_ffmpeg(),
-        platform=sys.platform,
+    # Detection shells out to the tools (blocking, multi-second on slow/busy
+    # drives), so run it off the event loop to avoid stalling other requests.
+    makemkv, ffmpeg = await asyncio.gather(
+        asyncio.to_thread(detect_makemkv),
+        asyncio.to_thread(detect_ffmpeg),
     )
+    return DetectToolsResponse(makemkv=makemkv, ffmpeg=ffmpeg, platform=sys.platform)
 
 
 @router.post("/validate/makemkv", response_model=ValidationResponse)
@@ -219,7 +278,8 @@ async def validate_makemkv(request: ValidationRequest) -> ValidationResponse:
         return ValidationResponse(valid=False, error="Path is not a file")
 
     # MakeMKV returns exit code 1 for help, so the helper checks output content instead.
-    result = _validate_makemkv_binary(str(makemkv_path))
+    # Runs blocking subprocesses, so offload to a thread to keep the event loop free.
+    result = await asyncio.to_thread(_validate_makemkv_binary, str(makemkv_path))
     if not result.found:
         error = result.error
         if error == "Command timeout (10s)":
@@ -249,7 +309,7 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
             return ValidationResponse(valid=False, error="FFmpeg not found in system PATH")
         ffmpeg_path_str = ffmpeg_cmd_found
 
-    result = _validate_ffmpeg_binary(ffmpeg_path_str)
+    result = await asyncio.to_thread(_validate_ffmpeg_binary, ffmpeg_path_str)
     if not result.found:
         error = result.error
         if error == "Non-zero exit code":

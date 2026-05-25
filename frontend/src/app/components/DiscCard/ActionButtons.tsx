@@ -14,7 +14,7 @@
 
 import { useState, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 import { motion } from "motion/react";
-import { IcoCancel, IcoError, IcoRetry } from "../icons";
+import { IcoCancel, IcoError, IcoRetry, IcoPlay } from "../icons";
 import type { DiscState } from "../DiscCard";
 import { sv } from "../synapse";
 
@@ -24,7 +24,14 @@ interface ActionButtonsProps {
     onCancel?: () => void;
     onReview?: () => void;
     onReIdentify?: () => void;
+    onAdvance?: () => void;
 }
+
+// States where Force-advance makes sense (job is actively processing).
+const ACTIVE_STATES = ["scanning", "ripping", "matching", "organizing", "processing"];
+// Cancel was historically shown only during rip-phase states; keep that scope so it
+// doesn't surface during organizing, where cancelling could leave files partially moved.
+const CANCELABLE_STATES = ["scanning", "ripping", "processing"];
 
 interface Tone {
     fg: string;        // foreground / icon / text
@@ -126,9 +133,21 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0 }:
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify }: ActionButtonsProps) {
-    const showCancel = !!onCancel && (isHovered || ["scanning", "ripping", "processing"].includes(state));
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance }: ActionButtonsProps) {
+    const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
+    const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
+
+    const handleAdvance = (e: MouseEvent) => {
+        e.stopPropagation();
+        if (window.confirm(
+            "Force this job to its next step?\n\n" +
+            "Tracks still ripping or matching will be sent to review (or failed if no " +
+            "file was produced), and anything already matched will be organized."
+        )) {
+            onAdvance!();
+        }
+    };
 
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -141,6 +160,19 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     paddingX={0}
                 >
                     <IcoCancel size={14} />
+                </ToneButton>
+            )}
+
+            {showAdvance && (
+                <ToneButton
+                    tone={CYAN}
+                    onClick={handleAdvance}
+                    title="Force this job to its next step"
+                    ariaLabel="Force job to next step"
+                    paddingX={10}
+                >
+                    <IcoPlay size={12} />
+                    <span style={{ fontSize: 10 }}>Force</span>
                 </ToneButton>
             )}
 

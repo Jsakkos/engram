@@ -1,7 +1,7 @@
 {
     "name": "engram-frontend",
     "private": true,
-    "version": "0.6.0",
+    "version": "0.7.1",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -12,6 +12,7 @@
         "test:e2e": "playwright test",
         "test:e2e:ui": "playwright test --ui",
         "test:e2e:headed": "playwright test --headed",
+        "screenshots": "node scripts/capture-screenshots.mjs",
         "brand:export": "node scripts/render-svg-sources.mjs && node scripts/generate-brand-assets.mjs"
     },
     "dependencies": {

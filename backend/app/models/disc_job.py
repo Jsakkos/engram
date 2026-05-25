@@ -90,6 +90,7 @@ class DiscJob(SQLModel, table=True):
     cleared_at: datetime | None = Field(default=None)  # Soft-delete: hidden from dashboard
     error_message: str | None = None
     review_reason: str | None = None  # Human-readable reason why review is needed
+    conflict_status: str | None = None  # Transient note while auto-resolving episode conflicts
 
     # Title information (JSON stored as string for simplicity)
     titles_json: str | None = None  # List of titles with durations

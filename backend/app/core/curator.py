@@ -175,8 +175,14 @@ class EpisodeCurator:
         series_name: str | None,
         season: int | None,
         progress_callback: Callable[..., None] | None = None,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
     ) -> MatchResult:
-        """Match a single file to an episode using audio fingerprinting."""
+        """Match a single file to an episode using audio fingerprinting.
+
+        ``num_points``/``min_vote_count`` override the matcher's scan density and
+        minimum vote gate (used by the deep re-match path); None keeps defaults.
+        """
         logger.info(
             f"match_single_file called: {file_path.name}, series={series_name}, season={season}"
         )
@@ -205,6 +211,8 @@ class EpisodeCurator:
                 self._cache_dir,
                 season,
                 progress_callback,
+                num_points,
+                min_vote_count,
             )
             logger.debug(f"[Curator] identify_episode returned for {file_path.name}: {match}")
 
