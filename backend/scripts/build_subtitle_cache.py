@@ -53,7 +53,7 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache
-from app.matcher.subtitle_utils import sanitize_filename
+from app.matcher.subtitle_utils import discover_season_srts, sanitize_filename
 from app.matcher.testing_service import download_subtitles, get_last_quota
 from app.matcher.tmdb_client import (
     fetch_show_details,
@@ -83,6 +83,7 @@ class RunTally:
     cache_hits: int = 0
     not_found: int = 0
     seasons_done: int = 0
+    seasons_from_disk: int = 0
     seasons_skipped_below_threshold: int = 0
     seasons_failed: int = 0
     # Per-provider download counts (opensubtitles_api, addic7ed, tvsubtitles).
@@ -239,19 +240,55 @@ def _harvest_show(
     show: dict,
     args,
     tally: RunTally,
+    cache_dir: Path,
     on_season_done=None,
 ) -> list[tuple[int, str, Path]]:
     """Download subtitles for every season. Returns [(season, episode_code, srt_path)].
 
     Mutates ``tally`` in place with per-status counts so the caller can render
-    progress without re-walking the episode lists. ``on_season_done``, if
-    given, is invoked after each season finishes (success, skip, or fail) so
-    the caller can advance a Progress bar without coupling to its
-    implementation.
+    progress without re-walking the episode lists. ``cache_dir`` is the root
+    subtitle cache (``<cache>/data/<show>/...`` holds the SRTs) used by the
+    complete-on-disk fast path. ``on_season_done``, if given, is invoked after
+    each season finishes (success, skip, or fail) so the caller can advance a
+    Progress bar without coupling to its implementation.
     """
     harvested: list[tuple[int, str, Path]] = []
     canonical = show["name"]
+    season_data_dir = cache_dir / "data" / sanitize_filename(canonical)
     for season in range(1, show["seasons"] + 1):
+        # Complete-on-disk fast path: a season that previously reached the
+        # coverage threshold is shipped straight from the SRTs already on disk
+        # — no TMDB enumeration, no OpenSubtitles search, no scraper grind, no
+        # per-season sleep. This is what keeps daily re-runs near-instant and
+        # stops re-scraping the permanently-missing tail of every covered
+        # season. --refresh forces a full re-harvest to fill gaps providers
+        # may have added since.
+        if not args.refresh:
+            done, _ = coverage_tracker.is_done(
+                show["tmdb_id"],
+                season,
+                args.min_episodes_ratio,
+                args.skip_window_days,
+            )
+            if done:
+                on_disk = discover_season_srts(season_data_dir, season)
+                if on_disk:
+                    for code, path in on_disk:
+                        harvested.append((season, code, path))
+                    tally.cache_hits += len(on_disk)
+                    tally.seasons_done += 1
+                    tally.seasons_from_disk += 1
+                    logger.info(
+                        f"  {canonical} S{season:02d}: complete on disk "
+                        f"({len(on_disk)} eps); shipping without network "
+                        f"(--refresh to re-harvest)"
+                    )
+                    if on_season_done is not None:
+                        on_season_done()
+                    continue
+                # A coverage record exists but the SRTs are gone (e.g. a wiped
+                # CI cache) — fall through and re-harvest from scratch.
+
         if not args.retry_low_coverage:
             skip, prev = coverage_tracker.should_skip(
                 show["tmdb_id"],
@@ -389,6 +426,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Re-harvest seasons already covered on disk instead of shipping them "
+            "from disk without re-downloading (the default). Use periodically to "
+            "fill in episodes providers may have added since the last build."
+        ),
+    )
+    parser.add_argument(
         "--skip-window-days",
         type=int,
         default=30,
@@ -423,6 +469,22 @@ def main() -> int:
         and config.opensubtitles_password
     ):
         logger.info("OpenSubtitles API: ACTIVE — bulk season downloads enabled")
+        # Probe remaining daily download quota up front so the user can see
+        # whether there's budget for this run before any harvesting starts.
+        # _get_os_client logs in and queries user_info, which does NOT consume
+        # download quota; a failure here is non-fatal (the harvest will retry).
+        try:
+            from app.matcher.testing_service import _get_os_client
+
+            if _get_os_client(config) is not None:
+                quota = get_last_quota()
+                remaining = quota.get("remaining") if quota else None
+                logger.info(
+                    f"OpenSubtitles quota: {remaining if remaining is not None else 'n/a'} "
+                    f"downloads remaining today"
+                )
+        except Exception as e:  # noqa: BLE001 - quota probe must never abort the build
+            logger.warning(f"OpenSubtitles quota probe failed (non-fatal): {e}")
     else:
         logger.warning(
             "OpenSubtitles API: INACTIVE — credentials missing; falling back to "
@@ -488,6 +550,7 @@ def main() -> int:
                 show,
                 args,
                 tally,
+                cache_dir,
                 on_season_done=lambda task=season_task: progress.advance(task),
             )
             progress.remove_task(season_task)
@@ -638,6 +701,7 @@ def main() -> int:
         f"  cache hit rate:   {tally.cache_hit_rate:.0%}\n"
         f"  by source:        {by_source}\n"
         f"  seasons OK:       {tally.seasons_done}\n"
+        f"  seasons from disk: {tally.seasons_from_disk} (shipped without network)\n"
         f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
         f"  seasons failed:   {tally.seasons_failed}\n"
         f"  elapsed:          {tally.elapsed_str()}\n"

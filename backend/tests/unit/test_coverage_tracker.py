@@ -65,6 +65,43 @@ class TestShouldSkip:
 
 
 @pytest.mark.unit
+class TestIsDone:
+    """``is_done`` is the symmetric complement of ``should_skip``: it gates the
+    build script's complete-on-disk fast path, returning True only when a fresh
+    attempt already reached the coverage threshold."""
+
+    def test_unrecorded_show_not_done(self):
+        done, prev = coverage_tracker.is_done(42424242, 1, min_ratio=0.6)
+        assert done is False
+        assert prev is None
+
+    def test_above_threshold_within_window_is_done(self):
+        coverage_tracker.record(4, 1, total=10, covered=8)  # 80%
+        done, prev = coverage_tracker.is_done(4, 1, min_ratio=0.6, window_days=30)
+        assert done is True
+        assert prev["coverage_ratio"] == pytest.approx(0.8)
+        assert prev["total_episodes"] == 10
+        assert prev["covered_episodes"] == 8
+
+    def test_below_threshold_not_done(self):
+        coverage_tracker.record(5, 1, total=10, covered=1)  # 10%
+        done, prev = coverage_tracker.is_done(5, 1, min_ratio=0.6)
+        assert done is False
+        assert prev is None
+
+    def test_outside_window_not_done(self, monkeypatch):
+        """A covered season older than the window is eligible for re-harvest —
+        providers may have added the missing episodes since."""
+        forty_days_ago = time.time() - 40 * 86400
+        monkeypatch.setattr(coverage_tracker.time, "time", lambda: forty_days_ago)
+        coverage_tracker.record(6, 1, total=10, covered=10)  # 100%
+        monkeypatch.undo()
+        done, prev = coverage_tracker.is_done(6, 1, min_ratio=0.6, window_days=30)
+        assert done is False
+        assert prev is None
+
+
+@pytest.mark.unit
 class TestClear:
     def test_clear_all(self):
         coverage_tracker.record(10, 1, 5, 0)
