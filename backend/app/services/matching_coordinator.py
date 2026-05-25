@@ -1036,7 +1036,12 @@ class MatchingCoordinator:
 
             error_msg = None
             if status == "failed":
-                error_msg = "Subtitle download failed: No subtitles found"
+                error_msg = (
+                    f"No reference subtitles found for '{show_name}'. Episode matching "
+                    "can't run without them — add an OpenSubtitles API key in Settings, "
+                    "drop .srt files into the show's cache folder, or assign episodes "
+                    "manually in Review."
+                )
 
             if using_precomputed:
                 logger.info(

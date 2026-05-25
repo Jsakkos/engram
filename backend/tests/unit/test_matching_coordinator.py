@@ -229,3 +229,41 @@ class TestRematchSingleTitle:
         coord = _make_coord()
         with pytest.raises(ValueError):
             await coord.rematch_single_title(9999, 9999, source_preference="discdb")
+
+
+@pytest.mark.unit
+class TestDownloadSubtitlesMessaging:
+    """When a show has no reference subtitles anywhere, the job's error_message
+    must be loud and actionable — naming the show and the ways to recover —
+    instead of the old generic 'No subtitles found'.
+    """
+
+    async def test_no_subtitles_sets_actionable_show_specific_message(self, monkeypatch):
+        coord = _make_coord()
+
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
+
+        # Every episode comes back not_found -> status "failed".
+        monkeypatch.setattr(
+            "app.matcher.testing_service.download_subtitles",
+            lambda show, season: {
+                "episodes": [{"status": "not_found"}, {"status": "not_found"}],
+                "show_name": "The Osbournes",
+            },
+        )
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job_id = job.id
+
+        await coord.download_subtitles(job_id, "The Osbournes", 1)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "failed"
+            msg = refreshed.error_message or ""
+            assert "The Osbournes" in msg
+            assert "manually" in msg.lower()

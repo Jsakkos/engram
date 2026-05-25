@@ -723,15 +723,19 @@ function ReviewQueue() {
             {/* Content */}
             <div className="max-w-[1280px] mx-auto px-6 py-8 relative z-0 pb-24">
                 {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
-                {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
+                {/* The no-subtitles case owns a single loud notice; otherwise show the
+                    generic error_message banner so the two don't double up. */}
+                {job.subtitle_status === 'failed' ? (
+                    <SvNotice tone="error">
+                        › {job.error_message ||
+                            "NO REFERENCE SUBTITLES FOUND — EPISODE MATCHING CAN'T RUN. ASSIGN EPISODES MANUALLY BELOW."}
+                    </SvNotice>
+                ) : (
+                    job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>
+                )}
                 {hasConflicts && (
                     <SvNotice tone="warn">
                         › {collisions.size} EPISODE CONFLICT{collisions.size > 1 ? 'S' : ''} — TWO TITLES SHARE AN EPISODE. RESOLVE BEFORE SAVING.
-                    </SvNotice>
-                )}
-                {job.subtitle_status === 'failed' && !job.error_message?.includes('Subtitle') && (
-                    <SvNotice tone="warn">
-                        › SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
                     </SvNotice>
                 )}
                 {rosterError && (
