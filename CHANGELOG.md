@@ -2,6 +2,16 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [0.7.3] - 2026-05-25
+
+### Fixed
+- **Ripping progress detection**: MakeMKV robot-mode output (`PRGC`/`PRGV`) was misread — the leading field is a message code (not a title index) and progress is `value/65536` (not `current/total`) — producing phantom "title 5018 is ripping" states and >100% per-title progress bars. The filesystem monitor (output-file sizes) is now the single source of per-title and overall progress; the stall-watchdog heartbeat is also fed from it (#209).
+- **Redundant disc re-scans during ripping**: each title previously triggered its own `makemkvcon` invocation, re-opening and re-scanning the whole disc every time. Ripping now issues one `makemkvcon … all` pass for the full disc selection, falling back to individual re-rips only for any titles missing from that pass (#209).
+
+### Changed
+- **CI macOS Intel runner**: the `macos-13` GitHub Actions runner used to build the x64 release binary was retired and is no longer available; replaced with `macos-15-intel` so macOS x64 release builds succeed again (#210).
+- **Subtitle cache build speed**: seasons already covered on disk are skipped on each daily run — no TMDB, OpenSubtitles, or scraper calls — until a configurable freshness window (default 30 days) expires or `--refresh` forces a full re-harvest. Previously every season was re-attempted on each run regardless of prior coverage (#204).
+
 ## [0.7.2] - 2026-05-25
 
 ### Fixed
