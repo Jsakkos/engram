@@ -21,8 +21,9 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      // react-hooks v7 introduced strict new rules that flag common valid patterns.
-      // These are disabled until the codebase is audited for actual correctness issues.
+      // react-hooks v7 (React Compiler) rules: disabled pending codebase audit.
+      // set-state-in-effect, refs, immutability: may flag existing code; verify before enabling.
+      // preserve-manual-memoization: only meaningful if React Compiler is adopted.
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/refs': 'off',
       'react-hooks/immutability': 'off',
