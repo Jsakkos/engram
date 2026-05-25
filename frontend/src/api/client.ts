@@ -28,7 +28,7 @@ async function request(input: RequestInfo | URL, init?: RequestInit): Promise<Re
     try {
       body = await res.text();
     } catch {
-      body = "";
+      // body stays "" if the response body is unreadable
     }
     throw new ApiError(res.status, res.statusText, body);
   }

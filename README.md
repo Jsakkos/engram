@@ -67,13 +67,22 @@ On all platforms, Engram supports a **staging folder workflow**: drop a folder o
 
 - [MakeMKV](https://www.makemkv.com/) with a valid license
 - A TMDB API Read Access Token (v4) from [TMDB](https://www.themoviedb.org/settings/api)
-- If running from source: Python 3.11+ with [uv](https://docs.astral.sh/uv/), and Node.js 24
+- If running from source: Python 3.11–3.13 with [uv](https://docs.astral.sh/uv/), and Node.js 24 (Python 3.14 is not yet supported — some ML dependencies have no 3.14 wheels)
 
 ## Install
 
-### Option A: Standalone executable (Windows)
+### Option A: Standalone executable (Windows, Linux, macOS)
 
-Download `engram-windows-x64.zip` from the [Releases](https://github.com/Jsakkos/engram/releases) page, extract it, and run `engram.exe`. No Python or Node.js required — the Config Wizard opens in your browser on first launch.
+No Python or Node.js required — the Config Wizard opens in your browser on first launch. Download the build for your platform from the [Releases](https://github.com/Jsakkos/engram/releases) page, extract it, and run the `engram` executable:
+
+| Platform | Download | Run |
+|----------|----------|-----|
+| Windows | `engram-windows-x64.zip` | `engram.exe` |
+| Linux (x64) | `engram-linux-x64.tar.gz` | `./engram/engram` |
+| macOS (Apple Silicon) | `engram-macos-arm64.tar.gz` | `./engram/engram` |
+| macOS (Intel) | `engram-macos-x64.tar.gz` | `./engram/engram` |
+
+On macOS, pick the build that matches your chip: **Apple Silicon** (M1/M2/M3/M4) → `arm64`, **Intel** → `x64`. Run `uname -m` if unsure (`arm64` vs `x86_64`). macOS has no automatic optical-drive detection — use the staging-folder workflow (see [Linux / macOS setup](docs/guide/linux-setup.md)).
 
 ### Option B: From source (all platforms)
 

@@ -76,6 +76,11 @@ jobs:
               Get-Content smoke-stderr.log -ErrorAction SilentlyContinue
               throw "executable never became ready"
             }
+            # Fork-bomb regression guard: a healthy onedir server is ~1 process;
+            # a spawn fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
+            $count = (Get-Process engram -ErrorAction SilentlyContinue | Measure-Object).Count
+            Write-Host "engram process count: $count"
+            if ($count -gt 2) { throw "too many engram processes ($count) - possible multiprocessing fork-bomb" }
             Write-Host "smoke test passed"
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -129,6 +134,12 @@ jobs:
         working-directory: backend
         run: uv run pyinstaller engram.spec
 
+      - name: Verify binary architecture
+        run: |
+          file backend/dist/engram/engram
+          file backend/dist/engram/engram | grep -q 'x86-64' \
+            || { echo "binary is not x86-64 as expected"; exit 1; }
+
       - name: Smoke test built executable
         env:
           PORT: "8765"
@@ -153,6 +164,14 @@ jobs:
             echo "executable never became ready"
             exit 1
           fi
+          # Fork-bomb regression guard: a healthy onedir server is ~1 process;
+          # a spawn fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
+          count=$(pgrep -f 'dist/engram/engram' | wc -l | tr -d ' ')
+          echo "engram process count: $count"
+          if [ "$count" -gt 2 ]; then
+            echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
+            exit 1
+          fi
           echo "smoke test passed"
 
       - name: Package
@@ -163,8 +182,18 @@ jobs:
           path: engram-linux-x64.tar.gz
 
   build-macos:
-    name: Build macOS Executable
-    runs-on: macos-latest
+    name: Build macOS Executable (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13 # Intel x64
+            arch: x64
+            file_arch: x86_64
+          - runner: macos-14 # Apple Silicon arm64
+            arch: arm64
+            file_arch: arm64
     steps:
       - uses: actions/checkout@v6
 
@@ -200,6 +229,12 @@ jobs:
         working-directory: backend
         run: uv run pyinstaller engram.spec
 
+      - name: Verify binary architecture
+        run: |
+          file backend/dist/engram/engram
+          file backend/dist/engram/engram | grep -q '${{ matrix.file_arch }}' \
+            || { echo "binary is not ${{ matrix.file_arch }} as expected"; exit 1; }
+
       - name: Smoke test built executable
         env:
           PORT: "8765"
@@ -224,14 +259,22 @@ jobs:
             echo "executable never became ready"
             exit 1
           fi
+          # Fork-bomb regression guard: a healthy onedir server is ~1 process;
+          # a spawn fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
+          count=$(pgrep -f 'dist/engram/engram' | wc -l | tr -d ' ')
+          echo "engram process count: $count"
+          if [ "$count" -gt 2 ]; then
+            echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
+            exit 1
+          fi
           echo "smoke test passed"
 
       - name: Package
-        run: tar -czf engram-macos-x64.tar.gz -C backend/dist engram
+        run: tar -czf engram-macos-${{ matrix.arch }}.tar.gz -C backend/dist engram
       - uses: actions/upload-artifact@v7
         with:
-          name: engram-macos-x64
-          path: engram-macos-x64.tar.gz
+          name: engram-macos-${{ matrix.arch }}
+          path: engram-macos-${{ matrix.arch }}.tar.gz
 
   create-release:
     name: Create GitHub Release
@@ -247,6 +290,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: engram-macos-x64
+      - uses: actions/download-artifact@v8
+        with:
+          name: engram-macos-arm64
       - uses: softprops/action-gh-release@v3
         with:
           draft: false
@@ -255,3 +301,4 @@ jobs:
             engram-windows-x64.zip
             engram-linux-x64.tar.gz
             engram-macos-x64.tar.gz
+            engram-macos-arm64.tar.gz
