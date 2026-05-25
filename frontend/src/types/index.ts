@@ -31,6 +31,7 @@ export interface Job {
     detected_title?: string;
     detected_season?: number;
     subtitle_status?: SubtitleStatus;
+    subtitle_error_message?: string | null;
     subtitles_downloaded?: number;
     subtitles_total?: number;
     subtitles_failed?: number;

@@ -112,8 +112,10 @@ class MatchingCoordinator:
             job = await session.get(DiscJob, job_id)
             if job is None:
                 return
-            update_values: dict = {"subtitle_status": None}
-            # Only wipe error_message if it came from the subtitle pipeline.
+            update_values: dict = {"subtitle_status": None, "subtitle_error_message": None}
+            # Only wipe the catch-all error_message if it came from the subtitle
+            # pipeline's exception path (the actionable "no subtitles" detail lives
+            # on subtitle_error_message, cleared unconditionally above).
             if job.error_message and (
                 job.error_message.startswith("Subtitle download")
                 or job.error_message.startswith("Download error")
@@ -1055,14 +1057,14 @@ class MatchingCoordinator:
                 )
 
             async with async_session() as session:
-                update_values = {"subtitle_status": status}
+                # Always assign subtitle_error_message: the actionable string on
+                # failure, None on success/partial so a stale banner from a prior
+                # attempt is cleared. Kept off the catch-all error_message.
+                update_values = {"subtitle_status": status, "subtitle_error_message": error_msg}
 
                 if result.get("show_name") and result["show_name"] != show_name:
                     logger.info(f"Updating job {job_id} title to canonical: {result['show_name']}")
                     update_values["detected_title"] = result["show_name"]
-
-                if error_msg:
-                    update_values["error_message"] = error_msg
 
                 await session.execute(
                     update(DiscJob).where(DiscJob.id == job_id).values(**update_values)

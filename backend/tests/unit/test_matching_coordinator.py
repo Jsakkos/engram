@@ -233,27 +233,24 @@ class TestRematchSingleTitle:
 
 @pytest.mark.unit
 class TestDownloadSubtitlesMessaging:
-    """When a show has no reference subtitles anywhere, the job's error_message
-    must be loud and actionable — naming the show and the ways to recover —
-    instead of the old generic 'No subtitles found'.
+    """When a show has no reference subtitles anywhere, the actionable detail
+    lives on the dedicated subtitle_error_message field (not the catch-all
+    error_message, which other failure paths also write to).
     """
 
-    async def test_no_subtitles_sets_actionable_show_specific_message(self, monkeypatch):
-        coord = _make_coord()
-
+    def _mock(self, monkeypatch, episodes):
         async def _noop(*a, **k):
             return None
 
         monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
-
-        # Every episode comes back not_found -> status "failed".
         monkeypatch.setattr(
             "app.matcher.testing_service.download_subtitles",
-            lambda show, season: {
-                "episodes": [{"status": "not_found"}, {"status": "not_found"}],
-                "show_name": "The Osbournes",
-            },
+            lambda show, season: {"episodes": episodes, "show_name": show},
         )
+
+    async def test_no_subtitles_sets_actionable_show_specific_message(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(monkeypatch, [{"status": "not_found"}, {"status": "not_found"}])
 
         async with _unit_session_factory() as session:
             job, _title = await _seed(session)
@@ -264,6 +261,26 @@ class TestDownloadSubtitlesMessaging:
         async with _unit_session_factory() as session:
             refreshed = await session.get(DiscJob, job_id)
             assert refreshed.subtitle_status == "failed"
-            msg = refreshed.error_message or ""
+            msg = refreshed.subtitle_error_message or ""
             assert "The Osbournes" in msg
             assert "manually" in msg.lower()
+            # The catch-all field must stay clean so it can't leak into other banners.
+            assert refreshed.error_message is None
+
+    async def test_partial_download_clears_stale_subtitle_error(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(monkeypatch, [{"status": "downloaded"}, {"status": "not_found"}])
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job.subtitle_error_message = "stale message from a prior attempt"
+            session.add(job)
+            await session.commit()
+            job_id = job.id
+
+        await coord.download_subtitles(job_id, "The Osbournes", 1)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "partial"
+            assert refreshed.subtitle_error_message is None

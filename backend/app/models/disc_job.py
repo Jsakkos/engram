@@ -79,6 +79,9 @@ class DiscJob(SQLModel, table=True):
 
     # Subtitle tracking
     subtitle_status: str | None = None  # "downloading", "completed", "partial", "failed", None
+    # Subtitle-specific failure detail, kept separate from the catch-all
+    # error_message so the two can't clobber each other or leak across banners.
+    subtitle_error_message: str | None = None
     subtitles_downloaded: int = 0
     subtitles_total: int = 0
     subtitles_failed: int = 0

@@ -349,8 +349,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 </div>
               </div>
 
-              {/* No reference subtitles — loud, actionable, shown in every state */}
-              {disc.subtitleStatus === 'failed' && (
+              {/* No reference subtitles — loud + actionable while the job is still
+                  actionable. Hidden once completed (e.g. user assigned manually). */}
+              {disc.subtitleStatus === 'failed' && disc.state !== 'completed' && (
                 <div
                   role="alert"
                   style={{
