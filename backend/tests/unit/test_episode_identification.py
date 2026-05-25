@@ -61,6 +61,17 @@ class TestCleanSubtitleText:
     def test_normalizes_whitespace(self):
         assert _clean_subtitle_text("a\n\n  b\t c") == "a b c"
 
+    def test_strips_mismatched_open_brace_annotation(self):
+        # Some sources (e.g. tvsubtitles.net) render the opening "[" of a stage
+        # direction as "{", producing tokens like "{ Sighs]". The annotation must
+        # still be stripped despite the mismatched delimiters.
+        assert _clean_subtitle_text("{ Sighs] Hello there") == "hello there"
+
+    def test_leaves_unclosed_annotation_words(self):
+        # No closing bracket -> cannot be safely stripped by regex (would need a
+        # sound-effect wordlist), so the words survive; only the stray brace goes.
+        assert _clean_subtitle_text("{ Scoffs I haven't slept") == "scoffs i haven't slept"
+
 
 @pytest.mark.unit
 class TestIsWatermarkBlock:
