@@ -48,12 +48,14 @@ class MatchingCoordinator:
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
 
-        # Cross-coordinator callback
+        # Cross-coordinator callbacks
         self._check_job_completion: callable = None
+        self._note_activity: callable | None = None
 
-    def set_callbacks(self, *, check_job_completion) -> None:
+    def set_callbacks(self, *, check_job_completion, note_activity=None) -> None:
         """Set cross-coordinator callbacks."""
         self._check_job_completion = check_job_completion
+        self._note_activity = note_activity
 
     def init_semaphore(self, concurrency: int) -> None:
         """Initialize the match semaphore with the given concurrency."""
@@ -67,6 +69,10 @@ class MatchingCoordinator:
         """
         self._episode_runtimes.pop(job_id, None)
         self._discdb_mappings.pop(job_id, None)
+        self._subtitle_ready.pop(job_id, None)
+        task = self._subtitle_tasks.pop(job_id, None)
+        if task is not None and not task.done():
+            task.cancel()
 
     def get_discdb_mappings(self, job_id: int) -> list:
         """Get DiscDB mappings for a job."""
@@ -214,10 +220,13 @@ class MatchingCoordinator:
                     min_vote_count=min_vote_count,
                 )
                 dispatched.append(tid)
-            except ValueError as e:
-                # e.g. staging file missing for a title that was matched earlier
-                # but whose ripped file is no longer present — skip it rather
-                # than failing the whole conflict re-match, and report it.
+            except Exception as e:
+                # e.g. staging file missing (ValueError) or a transient DB/IO
+                # error — skip this title rather than failing the whole conflict
+                # re-match, and report it. Catching broadly (but NOT BaseException,
+                # so asyncio.CancelledError still propagates) keeps the auto-
+                # escalation caller from leaving its pass counter unset, which
+                # would otherwise re-dispatch the same depth indefinitely.
                 logger.warning(f"Conflict re-match: skipping title {tid} (job {job_id}): {e}")
                 skipped.append({"title_id": tid, "reason": str(e)})
         return {"dispatched": dispatched, "skipped": skipped}
@@ -536,6 +545,12 @@ class MatchingCoordinator:
                 _json_dumps = json.dumps
 
                 def on_progress(stage: str, percent: float, vote_data: list | None = None):
+                    if self._note_activity:
+                        try:
+                            self._note_activity(job_id)
+                        except Exception:
+                            # Best-effort watchdog heartbeat; never let it disrupt matching.
+                            pass
                     try:
                         details = None
                         if vote_data:
@@ -556,7 +571,17 @@ class MatchingCoordinator:
                             match_progress=percent,
                             match_details=details,
                         )
-                        asyncio.run_coroutine_threadsafe(coro, loop)
+                        fut = asyncio.run_coroutine_threadsafe(coro, loop)
+
+                        def _log_broadcast_error(f) -> None:
+                            try:
+                                f.result()
+                            except Exception as exc:
+                                logger.warning(
+                                    f"[MATCH] Title {title_id}: progress broadcast failed: {exc}"
+                                )
+
+                        fut.add_done_callback(_log_broadcast_error)
                     except Exception as e:
                         logger.warning(f"[MATCH] Title {title_id}: progress callback error: {e}")
 
@@ -604,7 +629,12 @@ class MatchingCoordinator:
                     except Exception as e:
                         logger.error(f"Failed to dump match_details: {e}")
 
-                title.match_source = "engram"
+                # Only attribute the match to Engram when an episode match was
+                # actually recorded. A title routed to REVIEW with no episode must
+                # not carry the "ENGRAM" provider badge — that implies a confident
+                # auto-match the matcher never made.
+                if title.state == TitleState.MATCHED:
+                    title.match_source = "engram"
 
                 # Extract match stats for broadcast
                 matches_found = 1

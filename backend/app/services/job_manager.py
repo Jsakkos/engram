@@ -68,6 +68,9 @@ class JobManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
         self._staging_watcher: StagingWatcher | None = None
+        # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
+        self._last_activity: dict[int, float] = {}
+        self._watchdog_task: asyncio.Task | None = None
 
         # Create coordinators
         self._cleanup = CleanupService()
@@ -81,6 +84,7 @@ class JobManager:
         # Wire cross-coordinator callbacks
         self._matching.set_callbacks(
             check_job_completion=self._finalization.check_job_completion,
+            note_activity=self._note_activity,
         )
         self._identification.set_callbacks(
             get_discdb_mappings=self._matching.get_discdb_mappings,
@@ -99,6 +103,7 @@ class JobManager:
             on_task_done=self._on_task_done,
             active_jobs=self._active_jobs,
             match_single_file=self._matching.match_single_file,
+            rematch_conflict=self._matching.rematch_conflict,
         )
         self._simulation.set_callbacks(
             subtitle_ready=self._matching._subtitle_ready,
@@ -110,6 +115,10 @@ class JobManager:
         # Register terminal job state callbacks
         state_machine.on_terminal_state(self._cleanup.on_job_terminal)
         state_machine.on_terminal_state(self._matching.clear_job_caches)
+        state_machine.on_terminal_state(self._finalization.on_terminal_clear_conflicts)
+
+        # Reset the watchdog activity clock whenever a job changes phase.
+        state_machine.on_transition(self._note_activity_on_transition)
 
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
@@ -149,6 +158,10 @@ class JobManager:
             self._staging_watcher = StagingWatcher(config.staging_path, config=config)
             self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
             self._staging_watcher.start()
+
+        # Start the stale-job watchdog
+        if config.watchdog_enabled:
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
         logger.info(f"Job manager started (max_concurrent_matches={concurrency})")
 
@@ -202,11 +215,24 @@ class JobManager:
         if self._staging_watcher:
             self._staging_watcher.stop()
 
+        if self._watchdog_task:
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                # Expected: we just cancelled the watchdog loop above.
+                pass
+            self._watchdog_task = None
+
         for job_id, task in self._active_jobs.items():
             task.cancel()
             logger.info(f"Cancelled job {job_id}")
 
         self._active_jobs.clear()
+
+        # Drain any MakeMKV subprocesses so none survive shutdown as orphans.
+        await self._extractor.shutdown()
+
         logger.info("Job manager stopped")
 
     # --- Drive/Staging Event Handlers ---
@@ -500,6 +526,280 @@ class JobManager:
                     job, session, error_message="Cancelled by user"
                 )
 
+    # --- Stale-job watchdog + force-progress engine ---
+
+    def _note_activity(self, job_id: int) -> None:
+        """Record that a job made progress just now (watchdog activity clock)."""
+        self._last_activity[job_id] = time.monotonic()
+
+    def _note_activity_on_transition(self, job_id: int, state: JobState) -> None:
+        """on_transition observer: reset the clock on phase change, drop it on terminal."""
+        if state in (JobState.COMPLETED, JobState.FAILED):
+            self._last_activity.pop(job_id, None)
+        else:
+            self._last_activity[job_id] = time.monotonic()
+
+    @staticmethod
+    def _find_title_file(title: DiscTitle, staging: Path | None) -> Path | None:
+        """Locate a title's ripped .mkv: its recorded output, else a staging glob."""
+        if title.output_filename:
+            p = Path(title.output_filename)
+            if p.exists():
+                return p
+        if staging:
+            matches = list(staging.glob(f"*_t{title.title_index:02d}.mkv"))
+            if matches:
+                return matches[0]
+        return None
+
+    async def reconcile_stuck_titles(self, job_id: int) -> None:
+        """Resolve selected titles orphaned in PENDING/RIPPING after a rip finishes.
+
+        A title whose staging file exists is routed into the normal completion path
+        (TV → DiscDB assignment or matching; movie → MATCHED); one with no file is
+        marked FAILED. Guarantees no selected title is stranded in RIPPING once the
+        MakeMKV subprocess has exited (the orphaned-last-title bug). Recovers work
+        rather than discarding it.
+        """
+        recovered: list[tuple[int, Path]] = []
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            stuck = [
+                t
+                for t in result.scalars().all()
+                if t.is_selected and t.state in (TitleState.PENDING, TitleState.RIPPING)
+            ]
+            if not stuck:
+                return
+
+            staging = Path(job.staging_path) if job.staging_path else None
+            is_tv = job.content_type == ContentType.TV
+
+            for title in stuck:
+                file_path = self._find_title_file(title, staging)
+                if file_path is None:
+                    title.state = TitleState.FAILED
+                    if not title.match_details:
+                        title.match_details = json.dumps(
+                            {"reason": "Ripping ended with no output file"}
+                        )
+                    session.add(title)
+                    logger.warning(
+                        f"Job {sanitize_log_value(job_id)}: title "
+                        f"{sanitize_log_value(title.title_index)} stuck with no file → FAILED"
+                    )
+                    await ws_manager.broadcast_title_update(
+                        job_id,
+                        title.id,
+                        TitleState.FAILED.value,
+                        error="Ripping ended with no output file",
+                    )
+                    continue
+
+                title.output_filename = str(file_path)
+                title.state = TitleState.MATCHING if is_tv else TitleState.MATCHED
+                session.add(title)
+                logger.info(
+                    f"Job {sanitize_log_value(job_id)}: recovered orphaned title "
+                    f"{sanitize_log_value(title.title_index)} "
+                    f"({sanitize_log_value(file_path.name)}) → {title.state.value}"
+                )
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    title.id,
+                    title.state.value,
+                    output_filename=str(file_path),
+                )
+                if is_tv:
+                    recovered.append((title.id, file_path))
+            await session.commit()
+
+        # Queue matching for recovered TV titles (mirrors _on_title_ripped), each
+        # outside the session above so match tasks own their own sessions.
+        for title_id, file_path in recovered:
+            applied = False
+            async with async_session() as session:
+                title = await session.get(DiscTitle, title_id)
+                if title is None:
+                    logger.warning(
+                        f"Job {sanitize_log_value(job_id)}: recovered title "
+                        f"{sanitize_log_value(title_id)} vanished before re-queue"
+                    )
+                    continue
+                applied = await self._matching.try_discdb_assignment(job_id, title, session)
+                if applied:
+                    await self._finalization.check_job_completion(session, job_id)
+            if not applied:
+                task = asyncio.create_task(
+                    self._matching.match_single_file(job_id, title_id, file_path)
+                )
+                task.add_done_callback(
+                    lambda t, jid=job_id, tid=title_id: self._matching.on_match_task_done(
+                        t, jid, tid
+                    )
+                )
+
+    async def reconcile_and_advance(self, job_id: int, *, reason: str = "forced") -> bool:
+        """Force a stuck job to its next resting state (watchdog + manual advance).
+
+        Cancels any in-flight rip, resolves every still-active title (PENDING/RIPPING/
+        MATCHING) — to REVIEW if its ripped file exists (so the user can assign it),
+        else FAILED — then runs the normal completion check, which organizes whatever
+        matched and lands the job in COMPLETED or REVIEW_NEEDED. Returns True if the
+        job was non-terminal and processed.
+        """
+        # Stop any in-flight rip/processing task so it can't race the reconcile.
+        if job_id in self._active_jobs:
+            self._active_jobs[job_id].cancel()
+            del self._active_jobs[job_id]
+        self._extractor.cancel(job_id)
+
+        active = (TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING)
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job or job.state in (JobState.COMPLETED, JobState.FAILED):
+                return False
+
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            staging = Path(job.staging_path) if job.staging_path else None
+
+            for title in result.scalars().all():
+                if not title.is_selected or title.state not in active:
+                    continue
+                file_path = self._find_title_file(title, staging)
+                if file_path is not None:
+                    title.output_filename = str(file_path)
+                    title.state = TitleState.REVIEW
+                    err = None
+                else:
+                    title.state = TitleState.FAILED
+                    err = "Force-advanced with no output file"
+                    if not title.match_details:
+                        title.match_details = json.dumps({"reason": err})
+                session.add(title)
+                logger.info(
+                    f"Job {sanitize_log_value(job_id)}: force-advance ({reason}) — title "
+                    f"{sanitize_log_value(title.title_index)} → {title.state.value}"
+                )
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    title.id,
+                    title.state.value,
+                    error=err,
+                    output_filename=title.output_filename,
+                )
+            await session.commit()
+
+            await self._finalization.check_job_completion(session, job_id)
+        return True
+
+    async def skip_title(
+        self, job_id: int, title_id: int, *, target: TitleState = TitleState.REVIEW
+    ) -> bool:
+        """Skip one stuck title: mark it REVIEW (default) or FAILED, then re-check completion.
+
+        Only acts on titles still in an active state (PENDING/RIPPING/MATCHING). Lets the
+        user unblock a single track without forcing the whole job forward.
+        """
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                return False
+            if title.state not in (TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING):
+                return False
+
+            title.state = target
+            err = "Skipped by user" if target == TitleState.FAILED else None
+            if target == TitleState.FAILED and not title.match_details:
+                title.match_details = json.dumps({"reason": "Skipped by user"})
+            session.add(title)
+            await session.commit()
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: title "
+                f"{sanitize_log_value(title.title_index)} skipped → {target.value}"
+            )
+            await ws_manager.broadcast_title_update(job_id, title.id, target.value, error=err)
+
+            await self._finalization.check_job_completion(session, job_id)
+        return True
+
+    @staticmethod
+    def _phase_timeout(config, state: JobState) -> int | None:
+        """Per-phase no-activity ceiling (seconds), or None for resting/untimed states."""
+        return {
+            JobState.IDENTIFYING: config.timeout_identifying_seconds,
+            JobState.RIPPING: config.timeout_ripping_seconds,
+            JobState.MATCHING: config.timeout_matching_seconds,
+            JobState.ORGANIZING: config.timeout_organizing_seconds,
+        }.get(state)
+
+    async def _watchdog_loop(self) -> None:
+        """Periodically auto-advance jobs that have stopped making progress."""
+        from app.services.config_service import get_config
+
+        watched = (
+            JobState.IDENTIFYING,
+            JobState.RIPPING,
+            JobState.MATCHING,
+            JobState.ORGANIZING,
+        )
+        try:
+            while True:
+                config = None
+                try:
+                    config = await get_config()
+                except Exception as e:
+                    logger.warning(f"Watchdog: could not load config: {e}", exc_info=True)
+                poll = (config.watchdog_poll_seconds if config else 60) or 60
+                await asyncio.sleep(poll)
+
+                if config is None or not config.watchdog_enabled:
+                    continue
+
+                try:
+                    async with async_session() as session:
+                        result = await session.execute(
+                            select(DiscJob).where(DiscJob.state.in_(watched))
+                        )
+                        jobs = result.scalars().all()
+
+                    now = time.monotonic()
+                    for job in jobs:
+                        timeout = self._phase_timeout(config, job.state)
+                        if not timeout or timeout <= 0:
+                            continue
+                        last = self._last_activity.get(job.id)
+                        if last is None:
+                            # First sighting — seed the clock so we time from now, not
+                            # from an unknown past (avoids an instant false trip).
+                            self._last_activity[job.id] = now
+                            continue
+                        idle = now - last
+                        if idle >= timeout:
+                            logger.warning(
+                                f"Watchdog: job {job.id} idle {idle:.0f}s in "
+                                f"{job.state.value} (timeout {timeout}s) → auto-advancing"
+                            )
+                            try:
+                                await self.reconcile_and_advance(
+                                    job.id, reason=f"stale timeout in {job.state.value}"
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"Watchdog: auto-advance of job {job.id} failed: {e}",
+                                    exc_info=True,
+                                )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.error(f"Watchdog loop iteration failed: {e}", exc_info=True)
+        except asyncio.CancelledError:
+            logger.info("Watchdog loop cancelled")
+            raise
+
     async def apply_review(
         self,
         job_id: int,
@@ -546,6 +846,8 @@ class JobManager:
 
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
+        # A full re-match starts conflict escalation over from the first tier.
+        self._finalization.reset_conflict_passes(job_id)
         # If a previous subtitle download failed (e.g. unresolvable label that
         # has since been corrected via re-identification), give the user a
         # recovery path: retry subtitles when they hit "Re-match all".
@@ -567,6 +869,7 @@ class JobManager:
             # this the static review page stays mounted showing only cleared matches.
             if job is not None and job.state == JobState.REVIEW_NEEDED:
                 job.state = JobState.MATCHING
+                job.conflict_status = None  # drop any stale escalation note
                 job.updated_at = datetime.now(UTC)
                 await session.commit()
                 await ws_manager.broadcast_job_update(
@@ -575,7 +878,17 @@ class JobManager:
                     content_type=job.content_type.value,
                     detected_title=job.detected_title,
                     detected_season=job.detected_season,
+                    conflict_status="",  # "" overwrites the merged-in stale value
                 )
+            elif job is not None and job.conflict_status is not None:
+                # Re-matching from a non-review state (e.g. an escalation pass is
+                # in flight): the in-memory counter was already reset above, so
+                # clear the persisted note too — "rerun starts over" must apply
+                # to the DB column, not just the counter.
+                job.conflict_status = None
+                job.updated_at = datetime.now(UTC)
+                await session.commit()
+                await ws_manager.broadcast_job_update(job_id, job.state.value, conflict_status="")
 
         if retry_args is not None:
             await self._matching.restart_subtitle_download(*retry_args)
@@ -684,20 +997,35 @@ class JobManager:
             )
 
     async def _run_ripping(self, job_id: int) -> None:
-        """Execute the ripping process."""
-        async with async_session() as session:
-            job = await session.get(DiscJob, job_id)
-            if not job:
-                return
+        """Execute the ripping process.
 
-            title_count = job.total_titles or 0
+        The setup session is scoped to setup only and released *before* the
+        (potentially multi-hour) rip is awaited, so a single aiosqlite connection
+        is never held across the rip — that previously risked SQLITE_BUSY under
+        concurrent multi-drive jobs. After setup the ``job`` ORM object is
+        detached, so every post-rip transition re-fetches the row on its own
+        short-lived session, and failures route through :meth:`_fail_job`.
+        """
+        # job_id originates from the review path param (apply_review -> _run_ripping),
+        # so it is user-provided — sanitize before logging to prevent CR/LF log
+        # forging (py/log-injection).
+        safe_job = sanitize_log_value(job_id)
+        try:
+            # --- Setup: short-lived session, released before the long rip ---
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if not job:
+                    return
 
-            await ws_manager.broadcast_job_update(
-                job_id, JobState.RIPPING.value, current_title=1, total_titles=title_count
-            )
-
-            try:
-                output_dir = Path(job.staging_path)
+                # Capture scalars the closures / rip / post-rip need; `job` is
+                # detached once this block exits, so nothing downstream touches it.
+                content_type = job.content_type
+                drive_id = job.drive_id
+                staging_path = job.staging_path
+                volume_label = job.volume_label
+                detected_title = job.detected_title
+                title_count = job.total_titles or 0
+                output_dir = Path(staging_path)
 
                 # Calculate total size of selected titles
                 total_job_bytes = 0
@@ -716,7 +1044,7 @@ class JobManager:
                     total_job_bytes += t.file_size_bytes
                     title_sizes[t.title_index] = t.file_size_bytes
 
-                if not has_selection and job.content_type == ContentType.MOVIE and disc_titles:
+                if not has_selection and content_type == ContentType.MOVIE and disc_titles:
                     longest = max(disc_titles, key=lambda t: t.duration_seconds or 0)
                     longest.is_selected = True
                     session.add(longest)
@@ -755,346 +1083,351 @@ class JobManager:
                 for t in disc_titles:
                     session.expunge(t)
 
-                speed_calc = SpeedCalculator(total_job_bytes)
+            # Setup session released — the long rip runs with no DB connection held.
 
-                _titles_marked_ripping: set[int] = set()
-                _last_title_idx: int | None = None
-                _title_file_cache: dict[int, Path] = {}
-                _progress_lock = asyncio.Lock()
-                _background_tasks: set[asyncio.Task] = set()
+            await ws_manager.broadcast_job_update(
+                job_id, JobState.RIPPING.value, current_title=1, total_titles=title_count
+            )
 
-                # Progress callback
-                async def progress_callback(progress: RipProgress) -> None:
-                    nonlocal _last_title_idx
+            speed_calc = SpeedCalculator(total_job_bytes)
 
-                    async with _progress_lock:
-                        logger.debug(
-                            f"Job {job_id}: PRGV progress update — "
-                            f"title={progress.current_title}, percent={progress.percent:.1f}%, "
-                            f"total_titles={progress.total_titles}"
-                        )
-                        current_idx = progress.current_title
+            _titles_marked_ripping: set[int] = set()
+            _last_title_idx: int | None = None
+            _title_file_cache: dict[int, Path] = {}
+            _progress_lock = asyncio.Lock()
+            _background_tasks: set[asyncio.Task] = set()
 
-                        active_title_size = 0
-                        active_title = None
+            # Progress callback
+            async def progress_callback(progress: RipProgress) -> None:
+                nonlocal _last_title_idx
 
-                        if 0 <= (current_idx - 1) < len(sorted_titles):
-                            active_title = sorted_titles[current_idx - 1]
-                            active_title_size = active_title.file_size_bytes
+                async with _progress_lock:
+                    logger.debug(
+                        f"Job {job_id}: PRGV progress update — "
+                        f"title={progress.current_title}, percent={progress.percent:.1f}%, "
+                        f"total_titles={progress.total_titles}"
+                    )
+                    current_idx = progress.current_title
 
-                        current_title_bytes = int((progress.percent / 100.0) * active_title_size)
+                    active_title_size = 0
+                    active_title = None
 
-                        if _last_title_idx is not None and current_idx != _last_title_idx:
-                            prev_list_idx = _last_title_idx - 1
-                            if 0 <= prev_list_idx < len(sorted_titles):
-                                prev_title = sorted_titles[prev_list_idx]
-                                await self._transition_title_out_of_ripping(
-                                    job_id,
-                                    prev_title.id,
-                                    job.content_type,
-                                    expected_size=prev_title.file_size_bytes,
-                                    actual_size=prev_title.file_size_bytes,
-                                    on_error_level=logging.WARNING,
-                                )
-                        _last_title_idx = current_idx
+                    if 0 <= (current_idx - 1) < len(sorted_titles):
+                        active_title = sorted_titles[current_idx - 1]
+                        active_title_size = active_title.file_size_bytes
 
-                        if active_title and active_title.id not in _titles_marked_ripping:
-                            async with async_session() as session:
-                                title_db = await session.get(DiscTitle, active_title.id)
-                                if title_db and title_db.state == TitleState.PENDING:
-                                    title_db.state = TitleState.RIPPING
-                                    session.add(title_db)
-                                    await session.commit()
-                                    await ws_manager.broadcast_title_update(
-                                        job_id,
-                                        title_db.id,
-                                        TitleState.RIPPING.value,
-                                        duration_seconds=title_db.duration_seconds,
-                                        file_size_bytes=title_db.file_size_bytes,
-                                        expected_size_bytes=title_db.file_size_bytes,
-                                        actual_size_bytes=0,
-                                    )
-                            _titles_marked_ripping.add(active_title.id)
+                    current_title_bytes = int((progress.percent / 100.0) * active_title_size)
 
-                        if active_title and active_title.file_size_bytes:
-                            if active_title.id in _titles_marked_ripping:
-                                actual_bytes = current_title_bytes
-                                tidx = active_title.title_index
-                                try:
-                                    if tidx in _title_file_cache:
-                                        actual_bytes = _title_file_cache[tidx].stat().st_size
-                                    else:
-                                        matches = list(output_dir.glob(f"*_t{tidx:02d}.mkv"))
-                                        if matches:
-                                            _title_file_cache[tidx] = matches[0]
-                                            actual_bytes = matches[0].stat().st_size
-                                except OSError:
-                                    pass
+                    if _last_title_idx is not None and current_idx != _last_title_idx:
+                        prev_list_idx = _last_title_idx - 1
+                        if 0 <= prev_list_idx < len(sorted_titles):
+                            prev_title = sorted_titles[prev_list_idx]
+                            await self._transition_title_out_of_ripping(
+                                job_id,
+                                prev_title.id,
+                                content_type,
+                                expected_size=prev_title.file_size_bytes,
+                                actual_size=prev_title.file_size_bytes,
+                                on_error_level=logging.WARNING,
+                            )
+                    _last_title_idx = current_idx
+
+                    if active_title and active_title.id not in _titles_marked_ripping:
+                        async with async_session() as prog_session:
+                            title_db = await prog_session.get(DiscTitle, active_title.id)
+                            if title_db and title_db.state == TitleState.PENDING:
+                                title_db.state = TitleState.RIPPING
+                                prog_session.add(title_db)
+                                await prog_session.commit()
                                 await ws_manager.broadcast_title_update(
                                     job_id,
-                                    active_title.id,
+                                    title_db.id,
                                     TitleState.RIPPING.value,
-                                    expected_size_bytes=active_title.file_size_bytes,
-                                    actual_size_bytes=min(
-                                        actual_bytes, active_title.file_size_bytes
-                                    ),
+                                    duration_seconds=title_db.duration_seconds,
+                                    file_size_bytes=title_db.file_size_bytes,
+                                    expected_size_bytes=title_db.file_size_bytes,
+                                    actual_size_bytes=0,
                                 )
+                        _titles_marked_ripping.add(active_title.id)
 
-                # Title complete callback — called from extractor thread
-                def on_title_complete(idx: int, path: Path):
-                    logger.info(
-                        f"[CALLBACK] Title complete: idx={idx} path={path.name} (Job {job_id})"
-                    )
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._on_title_ripped(job_id, idx, path, sorted_titles),
-                        self._loop,
-                    )
-
-                    def _check_result(fut):
-                        try:
-                            fut.result(timeout=30)
-                        except TimeoutError as e:
-                            logger.error(
-                                f"[CALLBACK] _on_title_ripped timed out for {path.name} "
-                                f"(Job {job_id}): {e}"
-                            )
-                        except Exception as e:
-                            logger.exception(
-                                f"[CALLBACK] _on_title_ripped failed for "
-                                f"{path.name} (Job {job_id}): {e}"
-                            )
-
-                    future.add_done_callback(_check_result)
-
-                # Error callback — called from extractor thread on stall
-                def on_title_error(cmd_idx: int, reason: str):
-                    logger.warning(
-                        f"[CALLBACK] Title error: cmd_idx={cmd_idx} reason={reason} (Job {job_id})"
-                    )
-                    asyncio.run_coroutine_threadsafe(
-                        self._on_title_error(job_id, cmd_idx, reason, sorted_titles),
-                        self._loop,
-                    )
-
-                from app.services.config_service import get_config
-
-                rip_config = await get_config()
-
-                rip_indices = [t.title_index for t in sorted_titles]
-                stall_timeout = rip_config.ripping_stall_timeout if rip_config else 120.0
-
-                # Pass title_indices=None (rip everything) only when no stall
-                # timeout is set and every disc title is selected.
-                if not (stall_timeout and stall_timeout > 0) and len(rip_indices) == len(
-                    disc_titles
-                ):
-                    rip_indices = None
-
-                def _fire_progress(p):
-                    t = asyncio.create_task(progress_callback(p))
-                    _background_tasks.add(t)
-                    t.add_done_callback(_background_tasks.discard)
-
-                # Filesystem-based progress monitor
-                async def _filesystem_progress_monitor():
-                    _prev_file_sizes: dict[int, int] = {}
-
-                    while True:
-                        await asyncio.sleep(2.0)
-                        try:
-                            async with _progress_lock:
-                                total_done = 0
-                                current_title_num = 0
-                                file_sizes: dict[int, int] = {}
-                                for t in sorted_titles:
-                                    pattern = f"*_t{t.title_index:02d}.mkv"
-                                    matches = list(output_dir.glob(pattern))
+                    if active_title and active_title.file_size_bytes:
+                        if active_title.id in _titles_marked_ripping:
+                            actual_bytes = current_title_bytes
+                            tidx = active_title.title_index
+                            try:
+                                if tidx in _title_file_cache:
+                                    actual_bytes = _title_file_cache[tidx].stat().st_size
+                                else:
+                                    matches = list(output_dir.glob(f"*_t{tidx:02d}.mkv"))
                                     if matches:
-                                        file_sizes[t.id] = matches[0].stat().st_size
-
-                                active_title_id = None
-                                for t in sorted_titles:
-                                    if t.id not in file_sizes:
-                                        continue
-                                    fsize = file_sizes[t.id]
-                                    prev = _prev_file_sizes.get(t.id, 0)
-                                    if fsize > prev and fsize > 0:
-                                        active_title_id = t.id
-
-                                for i, t in enumerate(sorted_titles):
-                                    if t.id not in file_sizes:
-                                        continue
-                                    fsize = file_sizes[t.id]
-                                    total_done += fsize
-
-                                    if t.id == active_title_id:
-                                        current_title_num = i + 1
-
-                                        if t.id not in _titles_marked_ripping:
-                                            try:
-                                                async with async_session() as sess:
-                                                    title_db = await sess.get(DiscTitle, t.id)
-                                                    if title_db and title_db.state in (
-                                                        TitleState.PENDING,
-                                                        TitleState.RIPPING,
-                                                    ):
-                                                        title_db.state = TitleState.RIPPING
-                                                        await sess.commit()
-                                                        await ws_manager.broadcast_title_update(
-                                                            job_id,
-                                                            title_db.id,
-                                                            TitleState.RIPPING.value,
-                                                            duration_seconds=title_db.duration_seconds,
-                                                            file_size_bytes=title_db.file_size_bytes,
-                                                            expected_size_bytes=t.file_size_bytes,
-                                                            actual_size_bytes=fsize,
-                                                        )
-                                            except Exception:
-                                                logger.debug(
-                                                    f"Job {job_id}: failed to set title {t.id} "
-                                                    f"to RIPPING in fs monitor",
-                                                    exc_info=True,
-                                                )
-                                            _titles_marked_ripping.add(t.id)
-
-                                        await ws_manager.broadcast_title_update(
-                                            job_id,
-                                            t.id,
-                                            TitleState.RIPPING.value,
-                                            expected_size_bytes=t.file_size_bytes,
-                                            actual_size_bytes=fsize,
-                                        )
-                                    elif (
-                                        t.id in _titles_marked_ripping
-                                        and active_title_id is not None
-                                        and active_title_id != t.id
-                                    ):
-                                        await self._transition_title_out_of_ripping(
-                                            job_id,
-                                            t.id,
-                                            job.content_type,
-                                            expected_size=t.file_size_bytes,
-                                            actual_size=fsize,
-                                            on_error_level=logging.DEBUG,
-                                        )
-                                        _titles_marked_ripping.discard(t.id)
-
-                                _prev_file_sizes.update(file_sizes)
-
-                            if total_job_bytes > 0:
-                                pct = min((total_done / total_job_bytes) * 100, 100.0)
-                                speed_calc.update(total_done)
-
-                                try:
-                                    async with async_session() as prog_session:
-                                        db_job = await prog_session.get(DiscJob, job_id)
-                                        if db_job:
-                                            db_job.progress_percent = pct
-                                            await prog_session.commit()
-                                except Exception:
-                                    logger.debug(
-                                        f"Job {job_id}: failed to update progress in DB",
-                                        exc_info=True,
-                                    )
-
-                                await ws_manager.broadcast_job_update(
-                                    job_id,
-                                    JobState.RIPPING.value,
-                                    progress=pct,
-                                    speed=speed_calc.speed_str,
-                                    eta=speed_calc.eta_seconds,
-                                    current_title=current_title_num or 1,
-                                    total_titles=len(sorted_titles),
-                                )
-                        except asyncio.CancelledError:
-                            raise
-                        except Exception:
-                            logger.debug(
-                                f"Job {job_id}: filesystem progress monitor error",
-                                exc_info=True,
+                                        _title_file_cache[tidx] = matches[0]
+                                        actual_bytes = matches[0].stat().st_size
+                            except OSError:
+                                # Best-effort size probe; a missing/locked file is fine.
+                                pass
+                            await ws_manager.broadcast_title_update(
+                                job_id,
+                                active_title.id,
+                                TitleState.RIPPING.value,
+                                expected_size_bytes=active_title.file_size_bytes,
+                                actual_size_bytes=min(actual_bytes, active_title.file_size_bytes),
                             )
 
-                monitor_task = asyncio.create_task(_filesystem_progress_monitor())
-                _background_tasks.add(monitor_task)
-                monitor_task.add_done_callback(_background_tasks.discard)
+            # Title complete callback — called from extractor thread
+            def on_title_complete(idx: int, path: Path):
+                logger.info(f"[CALLBACK] Title complete: idx={idx} path={path.name} (Job {job_id})")
+                future = asyncio.run_coroutine_threadsafe(
+                    self._on_title_ripped(job_id, idx, path, sorted_titles),
+                    self._loop,
+                )
 
-                # Run extraction
-                try:
-                    from app.core.discdb_exporter import get_makemkv_log_dir
-
-                    result = await self._extractor.rip_titles(
-                        job.drive_id,
-                        output_dir,
-                        title_indices=rip_indices,
-                        progress_callback=_fire_progress,
-                        title_complete_callback=on_title_complete,
-                        stall_timeout=stall_timeout,
-                        title_error_callback=on_title_error,
-                        log_dir=get_makemkv_log_dir(job_id),
-                        job_id=job_id,
-                    )
-                finally:
-                    monitor_task.cancel()
+                def _check_result(fut):
                     try:
-                        await monitor_task
-                    except asyncio.CancelledError:
-                        pass
+                        fut.result(timeout=30)
+                    except TimeoutError as e:
+                        logger.error(
+                            f"[CALLBACK] _on_title_ripped timed out for {path.name} "
+                            f"(Job {job_id}): {e}"
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            f"[CALLBACK] _on_title_ripped failed for "
+                            f"{path.name} (Job {job_id}): {e}"
+                        )
 
-                if not result.success and not result.stalled_titles:
-                    await state_machine.transition_to_failed(
-                        job, session, error_message=result.error_message
-                    )
-                    return
+                future.add_done_callback(_check_result)
 
-                # Fallback: mark stalled titles as FAILED
-                if result.stalled_titles:
-                    async with async_session() as stall_session:
-                        for cmd_idx in result.stalled_titles:
-                            list_idx = cmd_idx - 1
-                            if 0 <= list_idx < len(sorted_titles):
-                                stalled_title = sorted_titles[list_idx]
-                                db_title = await stall_session.get(DiscTitle, stalled_title.id)
-                                if db_title and db_title.state not in (
-                                    TitleState.COMPLETED,
-                                    TitleState.MATCHED,
-                                    TitleState.FAILED,
-                                ):
-                                    db_title.state = TitleState.FAILED
-                                    db_title.match_details = json.dumps(
-                                        {"reason": "Ripping stalled — possible disc damage"}
-                                    )
-                                    logger.warning(
-                                        f"Job {job_id}: title {db_title.title_index} "
-                                        f"marked FAILED (ripping stall, fallback)"
-                                    )
+            # Error callback — called from extractor thread on stall
+            def on_title_error(cmd_idx: int, reason: str):
+                logger.warning(
+                    f"[CALLBACK] Title error: cmd_idx={cmd_idx} reason={reason} (Job {job_id})"
+                )
+                asyncio.run_coroutine_threadsafe(
+                    self._on_title_error(job_id, cmd_idx, reason, sorted_titles),
+                    self._loop,
+                )
+
+            from app.services.config_service import get_config
+
+            rip_config = await get_config()
+
+            rip_indices = [t.title_index for t in sorted_titles]
+            stall_timeout = rip_config.ripping_stall_timeout if rip_config else 120.0
+
+            # Pass title_indices=None (rip everything) only when no stall
+            # timeout is set and every disc title is selected.
+            if not (stall_timeout and stall_timeout > 0) and len(rip_indices) == len(disc_titles):
+                rip_indices = None
+
+            def _fire_progress(p):
+                self._note_activity(job_id)
+                t = asyncio.create_task(progress_callback(p))
+                _background_tasks.add(t)
+                t.add_done_callback(_background_tasks.discard)
+
+            # Filesystem-based progress monitor
+            async def _filesystem_progress_monitor():
+                _prev_file_sizes: dict[int, int] = {}
+
+                while True:
+                    await asyncio.sleep(2.0)
+                    try:
+                        async with _progress_lock:
+                            total_done = 0
+                            current_title_num = 0
+                            file_sizes: dict[int, int] = {}
+                            for t in sorted_titles:
+                                pattern = f"*_t{t.title_index:02d}.mkv"
+                                matches = list(output_dir.glob(pattern))
+                                if matches:
+                                    file_sizes[t.id] = matches[0].stat().st_size
+
+                            active_title_id = None
+                            for t in sorted_titles:
+                                if t.id not in file_sizes:
+                                    continue
+                                fsize = file_sizes[t.id]
+                                prev = _prev_file_sizes.get(t.id, 0)
+                                if fsize > prev and fsize > 0:
+                                    active_title_id = t.id
+
+                            for i, t in enumerate(sorted_titles):
+                                if t.id not in file_sizes:
+                                    continue
+                                fsize = file_sizes[t.id]
+                                total_done += fsize
+
+                                if t.id == active_title_id:
+                                    current_title_num = i + 1
+
+                                    if t.id not in _titles_marked_ripping:
+                                        try:
+                                            async with async_session() as sess:
+                                                title_db = await sess.get(DiscTitle, t.id)
+                                                if title_db and title_db.state in (
+                                                    TitleState.PENDING,
+                                                    TitleState.RIPPING,
+                                                ):
+                                                    title_db.state = TitleState.RIPPING
+                                                    await sess.commit()
+                                                    await ws_manager.broadcast_title_update(
+                                                        job_id,
+                                                        title_db.id,
+                                                        TitleState.RIPPING.value,
+                                                        duration_seconds=title_db.duration_seconds,
+                                                        file_size_bytes=title_db.file_size_bytes,
+                                                        expected_size_bytes=t.file_size_bytes,
+                                                        actual_size_bytes=fsize,
+                                                    )
+                                        except Exception:
+                                            logger.debug(
+                                                f"Job {safe_job}: failed to set title {t.id} "
+                                                f"to RIPPING in fs monitor",
+                                                exc_info=True,
+                                            )
+                                        _titles_marked_ripping.add(t.id)
+
                                     await ws_manager.broadcast_title_update(
                                         job_id,
-                                        db_title.id,
-                                        TitleState.FAILED.value,
-                                        error="Ripping stalled — possible disc damage",
+                                        t.id,
+                                        TitleState.RIPPING.value,
+                                        expected_size_bytes=t.file_size_bytes,
+                                        actual_size_bytes=fsize,
                                     )
-                        await stall_session.commit()
+                                elif (
+                                    t.id in _titles_marked_ripping
+                                    and active_title_id is not None
+                                    and active_title_id != t.id
+                                ):
+                                    await self._transition_title_out_of_ripping(
+                                        job_id,
+                                        t.id,
+                                        content_type,
+                                        expected_size=t.file_size_bytes,
+                                        actual_size=fsize,
+                                        on_error_level=logging.DEBUG,
+                                    )
+                                    _titles_marked_ripping.discard(t.id)
 
-                # Eject disc
+                            _prev_file_sizes.update(file_sizes)
+
+                        if total_job_bytes > 0:
+                            pct = min((total_done / total_job_bytes) * 100, 100.0)
+                            speed_calc.update(total_done)
+
+                            try:
+                                async with async_session() as prog_session:
+                                    db_job = await prog_session.get(DiscJob, job_id)
+                                    if db_job:
+                                        db_job.progress_percent = pct
+                                        await prog_session.commit()
+                            except Exception:
+                                logger.debug(
+                                    f"Job {safe_job}: failed to update progress in DB",
+                                    exc_info=True,
+                                )
+
+                            await ws_manager.broadcast_job_update(
+                                job_id,
+                                JobState.RIPPING.value,
+                                progress=pct,
+                                speed=speed_calc.speed_str,
+                                eta=speed_calc.eta_seconds,
+                                current_title=current_title_num or 1,
+                                total_titles=len(sorted_titles),
+                            )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.debug(
+                            f"Job {safe_job}: filesystem progress monitor error",
+                            exc_info=True,
+                        )
+
+            monitor_task = asyncio.create_task(_filesystem_progress_monitor())
+            _background_tasks.add(monitor_task)
+            monitor_task.add_done_callback(_background_tasks.discard)
+
+            # Run extraction
+            try:
+                from app.core.discdb_exporter import get_makemkv_log_dir
+
+                result = await self._extractor.rip_titles(
+                    drive_id,
+                    output_dir,
+                    title_indices=rip_indices,
+                    progress_callback=_fire_progress,
+                    title_complete_callback=on_title_complete,
+                    stall_timeout=stall_timeout,
+                    title_error_callback=on_title_error,
+                    log_dir=get_makemkv_log_dir(job_id),
+                    job_id=job_id,
+                )
+            finally:
+                monitor_task.cancel()
                 try:
-                    from app.core.sentinel import eject_disc
+                    await monitor_task
+                except asyncio.CancelledError:
+                    # Expected: the monitor task was just cancelled above.
+                    pass
 
-                    await asyncio.to_thread(eject_disc, job.drive_id)
-                except (OSError, RuntimeError) as e:
-                    logger.warning(f"Could not eject disc from {job.drive_id}: {e}")
+            if not result.success and not result.stalled_titles:
+                await self._fail_job(job_id, result.error_message)
+                return
 
-                if job.content_type == ContentType.TV:
+            # Fallback: mark stalled titles as FAILED
+            if result.stalled_titles:
+                async with async_session() as stall_session:
+                    for cmd_idx in result.stalled_titles:
+                        list_idx = cmd_idx - 1
+                        if 0 <= list_idx < len(sorted_titles):
+                            stalled_title = sorted_titles[list_idx]
+                            db_title = await stall_session.get(DiscTitle, stalled_title.id)
+                            if db_title and db_title.state not in (
+                                TitleState.COMPLETED,
+                                TitleState.MATCHED,
+                                TitleState.FAILED,
+                            ):
+                                db_title.state = TitleState.FAILED
+                                db_title.match_details = json.dumps(
+                                    {"reason": "Ripping stalled — possible disc damage"}
+                                )
+                                logger.warning(
+                                    f"Job {safe_job}: title {db_title.title_index} "
+                                    f"marked FAILED (ripping stall, fallback)"
+                                )
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    db_title.id,
+                                    TitleState.FAILED.value,
+                                    error="Ripping stalled — possible disc damage",
+                                )
+                    await stall_session.commit()
+
+            # Eject disc
+            try:
+                from app.core.sentinel import eject_disc
+
+                await asyncio.to_thread(eject_disc, drive_id)
+            except (OSError, RuntimeError) as e:
+                logger.warning(f"Could not eject disc from {drive_id}: {e}")
+
+            if content_type == ContentType.TV:
+                await self._backfill_unmatched_titles(job_id, output_dir, sorted_titles)
+
+                # Recover any title the rip left stranded in PENDING/RIPPING (e.g. the
+                # final title whose completion callback never fired) before advancing.
+                await self.reconcile_stuck_titles(job_id)
+
+                async with async_session() as session:
+                    job = await session.get(DiscJob, job_id)
+                    if not job:
+                        return
                     logger.info(
                         f"[RIP-DONE] Job {job_id}: rip_titles returned, "
                         f"{len(result.output_files)} files produced. "
-                        f"Job state={job.state.value}. Running backfill..."
+                        f"Job state={job.state.value}. Backfill complete."
                     )
-                    await self._backfill_unmatched_titles(
-                        job_id, Path(job.staging_path), sorted_titles
-                    )
-
-                    session.expire(job)
-                    await session.refresh(job)
 
                     if job.state == JobState.RIPPING:
                         succeeded = await state_machine.transition(
@@ -1108,71 +1441,58 @@ class JobManager:
                             f"job already in {job.state.value}"
                         )
 
-                else:
-                    # Movie post-ripping flow
-                    ripped_titles = [t for t in disc_titles if t.is_selected]
+            else:
+                # Movie post-ripping flow
+
+                # Recover any title stranded in PENDING/RIPPING (movie titles move to
+                # MATCHED) so the main-feature selection below sees every ripped file.
+                await self.reconcile_stuck_titles(job_id)
+
+                async with async_session() as session:
+                    job = await session.get(DiscJob, job_id)
+                    if not job:
+                        return
+
+                    titles_result = await session.execute(
+                        select(DiscTitle).where(DiscTitle.job_id == job_id)
+                    )
+                    ripped_titles = [t for t in titles_result.scalars().all() if t.is_selected]
 
                     if len(ripped_titles) > 1:
-                        discdb_maps = self._matching.get_discdb_mappings(job_id)
-                        main_movie_idx = None
-                        for m in discdb_maps:
-                            if m.title_type == "MainMovie":
-                                main_movie_idx = m.index
-                                break
-
-                        if main_movie_idx is not None:
-                            for dt in ripped_titles:
-                                if dt.title_index == main_movie_idx:
-                                    dt.is_selected = True
-                                else:
-                                    dt.is_selected = False
-                                session.add(dt)
-                            await session.commit()
-                            ripped_titles = [
-                                t for t in ripped_titles if t.title_index == main_movie_idx
-                            ]
-                            logger.info(
-                                f"Job {job_id}: TheDiscDB auto-selected MainMovie "
-                                f"title index {main_movie_idx}, skipping review"
-                            )
-                        else:
-                            await state_machine.transition_to_review(
-                                job,
-                                session,
-                                reason="Multiple versions ripped. Please select the correct one.",
-                                broadcast=False,
-                            )
-                            await ws_manager.broadcast_job_update(
-                                job_id,
-                                JobState.REVIEW_NEEDED.value,
-                                error="Multiple versions ripped. Please select the correct one.",
-                            )
-                            logger.info(
-                                f"Job {job_id}: Multiple movie versions ripped. "
-                                f"Waiting for user selection."
-                            )
+                        sent_to_review = await self._resolve_multi_title_movie(
+                            job, job_id, ripped_titles, session
+                        )
+                        if sent_to_review:
                             return
 
-                    # Single title flow (Standard Movie)
+                    # Single title flow (Standard Movie). Commit ORGANIZING and
+                    # release the session before the blocking organize so no DB
+                    # connection is held across it (mirrors the rip itself).
                     job.state = JobState.ORGANIZING
                     await session.commit()
-                    await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
 
-                    organize_result = await asyncio.to_thread(
-                        movie_organizer.organize,
-                        Path(job.staging_path),
-                        job.volume_label,
-                        job.detected_title,
-                    )
+                await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
+
+                organize_result = await asyncio.to_thread(
+                    movie_organizer.organize,
+                    output_dir,
+                    volume_label,
+                    detected_title,
+                )
+
+                async with async_session() as session:
+                    job = await session.get(DiscJob, job_id)
+                    if not job:
+                        return
 
                     if organize_result["success"]:
                         job.final_path = str(organize_result["main_file"])
                         job.progress_percent = 100.0
 
-                        result = await session.execute(
+                        titles_result = await session.execute(
                             select(DiscTitle).where(DiscTitle.job_id == job_id)
                         )
-                        for t in result.scalars().all():
+                        for t in titles_result.scalars().all():
                             if t.state not in (
                                 TitleState.COMPLETED,
                                 TitleState.FAILED,
@@ -1191,7 +1511,7 @@ class JobManager:
                         await session.commit()
 
                         await state_machine.transition_to_completed(job, session)
-                        logger.info(f"Job {job_id} completed: {organize_result['main_file']}")
+                        logger.info(f"Job {safe_job} completed: {organize_result['main_file']}")
                     else:
                         await state_machine.transition_to_failed(
                             job,
@@ -1199,14 +1519,142 @@ class JobManager:
                             error_message=organize_result["error"],
                         )
 
-            except asyncio.CancelledError:
-                logger.info(f"Job {job_id} was cancelled")
+        except asyncio.CancelledError:
+            logger.info(f"Job {safe_job} was cancelled")
+            try:
+                await self._fail_job(job_id, "Cancelled by user")
+            except Exception:
+                logger.warning(
+                    f"Job {safe_job}: _fail_job raised during cancellation recovery",
+                    exc_info=True,
+                )
+            # Re-raise so the task is actually marked cancelled (asyncio convention).
+            raise
+        except Exception as e:
+            logger.exception(f"Error ripping job {safe_job}")
+            try:
+                await self._fail_job(job_id, str(e))
+            except Exception:
+                # Don't let a recovery failure shadow the original error above.
+                logger.warning(
+                    f"Job {safe_job}: _fail_job raised during error recovery",
+                    exc_info=True,
+                )
+
+    async def _fail_job(self, job_id: int, error_message: str | None) -> None:
+        """Fail a job on its own short-lived session.
+
+        Lets the ripping error paths fail a job without depending on a session
+        that may already be closed or a detached ``job`` ORM object.
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job:
                 await state_machine.transition_to_failed(
-                    job, session, error_message="Cancelled by user"
+                    job, session, error_message=error_message or "Ripping failed"
+                )
+
+    async def _resolve_multi_title_movie(
+        self,
+        job: DiscJob,
+        job_id: int,
+        ripped_titles: list[DiscTitle],
+        session,
+    ) -> bool:
+        """Decide what to do when a movie rip produced more than one title.
+
+        Prefers a TheDiscDB ``MainMovie`` tag; otherwise distinguishes the real
+        feature from long bonus tracks via the movie's TMDB runtime (with a
+        duration/bitrate fallback). Tags non-feature titles as extras. Only
+        genuinely competing features (alternate cuts / obfuscation playlists)
+        require a review.
+
+        Returns True when the job was sent to REVIEW_NEEDED (caller should stop).
+        """
+        # job_id reaches this method from the /jobs/{job_id}/... review path param
+        # (apply_review -> _run_ripping), so it is user-provided — sanitize before
+        # logging to prevent CR/LF log forging (py/log-injection).
+        safe_job = sanitize_log_value(job_id)
+        discdb_maps = self._matching.get_discdb_mappings(job_id)
+        main_movie_idx = next((m.index for m in discdb_maps if m.title_type == "MainMovie"), None)
+        if main_movie_idx is not None:
+            for dt in ripped_titles:
+                dt.is_selected = dt.title_index == main_movie_idx
+                dt.is_extra = dt.title_index != main_movie_idx
+                session.add(dt)
+            await session.commit()
+            logger.info(
+                f"Job {safe_job}: TheDiscDB auto-selected MainMovie "
+                f"title index {main_movie_idx}, skipping review"
+            )
+            return False
+
+        decision = await self._resolve_movie_feature(job, ripped_titles)
+
+        for dt in ripped_titles:
+            if dt.title_index in decision.extra_indices:
+                # Extras are never the selected feature, in either path: deselected so
+                # the version picker (review) and downstream state stay consistent.
+                dt.is_extra = True
+                dt.is_selected = False
+                session.add(dt)
+        await session.commit()
+
+        if decision.needs_review:
+            reason = (
+                decision.review_reason
+                or "Multiple feature-length titles found. Please select the correct version."
+            )
+            await state_machine.transition_to_review(job, session, reason=reason, broadcast=False)
+            await ws_manager.broadcast_job_update(
+                job_id, JobState.REVIEW_NEEDED.value, error=reason
+            )
+            logger.info(
+                f"Job {safe_job}: {len(decision.candidate_indices)} feature candidates "
+                f"{decision.candidate_indices} ripped — waiting for user selection."
+            )
+            return True
+
+        logger.info(
+            f"Job {safe_job}: auto-selected feature title {decision.feature_index}; "
+            f"tagged {decision.extra_indices} as extras (no review)."
+        )
+        return False
+
+    async def _resolve_movie_feature(self, job: DiscJob, ripped_titles: list[DiscTitle]):
+        """Decide which ripped title is the movie's main feature.
+
+        Uses the movie's TMDB runtime (when available) plus a duration/bitrate
+        fallback so long bonus tracks aren't mistaken for the feature. Returns a
+        ``MainFeatureDecision`` (see ``select_movie_main_feature``).
+        """
+        from app.core.analyst import TitleInfo, select_movie_main_feature
+        from app.matcher.tmdb_client import fetch_movie_runtime
+        from app.services.config_service import get_config
+
+        config = await get_config()
+
+        runtime = None
+        if job.tmdb_id and config.tmdb_api_key:
+            try:
+                runtime = await asyncio.to_thread(
+                    fetch_movie_runtime, str(job.tmdb_id), config.tmdb_api_key
                 )
             except Exception as e:
-                logger.exception(f"Error ripping job {job_id}")
-                await state_machine.transition_to_failed(job, session, error_message=str(e))
+                logger.warning(f"Job {job.id}: movie runtime lookup failed: {e}", exc_info=True)
+
+        infos = [
+            TitleInfo(
+                index=t.title_index,
+                duration_seconds=t.duration_seconds or 0,
+                size_bytes=t.file_size_bytes or 0,
+                chapter_count=t.chapter_count or 0,
+            )
+            for t in ripped_titles
+        ]
+        return select_movie_main_feature(
+            infos, runtime, min_feature_duration=config.analyst_movie_min_duration
+        )
 
     async def _on_title_ripped(
         self, job_id: int, rip_index: int, path: Path, sorted_titles: list[DiscTitle]

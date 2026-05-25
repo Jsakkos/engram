@@ -54,6 +54,10 @@ async def init_db() -> None:
     # when Alembic is unavailable, e.g., frozen/PyInstaller builds)
     await _add_missing_columns()
 
+    # Drop columns the model no longer defines (handles destructive schema
+    # changes when Alembic is unavailable, e.g., frozen/PyInstaller builds)
+    await _drop_extra_columns()
+
     # Run Alembic migrations and stamp version if needed
     _run_alembic_upgrade()
 
@@ -158,6 +162,45 @@ async def _add_missing_columns() -> None:
                 sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}{default_clause}"
                 await conn.execute(sa_text(sql))
                 logger.info(f"Added missing column: {table_name}.{col_name} ({col_type})")
+
+
+async def _drop_extra_columns() -> None:
+    """Drop columns that exist in the database but not in the model.
+
+    The removal counterpart to _add_missing_columns. Frozen/PyInstaller builds
+    ship no alembic.ini, so destructive Alembic migrations (DROP COLUMN) never
+    run there. A column removed from the model therefore lingers in the live
+    schema; if it is NOT NULL with no default, every ORM INSERT omits it and
+    SQLite raises IntegrityError (this is the is_transcoding_enabled crash on
+    disc insert). Converging the schema to the model discards the stale column's
+    data — the same source-of-truth philosophy as _migrate_app_config.
+
+    SQLite DROP COLUMN requires 3.35.0+. Each drop is best-effort: a failure
+    (e.g., the column participates in an index) is logged and skipped, never fatal.
+    """
+    async with engine.begin() as conn:
+        result = await conn.execute(sa_text("SELECT name FROM sqlite_master WHERE type='table'"))
+        existing_tables = {row[0] for row in result.fetchall()}
+
+        for table_name in SQLModel.metadata.tables:
+            if table_name not in existing_tables:
+                continue
+
+            actual = await _get_actual_columns(conn, table_name)
+            expected = _get_expected_columns(table_name)
+            extra = actual - expected
+
+            for col_name in extra:
+                try:
+                    await conn.execute(
+                        sa_text(f'ALTER TABLE {table_name} DROP COLUMN "{col_name}"')
+                    )
+                    logger.info(f"Dropped obsolete column: {table_name}.{col_name}")
+                except sqlalchemy.exc.OperationalError as e:
+                    logger.warning(
+                        f"Could not drop obsolete column {table_name}.{col_name}: {e}",
+                        exc_info=True,
+                    )
 
 
 async def _migrate_app_config(target_engine: AsyncEngine | None = None) -> None:

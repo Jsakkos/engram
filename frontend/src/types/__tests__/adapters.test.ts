@@ -37,7 +37,7 @@ describe("mapTitleStateToTrackState", () => {
     ["ripping", "ripping"],
     ["matching", "matching"],
     ["matched", "matched"],
-    ["review", "matched"],
+    ["review", "review"],
     ["completed", "completed"],
     ["failed", "failed"],
   ];
@@ -136,6 +136,21 @@ describe("transformJobToDiscData", () => {
     const result = transformJobToDiscData(job, []);
 
     expect(result.mediaType).toBe("unknown");
+  });
+
+  it("carries conflict_status through to the disc view model", () => {
+    const job = makeJob({
+      state: "matching",
+      conflict_status: "Resolving episode conflicts — pass 2 of 3",
+    });
+    const result = transformJobToDiscData(job, []);
+
+    expect(result.conflictStatus).toBe("Resolving episode conflicts — pass 2 of 3");
+  });
+
+  it("leaves conflictStatus undefined when absent", () => {
+    const result = transformJobToDiscData(makeJob(), []);
+    expect(result.conflictStatus).toBeUndefined();
   });
 });
 

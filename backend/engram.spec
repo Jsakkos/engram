@@ -16,6 +16,12 @@ app_hidden = collect_submodules("app")
 third_party_hidden = [
     # SQLAlchemy loads the dialect driver from the connection URL string
     "aiosqlite",
+    # SQLAlchemy's async engine imports greenlet lazily via a C extension, so
+    # PyInstaller's static analysis misses it (notably on macOS) — without this
+    # the frozen app crashes at startup with "No module named 'greenlet'".
+    # greenlet is also pinned as a direct dep in pyproject.toml: SQLAlchemy's
+    # own marker omits macOS arm64, so uv wouldn't otherwise install it there.
+    "greenlet",
     # Uvicorn internal plugin system
     "uvicorn.logging",
     "uvicorn.loops",

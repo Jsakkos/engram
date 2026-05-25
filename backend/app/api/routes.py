@@ -215,6 +215,13 @@ class ConfigResponse(BaseModel):
     ripping_file_ready_timeout: float
     # Sentinel monitoring
     sentinel_poll_interval: float
+    # Stale-job watchdog
+    watchdog_enabled: bool
+    watchdog_poll_seconds: int
+    timeout_identifying_seconds: int
+    timeout_ripping_seconds: int
+    timeout_matching_seconds: int
+    timeout_organizing_seconds: int
     # Staging cleanup
     staging_cleanup_policy: str
     staging_cleanup_days: int
@@ -270,6 +277,13 @@ class ConfigUpdate(BaseModel):
     ripping_file_ready_timeout: float | None = None
     # Sentinel monitoring
     sentinel_poll_interval: float | None = None
+    # Stale-job watchdog
+    watchdog_enabled: bool | None = None
+    watchdog_poll_seconds: int | None = None
+    timeout_identifying_seconds: int | None = None
+    timeout_ripping_seconds: int | None = None
+    timeout_matching_seconds: int | None = None
+    timeout_organizing_seconds: int | None = None
     # Staging cleanup
     staging_cleanup_policy: str | None = None
     staging_cleanup_days: int | None = None
@@ -659,6 +673,56 @@ async def cancel_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     return {"status": "cancelled", "job_id": job.id}
 
 
+@router.post("/jobs/{job_id}/advance")
+async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """Force a stuck job forward to its next resting state.
+
+    Reconciles tracks still ripping/matching (ripped-but-unmatched → review,
+    no-file → failed), then organizes whatever matched and lands the job in
+    completed or review_needed. The manual counterpart to the stale-job watchdog.
+    """
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    from app.services.job_manager import job_manager
+
+    advanced = await job_manager.reconcile_and_advance(job.id, reason="manual advance")
+    if not advanced:
+        raise HTTPException(status_code=400, detail="Job could not be advanced")
+    return {"status": "advanced", "job_id": job.id}
+
+
+class SkipTitleRequest(BaseModel):
+    """Request model for skipping a single stuck title."""
+
+    target: Literal["review", "fail"] = "review"
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/skip")
+async def skip_title(
+    title_id: int,
+    req: SkipTitleRequest | None = None,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Skip a single track stuck in ripping/matching, without forcing the whole job."""
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    target = req.target if req else "review"
+
+    from app.models.disc_job import TitleState
+    from app.services.job_manager import job_manager
+
+    target_state = TitleState.FAILED if target == "fail" else TitleState.REVIEW
+    skipped = await job_manager.skip_title(job.id, title_id, target=target_state)
+    if not skipped:
+        raise HTTPException(
+            status_code=400,
+            detail="Title not found, not part of this job, or already resolved",
+        )
+    return {"status": "skipped", "job_id": job.id, "title_id": title_id, "target": target}
+
+
 @router.post("/jobs/{job_id}/review")
 async def submit_review(
     review: ReviewRequest,
@@ -802,7 +866,38 @@ async def retry_subtitle_download(
 
 @router.post("/jobs/{job_id}/process-matched")
 async def process_matched_titles(job: DiscJob = Depends(get_job_or_404)) -> dict:
-    """Process all matched titles for a job without waiting for unresolved ones."""
+    """Process all matched titles for a job without waiting for unresolved ones.
+
+    The review UI submits each pending selection via POST /review before calling
+    this endpoint. Resolving the last unresolved title makes apply_review finalize
+    the job inline, so by the time this runs the job may already be ORGANIZING or
+    COMPLETED. Treat those as benign no-ops rather than an error, otherwise the UI
+    surfaces a spurious "not awaiting review" failure and stays stuck on the
+    review screen even though apply_review already handled the titles.
+
+    The ``organized``/``conflicts``/``unresolved`` counts report work done by THIS
+    call. They are 0 here because apply_review did the organizing (and emitted its
+    own broadcasts); this is not the cumulative total for the job.
+    """
+    if job.state == JobState.COMPLETED:
+        return {
+            "status": "already_finalized",
+            "job_id": job.id,
+            "organized": 0,
+            "conflicts": 0,
+            "unresolved": 0,
+        }
+    if job.state == JobState.ORGANIZING:
+        # Mid-flight: another path is actively moving files. Don't start a second
+        # organize pass, and report progress honestly rather than claiming the job
+        # is finished.
+        return {
+            "status": "organizing",
+            "job_id": job.id,
+            "organized": 0,
+            "conflicts": 0,
+            "unresolved": 0,
+        }
     if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(status_code=400, detail="Job is not awaiting review")
 
@@ -844,6 +939,13 @@ async def get_config() -> ConfigResponse:
         ripping_file_ready_timeout=config.ripping_file_ready_timeout,
         # Sentinel monitoring
         sentinel_poll_interval=config.sentinel_poll_interval,
+        # Stale-job watchdog
+        watchdog_enabled=config.watchdog_enabled,
+        watchdog_poll_seconds=config.watchdog_poll_seconds,
+        timeout_identifying_seconds=config.timeout_identifying_seconds,
+        timeout_ripping_seconds=config.timeout_ripping_seconds,
+        timeout_matching_seconds=config.timeout_matching_seconds,
+        timeout_organizing_seconds=config.timeout_organizing_seconds,
         # Staging cleanup
         staging_cleanup_policy=config.staging_cleanup_policy,
         staging_cleanup_days=config.staging_cleanup_days,
@@ -1374,9 +1476,20 @@ async def generate_bug_report(
 ) -> dict:
     """Generate a sanitized bug report with optional job context."""
     from app import __version__
+    from app.api.validation import detect_ffmpeg, detect_makemkv
     from app.services.config_service import get_config
 
     config = await get_config()
+
+    # --- External tool versions (detection runs subprocesses; keep off the loop) ---
+    # Run concurrently — each spawns a subprocess with up to a 10 s timeout, so
+    # serial detection would double the worst-case latency before the modal opens.
+    mk, ff = await asyncio.gather(
+        asyncio.to_thread(detect_makemkv),
+        asyncio.to_thread(detect_ffmpeg),
+    )
+    makemkv_version = mk.version if mk.found else (mk.error or "not found")
+    ffmpeg_version = ff.version if ff.found else (ff.error or "not found")
 
     # --- Job summary (optional) ---
     job_summary = None
@@ -1403,6 +1516,7 @@ async def generate_bug_report(
             error_lines = [ln for ln in all_lines if "ERROR" in ln or "CRITICAL" in ln]
             recent_errors = [_sanitize_line(line) for line in error_lines[-20:]]
         except Exception:
+            logger.warning(f"Failed to read log file for bug report: {log_path}", exc_info=True)
             recent_errors = ["(could not read log file)"]
 
     # --- Redacted config ---
@@ -1421,6 +1535,8 @@ async def generate_bug_report(
         "app_version": __version__,
         "python_version": sys.version.split()[0],
         "os": f"{platform.system()} {platform.release()}",
+        "makemkv_version": makemkv_version,
+        "ffmpeg_version": ffmpeg_version,
         "job": job_summary,
         "recent_errors": recent_errors,
         "config": redacted_config,
@@ -1433,6 +1549,8 @@ async def generate_bug_report(
         f"**Engram version**: {__version__}",
         f"**OS**: {report['os']}",
         f"**Python**: {report['python_version']}",
+        f"**MakeMKV**: {makemkv_version}",
+        f"**FFmpeg**: {ffmpeg_version}",
         "",
     ]
     if job_summary:
@@ -1473,6 +1591,7 @@ async def generate_bug_report(
     )
 
     report["github_url"] = github_url
+    report["markdown"] = issue_body
     return report
 
 

@@ -369,23 +369,60 @@ function ReviewQueue() {
         }
     };
 
+    // Re-fetch the job to inspect the state a preceding /review may have left it in.
+    const fetchCurrentJob = async (): Promise<Job | null> => {
+        try {
+            const res = await fetch(`/api/jobs/${jobId}`);
+            if (!res.ok) return null;
+            return (await res.json()) as Job;
+        } catch (e) {
+            console.warn('[handleProcessMatched] job re-fetch failed:', e);
+            return null;
+        }
+    };
+
     const handleProcessMatched = async () => {
         setIsProcessing(true);
         setError(null);
         try {
-            // First submit all pending selections
+            // Submit pending selections first. Resolving the last unresolved title
+            // makes the backend finalize the job inline, so it may already be
+            // organizing/completed/failed by the time process-matched runs.
             await submitPendingSelections();
-            // Then process matched titles
+            // Then process any remaining matched titles.
             const response = await fetch(`/api/jobs/${jobId}/process-matched`, { method: 'POST' });
             if (!response.ok) {
                 const text = await response.text();
+                // A preceding /review may have already finalized the job (older
+                // backends returned 400 here). Decide based on the job's real state.
+                if (response.status === 400) {
+                    const current = await fetchCurrentJob();
+                    if (current?.state === 'completed' || current?.state === 'organizing') {
+                        navigate('/');
+                        return;
+                    }
+                    if (current?.state === 'failed') {
+                        // The inline finalize organized but the move failed — surface
+                        // why instead of the cryptic "not awaiting review" text.
+                        setError(
+                            current.error_message
+                                ? `Job failed during organization: ${current.error_message}`
+                                : 'Job failed during organization.',
+                        );
+                        return;
+                    }
+                }
                 throw new Error(`Processing failed: ${text}`);
             }
             const result = await response.json();
+            // Navigate home once nothing remains to resolve. Every success response
+            // (processed / already_finalized / organizing) reports unresolved: 0 when
+            // the job has left review, so this single check covers them all — and if a
+            // response ever reports unresolved > 0, we stay and refresh rather than
+            // silently skipping the remaining titles.
             if (result.unresolved === 0) {
                 navigate('/');
             } else {
-                // Refresh to see updated state
                 await fetchJobDetails();
             }
         } catch (err) {

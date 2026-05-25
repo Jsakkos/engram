@@ -837,6 +837,39 @@ def fetch_movie_id(movie_name: str) -> str | None:
     return None
 
 
+def fetch_movie_runtime(movie_id: str, api_key: str) -> int | None:
+    """Fetch a movie's canonical runtime (minutes) from TMDB.
+
+    Used to identify the main feature among a disc's titles. The caller supplies
+    the TMDB key (avoids importing the config service from the matcher layer, the
+    same pattern as ``fetch_season_episodes``). Positive results are cached in the
+    persistent SQLite layer with a long TTL (runtimes are stable) so re-rips don't
+    re-hit the API; failures/None are not cached. Returns None when the key is
+    missing, the request fails, or TMDB reports no runtime (0/null).
+    """
+    if not api_key:
+        logger.warning("TMDB API key not configured")
+        return None
+
+    persistent_key = f"movie_runtime:{movie_id}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return cached
+
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}"
+    data = _tmdb_get_json(url, api_key)
+    if not data:
+        return None
+    runtime = data.get("runtime") or 0
+    if runtime <= 0:
+        logger.info(f"TMDB reports no runtime for movie {movie_id}")
+        return None
+    runtime = int(runtime)
+    tmdb_persistent_cache.put(persistent_key, runtime, tmdb_persistent_cache.TTL_MOVIE)
+    logger.info(f"TMDB runtime for movie {movie_id}: {runtime} min")
+    return runtime
+
+
 def clear_caches() -> None:
     """Clear all TMDB caches — both in-process LRU and the on-disk SQLite layer.
 

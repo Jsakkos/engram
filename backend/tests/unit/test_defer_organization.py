@@ -95,6 +95,36 @@ class TestDeferOrganization:
             assert w.organized_to is None
             assert ll.state == TitleState.REVIEW
 
+    async def test_detects_padded_unpadded_collision(self, monkeypatch, tmp_path):
+        """S01E14 vs S1E14 are the same episode and must be treated as a conflict.
+
+        finalize_disc_job groups by normalized code, so the unpadded loser is
+        detected, sent to REVIEW (no runner-up), and the disc is held — without
+        normalization both files would organize to the same path.
+        """
+        wfile = tmp_path / "winner.mkv"
+        wfile.write_bytes(b"x")
+        job = await _seed_job()
+        await _seed_title(job.id, 7, "S01E14", 0.9, votes=9, output=str(wfile))
+        loser = await _seed_title(job.id, 8, "S1E14", 0.5, votes=4)  # unpadded, no runner_ups
+
+        from app.services.job_manager import job_manager
+
+        calls: list = []
+        monkeypatch.setattr(
+            "app.core.organizer.tv_organizer.organize",
+            lambda *a, **k: calls.append(a) or {"success": True, "final_path": "/lib/x.mkv"},
+        )
+
+        await job_manager._finalization.finalize_disc_job(job.id)
+
+        assert calls == []  # collision detected → deferred, nothing organized
+        async with _unit_session_factory() as s:
+            j = await s.get(DiscJob, job.id)
+            ll = await s.get(DiscTitle, loser.id)
+            assert j.state == JobState.REVIEW_NEEDED
+            assert ll.state == TitleState.REVIEW
+
     async def test_organizes_everything_when_disc_is_clean(self, monkeypatch, tmp_path):
         """No conflicts / no review → organize all in one pass → COMPLETED."""
         f0 = tmp_path / "t00.mkv"

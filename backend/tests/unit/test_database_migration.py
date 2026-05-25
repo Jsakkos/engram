@@ -38,14 +38,14 @@ class TestSchemaMigration:
 
     async def test_migration_is_idempotent_on_correct_schema(self, migration_engine):
         """Running migration on a correct schema should be a no-op."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create correct schema
         async with migration_engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
 
         # Running migration should not raise
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Tables should still exist and be correct
         async with migration_engine.connect() as conn:
@@ -57,7 +57,7 @@ class TestSchemaMigration:
 
     async def test_migration_preserves_app_config_data(self, migration_engine, migration_factory):
         """Migration should preserve existing app_config values when schema changes."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create schema with an extra obsolete column to trigger migration
         async with migration_engine.begin() as conn:
@@ -78,7 +78,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run migration — should detect extra column and rebuild
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Verify config data is preserved
         async with migration_factory() as session:
@@ -95,7 +95,7 @@ class TestSchemaMigration:
         self, migration_engine, migration_factory
     ):
         """App config migration should not affect disc_jobs/disc_titles (Alembic handles those)."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create schema and add extra column to disc_jobs
         async with migration_engine.begin() as conn:
@@ -116,7 +116,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run app_config migration
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Disc tables should be untouched (data preserved)
         async with migration_factory() as session:
@@ -126,7 +126,7 @@ class TestSchemaMigration:
 
     async def test_migration_handles_missing_columns(self, migration_engine, migration_factory):
         """Migration should handle tables missing columns that the model expects."""
-        from app.database import _migrate_app_config
+        import app.database as db_mod
 
         # Create a minimal app_config table missing many columns
         async with migration_engine.begin() as conn:
@@ -165,7 +165,7 @@ class TestSchemaMigration:
             await session.commit()
 
         # Run migration — should detect missing columns and rebuild
-        await _migrate_app_config(migration_engine)
+        await db_mod._migrate_app_config(migration_engine)
 
         # Preserved values should survive, new columns should have defaults
         async with migration_factory() as session:
@@ -190,7 +190,6 @@ class TestSchemaMigration:
         """
         # Patch the module-level engine so _add_missing_columns uses our test engine
         import app.database as db_mod
-        from app.database import _add_missing_columns, _get_actual_columns, _get_expected_columns
 
         original_engine = db_mod.engine
         db_mod.engine = migration_engine
@@ -250,18 +249,18 @@ class TestSchemaMigration:
 
             # Verify columns are missing before migration
             async with migration_engine.connect() as conn:
-                actual = await _get_actual_columns(conn, "disc_jobs")
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
                 assert "classification_confidence" not in actual
                 assert "content_hash" not in actual
                 assert "discdb_slug" not in actual
 
             # Run the migration
-            await _add_missing_columns()
+            await db_mod._add_missing_columns()
 
             # Verify missing columns were added
             async with migration_engine.connect() as conn:
-                actual = await _get_actual_columns(conn, "disc_jobs")
-                expected = _get_expected_columns("disc_jobs")
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
+                expected = db_mod._get_expected_columns("disc_jobs")
                 assert expected - actual == set(), f"Still missing columns: {expected - actual}"
 
             # Verify existing data is preserved
@@ -311,5 +310,130 @@ class TestSchemaMigration:
                 actual = await db_mod._get_actual_columns(conn, "disc_jobs")
                 expected = db_mod._get_expected_columns("disc_jobs")
                 assert actual == expected
+        finally:
+            db_mod.engine = original_engine
+
+    async def test_drop_extra_columns_from_disc_jobs(self, migration_engine, migration_factory):
+        """Columns removed from the model must be dropped from existing databases.
+
+        Regression: a column removed from the model (e.g. is_transcoding_enabled)
+        is dropped via Alembic in dev, but frozen/PyInstaller builds ship no
+        alembic.ini so that migration never runs. The stale NOT NULL column then
+        lingered; because the ORM omits it on INSERT, every new disc job crashed
+        with 'NOT NULL constraint failed: disc_jobs.is_transcoding_enabled'.
+        """
+        import app.database as db_mod
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            # Current model schema, plus a leftover column the model no longer has
+            async with migration_engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+                await conn.execute(
+                    text(
+                        "ALTER TABLE disc_jobs ADD COLUMN is_transcoding_enabled "
+                        "BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+
+            # Seed a row so we can prove data is preserved across the drop
+            async with migration_factory() as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO disc_jobs (drive_id, volume_label, state, content_type, "
+                        "current_speed, eta_seconds, progress_percent, current_title, "
+                        "total_titles, subtitles_downloaded, subtitles_total, subtitles_failed, "
+                        "disc_number, created_at, updated_at) VALUES "
+                        "('E:', 'KEEP_ME', 'completed', 'tv', '0', 0, 0, 0, 0, 0, 0, 0, 1, "
+                        "datetime('now'), datetime('now'))"
+                    )
+                )
+                await session.commit()
+
+            # Sanity: the extra column is present before reconciliation
+            async with migration_engine.connect() as conn:
+                assert "is_transcoding_enabled" in await db_mod._get_actual_columns(
+                    conn, "disc_jobs"
+                )
+
+            await db_mod._drop_extra_columns()
+
+            # Extra column gone; schema matches the model exactly
+            async with migration_engine.connect() as conn:
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
+                expected = db_mod._get_expected_columns("disc_jobs")
+                assert "is_transcoding_enabled" not in actual
+                assert actual == expected
+
+            # Existing data is preserved
+            async with migration_factory() as session:
+                row = (
+                    await session.execute(
+                        text("SELECT volume_label, state FROM disc_jobs WHERE id = 1")
+                    )
+                ).fetchone()
+                assert row == ("KEEP_ME", "completed")
+
+            # A model-shaped insert (which omits the dropped column) now succeeds
+            async with migration_factory() as session:
+                session.add(DiscJob(drive_id="F:", volume_label="NEW_DISC"))
+                await session.commit()
+        finally:
+            db_mod.engine = original_engine
+
+    async def test_drop_extra_columns_is_idempotent(self, migration_engine):
+        """Running _drop_extra_columns on a correct schema should be a no-op."""
+        import app.database as db_mod
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            async with migration_engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+
+            await db_mod._drop_extra_columns()
+
+            async with migration_engine.connect() as conn:
+                for table in ("disc_jobs", "disc_titles", "app_config"):
+                    actual = await db_mod._get_actual_columns(conn, table)
+                    expected = db_mod._get_expected_columns(table)
+                    assert actual == expected
+        finally:
+            db_mod.engine = original_engine
+
+    async def test_drop_extra_columns_is_best_effort_on_failure(self, migration_engine):
+        """A column that can't be dropped must not block dropping the others.
+
+        SQLite refuses DROP COLUMN on an indexed column. Each drop therefore
+        needs its own transaction: batching them all in one transaction means
+        the first failure invalidates it, so the remaining (droppable) columns
+        are skipped and the commit on block-exit can even crash startup.
+        """
+        import app.database as db_mod
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            async with migration_engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+                # Two columns the model no longer defines: one indexed
+                # (undroppable in SQLite) and one plain (droppable).
+                await conn.execute(text("ALTER TABLE disc_jobs ADD COLUMN legacy_indexed VARCHAR"))
+                await conn.execute(text("ALTER TABLE disc_jobs ADD COLUMN legacy_plain VARCHAR"))
+                await conn.execute(
+                    text("CREATE INDEX ix_legacy_indexed ON disc_jobs(legacy_indexed)")
+                )
+
+            # Must not raise even though one column cannot be dropped
+            await db_mod._drop_extra_columns()
+
+            # The droppable column is gone despite the undroppable one failing
+            async with migration_engine.connect() as conn:
+                actual = await db_mod._get_actual_columns(conn, "disc_jobs")
+            assert "legacy_plain" not in actual
         finally:
             db_mod.engine = original_engine
