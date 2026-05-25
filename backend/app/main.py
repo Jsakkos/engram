@@ -225,9 +225,15 @@ if __name__ == "__main__":
     # in error handling so crashes are always visible.
     import uvicorn
 
+    from app.core.network import resolve_startup_host
+
+    host = resolve_startup_host(settings.host)
+    app.state.bound_host = host
+    app.state.bound_port = settings.port
+
     uvicorn.run(
         app,
-        host=settings.host,
+        host=host,
         port=settings.port,
         reload=settings.debug,
         factory=False,

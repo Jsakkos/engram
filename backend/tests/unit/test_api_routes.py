@@ -175,6 +175,18 @@ class TestConfigEndpoints:
         response = await client.get("/api/config")
         assert response.status_code == 200
 
+    async def test_allow_lan_access_defaults_false(self, client):
+        await _seed_config()
+        config = (await client.get("/api/config")).json()
+        assert config["allow_lan_access"] is False
+
+    async def test_allow_lan_access_roundtrips(self, client):
+        await _seed_config()
+        response = await client.put("/api/config", json={"allow_lan_access": True})
+        assert response.status_code == 200
+        config = (await client.get("/api/config")).json()
+        assert config["allow_lan_access"] is True
+
     async def test_update_config(self, client):
         await _seed_config()
         update_data = {
@@ -202,6 +214,46 @@ class TestConfigEndpoints:
         config = verify.json()
         assert config["makemkv_key"] == "***"
         assert config["tmdb_api_key"] == "***"
+
+
+# ---------------------------------------------------------------------------
+# Network info
+# ---------------------------------------------------------------------------
+
+
+class TestNetworkInfoEndpoint:
+    """Test the LAN access network info endpoint."""
+
+    async def test_reports_disabled_by_default(self, client):
+        await _seed_config()
+        info = (await client.get("/api/network/info")).json()
+        assert info["lan_access_enabled"] is False
+        assert info["active_lan_bound"] is False
+        assert isinstance(info["port"], int)
+
+    async def test_reports_enabled_toggle_before_restart(self, client):
+        # Toggle persisted but server still bound to localhost this session:
+        # enabled True, active_lan_bound False → UI shows "restart to apply".
+        await _seed_config(allow_lan_access=True)
+        info = (await client.get("/api/network/info")).json()
+        assert info["lan_access_enabled"] is True
+        assert info["active_lan_bound"] is False
+
+    async def test_active_when_bound_all_interfaces(self, client):
+        await _seed_config(allow_lan_access=True)
+        app.state.bound_host = "0.0.0.0"
+        app.state.bound_port = 8000
+        try:
+            info = (await client.get("/api/network/info")).json()
+        finally:
+            del app.state.bound_host
+            del app.state.bound_port
+        assert info["active_lan_bound"] is True
+        assert info["port"] == 8000
+        # lan_ip may be None in a network-less CI sandbox; when present, the URL
+        # is derived from it.
+        if info["lan_ip"] is not None:
+            assert info["lan_url"] == f"http://{info['lan_ip']}:8000"
 
 
 # ---------------------------------------------------------------------------
