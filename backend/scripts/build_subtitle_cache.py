@@ -293,7 +293,15 @@ def _harvest_show(
                         on_season_done()
                     continue
                 # A coverage record exists but the SRTs are gone (e.g. a wiped
-                # CI cache) — fall through and re-harvest from scratch.
+                # CI cache). Log it so a re-harvested "done" season isn't a
+                # silent surprise, then fall through to harvest from scratch.
+                # No on_season_done() here: the normal harvest path below calls
+                # it exactly once for this season — a second call would
+                # over-advance the progress bar.
+                logger.info(
+                    f"  {canonical} S{season:02d}: coverage recorded but SRTs "
+                    f"missing on disk; re-harvesting from scratch"
+                )
 
         if not args.retry_low_coverage:
             skip, prev = coverage_tracker.should_skip(
