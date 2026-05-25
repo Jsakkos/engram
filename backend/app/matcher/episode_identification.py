@@ -174,7 +174,9 @@ class SubtitleCache:
 def _clean_subtitle_text(text: str) -> str:
     """Clean subtitle text: lowercase, strip tags/special chars, collapse stutters, normalize whitespace."""
     text = text.lower().strip()
-    text = re.sub(r"\[.*?\]|<.*?>", "", text)  # remove [tags] and <tags>
+    # remove [tags]/<tags>; accept mismatched [/{ open and ]/} close (some
+    # sources mangle one delimiter, e.g. tvsubtitles.net "{ Sighs]")
+    text = re.sub(r"[\[{][^\]}]*?[\]}]|<.*?>", "", text)
     text = re.sub(r"([A-Za-z])-\1+", r"\1", text)  # collapse stutters
     text = re.sub(r"[^\w\s']", " ", text)  # remove special chars except apostrophes
     return " ".join(text.split())
