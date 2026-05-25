@@ -121,5 +121,10 @@ class AppConfig(SQLModel, table=True):
     opensubtitles_username: str = ""
     opensubtitles_password: str = ""
 
+    # Network access
+    # When True, the server binds 0.0.0.0 (reachable on the LAN) instead of localhost.
+    # Read at startup before uvicorn binds; an explicit HOST env var takes precedence.
+    allow_lan_access: bool = Field(default=False, sa_column_kwargs={"server_default": text("0")})
+
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

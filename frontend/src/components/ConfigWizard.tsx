@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
 import './ConfigWizard.css';
 
@@ -75,6 +76,15 @@ interface ConfigData {
     opensubtitlesApiKey: string;
     opensubtitlesUsername: string;
     opensubtitlesPassword: string;
+    allowLanAccess: boolean;
+}
+
+interface NetworkInfo {
+    lan_access_enabled: boolean;
+    active_lan_bound: boolean;
+    lan_ip: string | null;
+    port: number;
+    lan_url: string | null;
 }
 
 interface ToolDetectionResult {
@@ -126,7 +136,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         opensubtitlesApiKey: '',
         opensubtitlesUsername: '',
         opensubtitlesPassword: '',
+        allowLanAccess: false,
     });
+    const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
@@ -136,6 +148,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
 
     const totalSteps = 4;
+
+    const fetchNetworkInfo = useCallback(async () => {
+        try {
+            const res = await fetch('/api/network/info');
+            if (res.ok) setNetworkInfo(await res.json());
+        } catch {
+            // non-fatal; address panel renders nothing if unreachable
+        }
+    }, []);
+
+    // Fetch network info when the LAN toggle is enabled; clear stale data when disabled.
+    useEffect(() => {
+        if (config.allowLanAccess) {
+            fetchNetworkInfo();
+        } else {
+            setNetworkInfo(null);
+        }
+    }, [config.allowLanAccess, fetchNetworkInfo]);
 
     // Load existing config on mount
     useEffect(() => {
@@ -187,6 +217,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     opensubtitlesApiKey: data.opensubtitles_api_key === '***' ? '' : (data.opensubtitles_api_key || ''),
                     opensubtitlesUsername: data.opensubtitles_username || '',
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
+                    allowLanAccess: data.allow_lan_access ?? false,
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -289,6 +320,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     ...optional('opensubtitles_api_key', config.opensubtitlesApiKey),
                     opensubtitles_username: config.opensubtitlesUsername,
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
+                    allow_lan_access: config.allowLanAccess,
                     setup_complete: true,
                 }),
             });
@@ -973,6 +1005,91 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     </span>
                                 </div>
                             </>
+                        )}
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.allowLanAccess}
+                                    onChange={(e) => handleInputChange('allowLanAccess', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Allow access from other devices on my network (LAN)</strong>
+                                    <span className="checkbox-hint">
+                                        ⚠ Engram has no login — anyone on your network can view and control it.
+                                        Use only on a trusted home network. Takes effect after restarting Engram.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {config.allowLanAccess && (
+                            <div className="lan-address-panel">
+                                {!networkInfo ? (
+                                    <div className="lan-loading">Detecting network address…</div>
+                                ) : networkInfo.active_lan_bound ? (
+                                    <>
+                                        <div className="lan-status-live">
+                                            <span className="lan-status-dot" />
+                                            Engram is live on your network
+                                        </div>
+                                        {networkInfo.lan_url && (
+                                            <>
+                                                <div className="lan-url-row">
+                                                    <code className="lan-url">{networkInfo.lan_url}</code>
+                                                    <button
+                                                        type="button"
+                                                        className="lan-copy-btn"
+                                                        onClick={() => {
+                                                            navigator.clipboard?.writeText(networkInfo.lan_url as string).catch(() => {
+                                                                // HTTP context (LAN): clipboard API unavailable; select text for manual copy
+                                                                const el = document.querySelector('.lan-url') as HTMLElement;
+                                                                if (el) window.getSelection()?.selectAllChildren(el);
+                                                            });
+                                                        }}
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </div>
+                                                <div className="lan-qr">
+                                                    <QRCodeSVG value={networkInfo.lan_url} size={120} />
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="lan-restart-notice">
+                                            Save settings and restart Engram to apply.
+                                        </div>
+                                        {networkInfo.lan_url && (
+                                            <>
+                                                <span className="form-hint">After restart, access Engram at:</span>
+                                                <div className="lan-url-row">
+                                                    <code className="lan-url">{networkInfo.lan_url}</code>
+                                                    <button
+                                                        type="button"
+                                                        className="lan-copy-btn"
+                                                        onClick={() => {
+                                                            navigator.clipboard?.writeText(networkInfo.lan_url as string).catch(() => {
+                                                                // HTTP context (LAN): clipboard API unavailable; select text for manual copy
+                                                                const el = document.querySelector('.lan-url') as HTMLElement;
+                                                                if (el) window.getSelection()?.selectAllChildren(el);
+                                                            });
+                                                        }}
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </div>
+                                                <div className="lan-qr lan-qr-pending">
+                                                    <QRCodeSVG value={networkInfo.lan_url} size={120} />
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         )}
 
                         <div className="config-summary">

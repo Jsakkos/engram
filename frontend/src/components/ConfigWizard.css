@@ -304,6 +304,95 @@
     color: #8893a8;
 }
 
+/* LAN Address Panel */
+.lan-address-panel {
+    margin-top: 0.75rem;
+    padding: 1rem;
+    background: rgba(94, 234, 212, 0.05);
+    border: 1px solid rgba(94, 234, 212, 0.3);
+}
+
+.lan-status-live {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: #5eead4;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    margin-bottom: 0.75rem;
+}
+
+.lan-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #5eead4;
+    box-shadow: 0 0 6px #5eead4;
+    flex-shrink: 0;
+}
+
+.lan-restart-notice {
+    font-size: 0.8rem;
+    color: #f59e0b;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    margin-bottom: 0.75rem;
+}
+
+.lan-url-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.lan-url {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.85rem;
+    color: #e6ecf5;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 0.3rem 0.5rem;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lan-copy-btn {
+    padding: 0.3rem 0.75rem;
+    background: rgba(94, 234, 212, 0.1);
+    border: 1px solid rgba(94, 234, 212, 0.4);
+    color: #5eead4;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.lan-copy-btn:hover {
+    background: rgba(94, 234, 212, 0.2);
+    border-color: rgba(94, 234, 212, 0.7);
+}
+
+.lan-qr {
+    margin-top: 0.75rem;
+    display: flex;
+    justify-content: center;
+    padding: 0.5rem;
+    background: #fff;
+    width: fit-content;
+}
+
+.lan-qr-pending {
+    opacity: 0.5;
+}
+
+.lan-loading {
+    font-size: 0.8rem;
+    color: var(--color-sv-ink-faint, #8893a8);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
 /* Config Summary */
 .config-summary {
     margin-top: 2rem;

@@ -44,22 +44,31 @@ def main() -> None:
 
         import uvicorn
 
+        from app.core.network import ALL_INTERFACES, resolve_startup_host
         from app.main import app, settings
 
         is_frozen = getattr(sys, "frozen", False)
-        port = _find_free_port(settings.host, settings.port) if is_frozen else settings.port
+        host = resolve_startup_host(settings.host)
+        port = _find_free_port(host, settings.port) if is_frozen else settings.port
 
         if port != settings.port:
             print(f"Port {settings.port} in use, using {port} instead")
 
+        # Record what we actually bound so the dashboard can report the LAN URL.
+        app.state.bound_host = host
+        app.state.bound_port = port
+
         if is_frozen:
-            # Open browser after a short delay to let the server bind the port
-            url = f"http://{settings.host}:{port}"
+            # Open browser after a short delay to let the server bind the port.
+            # When bound to all interfaces, open localhost (http://0.0.0.0 is not
+            # a valid client address); LAN clients use the address shown in the UI.
+            browser_host = "localhost" if host == ALL_INTERFACES else host
+            url = f"http://{browser_host}:{port}"
             threading.Timer(1.5, webbrowser.open, args=[url]).start()
 
         uvicorn.run(
             app,
-            host=settings.host,
+            host=host,
             port=port,
             # reload is incompatible with frozen PyInstaller bundles
             reload=False if is_frozen else settings.debug,

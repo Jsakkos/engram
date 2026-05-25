@@ -50,6 +50,38 @@ PORT=8000
 !!! note
     The `.env` file is optional. All fields have sensible defaults. The file is included in `.gitignore` and should never be committed.
 
+## LAN Access (Dashboard on Other Devices)
+
+By default Engram binds to `127.0.0.1` (localhost only), so the dashboard is only reachable on the machine running Engram. To monitor from a phone, tablet, or another computer on the same network:
+
+### Via Settings (Windows desktop)
+
+1. Open the Settings page (gear icon) → **Preferences** step.
+2. Enable **"Allow access from other devices on my network (LAN)"**.
+3. The panel below the toggle shows your LAN address and a QR code once the change is applied.
+4. Click **Save** and **restart Engram** — the bind address is fixed at startup.
+
+!!! warning "No authentication"
+    Engram has no login. Anyone on your network can view job status and control the application.
+    Only enable this on a trusted home network.
+
+After restart, access the dashboard from any device on your LAN at `http://<host-ip>:8000`.
+The QR code makes it easy to open on a phone or tablet.
+
+### Via environment variable (power users / Docker)
+
+Set `HOST=0.0.0.0` in your `backend/.env` file (or pass it as an environment variable in Docker).
+The env var takes precedence over the UI toggle:
+
+```ini
+HOST=0.0.0.0
+PORT=8000
+```
+
+For Docker containers this is typically the right approach — the container has its own network
+namespace, so binding to `127.0.0.1` inside the container would make it unreachable even via
+published ports.
+
 ## Configuration Sources
 
 Configuration is resolved in this priority order:

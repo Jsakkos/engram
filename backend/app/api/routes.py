@@ -15,7 +15,7 @@ from typing import Literal
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func
@@ -253,6 +253,8 @@ class ConfigResponse(BaseModel):
     opensubtitles_api_key: str  # "***" if set
     opensubtitles_username: str
     opensubtitles_password: str  # "***" if set
+    # Network access
+    allow_lan_access: bool
     # Onboarding
     setup_complete: bool
 
@@ -315,6 +317,8 @@ class ConfigUpdate(BaseModel):
     opensubtitles_api_key: str | None = None
     opensubtitles_username: str | None = None
     opensubtitles_password: str | None = None
+    # Network access
+    allow_lan_access: bool | None = None
     # Onboarding
     setup_complete: bool | None = None
 
@@ -986,8 +990,48 @@ async def get_config() -> ConfigResponse:
         opensubtitles_api_key="***" if config.opensubtitles_api_key else "",  # Redacted
         opensubtitles_username=config.opensubtitles_username,
         opensubtitles_password="***" if config.opensubtitles_password else "",  # Redacted
+        # Network access
+        allow_lan_access=config.allow_lan_access,
         # Onboarding
         setup_complete=config.setup_complete,
+    )
+
+
+class NetworkInfoResponse(BaseModel):
+    """Network reachability info for the dashboard's LAN access panel."""
+
+    lan_access_enabled: bool  # persisted toggle (may differ from the live bind)
+    active_lan_bound: bool  # True if the server actually bound a LAN address this session
+    lan_ip: str | None  # host's primary LAN IP, if detectable
+    port: int
+    lan_url: str | None  # http://<lan_ip>:<port>, if an IP was detected
+
+
+@router.get("/network/info", response_model=NetworkInfoResponse)
+async def get_network_info(request: Request) -> NetworkInfoResponse:
+    """Report whether the dashboard is reachable on the LAN and at what URL.
+
+    ``active_lan_bound`` reflects the address uvicorn actually bound this
+    session; when it disagrees with ``lan_access_enabled`` the UI shows a
+    "restart to apply" notice.
+    """
+    from app.core.network import ALL_INTERFACES, get_lan_ip
+    from app.services.config_service import get_config as get_db_config
+
+    config = await get_db_config()
+    bound_host = getattr(request.app.state, "bound_host", settings.host)
+    port = getattr(request.app.state, "bound_port", settings.port)
+
+    active_lan_bound = bound_host == ALL_INTERFACES
+    lan_ip = await asyncio.to_thread(get_lan_ip)
+    lan_url = f"http://{lan_ip}:{port}" if lan_ip else None
+
+    return NetworkInfoResponse(
+        lan_access_enabled=config.allow_lan_access,
+        active_lan_bound=active_lan_bound,
+        lan_ip=lan_ip,
+        port=port,
+        lan_url=lan_url,
     )
 
 
