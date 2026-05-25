@@ -7,7 +7,6 @@ import asyncio
 import concurrent.futures
 import hashlib
 import logging
-import queue
 import re
 import struct
 import subprocess
@@ -98,17 +97,7 @@ def _terminate_proc(proc: subprocess.Popen, timeout: float = 5.0, *, label: str 
         logger.error(f"Process {name} survived SIGKILL after {timeout}s")
 
 
-@dataclass
-class RipProgress:
-    """Progress information during ripping."""
-
-    percent: float
-    current_title: int
-    total_titles: int
-
-
-# Progress callback type
-ProgressCallback = Callable[[RipProgress], None]
+# Callback types
 TitleCompleteCallback = Callable[[int, Path], None]
 TitleErrorCallback = Callable[[int, str], None]  # (command_idx, error_reason)
 
@@ -338,7 +327,6 @@ class MakeMKVExtractor:
         drive: str,
         output_dir: Path,
         title_indices: list[int] | None = None,
-        progress_callback: ProgressCallback | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
         stall_timeout: float | None = None,
         title_error_callback: TitleErrorCallback | None = None,
@@ -352,7 +340,6 @@ class MakeMKVExtractor:
             drive: Drive letter or disc specification
             output_dir: Directory to save MKV files
             title_indices: List of title indices to rip, or None for all
-            progress_callback: Optional callback for progress updates
             title_complete_callback: Optional callback when a title finishes ripping
             stall_timeout: Seconds of no file growth before killing the process
                 and skipping to the next title. None or 0 disables detection.
@@ -375,7 +362,6 @@ class MakeMKVExtractor:
                 drive,
                 output_dir,
                 title_indices,
-                progress_callback,
                 title_complete_callback,
                 stall_timeout=stall_timeout,
                 title_error_callback=title_error_callback,
@@ -388,7 +374,6 @@ class MakeMKVExtractor:
         drive: str,
         output_dir: Path,
         title_indices: list[int] | None = None,
-        progress_callback: ProgressCallback | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
         stall_timeout: float | None = None,
         title_error_callback: TitleErrorCallback | None = None,
@@ -419,7 +404,6 @@ class MakeMKVExtractor:
                     str(output_dir),
                 ]
             )
-            total_titles_count = 0  # Will be updated from PRGC
         elif len(title_indices) == 1:
             # Rip single specific title
             idx = title_indices[0]
@@ -435,11 +419,9 @@ class MakeMKVExtractor:
                     str(output_dir),
                 ]
             )
-            total_titles_count = 1
         else:
             # Rip multiple specific titles (must loop commands)
             logger.info(f"Ripping {len(title_indices)} specific titles: {title_indices}")
-            total_titles_count = len(title_indices)
             for idx in title_indices:
                 commands.append(
                     [
@@ -456,8 +438,6 @@ class MakeMKVExtractor:
         # State tracking for progress
         current_title_idx = 0  # 0-based absolute index for progress reporting
 
-        # Queue for progress updates from thread to async context
-        progress_queue: queue.Queue[RipProgress] = queue.Queue()
         output_lines: list[str] = []
         output_files: list[Path] = []
 
@@ -498,15 +478,11 @@ class MakeMKVExtractor:
 
         def run_rip_with_streaming() -> tuple[int, str, set[int]]:
             """Run ripping commands in sequence."""
-            nonlocal current_title_idx, total_titles_count
+            nonlocal current_title_idx
 
             last_fs_check = time.monotonic()
             combined_stderr = ""
             final_returncode = 0
-            # Track the current title from PRGC messages (1-based for reporting).
-            # In "all" mode, MakeMKV emits PRGC:current,total,"name" where
-            # `current` is the 0-based index of the title being processed.
-            prgc_current_title: int = 1
             # Tracks which commands were terminated due to stall detection
             stalled_commands: set[int] = set()
             # Liveness timestamp shared with the stdout reader. It is bumped both on
@@ -621,49 +597,22 @@ class MakeMKVExtractor:
 
                         # MakeMKV progress codes are liveness — feed the stall
                         # watchdog so a tiny track being finalized isn't killed.
+                        #
+                        # We deliberately do NOT derive per-title progress from
+                        # PRGC/PRGV. Their robot-mode format is:
+                        #   PRGC:code,id,"name"   PRGT:code,id,"name"
+                        #   PRGV:current,total,max
+                        # `code` is a *message code* (e.g. 5017 "Saving to MKV
+                        # file"), NOT a title index, and `max` is a fixed 65536
+                        # scale (per-bar % is value/max, never current/total).
+                        # Per-title progress and completion are owned by the
+                        # filesystem (stable output-file size) via
+                        # _check_for_completed_files + the job's fs monitor, the
+                        # only signal that reliably maps to a specific title.
                         if line.startswith(("PRGV:", "PRGC:", "PRGT:")):
                             last_progress[0] = time.monotonic()
 
-                        # Parse progress messages
-                        if line.startswith("PRGC:"):
-                            match = re.match(r"PRGC:(\d+),(\d+),", line)
-                            if match:
-                                cur = int(match.group(1))
-                                total = int(match.group(2))
-                                # PRGC current is 0-based; convert to 1-based
-                                prgc_current_title = cur + 1
-                                if total > 0 and len(commands) == 1:
-                                    total_titles_count = total
-
-                        elif line.startswith("PRGV:"):
-                            match = re.match(r"PRGV:\s*(\d+),\s*(\d+),\s*(\d+)", line)
-                            if match:
-                                current = int(match.group(1))
-                                total = int(match.group(2))
-                                max_val = int(match.group(3))
-
-                                if max_val > 0:
-                                    # `total` = per-title target, `max` = overall target
-                                    # Use `total` for per-title % (what the callback expects)
-                                    divisor = total if total > 0 else max_val
-                                    percent = (current / divisor) * 100
-
-                                    # In "all" mode, use PRGC-reported title
-                                    # (authoritative from MakeMKV). In multi-
-                                    # command mode, use command loop counter.
-                                    if len(commands) == 1 and not title_indices:
-                                        report_title_idx = prgc_current_title
-                                    else:
-                                        report_title_idx = current_title_idx
-
-                                    progress = RipProgress(
-                                        percent=percent,
-                                        current_title=report_title_idx,
-                                        total_titles=total_titles_count,
-                                    )
-                                    progress_queue.put(progress)
-
-                        # Also catch robot-mode MSG lines about file creation
+                        # Catch robot-mode MSG lines about file creation
                         filepath = _extract_created_mkv(line, output_dir)
                         if filepath is not None:
                             # Track the file for stable-size detection but do NOT
@@ -746,20 +695,10 @@ class MakeMKVExtractor:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(run_rip_with_streaming)
 
-                # Poll for progress updates while ripping
+                # Poll the filesystem for title completion while ripping. This
+                # runs even if MakeMKV stdout is block-buffered, and is the sole
+                # signal that maps completion to a specific title.
                 while not future.done():
-                    # Drain all available progress updates (non-blocking)
-                    while True:
-                        try:
-                            progress = progress_queue.get_nowait()
-                            if progress_callback:
-                                progress_callback(progress)
-                        except queue.Empty:
-                            break
-
-                    # Filesystem polling from async context — runs even if
-                    # MakeMKV stdout is block-buffered and PRGV lines don't
-                    # arrive in the thread.
                     now = time.monotonic()
                     if now - last_async_fs_check >= 3.0:
                         await asyncio.to_thread(_check_for_completed_files)
@@ -769,15 +708,6 @@ class MakeMKVExtractor:
 
                 # Final filesystem check after process exits
                 await asyncio.to_thread(_check_for_completed_files)
-
-                # Drain remaining progress updates
-                while not progress_queue.empty():
-                    try:
-                        progress = progress_queue.get_nowait()
-                        if progress_callback:
-                            progress_callback(progress)
-                    except queue.Empty:
-                        break
 
                 returncode, stderr, stalled = future.result()
 

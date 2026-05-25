@@ -338,3 +338,87 @@ class TestRunRippingSessionScoping:
             refreshed = await session.get(DiscJob, job.id)
         assert refreshed.state == JobState.FAILED
         assert refreshed.error_message == "Cancelled by user"
+
+
+async def _seed_two_selected(staging):
+    """Seed a TV job with two selected titles (so a full-disc single pass fires)."""
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="E:",
+            volume_label="SHOW_S1D1",
+            content_type=ContentType.TV,
+            state=JobState.RIPPING,
+            detected_title="Some Show",
+            detected_season=1,
+            staging_path=staging,
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        for idx in (0, 1):
+            session.add(
+                DiscTitle(
+                    job_id=job.id,
+                    title_index=idx,
+                    duration_seconds=1380,
+                    state=TitleState.RIPPING,
+                    is_selected=True,
+                )
+            )
+        await session.commit()
+        return job
+
+
+@pytest.mark.unit
+class TestOnePassRipFallback:
+    """Step 4: rip the whole disc in one MakeMKV pass when every title is
+    selected, and re-rip only the still-missing titles individually if it fails."""
+
+    def test_has_complete_output_detects_nonempty_title_file(self, tmp_path):
+        assert job_manager._has_complete_output(tmp_path, 0) is False
+        (tmp_path / "Some Show_t00.mkv").write_bytes(b"data")
+        assert job_manager._has_complete_output(tmp_path, 0) is True
+        # An empty file is not "complete".
+        (tmp_path / "Some Show_t01.mkv").write_bytes(b"")
+        assert job_manager._has_complete_output(tmp_path, 1) is False
+
+    async def test_all_selected_rips_in_single_pass(self, rip_env, monkeypatch):
+        """When every title is selected, the rip uses one 'all' invocation
+        (title_indices=None) instead of one command per title."""
+        job, title = await _seed(
+            content_type=ContentType.TV, staging=str(rip_env), is_selected=True, title_index=0
+        )
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+
+        async def _run(*args, **kwargs):
+            # Simulate the single pass finishing the title so no fallback fires.
+            async with _unit_session_factory() as s:
+                t = await s.get(DiscTitle, title.id)
+                t.state = TitleState.MATCHED
+                await s.commit()
+            return RipResult(success=True, output_files=[])
+
+        rip = AsyncMock(side_effect=_run)
+        monkeypatch.setattr(job_manager._extractor, "rip_titles", rip)
+
+        await job_manager._run_ripping(job.id)
+
+        assert rip.await_count == 1
+        assert rip.await_args_list[0].kwargs["title_indices"] is None
+
+    async def test_single_pass_failure_reripsonly_missing(self, rip_env, monkeypatch):
+        """A single pass that leaves titles unripped triggers a per-title
+        fallback for exactly the missing titles."""
+        job = await _seed_two_selected(str(rip_env))
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+
+        # Both passes produce no files, so both titles remain missing after the
+        # 'all' pass → fallback re-rips them individually.
+        rip = AsyncMock(return_value=RipResult(success=True, output_files=[]))
+        monkeypatch.setattr(job_manager._extractor, "rip_titles", rip)
+
+        await job_manager._run_ripping(job.id)
+
+        assert rip.await_count == 2
+        assert rip.await_args_list[0].kwargs["title_indices"] is None  # one-pass
+        assert sorted(rip.await_args_list[1].kwargs["title_indices"]) == [0, 1]  # fallback
