@@ -19,7 +19,7 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
-from app.core.extractor import MakeMKVExtractor, RipProgress
+from app.core.extractor import STALL_FAILURE_REASON, MakeMKVExtractor, RipProgress
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
@@ -1390,10 +1390,7 @@ class JobManager:
                             ):
                                 db_title.state = TitleState.FAILED
                                 db_title.match_details = json.dumps(
-                                    {
-                                        "reason": "Ripping stalled — no progress, "
-                                        "title skipped. The disc may be dirty or damaged."
-                                    }
+                                    {"reason": STALL_FAILURE_REASON}
                                 )
                                 logger.warning(
                                     f"Job {safe_job}: title {db_title.title_index} "
@@ -1403,7 +1400,7 @@ class JobManager:
                                     job_id,
                                     db_title.id,
                                     TitleState.FAILED.value,
-                                    error="Ripping stalled — possible disc damage",
+                                    error=STALL_FAILURE_REASON,
                                 )
                     await stall_session.commit()
 

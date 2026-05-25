@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 # Matches a robot-mode MSG line announcing a created .mkv file, e.g. ... "Show_t00.mkv" ...
 _CREATED_MKV_PATTERN = re.compile(r'["\']([^"\']+\.mkv)["\']')
 
+# Single source of truth for the user-facing stall reason, shared by the watchdog
+# callback and the job_manager fallback so the live update and History agree.
+STALL_FAILURE_REASON = "Ripping stalled — no progress; the disc may be dirty or damaged."
+
 
 def _to_drive_spec(drive: str) -> str:
     """Normalize a drive identifier into a MakeMKV drive spec.
@@ -557,13 +561,13 @@ class MakeMKVExtractor:
                             _safe_callback(
                                 title_error_callback,
                                 current_title_idx,
-                                f"Ripping stalled — no progress for {timeout:.0f}s, "
-                                "title skipped. The disc may be dirty or damaged.",
+                                STALL_FAILURE_REASON,
                                 label="title_error_callback",
                             )
                         try:
                             proc.terminate()
                         except (ProcessLookupError, PermissionError):
+                            # Process already gone (raced its own exit) — nothing to kill.
                             pass
                         return
 
