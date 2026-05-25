@@ -77,7 +77,7 @@ class SubtitleReader:
 def clean_text(text: str) -> str:
     """Clean and normalize text for matching."""
     text = text.lower().strip()
-    text = re.sub(r"\[.*?\]|\<.*?\>", "", text)
+    text = re.sub(r"[\[{][^\]}]*[\]}]|<.*?>", "", text)  # tolerate mismatched [/{ ]/} delimiters
     text = re.sub(r"([A-Za-z])-\1+", r"\1", text)
     return " ".join(text.split())
 

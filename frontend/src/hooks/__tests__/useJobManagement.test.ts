@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type {
   Job,
   DiscTitle,
@@ -6,7 +7,44 @@ import type {
   TitleUpdate,
   TitlesDiscovered,
   SubtitleEvent,
+  WebSocketMessage,
 } from "../../types";
+
+// ---------------------------------------------------------------------------
+// Mocks for the hook-level integration tests below.
+// useWebSocket is mocked so we can drive onOpen / message listeners manually,
+// and toast is mocked so we can assert error surfacing without a DOM portal.
+// ---------------------------------------------------------------------------
+
+const toastErrorMock = vi.fn();
+vi.mock("sonner", () => ({
+  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
+}));
+
+let capturedOnOpen: (() => void) | undefined;
+let capturedListener: ((msg: WebSocketMessage) => void) | undefined;
+
+vi.mock("../useWebSocket", () => ({
+  useWebSocket: (
+    _url: string,
+    options?: { onOpen?: () => void },
+  ) => {
+    capturedOnOpen = options?.onOpen;
+    return {
+      isConnected: true,
+      sendMessage: vi.fn(),
+      addMessageListener: (listener: (msg: WebSocketMessage) => void) => {
+        capturedListener = listener;
+        return () => {
+          capturedListener = undefined;
+        };
+      },
+    };
+  },
+}));
+
+// Imported after the mocks so the hook picks up the mocked useWebSocket.
+import { useJobManagement } from "../../app/hooks/useJobManagement";
 
 /**
  * Tests for the job management logic extracted from useJobManagement.
@@ -252,5 +290,100 @@ describe("subtitle_event merging", () => {
     expect(result[0].subtitles_failed).toBe(1);
     // Job 2 unchanged
     expect(result[1].subtitle_status).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hook integration tests: fetch error surfacing + reconnect resync.
+// These exercise the real useJobManagement hook with a stubbed fetch and a
+// mocked useWebSocket.
+// ---------------------------------------------------------------------------
+
+function okJson(body: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as Response;
+}
+
+function errResponse(status = 500): Response {
+  return {
+    ok: false,
+    status,
+    statusText: "Server Error",
+    json: async () => ({}),
+    text: async () => "boom",
+  } as Response;
+}
+
+describe("useJobManagement hook integration", () => {
+  beforeEach(() => {
+    toastErrorMock.mockClear();
+    capturedOnOpen = undefined;
+    capturedListener = undefined;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("surfaces an error and does not corrupt state when /api/jobs is not ok", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(errResponse(503));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalled();
+    });
+
+    // State stays a valid empty list — never corrupted by the failed fetch.
+    expect(result.current.jobs).toEqual([]);
+    expect(result.current.titlesMap).toEqual({});
+  });
+
+  it("re-runs fetchJobsAndTitles on reconnect (onOpen) to resync", async () => {
+    const job = makeJob(1);
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.endsWith("/api/jobs")) return Promise.resolve(okJson([job]));
+      if (urlStr.includes("/titles")) return Promise.resolve(okJson([]));
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useJobManagement(false));
+
+    // Initial mount fetch resolves.
+    await waitFor(() => {
+      expect(result.current.jobs).toHaveLength(1);
+    });
+
+    const jobsCallsAfterMount = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).endsWith("/api/jobs"),
+    ).length;
+
+    // The very first onOpen is the initial connect and is intentionally skipped;
+    // a SECOND onOpen represents a reconnect and must trigger a resync.
+    expect(typeof capturedOnOpen).toBe("function");
+    act(() => {
+      capturedOnOpen?.(); // initial connect (skipped)
+    });
+    act(() => {
+      capturedOnOpen?.(); // reconnect (should resync)
+    });
+
+    await waitFor(() => {
+      const jobsCallsNow = fetchMock.mock.calls.filter((c) =>
+        String(c[0]).endsWith("/api/jobs"),
+      ).length;
+      expect(jobsCallsNow).toBeGreaterThan(jobsCallsAfterMount);
+    });
+
+    // Sanity: the listener was registered so WS messages would be handled.
+    expect(typeof capturedListener).toBe("function");
   });
 });

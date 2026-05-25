@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Review redesign · D · Roster board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg0:#05070c;--bg1:#0a0e18;--bg2:#121827;--bg3:#1a2234;
+ --ink:#e6ecf5;--inkDim:#8893a8;--inkFaint:#4a5369;--inkGhost:#2a3147;
+ --cyan:#5eead4;--cyanHi:#9ff8e8;--cyanDim:#2dd4bf;--magenta:#ff3d7f;--magentaHi:#ff7aa5;
+ --yellow:#fde047;--amber:#fcd34d;--green:#86efac;--greenDim:#4ade80;--red:#ff5555;--purple:#a78bfa;
+ --line:rgba(94,234,212,.14);--lineMid:rgba(94,234,212,.24);--lineHi:rgba(94,234,212,.42);
+ --mono:"JetBrains Mono",ui-monospace,monospace;--display:"Chakra Petch",sans-serif;
+}
+html,body{height:100%}
+body{background:var(--bg0);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.5;
+ -webkit-font-smoothing:antialiased;min-height:100vh;
+ background-image:radial-gradient(1200px 620px at 0% 0%, rgba(94,234,212,.07), transparent 60%),
+   radial-gradient(1000px 620px at 100% 100%, rgba(255,61,127,.06), transparent 60%)}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+ background:repeating-linear-gradient(0deg,rgba(255,255,255,.013) 0 1px,transparent 1px 3px)}
+.wrap{max-width:1600px;margin:0 auto;padding:0 24px 80px;position:relative;z-index:2}
+.switch{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:10px 24px;margin:0 -24px;
+ background:rgba(5,7,12,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.switch .lbl{font-size:10px;letter-spacing:.22em;color:var(--inkFaint);text-transform:uppercase}
+.switch a{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--inkDim);text-decoration:none;
+ border:1px solid var(--lineMid);padding:5px 10px;transition:.15s}
+.switch a:hover{color:var(--cyan);border-color:var(--lineHi)}
+.switch a.on{color:var(--bg0);background:var(--cyan);border-color:var(--cyan);font-weight:600}
+.switch .grow{flex:1}.switch .tag{font-size:10px;letter-spacing:.16em;color:var(--magenta);text-transform:uppercase}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:26px 0 18px}
+.head .back{font-size:11px;letter-spacing:.18em;color:var(--inkDim);text-transform:uppercase;margin-bottom:10px}
+.head h1{font-family:var(--display);font-weight:600;font-size:26px;letter-spacing:.02em;color:var(--cyanHi);text-shadow:0 0 18px rgba(94,234,212,.28)}
+.head .sub{font-size:12px;letter-spacing:.14em;color:var(--inkDim);text-transform:uppercase;margin-top:6px}
+.head .sub b{color:var(--ink);font-weight:600}
+.head .reason{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.actions{display:flex;gap:8px}
+.btn{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;padding:9px 14px;
+ background:transparent;border:1px solid var(--lineMid);color:var(--inkDim);cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--lineHi);color:var(--ink)}
+.btn.yellow{color:var(--yellow);border-color:rgba(253,224,71,.5)}
+.btn.solid{background:var(--cyan);color:var(--bg0);border-color:var(--cyan);font-weight:600}
+.btn.sm{padding:6px 10px;font-size:9px}
+.panel{position:relative;background:linear-gradient(180deg,var(--bg2),var(--bg1));border:1px solid var(--line)}
+.panel::before,.panel::after{content:"";position:absolute;width:9px;height:9px;border:1px solid var(--cyan);pointer-events:none;opacity:.7}
+.panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.panel.mag::before,.panel.mag::after{border-color:var(--magenta)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+ padding:3px 7px;border:1px solid var(--lineMid);color:var(--inkDim)}
+.badge.green{color:var(--green);border-color:rgba(134,239,172,.45);background:rgba(134,239,172,.07)}
+.badge.yellow{color:var(--yellow);border-color:rgba(253,224,71,.45);background:rgba(253,224,71,.07)}
+.badge.red{color:var(--red);border-color:rgba(255,85,85,.5);background:rgba(255,85,85,.09)}
+.badge.cyan{color:var(--cyan);border-color:rgba(94,234,212,.45);background:rgba(94,234,212,.07)}
+.badge.ghost{color:var(--inkFaint)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+.sec{display:flex;align-items:center;gap:9px;margin:20px 0 12px}
+.sec .lab{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--inkDim)}
+.sec .ct{font-size:11px;color:var(--inkFaint)}
+
+/* board grid */
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.slot{position:relative;border:1px solid var(--lineMid);background:var(--bg0);padding:12px;min-height:148px;display:flex;flex-direction:column}
+.slot .sh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}
+.slot .ep{font-family:var(--display);font-size:15px;font-weight:600;color:var(--inkDim)}
+.slot .en{font-size:10px;color:var(--inkFaint);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.slot.ok{border-color:rgba(94,234,212,.4)}.slot.ok .ep{color:var(--cyan)}
+.slot.off{opacity:.4;border-color:var(--inkGhost)}
+.slot.gap{border-style:dashed;border-color:var(--yellow);background:rgba(253,224,71,.04);box-shadow:0 0 18px rgba(253,224,71,.15)}
+.slot.gap .ep{color:var(--yellow)}
+.slot.coll{border-color:var(--red);background:rgba(255,85,85,.06)}.slot.coll .ep{color:var(--red)}
+.slot .pin{position:absolute;top:-8px;left:10px;font-size:8px;letter-spacing:.12em;padding:2px 6px;font-weight:600}
+.slot.gap .pin{background:var(--yellow);color:var(--bg0)}
+.slot.coll .pin{background:var(--red);color:#fff}
+
+.chip{border:1px solid var(--lineMid);background:var(--bg2);padding:8px 9px;margin-top:auto}
+.chip+.chip{margin-top:7px}
+.chip .cn{font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .cm{display:flex;align-items:center;gap:7px;margin-top:5px;font-size:9px;color:var(--inkFaint);letter-spacing:.08em}
+.chip .conf{font-weight:600}
+.chip .conf.hi{color:var(--green)}.chip .conf.mid{color:var(--yellow)}.chip .conf.lo{color:var(--red)}
+.chip.keep{border-color:rgba(134,239,172,.4)}
+.chip.move{border-color:rgba(255,85,85,.5);border-style:dashed}
+.chip.ghost{border-style:dashed;border-color:var(--lineMid);background:transparent;color:var(--inkFaint);text-align:center;font-size:10px;padding:14px 9px}
+.slotcta{margin-top:8px;display:flex;gap:6px}
+.mini{font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;padding:5px 7px;cursor:pointer;border:1px solid var(--lineMid);background:transparent;color:var(--inkDim);transition:.15s;flex:1;text-align:center}
+.mini:hover{color:var(--cyan);border-color:var(--cyan)}
+.mini.go{background:var(--yellow);color:var(--bg0);border-color:var(--yellow);font-weight:600}
+
+/* tray */
+.tray{display:flex;align-items:center;gap:14px;padding:14px 16px;flex-wrap:wrap}
+.tray .tl{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--yellow)}
+.tcard{display:flex;align-items:center;gap:10px;border:1px solid var(--yellow);background:rgba(253,224,71,.06);padding:9px 12px;cursor:grab}
+.tcard .g{color:var(--inkFaint);font-size:13px}
+.tcard .cn{font-size:12px;color:var(--ink)}
+.tcard .cm{font-size:9px;color:var(--inkFaint);letter-spacing:.08em;margin-top:2px}
+.tcard .hint{font-size:9px;color:var(--yellow);letter-spacing:.1em;margin-left:6px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10px;color:var(--inkFaint);letter-spacing:.06em;padding:0 2px;margin-top:14px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:10px;border:1px solid}
+.sw.ok{border-color:rgba(94,234,212,.5)}.sw.gap{border-style:dashed;border-color:var(--yellow)}
+.sw.coll{border-color:var(--red);background:rgba(255,85,85,.1)}.sw.off{border-color:var(--inkGhost)}
+.note{font-size:11px;color:var(--inkFaint);line-height:1.7;margin-top:26px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="switch">
+    <span class="lbl">Review redesign · mockups</span>
+    <a href="review-redesign-inspector.html">A · Inspector</a>
+    <a href="review-redesign-inline.html">B · Inline rows</a>
+    <a href="review-redesign-compare.html">C · Compare</a>
+    <a class="on" href="review-redesign-roster.html">D · Roster board</a>
+    <a href="review-redesign-index.html">Index</a>
+    <span class="grow"></span>
+    <span class="tag">Static mockup — not wired</span>
+  </nav>
+
+  <header class="head">
+    <div>
+      <div class="back">‹ Back to dashboard</div>
+      <h1>Place the disc</h1>
+      <div class="sub">› <b>For All Mankind</b> / Season 3 · 6 titles · Blu-ray</div>
+      <div class="reason">
+        <span class="badge yellow"><span class="dot"></span>1 title to place</span>
+        <span class="badge red"><span class="dot"></span>E05 doubled</span>
+        <span class="badge yellow">E04 empty</span>
+        <span class="badge green">4 placed</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn">Re-match all</button>
+      <button class="btn solid" disabled style="opacity:.5;cursor:not-allowed">Process disc · resolve first</button>
+    </div>
+  </header>
+
+  <div class="sec"><span class="dot" style="color:var(--cyan)"></span><span class="lab">Season 3 board</span><span class="ct">— each title dropped into its episode slot · resolve red &amp; dashed</span></div>
+
+  <div class="board">
+
+    <div class="slot ok">
+      <div class="sh"><span class="ep">E01</span><span class="en">Polaris</span></div>
+      <div class="chip"><div class="cn">title_t01.mkv</div><div class="cm"><span>58:12</span>·<span class="conf hi">96%</span>·<span>engram</span></div></div>
+    </div>
+
+    <div class="slot ok">
+      <div class="sh"><span class="ep">E02</span><span class="en">Game Changer</span></div>
+      <div class="chip"><div class="cn">title_t02.mkv</div><div class="cm"><span>57:48</span>·<span class="conf hi">90%</span>·<span>engram</span></div></div>
+    </div>
+
+    <div class="slot ok">
+      <div class="sh"><span class="ep">E03</span><span class="en">All In</span></div>
+      <div class="chip"><div class="cn">title_t05.mkv</div><div class="cm"><span>59:30</span>·<span class="conf hi">93%</span>·<span>discdb</span></div></div>
+    </div>
+
+    <!-- GAP -->
+    <div class="slot gap">
+      <span class="pin">GAP · SUGGESTED</span>
+      <div class="sh"><span class="ep">E04</span><span class="en">Happy Valley</span></div>
+      <div class="chip ghost">drop a title here<br><span style="color:var(--yellow)">↳ Title 4 fits (runtime ✓)</span></div>
+      <div class="slotcta"><button class="mini go">Place Title 4 here</button></div>
+    </div>
+
+    <!-- COLLISION -->
+    <div class="slot coll">
+      <span class="pin">CONFLICT · 2 TITLES</span>
+      <div class="sh"><span class="ep">E05</span><span class="en">Seven Min. of Terror</span></div>
+      <div class="chip keep"><div class="cn">title_t06.mkv</div><div class="cm"><span>58:05</span>·<span class="conf hi">88%</span>·<span>keep</span></div></div>
+      <div class="chip move"><div class="cn">title_t04.mkv</div><div class="cm"><span>56:20</span>·<span class="conf lo">54%</span>·<span style="color:var(--red)">move?</span></div></div>
+      <div class="slotcta"><button class="mini go">→ Move Title 4 to E04</button></div>
+    </div>
+
+    <div class="slot ok">
+      <div class="sh"><span class="ep">E06</span><span class="en">New Eden</span></div>
+      <div class="chip"><div class="cn">title_t03.mkv</div><div class="cm"><span>60:10</span>·<span class="conf hi">91%</span>·<span>engram</span></div></div>
+    </div>
+
+    <div class="slot off">
+      <div class="sh"><span class="ep">E07</span><span class="en">Bring it Down</span></div>
+      <div class="chip ghost">other disc</div>
+    </div>
+    <div class="slot off">
+      <div class="sh"><span class="ep">E08</span><span class="en">Sands of Ares</span></div>
+      <div class="chip ghost">other disc</div>
+    </div>
+    <div class="slot off">
+      <div class="sh"><span class="ep">E09</span><span class="en">Coming Home</span></div>
+      <div class="chip ghost">other disc</div>
+    </div>
+    <div class="slot off">
+      <div class="sh"><span class="ep">E10</span><span class="en">Stranger…</span></div>
+      <div class="chip ghost">other disc</div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <span><i class="sw ok"></i> placed</span>
+    <span><i class="sw gap"></i> gap on disc</span>
+    <span><i class="sw coll"></i> conflict</span>
+    <span><i class="sw off"></i> not on this disc</span>
+  </div>
+
+  <div class="sec"><span class="dot" style="color:var(--yellow)"></span><span class="lab">Needs placement</span><span class="ct">— drag onto a slot, or use the suggestion</span></div>
+  <div class="panel mag tray">
+    <span class="tl">Unresolved →</span>
+    <div class="tcard">
+      <span class="g">⠿</span>
+      <div>
+        <div class="cn">title_t04.mkv</div>
+        <div class="cm">56:20 · 3.9 GB · top guess E05 (54%) · 3 candidates</div>
+      </div>
+      <span class="hint">↳ suggested slot: E04 — Happy Valley</span>
+    </div>
+    <span style="flex:1"></span>
+    <button class="btn sm">View candidates</button>
+    <button class="btn sm">Mark extra</button>
+    <button class="btn sm">Discard</button>
+  </div>
+
+  <p class="note">
+    <b>Option D — Roster board.</b> The disc <i>is</i> the season. Every episode is a slot; titles drop into the slot they
+    belong to, so coverage, the doubled E05, and the empty E04 are visible at a glance — and the fix is spatial: move
+    Title 4 out of the conflict and into the gap. Titles still needing placement wait in the tray with their suggested
+    slot. Most direct for your "revisit the whole disc" case; least like the current row UI. · Static mockup, For All
+    Mankind S3 scenario.
+  </p>
+
+</div>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # Simulation
 
-Engram includes a full simulation mode for development and testing without a physical optical drive. This is essential for E2E testing and for running on Linux/macOS where automatic drive detection is not available.
+Engram includes a full simulation mode for development and testing without a physical optical drive. This is essential for E2E testing and for running on systems without an optical drive.
 
 ## Enabling Simulation Mode
 
@@ -9,7 +9,7 @@ Set the `DEBUG` environment variable to `true` before starting the backend:
 === "Environment variable"
 
     ```bash
-    DEBUG=true uv run uvicorn app.main:app --reload
+    DEBUG=true uv run uvicorn app.main:app
     ```
 
 === ".env file"
@@ -23,7 +23,7 @@ Set the `DEBUG` environment variable to `true` before starting the backend:
     Then start normally:
 
     ```bash
-    uv run uvicorn app.main:app --reload
+    uv run uvicorn app.main:app
     ```
 
 !!! warning

@@ -13,15 +13,75 @@
 ### One-time setup after cloning
 
 ```bash
+git clone https://github.com/Jsakkos/engram.git
+cd engram
+
 # Install pre-commit hooks into .git/hooks (runs ruff + ESLint on commit)
 pre-commit install
 
 # Backend
-cd backend && uv sync
+cd backend && uv sync && cd ..
 
 # Frontend
-cd frontend && npm install
+cd frontend && npm install && cd ..
 ```
+
+### Start the dev servers
+
+Run the backend and frontend in separate terminals:
+
+```bash
+# Backend (API on port 8000)
+cd backend
+uv run uvicorn app.main:app
+```
+
+```bash
+# Frontend (dashboard on port 5173)
+cd frontend
+npm run dev
+```
+
+Open <http://localhost:5173>. The Vite dev server proxies `/api` and `/ws` to the backend at `localhost:8000`.
+
+> **Do not start the backend with `--reload`.** It spawns a child process with its own drive sentinel, which produces duplicate disc events.
+
+## Code quality
+
+```bash
+# Backend
+cd backend
+uv run ruff check .       # Lint
+uv run ruff format .      # Format
+
+# Frontend
+cd frontend
+npm run lint              # ESLint
+npm run build             # TypeScript check + production build
+```
+
+Ruff config: line length 100, target Python 3.11, rules `E/F/I/UP/B`, double quotes.
+
+## Running tests
+
+```bash
+# Backend — all tests
+cd backend
+uv run pytest
+
+# Backend — by category
+uv run pytest tests/unit/
+uv run pytest tests/integration/
+uv run pytest tests/pipeline/
+
+# Frontend — E2E tests (requires backend with DEBUG=true)
+cd frontend
+npx playwright install    # first time only
+npm run test:e2e
+npm run test:e2e:ui       # interactive browser UI
+```
+
+See the [testing guide](https://jsakkos.github.io/engram/development/testing/) for detailed test categories, fixtures, and patterns.
 
 ## Pre-commit hooks
 
@@ -97,6 +157,22 @@ Under **Settings → Branches → Branch protection rules** for `main`:
 - **Require linear history**: enabled (matches the single-commit-per-issue convention)
 - **Require conversation resolution before merging**: enabled
 
+## Git workflow
+
+- Work on **feature branches**, never directly on `main`
+- Branch naming: `fix/32-movie-track-state`, `feat/34-metadata-logging`
+- One commit per issue/feature, referencing the issue number (e.g., `fix: correct DiscDB scan log URL (#124)`)
+- Conventional-commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`
+- Open a PR to merge into `main` (linear history is enforced)
+
+## Key conventions
+
+- **Async everywhere** — use `async`/`await` for database, subprocess, and I/O operations
+- **Singleton services** — `job_manager`, `ws_manager`, `curator` are module-level singletons
+- **Error hierarchy** — use specific exceptions from `app/core/errors.py`, never bare `except`
+- **State machine** — all job lifecycle is tracked through `JobState` transitions
+- **Tailwind v4** — uses `@theme inline` blocks in CSS, not `tailwind.config.js`
+
 ## Dependency updates
 
 Renovate (`.github/renovate.json`) opens PRs Monday mornings:
@@ -117,12 +193,6 @@ Tag a commit with `v*` (e.g., `v0.7.0`) to trigger `.github/workflows/release.ym
 
 A failing smoke test blocks the release. Do not bypass.
 
-## Commit style
-
-- One commit per issue/feature
-- Reference the issue number in the message (e.g., `fix: correct DiscDB scan log URL (#124)`)
-- Conventional-commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`
-
 ## Visual regression baselines
 
 `frontend/e2e/visual-regression.spec.ts` snapshots key pages. To generate or update baselines:
@@ -134,3 +204,14 @@ git add e2e/visual-regression.spec.ts-snapshots/
 ```
 
 Only update baselines when an intentional UI change requires it.
+
+## Building the docs
+
+Documentation is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) and auto-deploys to GitHub Pages on push to `main`.
+
+```bash
+pip install mkdocs-material "mkdocstrings[python]"
+mkdocs serve
+```
+
+Edit files under `docs/`; they are picked up automatically. The root `CHANGELOG.md` and `CONTRIBUTING.md` are transcluded into the site, so edit those at the repo root rather than under `docs/`.

@@ -66,6 +66,25 @@ class AppConfig(SQLModel, table=True):
     # Sentinel Drive Monitoring
     sentinel_poll_interval: float = 2.0  # Seconds between drive polls
 
+    # Stale-job watchdog — auto-advances jobs that stop making progress.
+    # Per-phase "no activity" ceilings (seconds). server_default carries the same
+    # value so pre-existing databases get a sane timeout, not the _add_missing_columns
+    # int fallback of 0 (which would fire the watchdog instantly).
+    watchdog_enabled: bool = Field(default=True, sa_column_kwargs={"server_default": text("1")})
+    watchdog_poll_seconds: int = Field(default=60, sa_column_kwargs={"server_default": text("60")})
+    timeout_identifying_seconds: int = Field(
+        default=600, sa_column_kwargs={"server_default": text("600")}
+    )
+    timeout_ripping_seconds: int = Field(
+        default=1200, sa_column_kwargs={"server_default": text("1200")}
+    )
+    timeout_matching_seconds: int = Field(
+        default=1800, sa_column_kwargs={"server_default": text("1800")}
+    )
+    timeout_organizing_seconds: int = Field(
+        default=600, sa_column_kwargs={"server_default": text("600")}
+    )
+
     # Staging Cleanup
     staging_cleanup_policy: str = (
         "on_success"  # "on_success" | "on_completion" | "manual" | "after_days"

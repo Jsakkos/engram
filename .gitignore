@@ -94,5 +94,11 @@ backend/~/
 .claude/settings.local.json
 .claude/*
 
+# Claude Code superpowers (local brainstorm/session state)
+.superpowers/
+
+# Local artifacts archive (debug screenshots, one-off build outputs — kept locally, never committed)
+artifacts/
+
 # Git worktrees
 .worktrees/

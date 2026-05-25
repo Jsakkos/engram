@@ -38,6 +38,7 @@ TTL_SHOW_ID = 90 * 86400
 TTL_SHOW_DETAILS = 7 * 86400
 TTL_SEASON = 7 * 86400
 TTL_DISCOVER = 86400
+TTL_MOVIE = 90 * 86400  # a released movie's runtime is effectively immutable
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tmdb_cache (

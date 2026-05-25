@@ -8,6 +8,7 @@ for hosting on GitHub Releases.
 Usage (from backend/):
     uv run python scripts/build_subtitle_cache.py --limit 300
     uv run python scripts/build_subtitle_cache.py --shows "The Expanse,Arrested Development"
+    uv run python scripts/build_subtitle_cache.py --show-list scripts/curated_shows.csv
 
 TMDB / OpenSubtitles credentials are read from the AppConfig DB row; in CI they
 are bootstrapped from the env vars TMDB_API_KEY, OPENSUBTITLES_API_KEY,
@@ -15,14 +16,17 @@ OPENSUBTITLES_USERNAME, OPENSUBTITLES_PASSWORD.
 """
 
 import argparse
+import csv
 import datetime
 import hashlib
+import io
 import json
 import os
 import shutil
 import sys
 import tarfile
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -59,7 +63,6 @@ from app.matcher.tmdb_client import (
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
-    apply_tfidf,
     build_hashing_vectorizer,
     compute_idf,
     vectorizer_config_hash,
@@ -82,6 +85,11 @@ class RunTally:
     seasons_done: int = 0
     seasons_skipped_below_threshold: int = 0
     seasons_failed: int = 0
+    # Per-provider download counts (opensubtitles_api, addic7ed, tvsubtitles).
+    # Surfaces which provider served each NEW download so a quiet fallback's
+    # contribution is visible in the final summary. Cache hits are excluded --
+    # they're reported separately and carry no originating-provider info.
+    by_source: Counter[str] = field(default_factory=Counter)
     start_time: float = field(default_factory=time.monotonic)
 
     def elapsed_str(self) -> str:
@@ -141,9 +149,58 @@ def _bootstrap_config_from_env() -> None:
     logger.info(f"Bootstrapped config from env: {sorted(updates)}")
 
 
+def _read_show_list(path: str) -> list[dict]:
+    """Parse a curated show-list file into ``[{name, id}]`` candidates.
+
+    Two formats are supported:
+    - A CSV with a ``tmdb_id`` column (e.g. the curated_shows.csv produced by the
+      curation tooling). IDs are used directly, so name-collision titles like the
+      US vs UK "The Office" resolve unambiguously. A ``name`` column is kept for
+      logging; any row whose tmdb_id is missing/non-numeric falls back to a name
+      lookup via ``fetch_show_id``.
+    - A plain name list: a ``.txt`` with one show per line, or a CSV whose only
+      useful column is ``name``. Each name is resolved via ``fetch_show_id`` (the
+      same path as ``--shows``).
+
+    Blank lines and ``#`` comment lines are ignored.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise SystemExit(f"--show-list file not found: {path}")
+    text = p.read_text(encoding="utf-8-sig")
+
+    if p.suffix.lower() == ".csv":
+        rows = list(csv.DictReader(io.StringIO(text)))
+        fields = set(rows[0].keys()) if rows else set()
+        if "tmdb_id" in fields:
+            candidates = []
+            for r in rows:
+                tid = (r.get("tmdb_id") or "").strip()
+                name = (r.get("name") or "").strip()
+                if tid.isdigit():
+                    candidates.append({"name": name or tid, "id": int(tid)})
+                elif name:
+                    candidates.append({"name": name, "id": fetch_show_id(name)})
+            return candidates
+        if "name" in fields:
+            return [
+                {"name": n, "id": fetch_show_id(n)}
+                for r in rows
+                if (n := (r.get("name") or "").strip())
+            ]
+
+    names = [
+        ln.strip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    return [{"name": n, "id": fetch_show_id(n)} for n in names]
+
+
 def _select_shows(args) -> list[dict]:
     """Return [{name, tmdb_id, seasons}] for the shows to cache."""
-    if args.shows:
+    if args.show_list:
+        candidates = _read_show_list(args.show_list)
+        logger.info(f"Loaded {len(candidates)} shows from {args.show_list}")
+    elif args.shows:
         names = [s.strip() for s in args.shows.split(",") if s.strip()]
         candidates = [{"name": n, "id": fetch_show_id(n)} for n in names]
     else:
@@ -217,7 +274,9 @@ def _harvest_show(
                 continue
 
         try:
-            result = download_subtitles(canonical, season)
+            # Always re-harvest when building the cache, even if a prior
+            # precomputed build already covers this season.
+            result = download_subtitles(canonical, season, use_precomputed=False)
         except Exception as e:
             # exc_info=True per CLAUDE.md: the warning string alone (often
             # just "429 Too Many Requests") doesn't say which provider in
@@ -229,6 +288,15 @@ def _harvest_show(
                 on_season_done()
             continue
 
+        # Defense in depth: the builder must never receive precomputed-status
+        # episodes. use_precomputed=False is passed above, but if that ever
+        # regresses the _VALID_STATUSES filter below would silently drop every
+        # episode and write a zero-row cache. Fail loudly instead.
+        assert all(ep["status"] != "precomputed" for ep in result["episodes"]), (
+            "download_subtitles returned precomputed status to the cache builder — "
+            "use_precomputed=False must be passed when harvesting"
+        )
+
         # Tally every episode (including failures) so the running totals
         # match what actually happened, not what we chose to keep.
         for ep in result["episodes"]:
@@ -239,6 +307,9 @@ def _harvest_show(
                 tally.downloaded += 1
             elif status == "not_found":
                 tally.not_found += 1
+            source = ep.get("source")
+            if source and status == "downloaded":
+                tally.by_source[source] += 1
 
         episodes = [
             ep for ep in result["episodes"] if ep["status"] in _VALID_STATUSES and ep.get("path")
@@ -280,6 +351,16 @@ def main() -> int:
     parser.add_argument("--pages", type=int, default=15, help="TMDB discover pages to scan")
     parser.add_argument(
         "--shows", type=str, default="", help="Comma-separated show names (overrides popular)"
+    )
+    parser.add_argument(
+        "--show-list",
+        type=str,
+        default="",
+        help=(
+            "Path to a curated show-list file (overrides --shows and popularity). "
+            "A CSV with a tmdb_id column (e.g. scripts/curated_shows.csv) is matched "
+            "by ID for unambiguous lookup; a plain name-per-line .txt also works."
+        ),
     )
     parser.add_argument(
         "--min-episodes-ratio", type=float, default=0.6, help="Min episode coverage per season"
@@ -472,12 +553,29 @@ def main() -> int:
     np.save(precomputed_dir / "idf.npy", idf)
     logger.info(f"Global IDF fit over {all_counts.shape[0]} episodes")
 
-    # --- Write per-(show, season) L2-normalized TF-IDF matrices ----------------
+    # --- Write per-(show, season) raw hashed-count matrices --------------------
+    # Cache v2 stores uint16 counts on disk rather than the L2-normalized
+    # float64 TF-IDF rows v1 used. The loader applies apply_tfidf(counts, idf)
+    # at startup; the matcher sees the same matrix it always did. Integer
+    # counts cast to uint16 are ~4x smaller in nnz bytes, and DEFLATE in
+    # .npz collapses the long runs of 1s much better than it ever could on
+    # floats — measured ~85% reduction (~8 KB/episode vs. ~66 KB for v1).
+    u16_max = np.iinfo(np.uint16).max
     for show_name, season, codes, counts in blocks:
         show_dir = precomputed_dir / sanitize_filename(show_name)
         show_dir.mkdir(parents=True, exist_ok=True)
-        tfidf = apply_tfidf(counts, idf)
-        sparse.save_npz(show_dir / f"S{season:02d}.npz", tfidf)
+        # HashingVectorizer emits float64 counts even with alternate_sign=False;
+        # cast to uint16 (clipped defensively — real per-episode token counts
+        # are 1-10, but a pathological transcript shouldn't blow up the build).
+        counts_u16 = sparse.csr_matrix(
+            (
+                np.minimum(counts.data, u16_max).astype(np.uint16),
+                counts.indices,
+                counts.indptr,
+            ),
+            shape=counts.shape,
+        )
+        sparse.save_npz(show_dir / f"S{season:02d}.npz", counts_u16)
         with open(show_dir / f"S{season:02d}.index.json", "w", encoding="utf-8") as fh:
             json.dump(codes, fh)
 
@@ -528,6 +626,7 @@ def main() -> int:
     # Progress context but stays usable after the ``with`` exits.
     quota = get_last_quota()
     quota_str = f"{quota['remaining']}" if quota and quota.get("remaining") is not None else "n/a"
+    by_source = ", ".join(f"{s}={n}" for s, n in sorted(tally.by_source.items())) or "none"
     console.log(
         "[bold]Final summary[/]: "
         f"{len(manifest_shows)} shows, {total_episodes} episodes packaged "
@@ -537,6 +636,7 @@ def main() -> int:
         f"  new downloads:    {tally.downloaded}\n"
         f"  not found:        {tally.not_found}\n"
         f"  cache hit rate:   {tally.cache_hit_rate:.0%}\n"
+        f"  by source:        {by_source}\n"
         f"  seasons OK:       {tally.seasons_done}\n"
         f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
         f"  seasons failed:   {tally.seasons_failed}\n"

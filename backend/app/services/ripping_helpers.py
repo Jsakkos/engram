@@ -116,6 +116,8 @@ def find_staging_file(job: DiscJob, title: DiscTitle) -> Path | None:
     1. The recorded ``output_filename`` path directly.
     2. ``staging_path / output_filename.name`` (file moved/renamed staging dir).
     3. A ``*_t{index:02d}.mkv`` glob within ``staging_path``.
+    4. ``organized_to`` — the library path, for re-matching an already-organized
+       title (e.g. from a completed job).
     """
     if title.output_filename:
         p = Path(title.output_filename)
@@ -130,6 +132,12 @@ def find_staging_file(job: DiscJob, title: DiscTitle) -> Path | None:
         matches = list(Path(job.staging_path).glob(f"*_t{title.title_index:02d}.mkv"))
         if matches:
             return matches[0]
+
+    organized_to = getattr(title, "organized_to", None)
+    if organized_to:
+        p = Path(organized_to)
+        if p.exists():
+            return p
 
     return None
 

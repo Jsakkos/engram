@@ -6,6 +6,9 @@ Extracted from JobManager to isolate finalization concerns.
 import asyncio
 import json
 import logging
+import math
+import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import select
@@ -18,6 +21,64 @@ from app.services.event_broadcaster import EventBroadcaster
 from app.services.job_state_machine import JobStateMachine
 
 logger = logging.getLogger(__name__)
+
+# --- Automatic conflict escalation ---------------------------------------
+# When two titles match the same episode, we re-run the audio matcher on the
+# contested titles at progressively denser sampling before falling back to
+# manual review. The ladder is depth-only: scan more points (more evidence),
+# but keep the matcher's default vote gate so a genuinely-correct match on a
+# hard episode isn't demoted straight to review.
+_CHUNK_DURATION_S = 30  # mirrors EpisodeMatcher.chunk_duration
+_MAX_SCAN_POINTS = 200  # bound runtime even for very long tracks
+_CONFLICT_FIXED_DEPTHS = (25, 50)  # first two tiers; final tier is full coverage
+_EP_CODE_RE = re.compile(r"[Ss](\d+)[Ee](\d+)")
+
+
+def _normalize_episode_code(code: str | None) -> str:
+    """Canonicalize ``SxxExx`` so padded/unpadded variants collide.
+
+    The matcher's fallback path can emit unpadded codes ("S1E14") while its
+    main path emits "S01E14"; without normalizing, a real collision would be
+    grouped under two different keys and missed.
+    """
+    match = _EP_CODE_RE.search(code or "")
+    if not match:
+        return (code or "").upper()
+    return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}"
+
+
+def _detect_conflicts(titles) -> dict[str, list]:
+    """Group ``MATCHED`` titles by canonical episode code, keeping only ties."""
+    by_ep: dict[str, list] = {}
+    for t in titles:
+        if t.state == TitleState.MATCHED and t.matched_episode:
+            by_ep.setdefault(_normalize_episode_code(t.matched_episode), []).append(t)
+    return {ep: tl for ep, tl in by_ep.items() if len(tl) > 1}
+
+
+def _full_coverage_points(titles) -> int:
+    """Scan points needed to transcribe ~100% of the longest contested track."""
+    longest = max((t.duration_seconds or 0 for t in titles), default=0)
+    if longest <= 0:
+        return _MAX_SCAN_POINTS  # duration unknown: go as deep as allowed
+    return min(math.ceil(longest / _CHUNK_DURATION_S) + 1, _MAX_SCAN_POINTS)
+
+
+def _conflict_scan_ladder(titles) -> list[int]:
+    """Strictly-increasing escalation ladder, capped at full coverage.
+
+    For short episodes the fixed tiers already exceed full coverage, so the
+    ladder collapses (e.g. ``[25, 45]``); for long tracks it grows
+    (``[25, 50, 180]``). The last entry is always full coverage — there is no
+    "deeper" to go, which is the natural termination point.
+    """
+    full = _full_coverage_points(titles)
+    ladder: list[int] = []
+    for depth in (*_CONFLICT_FIXED_DEPTHS, full):
+        depth = min(depth, full)
+        if depth > 1 and (not ladder or depth > ladder[-1]):
+            ladder.append(depth)
+    return ladder
 
 
 def _merge_match_details(existing: str | None, updates: dict) -> str:
@@ -53,15 +114,125 @@ class FinalizationCoordinator:
         self._on_task_done: callable = None
         self._active_jobs: dict = None
         self._match_single_file: callable = None
+        self._rematch_conflict: callable = None
+
+        # Last scan depth attempted per job while auto-resolving a collision.
+        # Transient (in memory); cleared on resolution, exhaustion, or restart.
+        self._conflict_passes: dict[int, int] = {}
 
     def set_callbacks(
-        self, *, run_ripping, on_task_done, active_jobs, match_single_file=None
+        self,
+        *,
+        run_ripping,
+        on_task_done,
+        active_jobs,
+        match_single_file=None,
+        rematch_conflict=None,
     ) -> None:
         """Set cross-coordinator callbacks."""
         self._run_ripping = run_ripping
         self._on_task_done = on_task_done
         self._active_jobs = active_jobs
         self._match_single_file = match_single_file
+        self._rematch_conflict = rematch_conflict
+
+    def reset_conflict_passes(self, job_id: int) -> None:
+        """Forget any in-progress conflict escalation for ``job_id``."""
+        self._conflict_passes.pop(job_id, None)
+
+    async def on_terminal_clear_conflicts(self, job_id: int, _state) -> None:
+        """Terminal-state hook: drop conflict-escalation tracking for the job.
+
+        Also clears the persisted ``conflict_status`` so a job forced to a
+        terminal state mid-escalation (e.g. finalization throws on a later
+        pass) doesn't leave a stale "Resolving…" note in the DB.
+        """
+        self.reset_conflict_passes(job_id)
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job is not None and job.conflict_status is not None:
+                job.conflict_status = None
+                await session.commit()
+
+    async def _clear_conflict_state(self, session, job) -> None:
+        """Drop escalation tracking and clear the transient dashboard note."""
+        self.reset_conflict_passes(job.id)
+        if job.conflict_status is not None:
+            job.conflict_status = None
+            await session.commit()
+
+    async def _maybe_escalate_conflicts(self, session, job, titles) -> bool:
+        """Deep re-match titles colliding on the same episode, escalating depth.
+
+        Returns ``True`` if a re-match was dispatched (the job is held in
+        MATCHING and the caller should return — completion re-entry will pick
+        it back up). Returns ``False`` when there is nothing to escalate
+        (no collision, ladder exhausted, or contested files missing), after
+        clearing any transient state so the normal review/organize path runs.
+        """
+        job_id = job.id
+        # Episode collisions only apply to TV; movies resolve file conflicts elsewhere.
+        if job.content_type != ContentType.TV or self._rematch_conflict is None:
+            await self._clear_conflict_state(session, job)
+            return False
+
+        conflicts = _detect_conflicts(titles)
+        if not conflicts:
+            await self._clear_conflict_state(session, job)
+            return False
+
+        contested = [t for group in conflicts.values() for t in group]
+        ladder = _conflict_scan_ladder(contested)
+        last_depth = self._conflict_passes.get(job_id, 0)
+        next_depth = next((d for d in ladder if d > last_depth), None)
+
+        if next_depth is None:
+            logger.info(
+                f"Job {job_id}: conflict re-match exhausted at {last_depth} scan points; "
+                f"{list(conflicts)} still contested — handing to review"
+            )
+            await self._clear_conflict_state(session, job)
+            return False
+
+        # Re-match every distinct raw code in each tie (padded + unpadded), so
+        # all contested titles are covered regardless of stored formatting.
+        dispatched: list[int] = []
+        for group in conflicts.values():
+            for raw_code in {t.matched_episode for t in group if t.matched_episode}:
+                result = await self._rematch_conflict(
+                    job_id, raw_code, num_points=next_depth, min_vote_count=None
+                )
+                dispatched.extend(result.get("dispatched", []))
+
+        if not dispatched:
+            logger.warning(
+                f"Job {job_id}: conflict re-match dispatched no titles (files missing); "
+                f"handing {list(conflicts)} to review"
+            )
+            await self._clear_conflict_state(session, job)
+            return False
+
+        self._conflict_passes[job_id] = next_depth
+        pass_no = ladder.index(next_depth) + 1
+        job.conflict_status = f"Resolving episode conflicts — pass {pass_no} of {len(ladder)}"
+        job.updated_at = datetime.now(UTC)
+        # Hold the disc in MATCHING so the dashboard shows live re-match progress.
+        if job.state != JobState.MATCHING:
+            job.state = JobState.MATCHING
+        await session.commit()
+        await ws_manager.broadcast_job_update(
+            job_id,
+            JobState.MATCHING.value,
+            content_type=job.content_type.value if job.content_type else None,
+            detected_title=job.detected_title,
+            detected_season=job.detected_season,
+            conflict_status=job.conflict_status,
+        )
+        logger.info(
+            f"Job {job_id}: deep re-match for conflicts {list(conflicts)} at "
+            f"{next_depth} scan points (pass {pass_no}/{len(ladder)}, titles {dispatched})"
+        )
+        return True
 
     async def _complete_tv_job(self, session, job) -> None:
         """Finalize a TV job: set progress, compute final_path, transition to COMPLETED."""
@@ -114,7 +285,26 @@ class FinalizationCoordinator:
         has_completed = any(t.state == TitleState.COMPLETED for t in titles)
         all_failed = all(t.state == TitleState.FAILED for t in titles)
 
-        if has_matched:
+        # Auto-resolve same-episode collisions before any manual review: deep
+        # re-match contested titles at escalating scan density until the tie
+        # breaks or the whole track has been transcribed. Runs BEFORE the
+        # has_review short-circuit so a pass that leaves one title unmatched
+        # doesn't abort escalation of the titles still colliding.
+        if await self._maybe_escalate_conflicts(session, job, titles):
+            return
+
+        # Review takes priority: while ANY title still needs manual review, do
+        # not organize anything — hold the whole disc in staging until it is
+        # fully resolved. (finalize_disc_job also guards against conflicts it
+        # creates mid-run; this avoids even starting finalization when the
+        # matcher already flagged a title for review.)
+        if has_review:
+            await self._state_machine.transition_to_review(
+                job,
+                session,
+                reason=f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
+            )
+        elif has_matched:
             try:
                 await self.finalize_disc_job(job_id)
             except Exception as e:
@@ -122,12 +312,6 @@ class FinalizationCoordinator:
                 await self._state_machine.transition_to_failed(
                     job, session, error_message=f"Finalization failed: {e}"
                 )
-        elif has_review:
-            await self._state_machine.transition_to_review(
-                job,
-                session,
-                reason=f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
-            )
         elif all_failed and not has_completed:
             await self._state_machine.transition_to_failed(
                 job, session, error_message="All titles failed to process"
@@ -171,6 +355,12 @@ class FinalizationCoordinator:
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
                         logger.debug(f"Could not parse match_details JSON: {e}")
                 if score == 0.0:
+                    # Fallback only fires for titles WITHOUT a raw ranked_voting
+                    # score in match_details — i.e. DiscDB-assigned (match_confidence
+                    # is a hardcoded 0.99 sentinel, intentionally outranking engram)
+                    # or filename-parsed titles. Engram matches always carry a raw
+                    # details["score"] (> match_threshold), so a calibrated
+                    # match_confidence never reaches this comparison.
                     score = t.match_confidence
                 return score, vote_count, file_cov, runner_ups
 
@@ -179,7 +369,12 @@ class FinalizationCoordinator:
                 candidates = {}
                 for t in titles:
                     if t.state == TitleState.MATCHED and t.matched_episode:
-                        candidates.setdefault(t.matched_episode, []).append(t)
+                        # Normalize so padded/unpadded variants of the same episode
+                        # ("S1E3" vs "S01E03") group together — otherwise a real
+                        # collision is missed and both files organize to one path.
+                        candidates.setdefault(
+                            _normalize_episode_code(t.matched_episode), []
+                        ).append(t)
 
                 conflicts = {ep: tlist for ep, tlist in candidates.items() if len(tlist) > 1}
                 if not conflicts:
@@ -230,11 +425,16 @@ class FinalizationCoordinator:
                         reassigned = False
 
                         for ru in cand["runner_ups"]:
-                            alt_ep = ru["episode"]
+                            # Canonicalize to match the normalized candidates keys
+                            # (and to store a consistent code on reassignment).
+                            alt_ep = _normalize_episode_code(ru["episode"])
                             current_claimants = candidates.get(alt_ep, [])
                             if not current_claimants:
                                 loser.matched_episode = alt_ep
-                                loser.match_confidence = ru["score"]
+                                # Ranking uses raw score; the stored confidence is
+                                # the calibrated value (falls back to raw for old
+                                # match_details that predate calibration).
+                                loser.match_confidence = ru.get("confidence", ru["score"])
                                 candidates.setdefault(alt_ep, []).append(loser)
                                 reassigned = True
                                 reassigned_any = True
@@ -248,7 +448,7 @@ class FinalizationCoordinator:
                                 claimant_score, _, _, _ = _get_metrics(claimant)
                                 if ru["score"] > claimant_score:
                                     loser.matched_episode = alt_ep
-                                    loser.match_confidence = ru["score"]
+                                    loser.match_confidence = ru.get("confidence", ru["score"])
                                     candidates[alt_ep].append(loser)
                                     reassigned = True
                                     reassigned_any = True
@@ -281,6 +481,24 @@ class FinalizationCoordinator:
 
                 if not reassigned_any:
                     break
+
+            # Defer organization: if conflict resolution left any title needing
+            # review, organize NOTHING — hold the entire disc in staging until
+            # the user resolves the remaining title(s). Organizing only the
+            # winners here would move files out from under an unresolved disc.
+            if any(t.state == TitleState.REVIEW for t in titles):
+                await session.commit()
+                review_count = sum(1 for t in titles if t.state == TitleState.REVIEW)
+                logger.info(
+                    f"Job {job_id}: {review_count} title(s) need review — "
+                    f"deferring organization until the disc is fully resolved"
+                )
+                await self._state_machine.transition_to_review(
+                    job,
+                    session,
+                    reason=f"{review_count} title(s) need manual episode assignment",
+                )
+                return
 
             # Organize all MATCHED winners
             for t in titles:

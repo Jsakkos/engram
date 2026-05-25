@@ -10,7 +10,7 @@ def is_valid_srt_file(file_path: Path) -> bool:
 
     Checks:
     1. File exists and is at least 50 bytes.
-    2. First 500 bytes don't contain HTML markers.
+    2. Header doesn't contain HTML markers.
     3. Contains the SRT timestamp arrow ``-->`` somewhere in the header.
 
     Lives in ``subtitle_utils`` so every provider client and the
@@ -23,8 +23,17 @@ def is_valid_srt_file(file_path: Path) -> bool:
         if not file_path.exists() or file_path.stat().st_size < 50:
             return False
 
-        with open(file_path, encoding="utf-8", errors="ignore") as f:
-            header = f.read(500).lower()
+        # Decode by BOM. TVsubtitles (and others) sometimes serve
+        # UTF-16-encoded SRTs; read as UTF-8 those keep a NUL between every
+        # character, so the ASCII ``-->`` check below never matches and a
+        # perfectly valid subtitle gets rejected. Read a generous chunk of
+        # raw bytes (UTF-16 is 2 bytes/char, so 1000 bytes ≈ 500 chars —
+        # still well past the first timestamp).
+        raw = file_path.read_bytes()[:1000]
+        if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+            header = raw.decode("utf-16", errors="ignore").lower()
+        else:
+            header = raw.decode("utf-8", errors="ignore").lower()
 
         if any(marker in header for marker in ["<!doctype", "<html", "<head", "<body", "<div"]):
             logger.warning(f"Rejecting {file_path.name}: appears to be HTML, not SRT")

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
+import { apiFetch } from "../api/client";
 import {
   CheckCircle2,
   XCircle,
@@ -18,6 +20,7 @@ import {
 import { IcoMovie, IcoTv, IcoError, IcoDisc } from "../app/components/icons";
 import { FEATURES } from "../config/constants";
 import { SvActionButton, SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
+import BugReportModal from "./BugReportModal";
 import {
   formatBytesScaled,
   formatDateTime,
@@ -368,10 +371,12 @@ function JobDetailPanel({
   detail,
   loading,
   onClose,
+  onReportBug,
 }: {
   detail: JobDetail | null;
   loading: boolean;
   onClose: () => void;
+  onReportBug: (jobId: number) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -761,22 +766,9 @@ function JobDetailPanel({
 
           {/* Bug Report for this specific job */}
           <div style={{ paddingTop: 8, borderTop: `1px solid ${sv.line}` }}>
-            <a
-              href={`/api/diagnostics/report?job_id=${detail.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={async (e) => {
-                e.preventDefault();
-                try {
-                  const resp = await fetch(`/api/diagnostics/report?job_id=${detail.id}`);
-                  if (resp.ok) {
-                    const data = await resp.json();
-                    window.open(data.github_url, "_blank");
-                  }
-                } catch {
-                  // silently fail
-                }
-              }}
+            <button
+              type="button"
+              onClick={() => onReportBug(detail.id)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -785,14 +777,17 @@ function JobDetailPanel({
                 fontSize: 11,
                 letterSpacing: "0.06em",
                 color: sv.inkDim,
-                textDecoration: "none",
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
                 transition: "color 120ms",
               }}
               {...hoverProps({ color: sv.red }, { color: sv.inkDim })}
             >
               <Bug size={12} />
               Report bug for this job
-            </a>
+            </button>
           </div>
         </div>
       ) : null}
@@ -971,7 +966,8 @@ export default function HistoryPage() {
   const [filterType, setFilterType] = useState<string>("");
   const [filterState, setFilterState] = useState<string>("");
   const [hasMore, setHasMore] = useState(true);
-  const [reportLoading, setReportLoading] = useState(false);
+  const [bugModalOpen, setBugModalOpen] = useState(false);
+  const [bugModalJobId, setBugModalJobId] = useState<number | undefined>(undefined);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(
     urlJobId ? parseInt(urlJobId, 10) : null
   );
@@ -980,10 +976,12 @@ export default function HistoryPage() {
   const perPage = 20;
 
   useEffect(() => {
-    fetch("/api/jobs/stats")
-      .then((r) => r.json())
+    apiFetch<Stats>("/api/jobs/stats")
       .then(setStats)
-      .catch(() => {});
+      .catch((error) => {
+        console.error("Failed to load history stats:", error);
+        toast.error("Failed to load history statistics.");
+      });
   }, []);
 
   const fetchHistory = useCallback(() => {
@@ -994,13 +992,15 @@ export default function HistoryPage() {
     if (filterType) params.set("content_type", filterType);
     if (filterState) params.set("state", filterState);
 
-    fetch(`/api/jobs/history?${params}`)
-      .then((r) => r.json())
+    apiFetch<HistoryJob[]>(`/api/jobs/history?${params}`)
       .then((data: HistoryJob[]) => {
         setHistory(data);
         setHasMore(data.length === perPage);
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.error("Failed to load job history:", error);
+        toast.error("Failed to load job history.");
+      });
   }, [page, filterType, filterState]);
 
   useEffect(() => {
@@ -1014,16 +1014,14 @@ export default function HistoryPage() {
       return;
     }
     setDetailLoading(true);
-    fetch(`/api/jobs/${selectedJobId}/detail`)
-      .then((r) => {
-        if (!r.ok) throw new Error("Not found");
-        return r.json();
-      })
+    apiFetch<JobDetail>(`/api/jobs/${selectedJobId}/detail`)
       .then((data: JobDetail) => {
         setJobDetail(data);
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("Failed to load job detail:", error);
         setJobDetail(null);
+        toast.error("Failed to load job details.");
       })
       .finally(() => {
         setDetailLoading(false);
@@ -1045,19 +1043,10 @@ export default function HistoryPage() {
     navigate("/history", { replace: true });
   }, [navigate]);
 
-  const handleReportBug = async () => {
-    setReportLoading(true);
-    try {
-      const resp = await fetch("/api/diagnostics/report");
-      if (!resp.ok) throw new Error("Failed to generate report");
-      const data = await resp.json();
-      window.open(data.github_url, "_blank");
-    } catch {
-      alert("Could not generate bug report. Is the backend running?");
-    } finally {
-      setReportLoading(false);
-    }
-  };
+  const openBugReport = useCallback((jobId?: number) => {
+    setBugModalJobId(jobId);
+    setBugModalOpen(true);
+  }, []);
 
   return (
     <SvAtmosphere>
@@ -1067,8 +1056,7 @@ export default function HistoryPage() {
         onBack={() => navigate("/")}
         right={
           <button
-            onClick={handleReportBug}
-            disabled={reportLoading}
+            onClick={() => openBugReport()}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -1083,13 +1071,11 @@ export default function HistoryPage() {
               fontWeight: 700,
               letterSpacing: "0.20em",
               textTransform: "uppercase",
-              cursor: reportLoading ? "wait" : "pointer",
-              opacity: reportLoading ? 0.5 : 1,
+              cursor: "pointer",
               boxShadow: `0 0 8px ${sv.red}33`,
               transition: "border-color 120ms, color 120ms, box-shadow 120ms",
             }}
             onMouseEnter={(e) => {
-              if (reportLoading) return;
               e.currentTarget.style.borderColor = sv.red;
               e.currentTarget.style.boxShadow = `0 0 14px ${sv.red}66`;
             }}
@@ -1099,7 +1085,7 @@ export default function HistoryPage() {
             }}
           >
             <Bug size={14} />
-            <span>{reportLoading ? "Generating…" : "Report Bug"}</span>
+            <span>Report Bug</span>
           </button>
         }
       />
@@ -1315,10 +1301,17 @@ export default function HistoryPage() {
               detail={jobDetail}
               loading={detailLoading}
               onClose={handleCloseDetail}
+              onReportBug={openBugReport}
             />
           </>
         )}
       </AnimatePresence>
+
+      <BugReportModal
+        open={bugModalOpen}
+        onClose={() => setBugModalOpen(false)}
+        jobId={bugModalJobId}
+      />
     </SvAtmosphere>
   );
 }

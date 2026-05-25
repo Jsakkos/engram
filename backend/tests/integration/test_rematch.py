@@ -4,7 +4,9 @@ Tests POST /api/jobs/{id}/titles/{tid}/rematch,
 POST /api/jobs/{id}/rematch, and POST /api/jobs/{id}/titles/{tid}/reassign.
 """
 
+import asyncio
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -107,6 +109,29 @@ async def test_bulk_rematch_returns_200(client, job_with_matched_title):
 
 
 @pytest.mark.asyncio
+async def test_bulk_rematch_rejects_non_review_state(client, engram_review_job):
+    """Re-match all on a job that is not in review must be rejected, not silently
+    backgrounded — otherwise the UI navigates away while matching runs invisibly."""
+    job, _ = engram_review_job
+
+    async with async_session() as session:
+        reloaded = await session.get(DiscJob, job.id)
+        reloaded.state = JobState.FAILED
+        session.add(reloaded)
+        await session.commit()
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/rematch",
+        json={"source_preference": "engram"},
+    )
+    assert resp.status_code == 409
+
+    async with async_session() as session:
+        unchanged = await session.get(DiscJob, job.id)
+        assert unchanged.state == JobState.FAILED
+
+
+@pytest.mark.asyncio
 async def test_reassign_episode_returns_200(client, job_with_matched_title):
     """POST /api/jobs/{id}/titles/{tid}/reassign should return 200 and update DB."""
     job, title = job_with_matched_title
@@ -138,6 +163,105 @@ async def test_rematch_nonexistent_title_returns_404(client, job_with_matched_ti
         json={"source_preference": "discdb"},
     )
     assert resp.status_code == 404
+
+
+@pytest.fixture
+async def engram_review_job(tmp_path):
+    """Create a REVIEW_NEEDED TV job whose title was matched via engram (audio).
+
+    No DiscDB details, subtitles already completed — the realistic state when a
+    disc lands in review because one episode could not be auto-matched.
+    """
+    ripped_file = tmp_path / "B1_t00.mkv"
+    ripped_file.write_bytes(b"fake mkv")
+
+    async with async_session() as session:
+        job = DiscJob(
+            drive_id="E:",
+            volume_label="ARRESTED_DEVELOPMENT_S1D2",
+            content_type=ContentType.TV,
+            state=JobState.REVIEW_NEEDED,
+            detected_title="Arrested Development",
+            detected_season=1,
+            subtitle_status="completed",
+            staging_path=str(tmp_path),
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=0,
+            duration_seconds=1300,
+            file_size_bytes=1024 * 1024 * 1024,
+            chapter_count=8,
+            state=TitleState.MATCHED,
+            matched_episode="S01E01",
+            match_confidence=0.9,
+            match_source="engram",
+            is_selected=True,
+            output_filename=str(ripped_file),
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+
+        return job, title
+
+
+@pytest.mark.asyncio
+async def test_bulk_rematch_transitions_job_to_matching(client, engram_review_job, monkeypatch):
+    """Re-match all must move the job out of REVIEW_NEEDED into MATCHING.
+
+    Otherwise the review page stays mounted and never reflects the re-matching
+    that runs in the background — the reported bug.
+    """
+    job, title = engram_review_job
+
+    from app.services.job_manager import job_manager
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/rematch",
+        json={"source_preference": "engram"},
+    )
+    assert resp.status_code == 200
+
+    async with async_session() as session:
+        reloaded_job = await session.get(DiscJob, job.id)
+        reloaded_title = await session.get(DiscTitle, title.id)
+        assert reloaded_job.state == JobState.MATCHING
+        assert reloaded_title.matched_episode is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_rematch_dispatches_matching(client, engram_review_job, monkeypatch):
+    """Re-match all must actually dispatch matching for each ripped title."""
+    job, title = engram_review_job
+
+    from app.services.job_manager import job_manager
+
+    mock_match = AsyncMock()
+    monkeypatch.setattr(job_manager._matching, "match_single_file", mock_match)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/rematch",
+        json={"source_preference": "engram"},
+    )
+    assert resp.status_code == 200
+
+    # Background tasks are fire-and-forget; yield until dispatched (with a hard
+    # timeout) rather than a fixed sleep, which is racy under CI load.
+    deadline = asyncio.get_running_loop().time() + 2.0
+    while mock_match.await_count == 0 and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0)
+
+    assert mock_match.await_count == 1
+    dispatched_job_id, dispatched_title_id, _path = mock_match.await_args.args
+    assert dispatched_job_id == job.id
+    assert dispatched_title_id == title.id
 
 
 @pytest.mark.asyncio

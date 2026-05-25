@@ -57,6 +57,7 @@ class JobStateMachine:
     def __init__(self, event_broadcaster: EventBroadcaster):
         self._broadcaster = event_broadcaster
         self._on_terminal_callbacks: list = []
+        self._on_transition_callbacks: list = []
 
     def on_terminal_state(self, callback) -> None:
         """Register a callback invoked when a job reaches a terminal state (COMPLETED/FAILED).
@@ -64,6 +65,15 @@ class JobStateMachine:
         Callback signature: async def callback(job_id: int, state: JobState) -> None
         """
         self._on_terminal_callbacks.append(callback)
+
+    def on_transition(self, callback) -> None:
+        """Register a callback invoked after every successful state transition.
+
+        Used by the stale-job watchdog to reset a job's activity clock whenever it
+        enters a new phase. Callback signature: callback(job_id: int, state: JobState).
+        Synchronous and best-effort — exceptions are logged, never raised.
+        """
+        self._on_transition_callbacks.append(callback)
 
     def can_transition(self, from_state: JobState, to_state: JobState) -> bool:
         """Validate if state transition is allowed.
@@ -128,6 +138,13 @@ class JobStateMachine:
 
         # Persist to database
         await session.commit()
+
+        # Notify transition observers (e.g. watchdog activity clock). Best-effort.
+        for cb in self._on_transition_callbacks:
+            try:
+                cb(job.id, to_state)
+            except Exception as e:
+                logger.error(f"Job {job.id}: transition callback failed: {e}", exc_info=True)
 
         # Broadcast state change if requested (failure is non-fatal since DB is committed)
         if broadcast:

@@ -23,6 +23,12 @@ from app.services.ripping_helpers import find_staging_file
 
 logger = logging.getLogger(__name__)
 
+# Stricter matcher parameters for the "deep re-match" conflict path: sample more
+# audio chunks (vs the default 10) for more robust votes + a clearer score gap,
+# and require more matched chunks before accepting (vs the default 2).
+STRICT_SCAN_POINTS = 25
+STRICT_MIN_VOTES = 4
+
 
 class MatchingCoordinator:
     """Coordinates episode matching: subtitle download, audio fingerprinting, DiscDB assignment."""
@@ -42,12 +48,14 @@ class MatchingCoordinator:
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
 
-        # Cross-coordinator callback
+        # Cross-coordinator callbacks
         self._check_job_completion: callable = None
+        self._note_activity: callable | None = None
 
-    def set_callbacks(self, *, check_job_completion) -> None:
+    def set_callbacks(self, *, check_job_completion, note_activity=None) -> None:
         """Set cross-coordinator callbacks."""
         self._check_job_completion = check_job_completion
+        self._note_activity = note_activity
 
     def init_semaphore(self, concurrency: int) -> None:
         """Initialize the match semaphore with the given concurrency."""
@@ -61,6 +69,10 @@ class MatchingCoordinator:
         """
         self._episode_runtimes.pop(job_id, None)
         self._discdb_mappings.pop(job_id, None)
+        self._subtitle_ready.pop(job_id, None)
+        task = self._subtitle_tasks.pop(job_id, None)
+        if task is not None and not task.done():
+            task.cancel()
 
     def get_discdb_mappings(self, job_id: int) -> list:
         """Get DiscDB mappings for a job."""
@@ -171,8 +183,61 @@ class MatchingCoordinator:
 
         return True
 
+    async def rematch_conflict(
+        self,
+        job_id: int,
+        episode_code: str,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> dict:
+        """Re-run audio matching for every title currently claiming ``episode_code``.
+
+        Used to break a same-episode collision: each contested title is re-matched
+        (engram) with stricter parameters so the tie can resolve either way.
+        Returns ``{"dispatched": [ids], "skipped": [{"title_id", "reason"}]}`` so
+        callers can tell the user which titles could not be re-matched (e.g. their
+        ripped file is no longer in staging).
+        """
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+            )
+            title_ids = [
+                t.id
+                for t in result.scalars().all()
+                if t.matched_episode and t.matched_episode.upper() == episode_code.upper()
+            ]
+
+        dispatched: list[int] = []
+        skipped: list[dict] = []
+        for tid in title_ids:
+            try:
+                await self.rematch_single_title(
+                    job_id,
+                    tid,
+                    source_preference="engram",
+                    num_points=num_points,
+                    min_vote_count=min_vote_count,
+                )
+                dispatched.append(tid)
+            except Exception as e:
+                # e.g. staging file missing (ValueError) or a transient DB/IO
+                # error — skip this title rather than failing the whole conflict
+                # re-match, and report it. Catching broadly (but NOT BaseException,
+                # so asyncio.CancelledError still propagates) keeps the auto-
+                # escalation caller from leaving its pass counter unset, which
+                # would otherwise re-dispatch the same depth indefinitely.
+                logger.warning(f"Conflict re-match: skipping title {tid} (job {job_id}): {e}")
+                skipped.append({"title_id": tid, "reason": str(e)})
+        return {"dispatched": dispatched, "skipped": skipped}
+
     async def rematch_single_title(
-        self, job_id: int, title_id: int, source_preference: str | None = None
+        self,
+        job_id: int,
+        title_id: int,
+        source_preference: str | None = None,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
     ) -> None:
         """Re-match a single title with the specified source preference.
 
@@ -180,6 +245,9 @@ class MatchingCoordinator:
             "discdb" — restore from stored discdb_match_details
             "engram" — clear match and re-run audio fingerprinting
             None — try discdb first if available, else engram
+
+        ``num_points``/``min_vote_count`` override the matcher scan density and
+        vote gate for the engram path (deep re-match); None keeps defaults.
         """
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -243,13 +311,26 @@ class MatchingCoordinator:
             await ws_manager.broadcast_title_update(job_id, title.id, TitleState.MATCHING.value)
 
         # Fire-and-forget: matching runs in background, progress via WebSocket
-        match_task = asyncio.create_task(self.match_single_file(job_id, title_id, file_path))
+        match_task = asyncio.create_task(
+            self.match_single_file(job_id, title_id, file_path, num_points, min_vote_count)
+        )
         match_task.add_done_callback(
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
         )
 
-    async def match_single_file(self, job_id: int, title_id: int, file_path: Path) -> None:
-        """Run matching for a single ripped file."""
+    async def match_single_file(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> None:
+        """Run matching for a single ripped file.
+
+        ``num_points``/``min_vote_count`` override the matcher's scan density and
+        vote gate (deep re-match); None keeps defaults.
+        """
         logger.info(
             f"[MATCH] Title {title_id} (Job {job_id}): match task started for {file_path.name}"
         )
@@ -413,7 +494,9 @@ class MatchingCoordinator:
 
         # 7. Run matching
         try:
-            await self._match_single_file_inner(job_id, title_id, file_path)
+            await self._match_single_file_inner(
+                job_id, title_id, file_path, num_points, min_vote_count
+            )
         except Exception as e:
             logger.exception(
                 f"[MATCH] Title {title_id} (Job {job_id}): error in _match_single_file_inner: {e}"
@@ -424,7 +507,14 @@ class MatchingCoordinator:
                 self._match_semaphore.release()
                 logger.info(f"[MATCH] Title {title_id} (Job {job_id}): released match semaphore")
 
-    async def _match_single_file_inner(self, job_id: int, title_id: int, file_path: Path) -> None:
+    async def _match_single_file_inner(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> None:
         """Inner matching logic, called under the match semaphore."""
         match_start = time.monotonic()
 
@@ -455,6 +545,12 @@ class MatchingCoordinator:
                 _json_dumps = json.dumps
 
                 def on_progress(stage: str, percent: float, vote_data: list | None = None):
+                    if self._note_activity:
+                        try:
+                            self._note_activity(job_id)
+                        except Exception:
+                            # Best-effort watchdog heartbeat; never let it disrupt matching.
+                            pass
                     try:
                         details = None
                         if vote_data:
@@ -475,7 +571,17 @@ class MatchingCoordinator:
                             match_progress=percent,
                             match_details=details,
                         )
-                        asyncio.run_coroutine_threadsafe(coro, loop)
+                        fut = asyncio.run_coroutine_threadsafe(coro, loop)
+
+                        def _log_broadcast_error(f) -> None:
+                            try:
+                                f.result()
+                            except Exception as exc:
+                                logger.warning(
+                                    f"[MATCH] Title {title_id}: progress broadcast failed: {exc}"
+                                )
+
+                        fut.add_done_callback(_log_broadcast_error)
                     except Exception as e:
                         logger.warning(f"[MATCH] Title {title_id}: progress callback error: {e}")
 
@@ -488,6 +594,8 @@ class MatchingCoordinator:
                     series_name=job.detected_title,
                     season=job.detected_season,
                     progress_callback=on_progress,
+                    num_points=num_points,
+                    min_vote_count=min_vote_count,
                 )
 
                 elapsed = time.monotonic() - match_start
@@ -521,7 +629,12 @@ class MatchingCoordinator:
                     except Exception as e:
                         logger.error(f"Failed to dump match_details: {e}")
 
-                title.match_source = "engram"
+                # Only attribute the match to Engram when an episode match was
+                # actually recorded. A title routed to REVIEW with no episode must
+                # not carry the "ENGRAM" provider badge — that implies a confident
+                # auto-match the matcher never made.
+                if title.state == TitleState.MATCHED:
+                    title.match_source = "engram"
 
                 # Extract match stats for broadcast
                 matches_found = 1
@@ -907,11 +1020,17 @@ class MatchingCoordinator:
 
             result = await asyncio.to_thread(download_subtitles, show_name, season)
 
-            downloaded = sum(
-                1 for ep in result["episodes"] if ep["status"] in ("downloaded", "cached")
+            episodes = result["episodes"]
+            # The precomputed vector cache covered the whole season, so no SRTs
+            # were downloaded — matching will read those vectors directly.
+            using_precomputed = bool(episodes) and all(
+                ep["status"] == "precomputed" for ep in episodes
             )
-            failed = sum(1 for ep in result["episodes"] if ep["status"] in ("not_found", "failed"))
-            total = len(result["episodes"])
+            downloaded = sum(
+                1 for ep in episodes if ep["status"] in ("downloaded", "cached", "precomputed")
+            )
+            failed = sum(1 for ep in episodes if ep["status"] in ("not_found", "failed"))
+            total = len(episodes)
 
             status = "completed" if failed == 0 else ("partial" if downloaded > 0 else "failed")
 
@@ -919,10 +1038,16 @@ class MatchingCoordinator:
             if status == "failed":
                 error_msg = "Subtitle download failed: No subtitles found"
 
-            logger.info(
-                f"Subtitle download complete for {show_name} S{season}: "
-                f"{status} ({downloaded} downloaded/cached, {failed} failed)"
-            )
+            if using_precomputed:
+                logger.info(
+                    f"Subtitle references for {show_name} S{season} served from "
+                    f"precomputed vector cache ({total} episodes); skipped download"
+                )
+            else:
+                logger.info(
+                    f"Subtitle download complete for {show_name} S{season}: "
+                    f"{status} ({downloaded} downloaded/cached, {failed} failed)"
+                )
 
             async with async_session() as session:
                 update_values = {"subtitle_status": status}

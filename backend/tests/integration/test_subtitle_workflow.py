@@ -267,6 +267,7 @@ class TestCacheBehavior:
         assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E02.srt").read_text()
         assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E03.srt").read_text()
 
+    @patch("app.matcher.testing_service.TVSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.tmdb_client.requests.get")
     @patch("app.services.config_service.get_config_sync")
@@ -275,9 +276,15 @@ class TestCacheBehavior:
         mock_config_sync,
         mock_requests,
         mock_addic7ed,
+        mock_tvsubtitles,
         tmp_path,
     ):
-        """Test workflow with mixed cache hits, downloads, and not found."""
+        """Test workflow with mixed cache hits, downloads, and not found.
+
+        Both fallback providers must be mocked: episode 3 is "not found"
+        only if *no* provider resolves it, so TVSubtitlesClient is stubbed
+        to return nothing. Without this stub the scheduler would fall
+        through to the live tvsubtitles.net for the not-found episode."""
         # Pre-populate cache with episode 1 (valid SRT content with --> markers, >= 50 bytes)
         show_dir = tmp_path / "data" / "Test Show"
         show_dir.mkdir(parents=True)
@@ -330,6 +337,13 @@ class TestCacheBehavior:
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
+
+        # TVsubtitles is the second provider in the fallback chain; stub it
+        # to find nothing so episode 3 stays genuinely "not found" instead
+        # of reaching the live site.
+        tvsubtitles_client = Mock()
+        mock_tvsubtitles.return_value = tvsubtitles_client
+        tvsubtitles_client.get_best_subtitle.return_value = None
 
         # Execute
         result = download_subtitles("Test Show", 1)

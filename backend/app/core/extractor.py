@@ -57,6 +57,33 @@ def _safe_callback(cb: Callable, *args, label: str) -> None:
         logger.exception(f"Error in {label}: {e}")
 
 
+def _terminate_proc(proc: subprocess.Popen, timeout: float = 5.0, *, label: str = "") -> None:
+    """Terminate a subprocess, escalating to SIGKILL if it ignores SIGTERM.
+
+    Blocking (calls ``proc.wait``) — run via ``asyncio.to_thread`` from async
+    callers so the event loop is never blocked. Guarantees a hung makemkvcon
+    cannot be left orphaned.
+    """
+    name = label or f"pid {proc.pid}"
+    try:
+        proc.terminate()
+    except (ProcessLookupError, PermissionError) as e:
+        logger.debug(f"terminate() failed for {name}: {e}")
+        return
+    try:
+        proc.wait(timeout=timeout)
+        return
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Process {name} did not exit within {timeout}s; sending SIGKILL")
+    try:
+        proc.kill()
+        proc.wait(timeout=timeout)
+    except (ProcessLookupError, PermissionError) as e:
+        logger.debug(f"kill() failed for {name}: {e}")
+    except subprocess.TimeoutExpired:
+        logger.error(f"Process {name} survived SIGKILL after {timeout}s")
+
+
 @dataclass
 class RipProgress:
     """Progress information during ripping."""
@@ -793,6 +820,29 @@ class MakeMKVExtractor:
                 proc.terminate()
             except (ProcessLookupError, PermissionError) as e:
                 logger.debug(f"Could not terminate MakeMKV process for job {job_id}: {e}")
+
+    async def shutdown(self, grace: float = 5.0) -> None:
+        """Drain all tracked MakeMKV subprocesses on server shutdown.
+
+        Marks every active job cancelled, then terminates (escalating to SIGKILL)
+        each subprocess off the event loop so no makemkvcon survives shutdown.
+        """
+        # Snapshot first: the rip thread's finally-block pops from _processes
+        # concurrently, and its .pop(..., None) already tolerates a missing key.
+        procs = list(self._processes.items())
+        if not procs:
+            return
+        logger.info(f"Draining {len(procs)} MakeMKV subprocess(es) on shutdown")
+        for job_id, _ in procs:
+            self._cancelled_jobs.add(job_id)
+        await asyncio.gather(
+            *(
+                asyncio.to_thread(_terminate_proc, proc, grace, label=f"job {job_id}")
+                for job_id, proc in procs
+            )
+        )
+        self._processes.clear()
+        self._cancelled_jobs.clear()
 
     def _parse_disc_info(self, output: str) -> tuple[list[TitleInfo], str]:
         """Parse MakeMKV robot-mode output to extract title information and disc name.

@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
+from app.matcher import tmdb_client
 from app.matcher.tmdb_client import (
     _fetch_show_id_cached,
     clear_caches,
@@ -500,3 +501,37 @@ class TestVariationEdgeCases:
         queries = [call[1]["params"]["query"] for call in mock_get.call_args_list]
         # Should try with spaces instead of underscores
         assert any(" " in q and "_" not in q for q in queries)
+
+
+@pytest.mark.unit
+class TestFetchMovieRuntime:
+    """fetch_movie_runtime supplies the canonical runtime used to pick a movie's
+    main feature apart from its long bonus tracks."""
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_returns_runtime_minutes(self, mock_get):
+        mock_get.return_value = Mock(
+            status_code=200, json=lambda: {"runtime": 149}, raise_for_status=Mock()
+        )
+        assert tmdb_client.fetch_movie_runtime("1317288", "test_key") == 149
+        assert "/movie/1317288" in mock_get.call_args[0][0]
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_zero_runtime_returns_none(self, mock_get):
+        """TMDB returns 0/None runtime when unknown — treat as no signal."""
+        mock_get.return_value = Mock(
+            status_code=200, json=lambda: {"runtime": 0}, raise_for_status=Mock()
+        )
+        assert tmdb_client.fetch_movie_runtime("123", "test_key") is None
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_no_api_key_returns_none(self, mock_get):
+        assert tmdb_client.fetch_movie_runtime("123", "") is None
+        assert mock_get.call_count == 0
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_api_error_returns_none(self, mock_get):
+        err = Mock(status_code=500)
+        err.raise_for_status = Mock(side_effect=requests.exceptions.HTTPError("500 Server Error"))
+        mock_get.return_value = err
+        assert tmdb_client.fetch_movie_runtime("123", "test_key") is None

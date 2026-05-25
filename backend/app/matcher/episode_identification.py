@@ -18,8 +18,92 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 from app.matcher.asr_models import get_cached_model
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.utils import extract_season_episode
+from app.matcher.vectorizer_config import apply_tfidf
 
 console = Console()
+
+
+def load_precomputed_manifest(cache_dir) -> dict | None:
+    """Load and validate the precomputed-cache manifest. Returns the dict or None.
+
+    A missing, unreadable, or version/config-mismatched manifest is treated as
+    "no cache" so callers fall back to subtitle scraping. Shared by the matcher's
+    load path and the download-skip check so both agree on what counts as valid.
+    """
+    from app.matcher.vectorizer_config import (
+        CACHE_FORMAT_VERSION,
+        vectorizer_config_hash,
+    )
+
+    manifest_path = Path(cache_dir) / "precomputed" / "manifest.json"
+    if not manifest_path.exists():
+        return None
+
+    try:
+        with open(manifest_path, encoding="utf-8") as fh:
+            manifest = json.load(fh)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"Precomputed cache manifest unreadable ({e}); using scraping")
+        return None
+
+    if manifest.get("cache_format_version") != CACHE_FORMAT_VERSION:
+        logger.warning(
+            f"Precomputed cache format mismatch "
+            f"(manifest={manifest.get('cache_format_version')}, code={CACHE_FORMAT_VERSION}); "
+            f"ignoring cache"
+        )
+        return None
+    if manifest.get("vectorizer_config_hash") != vectorizer_config_hash():
+        logger.warning("Precomputed cache vectorizer-config mismatch; ignoring cache")
+        return None
+
+    return manifest
+
+
+def precomputed_covers_season(cache_dir, show_name: str, season: int, manifest=None) -> bool:
+    """Return True when the precomputed vector cache fully covers show+season.
+
+    Mirrors the gate EpisodeMatcher applies at match time (manifest validity,
+    show/season listing, and on-disk .npz/.index.json files) WITHOUT loading
+    vectors, so a True result guarantees the matcher will use the cache. The
+    show name must be the canonical name the matcher resolves to.
+
+    ``manifest`` may be a pre-loaded manifest dict to avoid re-reading and
+    re-validating manifest.json (callers holding a cached copy pass it in).
+    """
+    if manifest is None:
+        manifest = load_precomputed_manifest(cache_dir)
+    if not manifest:
+        return False
+
+    show_entry = manifest.get("shows", {}).get(show_name)
+    if not show_entry or season not in show_entry.get("seasons", []):
+        return False
+
+    show_dir = Path(cache_dir) / "precomputed" / sanitize_filename(show_name)
+    npz_path = show_dir / f"S{season:02d}.npz"
+    index_path = show_dir / f"S{season:02d}.index.json"
+    return npz_path.exists() and index_path.exists()
+
+
+def precomputed_episode_codes(cache_dir, show_name: str, season: int) -> list[str] | None:
+    """Episode codes the precomputed cache holds for show+season, else None.
+
+    None means the cache doesn't cover it (caller should download/scrape).
+    Lets callers size a result from the cache itself without a TMDB round-trip.
+    """
+    if not precomputed_covers_season(cache_dir, show_name, season):
+        return None
+
+    index_path = (
+        Path(cache_dir) / "precomputed" / sanitize_filename(show_name) / f"S{season:02d}.index.json"
+    )
+    try:
+        with open(index_path, encoding="utf-8") as fh:
+            codes = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return codes if isinstance(codes, list) and codes else None
 
 
 class SubtitleCache:
@@ -90,7 +174,7 @@ class SubtitleCache:
 def _clean_subtitle_text(text: str) -> str:
     """Clean subtitle text: lowercase, strip tags/special chars, collapse stutters, normalize whitespace."""
     text = text.lower().strip()
-    text = re.sub(r"\[.*?\]|<.*?>", "", text)  # remove [tags] and <tags>
+    text = re.sub(r"[\[{][^\]}]*[\]}]|<.*?>", "", text)  # tolerate mismatched [/{ ]/} delimiters
     text = re.sub(r"([A-Za-z])-\1+", r"\1", text)  # collapse stutters
     text = re.sub(r"[^\w\s']", " ", text)  # remove special chars except apostrophes
     return " ".join(text.split())
@@ -130,6 +214,172 @@ def _is_watermark_block(block_text: str, block_lines: list[str], subtitle_start:
             return True
 
     return False
+
+
+# --- Confidence calibration --------------------------------------------------
+#
+# The matcher's raw ``ranked_voting_score`` is the mean TF-IDF cosine of the
+# chunks that voted for the winning episode. Comparing a 30s ASR snippet to a
+# full ~22-minute subtitle file ("teaspoon vs bucket") keeps that cosine small
+# (~0.15-0.21) even for a correct match, so it is uninterpretable as a
+# percentage. ``calibrate_confidence`` translates the raw signals into a 0-1
+# confidence a human reviewer can read. It answers "how sure are we this is the
+# right episode?" rather than "how much text overlapped?".
+#
+# Rationale for the constants lives in
+# docs/superpowers/specs/2026-05-22-match-confidence-calibration-design.md.
+
+# Cosine at which a matched chunk counts as full-quality. Votes require >0.15
+# and observed-correct chunks cluster ~0.15-0.21, so the discriminative band is
+# razor-thin; normalized_score is a mild guard, mostly reported for transparency.
+QUALITY_REF_COSINE = 0.18
+# Processed fraction treated as full coverage. ~22-min episodes sample ~0.23, so
+# typical TV reads 1.0 while longer episodes (covered proportionally less) read
+# lower -- the correct direction (the rejected score/coverage design did the
+# opposite, leaking episode length into confidence).
+COVERAGE_REF = 0.15
+# Evidence is a weighted blend of the three independent reported metrics.
+# Consensus (how many sampled chunks agreed) is the strongest, so it dominates.
+W_CONSENSUS = 0.5
+W_NORMALIZED_SCORE = 0.25
+W_COVERAGE = 0.25
+# Floor so a decisive sweep with thin evidence still reads meaningfully, while
+# minimal evidence lands just under the 0.7 review gate.
+EVIDENCE_FLOOR = 0.30
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def calibrate_confidence(
+    *,
+    score: float,
+    score_gap: float,
+    vote_count: int,
+    target_votes: int,
+    processed_coverage: float,
+) -> tuple[float, dict[str, float]]:
+    """Translate raw match signals into a 0-1 reviewer-facing confidence.
+
+    Args:
+        score: winner's ranked_voting_score (mean matched-chunk cosine).
+        score_gap: top1 - top2 (decisiveness; == score when uncontested).
+        vote_count: chunks that voted for the winner.
+        target_votes: total chunks sampled.
+        processed_coverage: fraction of the file run through the matcher
+            (samples * chunk_len / video_duration), NOT the matched fraction.
+
+    Returns:
+        (confidence, components) where components reports the three independent
+        metrics (separation, consensus, normalized_score, coverage) plus the
+        derived evidence term, each in [0, 1].
+
+    Formula:
+        confidence = separation * evidence
+        evidence   = EVIDENCE_FLOOR + (1-FLOOR) * (
+                         W_CONSENSUS*consensus
+                       + W_NORMALIZED_SCORE*normalized_score
+                       + W_COVERAGE*coverage_norm)
+
+    Separation is the safety gate: a near-tie (two plausible episodes) craters
+    confidence regardless of how strong the evidence is, because none of the
+    evidence metrics looks at the runner-up.
+    """
+    eps = 1e-9
+    separation = _clamp01(score_gap / score) if score > eps else 0.0
+    consensus = _clamp01(vote_count / target_votes) if target_votes > 0 else 0.0
+    normalized_score = _clamp01(score / QUALITY_REF_COSINE)
+    coverage_norm = _clamp01(processed_coverage / COVERAGE_REF)
+
+    evidence_raw = (
+        W_CONSENSUS * consensus + W_NORMALIZED_SCORE * normalized_score + W_COVERAGE * coverage_norm
+    )
+    evidence = EVIDENCE_FLOOR + (1.0 - EVIDENCE_FLOOR) * evidence_raw
+    confidence = _clamp01(separation * evidence)
+
+    components = {
+        "separation": separation,
+        "consensus": consensus,
+        "normalized_score": normalized_score,
+        # Report the actual processed fraction (the metric), not the normalized
+        # form used inside the formula.
+        "coverage": _clamp01(processed_coverage),
+        "evidence": evidence,
+    }
+    return confidence, components
+
+
+def _attach_calibrated_confidence(
+    best_match: dict,
+    results_summary: list[dict],
+    video_duration: float,
+    chunk_len: int = 30,
+) -> None:
+    """Mutate ``best_match`` in place with calibrated confidence + leaderboard.
+
+    Sets ``best_match["confidence"]`` to the calibrated value (this is what flows
+    to ``DiscTitle.match_confidence``) while leaving ``best_match["score"]`` and
+    ``match_details["score"]`` as the raw ranked_voting_score that the accept-vs-
+    fallback gate and conflict resolution depend on. Adds the reported metrics to
+    ``match_details`` and builds ``runner_ups`` where each entry keeps its raw
+    ``score`` (for cascading reassignment) and gains a calibrated ``confidence``
+    scaled to the winner so the winner's leaderboard entry equals the headline.
+    """
+    if not results_summary:
+        return
+
+    # results_summary is sorted by score descending by the caller.
+    top1 = results_summary[0]["score"]
+    if len(results_summary) >= 2:
+        score_gap = top1 - results_summary[1]["score"]
+    else:
+        score_gap = top1
+
+    md = best_match.setdefault("match_details", {})
+    target_votes = md.get("target_votes", 0)
+    vote_count = md.get("vote_count", 0)
+    processed_coverage = (target_votes * chunk_len / video_duration) if video_duration > 0 else 0.0
+
+    # Use top1 (not best_match["score"]) as the denominator so separation
+    # (score_gap / score) is self-consistent: both derive from results_summary.
+    # They are equal by construction (best_match is the top-scoring candidate),
+    # but sourcing both here removes the implicit cross-reference invariant.
+    confidence, components = calibrate_confidence(
+        score=top1,
+        score_gap=score_gap,
+        vote_count=vote_count,
+        target_votes=target_votes,
+        processed_coverage=processed_coverage,
+    )
+
+    best_match["confidence"] = confidence
+    md["confidence"] = confidence
+    md["score_gap"] = score_gap
+    md["separation"] = components["separation"]
+    md["normalized_score"] = components["normalized_score"]
+    md["consensus"] = components["consensus"]
+    md["coverage"] = components["coverage"]
+
+    runner_ups = []
+    for r in results_summary:
+        if r["score"] <= 0:
+            continue
+        ru_confidence = _clamp01(confidence * (r["score"] / top1)) if top1 > 0 else 0.0
+        runner_ups.append(
+            {
+                "episode": r["episode"],
+                "score": r["score"],  # raw, for conflict resolution
+                "confidence": ru_confidence,  # calibrated, for display
+                "vote_count": r["vote_count"],
+                "target_votes": r.get("target_votes", target_votes),
+            }
+        )
+    runner_ups = runner_ups[:5]
+    # Distinct list objects: curator shallow-copies match_details but not the
+    # inner list, so a shared reference could let one mutation corrupt the other.
+    best_match["runner_ups"] = runner_ups
+    md["runner_ups"] = runner_ups[:]
 
 
 class TfidfMatcher:
@@ -450,39 +700,18 @@ class EpisodeMatcher:
         if self._precomputed_manifest is not None:
             return self._precomputed_manifest or None
 
-        from app.matcher.vectorizer_config import (
-            CACHE_FORMAT_VERSION,
-            vectorizer_config_hash,
-        )
+        self._precomputed_manifest = load_precomputed_manifest(self.cache_dir) or False
+        return self._precomputed_manifest or None
 
-        manifest_path = self.cache_dir / "precomputed" / "manifest.json"
-        if not manifest_path.exists():
-            self._precomputed_manifest = False
-            return None
+    def load_precomputed_season(self, season_number):
+        """Public entry point over the precomputed-cache loader.
 
-        try:
-            with open(manifest_path, encoding="utf-8") as fh:
-                manifest = json.load(fh)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Precomputed cache manifest unreadable ({e}); using scraping")
-            self._precomputed_manifest = False
-            return None
-
-        if manifest.get("cache_format_version") != CACHE_FORMAT_VERSION:
-            logger.warning(
-                f"Precomputed cache format mismatch "
-                f"(manifest={manifest.get('cache_format_version')}, code={CACHE_FORMAT_VERSION}); "
-                f"ignoring cache"
-            )
-            self._precomputed_manifest = False
-            return None
-        if manifest.get("vectorizer_config_hash") != vectorizer_config_hash():
-            logger.warning("Precomputed cache vectorizer-config mismatch; ignoring cache")
-            self._precomputed_manifest = False
-            return None
-
-        self._precomputed_manifest = manifest
-        return manifest
+        Exposed so the cache packager's publish-gate verification can exercise
+        the real load path without reaching into a private method. Returns
+        (ref_matrix, episode_codes, idf_array) when the shipped cache covers
+        this show+season, otherwise None.
+        """
+        return self._load_precomputed_season(season_number)
 
     def _load_precomputed_season(self, season_number):
         """Load precomputed hashed TF-IDF vectors for this show/season.
@@ -490,29 +719,38 @@ class EpisodeMatcher:
         Returns (ref_matrix, episode_codes, idf_array) when the shipped cache
         covers the show+season, otherwise None (caller falls back to scraping).
         """
+        # Use the instance-cached manifest (warms the sentinel on first call) and
+        # reuse it for the coverage gate so we read+validate manifest.json at most
+        # once per matcher instance instead of once per title.
         manifest = self._load_precomputed_manifest()
-        if not manifest:
-            return None
-
-        show_entry = manifest.get("shows", {}).get(self.show_name)
-        if not show_entry or season_number not in show_entry.get("seasons", []):
+        if not precomputed_covers_season(
+            self.cache_dir, self.show_name, season_number, manifest=manifest
+        ):
+            # Surface the common misconfiguration: manifest lists the season but
+            # the vector files never made it to disk.
+            show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
+            if show_entry and season_number in show_entry.get("seasons", []):
+                logger.warning(
+                    f"Precomputed cache lists {self.show_name} S{season_number:02d} "
+                    f"but its files are missing; using scraping"
+                )
             return None
 
         precomputed_dir = self.cache_dir / "precomputed"
         show_dir = precomputed_dir / sanitize_filename(self.show_name)
         npz_path = show_dir / f"S{season_number:02d}.npz"
         index_path = show_dir / f"S{season_number:02d}.index.json"
-        if not npz_path.exists() or not index_path.exists():
-            logger.warning(
-                f"Precomputed cache lists {self.show_name} S{season_number:02d} "
-                f"but its files are missing; using scraping"
-            )
-            return None
 
         try:
             if self._precomputed_idf is None:
                 self._precomputed_idf = np.load(precomputed_dir / "idf.npy")
-            ref_matrix = scipy_load_npz(npz_path)
+            # Cache v2 ships uint16 hashed counts; apply TF-IDF here so the
+            # matcher gets the same L2-normalized float32 matrix v1 read
+            # directly from disk. Done once per (show, season) and cached
+            # downstream — the cost is negligible vs. the ~85% size win
+            # (~8 KB/episode vs. ~66 KB/episode for v1 float64 rows).
+            counts = scipy_load_npz(npz_path)
+            ref_matrix = apply_tfidf(counts, self._precomputed_idf)
             with open(index_path, encoding="utf-8") as fh:
                 episode_codes = json.load(fh)
         except (OSError, ValueError) as e:
@@ -637,9 +875,23 @@ class EpisodeMatcher:
             logger.error(f"Error during full file fallback: {e}", exc_info=True)
             return None
 
-    def identify_episode(self, video_file, temp_dir, season_number, progress_callback=None):
+    def identify_episode(
+        self,
+        video_file,
+        temp_dir,
+        season_number,
+        progress_callback=None,
+        num_points=None,
+        min_vote_count=None,
+    ):
         """
         Identify episode using ranked voting with weighted confidence scoring.
+
+        ``num_points`` overrides the number of evenly-spaced audio scan points
+        (default 10); a denser scan yields more robust votes and a clearer
+        score gap — used by the "deep re-match" path to disambiguate conflicts.
+        ``min_vote_count`` overrides the minimum matched-chunk count required to
+        accept a match (default ``self.min_vote_count``).
 
         Process:
         1. Extract audio chunks using sparse sampling strategy
@@ -752,7 +1004,8 @@ class EpisodeMatcher:
 
             # TF-IDF matching is fast (~1ms/query) and accurate. More sample
             # points reduce false positives from commentary/alternate audio tracks.
-            num_points = 10
+            # Caller may request a denser scan (deep re-match) for disambiguation.
+            num_points = num_points if num_points and num_points > 1 else 10
 
             # Calculate actual interval to evenly distribute points across available duration
             interval = available_duration / (num_points - 1)
@@ -935,46 +1188,31 @@ class EpisodeMatcher:
                     "runner_ups": [],
                 }
 
-            # Add ALL candidates (including the best match) so the UI can display
-            # the full voting leaderboard. Previously excluded the best match, but
-            # for decisive matches with a single candidate this left runner_ups empty.
-            runner_ups = []
-            if results_summary:
-                results_summary.sort(key=lambda x: x["score"], reverse=True)
-                runner_ups = [
-                    {
-                        "episode": r["episode"],
-                        "score": r["score"],
-                        "vote_count": r["vote_count"],
-                        "target_votes": len(scan_points),
-                    }
-                    for r in results_summary
-                    if r["score"] > 0
-                ][:5]
-                best_match["runner_ups"] = runner_ups
-
-            # Merge stats into match_details
+            # Merge stats into match_details before calibration so the helper
+            # operates on the full per-winner detail dict.
             best_match["match_details"].update(match_stats)
-            best_match["match_details"]["runner_ups"] = runner_ups
 
-            # Log top candidates with voting details and score gap analysis
+            # Sort candidates so the calibrator sees top1/top2 in order, then
+            # translate the raw signals into a 0-1 reviewer-facing confidence and
+            # build the runner-up leaderboard. This sets best_match["confidence"]
+            # (calibrated, -> DiscTitle.match_confidence) while leaving
+            # best_match["score"] raw for the accept-gate and conflict resolution.
+            # All candidates (incl. the winner) appear in runner_ups so the UI can
+            # show the full leaderboard. See calibrate_confidence for rationale.
+            results_summary.sort(key=lambda x: x["score"], reverse=True)
+            _attach_calibrated_confidence(best_match, results_summary, video_duration)
+
+            score_gap = best_match["match_details"].get("score_gap", 0.0)
+
+            # Log top candidates with voting + calibration analysis
             voting_method = "ranked voting" if self.use_ranked_voting else "weighted score"
             logger.info(f"{voting_method.capitalize()} results for {video_file.name}:")
-
-            # Compute score gap between top-1 and top-2 (strong correctness signal)
-            score_gap = 0.0
-            if len(results_summary) >= 2:
-                score_gap = results_summary[0]["score"] - results_summary[1]["score"]
-                logger.info(
-                    f"  Score gap (top1-top2): {score_gap:.4f} {'(decisive)' if score_gap > 0.01 else '(LOW - uncertain match)'}"
-                )
-            elif len(results_summary) == 1:
-                # Only one candidate, gap equals its score
-                score_gap = results_summary[0]["score"]
-
-            # Add score_gap to match_details for UI transparency
-            if best_match and best_match.get("match_details"):
-                best_match["match_details"]["score_gap"] = score_gap
+            logger.info(
+                f"  Calibrated confidence: {best_match['confidence']:.3f} "
+                f"(raw score={best_match['score']:.3f}, "
+                f"score_gap={score_gap:.4f} "
+                f"{'decisive' if score_gap > 0.01 else 'LOW-uncertain'})"
+            )
 
             for i, result in enumerate(results_summary[:5], 1):
                 logger.info(
@@ -986,21 +1224,25 @@ class EpisodeMatcher:
                     f"total_weight={result['total_weight']:.4f}"
                 )
 
+            effective_min_votes = (
+                min_vote_count if min_vote_count is not None else self.min_vote_count
+            )
+
             if best_match and best_match["score"] > self.match_threshold:
                 vote_count = best_match["match_details"]["vote_count"]
 
                 logger.info(
                     f"Best match evaluation: "
                     f"score {best_match['score']:.3f} vs threshold {self.match_threshold}, "
-                    f"votes {vote_count} vs minimum {self.min_vote_count}"
+                    f"votes {vote_count} vs minimum {effective_min_votes}"
                 )
 
-                if vote_count < self.min_vote_count:
+                if vote_count < effective_min_votes:
                     logger.warning(
                         f"⚠ Match rejected: insufficient evidence. "
                         f"Episode: {best_match['match_details']['episode']}, "
                         f"score: {best_match['score']:.3f}, "
-                        f"votes: {vote_count}/{self.min_vote_count}, "
+                        f"votes: {vote_count}/{effective_min_votes}, "
                         f"coverage: {best_match['match_details']['file_cov']:.1%}, "
                         f"matched_at: {best_match['matched_at']}s"
                     )
@@ -1023,6 +1265,11 @@ class EpisodeMatcher:
             match = self._match_full_file(video_file, model_config, reference_files, video_duration)
 
             if match:
+                # Intentional exception to calibration: the full-file fallback
+                # compares whole transcription vs whole subtitle ("bucket vs
+                # bucket"), so its cosine lands on a higher scale than chunk
+                # cosines and is already > min_confidence by construction. We pass
+                # it through uncalibrated; curator's review gate reads it directly.
                 match["score"] = match[
                     "confidence"
                 ]  # Full file score is just confidence (coverage=1.0)

@@ -79,7 +79,7 @@ If those don't hold, something has broken the resume path — file an issue with
 
 ## Cache format versioning
 
-The published tarball includes a [`manifest.json`](https://github.com/Jsakkos/engram/blob/main/backend/scripts/build_subtitle_cache.py) with `cache_format_version` (an integer defined in `backend/app/matcher/vectorizer_config.py`). The backend reads this on download and rejects incompatible caches, falling back to scraping. The check happens in two places:
+The published tarball includes a [`manifest.json`](https://github.com/Jsakkos/engram/blob/main/backend/scripts/build_subtitle_cache.py) with `cache_format_version` (a string defined in `backend/app/matcher/vectorizer_config.py` — currently `"2"`, which stores uint16 hashed counts and applies TF-IDF at load time; `"1"` shipped pre-computed float64 TF-IDF rows). The backend reads this on download and rejects incompatible caches, falling back to scraping. The check happens in two places:
 
 - [`precomputed_cache_service._ensure_precomputed_cache_inner`](https://github.com/Jsakkos/engram/blob/main/backend/app/services/precomputed_cache_service.py) — on download.
 - [`EpisodeMatcher._load_precomputed_season`](https://github.com/Jsakkos/engram/blob/main/backend/app/matcher/episode_identification.py) — on load.

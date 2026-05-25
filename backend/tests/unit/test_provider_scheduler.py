@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.matcher.provider_scheduler import EpisodeJob, run_jobs
+from app.matcher.provider_scheduler import EpisodeJob, _CircuitBreaker, run_jobs
 
 
 def _make_job(
@@ -235,3 +235,79 @@ class TestEmptyInput:
     def test_no_jobs_returns_empty(self):
         results = run_jobs([], workers={"addic7ed": _missing_client()})
         assert results == {}
+
+
+@pytest.mark.unit
+class TestCircuitBreaker:
+    """Deterministic tests of the breaker state machine. ``now`` is injected
+    so cooldown transitions don't depend on wall-clock sleeps."""
+
+    def test_closed_allows_by_default(self):
+        cb = _CircuitBreaker("addic7ed", failure_threshold=3)
+        assert cb.allow(now=0.0) is True
+
+    def test_trips_after_threshold_consecutive_failures(self):
+        cb = _CircuitBreaker("addic7ed", failure_threshold=3, base_cooldown=30.0)
+        cb.record_failure(now=0.0)
+        cb.record_failure(now=0.0)
+        assert cb.allow(now=0.0) is True  # 2 failures: still closed
+        cb.record_failure(now=0.0)
+        assert cb.allow(now=0.0) is False  # 3rd consecutive failure trips it
+
+    def test_success_resets_failure_count(self):
+        cb = _CircuitBreaker("addic7ed", failure_threshold=3)
+        cb.record_failure(now=0.0)
+        cb.record_failure(now=0.0)
+        cb.record_success()  # reachable again → counter resets
+        cb.record_failure(now=0.0)
+        cb.record_failure(now=0.0)
+        assert cb.allow(now=0.0) is True  # only 2 failures since reset → still closed
+
+    def test_open_blocks_until_cooldown_then_half_open_probe(self):
+        cb = _CircuitBreaker("addic7ed", failure_threshold=1, base_cooldown=30.0)
+        cb.record_failure(now=0.0)  # threshold 1 → trips immediately
+        assert cb.allow(now=10.0) is False  # within cooldown window
+        assert cb.allow(now=31.0) is True  # cooldown elapsed → one probe allowed
+        assert cb.allow(now=31.0) is False  # probe already in flight → others blocked
+
+    def test_probe_success_closes_circuit(self):
+        cb = _CircuitBreaker("addic7ed", failure_threshold=1, base_cooldown=30.0)
+        cb.record_failure(now=0.0)
+        assert cb.allow(now=31.0) is True  # probe
+        cb.record_success()  # probe succeeded → circuit closes
+        assert cb.allow(now=31.0) is True
+
+    def test_probe_failure_reopens_with_doubled_cooldown(self):
+        cb = _CircuitBreaker(
+            "addic7ed", failure_threshold=1, base_cooldown=30.0, max_cooldown=300.0
+        )
+        cb.record_failure(now=0.0)  # open, cooldown 30
+        assert cb.allow(now=31.0) is True  # probe
+        cb.record_failure(now=31.0)  # probe failed → cooldown doubles to 60
+        assert cb.allow(now=61.0) is False  # 31 + 60 = 91 not yet reached
+        assert cb.allow(now=92.0) is True  # 91 elapsed → probe again
+
+
+@pytest.mark.unit
+class TestCircuitBreakerIntegration:
+    def test_tripped_provider_skipped_for_remaining_jobs(self, tmp_path):
+        """Once a provider fails enough consecutive times, the scheduler stops
+        calling it for the rest of the batch and routes straight to the next
+        provider — so a dead provider costs at most `threshold` attempts, not
+        one per episode (the whole point: no 8s timeout per job)."""
+        addic7ed = _failing_client(RuntimeError("connect timeout"))
+        podnapisi = _writing_client()
+        jobs = [
+            _make_job(
+                episode=i,
+                providers=["addic7ed", "podnapisi"],
+                srt_target=tmp_path / f"{i}.srt",
+            )
+            for i in range(1, 7)  # 6 jobs; default threshold is 3
+        ]
+        results = run_jobs(jobs, workers={"addic7ed": addic7ed, "podnapisi": podnapisi}, timeout=5)
+        # Every job still resolved via the healthy fallback.
+        assert all(results[f"S01E{i:02d}"]["source"] == "podnapisi" for i in range(1, 7))
+        # But the dead provider was hit only `threshold` (3) times — jobs 4-6
+        # skipped it entirely instead of each paying a failed call.
+        assert addic7ed.get_best_subtitle.call_count == 3

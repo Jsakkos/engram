@@ -24,6 +24,10 @@ export default defineConfig({
     use: {
         baseURL: E2E_VITE_URL,
         trace: 'on-first-retry',
+        // Settle Framer springs, CSS keyframes, and the rip canvas for stable
+        // screenshots. The app honors prefers-reduced-motion (theme.css media
+        // query + Framer useReducedMotion + SvRipAnimation canvas hook).
+        reducedMotion: 'reduce',
     },
     projects: [
         {

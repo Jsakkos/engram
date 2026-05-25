@@ -1,5 +1,6 @@
 """REST API routes for Engram."""
 
+import asyncio
 import json
 import logging
 import platform
@@ -21,6 +22,7 @@ from sqlmodel import select
 from app.config import settings
 from app.core.security import is_allowed_image_url
 from app.database import get_session
+from app.matcher.tmdb_client import fetch_season_episodes
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 
@@ -213,6 +215,13 @@ class ConfigResponse(BaseModel):
     ripping_file_ready_timeout: float
     # Sentinel monitoring
     sentinel_poll_interval: float
+    # Stale-job watchdog
+    watchdog_enabled: bool
+    watchdog_poll_seconds: int
+    timeout_identifying_seconds: int
+    timeout_ripping_seconds: int
+    timeout_matching_seconds: int
+    timeout_organizing_seconds: int
     # Staging cleanup
     staging_cleanup_policy: str
     staging_cleanup_days: int
@@ -268,6 +277,13 @@ class ConfigUpdate(BaseModel):
     ripping_file_ready_timeout: float | None = None
     # Sentinel monitoring
     sentinel_poll_interval: float | None = None
+    # Stale-job watchdog
+    watchdog_enabled: bool | None = None
+    watchdog_poll_seconds: int | None = None
+    timeout_identifying_seconds: int | None = None
+    timeout_ripping_seconds: int | None = None
+    timeout_matching_seconds: int | None = None
+    timeout_organizing_seconds: int | None = None
     # Staging cleanup
     staging_cleanup_policy: str | None = None
     staging_cleanup_days: int | None = None
@@ -476,6 +492,112 @@ async def get_job_titles(
     return list(result.scalars().all())
 
 
+_EPISODE_CODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
+
+
+class RosterEpisode(BaseModel):
+    """One episode slot in the season roster with cross-disc coverage."""
+
+    episode_code: str
+    episode_number: int
+    name: str
+    status: Literal["assigned", "duplicate", "missing", "off"]
+    assigned_title_ids: list[int]
+
+
+class SeasonRosterResponse(BaseModel):
+    """Season episode list (code + name) plus per-episode coverage.
+
+    ``status`` reflects the persisted state: ``assigned`` (one title),
+    ``duplicate`` (two+ titles share the episode), ``missing`` (no title but
+    inside the disc's covered range — a gap to fill) and ``off`` (outside the
+    range, i.e. on another disc). The frontend recomputes status live as the
+    user edits unsaved selections.
+    """
+
+    available: bool
+    season_number: int | None = None
+    show_id: int | None = None
+    episodes: list[RosterEpisode] = []
+    reason: str | None = None
+
+
+@router.get("/jobs/{job_id}/season-roster", response_model=SeasonRosterResponse)
+async def get_season_roster(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> SeasonRosterResponse:
+    """Season episode list with per-episode coverage for the review UI."""
+    if job.content_type != ContentType.TV:
+        return SeasonRosterResponse(available=False, reason="Not a TV disc")
+    if not job.tmdb_id or job.detected_season is None:
+        return SeasonRosterResponse(
+            available=False,
+            season_number=job.detected_season,
+            show_id=job.tmdb_id,
+            reason="Show or season not identified yet",
+        )
+
+    season = job.detected_season
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    # fetch_season_episodes does a synchronous requests.get; run it off the
+    # event loop so a slow TMDB call doesn't stall other requests / WS pushes.
+    episodes_raw = await asyncio.to_thread(
+        fetch_season_episodes, str(job.tmdb_id), season, config.tmdb_api_key
+    )
+    if not episodes_raw:
+        return SeasonRosterResponse(
+            available=False,
+            season_number=season,
+            show_id=job.tmdb_id,
+            reason="Could not load season episodes from TMDB",
+        )
+
+    # Map this season's matched episodes → the title ids claiming them.
+    result = await session.execute(
+        select(DiscTitle).where(DiscTitle.job_id == job.id).order_by(DiscTitle.title_index)
+    )
+    assigned: dict[int, list[int]] = {}
+    for title in result.scalars().all():
+        if not title.matched_episode:
+            continue
+        match = _EPISODE_CODE_RE.search(title.matched_episode)
+        if not match or int(match.group(1)) != season:
+            continue
+        assigned.setdefault(int(match.group(2)), []).append(title.id)
+
+    present = sorted(assigned)
+    lo, hi = (present[0], present[-1]) if present else (0, -1)
+
+    episodes = [
+        RosterEpisode(
+            episode_code=f"S{season:02d}E{ep['episode_number']:02d}",
+            episode_number=ep["episode_number"],
+            name=ep.get("name") or "",
+            status=(
+                "duplicate"
+                if len(assigned.get(ep["episode_number"], [])) > 1
+                else "assigned"
+                if len(assigned.get(ep["episode_number"], [])) == 1
+                else "missing"
+                if lo <= ep["episode_number"] <= hi
+                else "off"
+            ),
+            assigned_title_ids=assigned.get(ep["episode_number"], []),
+        )
+        for ep in episodes_raw
+    ]
+
+    return SeasonRosterResponse(
+        available=True,
+        season_number=season,
+        show_id=job.tmdb_id,
+        episodes=episodes,
+    )
+
+
 @router.get("/jobs/{job_id}/detail", response_model=JobDetailResponse)
 async def get_job_detail(
     job: DiscJob = Depends(get_job_or_404),
@@ -549,6 +671,56 @@ async def cancel_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
 
     await job_manager.cancel_job(job.id)
     return {"status": "cancelled", "job_id": job.id}
+
+
+@router.post("/jobs/{job_id}/advance")
+async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """Force a stuck job forward to its next resting state.
+
+    Reconciles tracks still ripping/matching (ripped-but-unmatched → review,
+    no-file → failed), then organizes whatever matched and lands the job in
+    completed or review_needed. The manual counterpart to the stale-job watchdog.
+    """
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    from app.services.job_manager import job_manager
+
+    advanced = await job_manager.reconcile_and_advance(job.id, reason="manual advance")
+    if not advanced:
+        raise HTTPException(status_code=400, detail="Job could not be advanced")
+    return {"status": "advanced", "job_id": job.id}
+
+
+class SkipTitleRequest(BaseModel):
+    """Request model for skipping a single stuck title."""
+
+    target: Literal["review", "fail"] = "review"
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/skip")
+async def skip_title(
+    title_id: int,
+    req: SkipTitleRequest | None = None,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Skip a single track stuck in ripping/matching, without forcing the whole job."""
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    target = req.target if req else "review"
+
+    from app.models.disc_job import TitleState
+    from app.services.job_manager import job_manager
+
+    target_state = TitleState.FAILED if target == "fail" else TitleState.REVIEW
+    skipped = await job_manager.skip_title(job.id, title_id, target=target_state)
+    if not skipped:
+        raise HTTPException(
+            status_code=400,
+            detail="Title not found, not part of this job, or already resolved",
+        )
+    return {"status": "skipped", "job_id": job.id, "title_id": title_id, "target": target}
 
 
 @router.post("/jobs/{job_id}/review")
@@ -694,7 +866,38 @@ async def retry_subtitle_download(
 
 @router.post("/jobs/{job_id}/process-matched")
 async def process_matched_titles(job: DiscJob = Depends(get_job_or_404)) -> dict:
-    """Process all matched titles for a job without waiting for unresolved ones."""
+    """Process all matched titles for a job without waiting for unresolved ones.
+
+    The review UI submits each pending selection via POST /review before calling
+    this endpoint. Resolving the last unresolved title makes apply_review finalize
+    the job inline, so by the time this runs the job may already be ORGANIZING or
+    COMPLETED. Treat those as benign no-ops rather than an error, otherwise the UI
+    surfaces a spurious "not awaiting review" failure and stays stuck on the
+    review screen even though apply_review already handled the titles.
+
+    The ``organized``/``conflicts``/``unresolved`` counts report work done by THIS
+    call. They are 0 here because apply_review did the organizing (and emitted its
+    own broadcasts); this is not the cumulative total for the job.
+    """
+    if job.state == JobState.COMPLETED:
+        return {
+            "status": "already_finalized",
+            "job_id": job.id,
+            "organized": 0,
+            "conflicts": 0,
+            "unresolved": 0,
+        }
+    if job.state == JobState.ORGANIZING:
+        # Mid-flight: another path is actively moving files. Don't start a second
+        # organize pass, and report progress honestly rather than claiming the job
+        # is finished.
+        return {
+            "status": "organizing",
+            "job_id": job.id,
+            "organized": 0,
+            "conflicts": 0,
+            "unresolved": 0,
+        }
     if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(status_code=400, detail="Job is not awaiting review")
 
@@ -736,6 +939,13 @@ async def get_config() -> ConfigResponse:
         ripping_file_ready_timeout=config.ripping_file_ready_timeout,
         # Sentinel monitoring
         sentinel_poll_interval=config.sentinel_poll_interval,
+        # Stale-job watchdog
+        watchdog_enabled=config.watchdog_enabled,
+        watchdog_poll_seconds=config.watchdog_poll_seconds,
+        timeout_identifying_seconds=config.timeout_identifying_seconds,
+        timeout_ripping_seconds=config.timeout_ripping_seconds,
+        timeout_matching_seconds=config.timeout_matching_seconds,
+        timeout_organizing_seconds=config.timeout_organizing_seconds,
         # Staging cleanup
         staging_cleanup_policy=config.staging_cleanup_policy,
         staging_cleanup_days=config.staging_cleanup_days,
@@ -1266,9 +1476,20 @@ async def generate_bug_report(
 ) -> dict:
     """Generate a sanitized bug report with optional job context."""
     from app import __version__
+    from app.api.validation import detect_ffmpeg, detect_makemkv
     from app.services.config_service import get_config
 
     config = await get_config()
+
+    # --- External tool versions (detection runs subprocesses; keep off the loop) ---
+    # Run concurrently — each spawns a subprocess with up to a 10 s timeout, so
+    # serial detection would double the worst-case latency before the modal opens.
+    mk, ff = await asyncio.gather(
+        asyncio.to_thread(detect_makemkv),
+        asyncio.to_thread(detect_ffmpeg),
+    )
+    makemkv_version = mk.version if mk.found else (mk.error or "not found")
+    ffmpeg_version = ff.version if ff.found else (ff.error or "not found")
 
     # --- Job summary (optional) ---
     job_summary = None
@@ -1295,6 +1516,7 @@ async def generate_bug_report(
             error_lines = [ln for ln in all_lines if "ERROR" in ln or "CRITICAL" in ln]
             recent_errors = [_sanitize_line(line) for line in error_lines[-20:]]
         except Exception:
+            logger.warning(f"Failed to read log file for bug report: {log_path}", exc_info=True)
             recent_errors = ["(could not read log file)"]
 
     # --- Redacted config ---
@@ -1313,6 +1535,8 @@ async def generate_bug_report(
         "app_version": __version__,
         "python_version": sys.version.split()[0],
         "os": f"{platform.system()} {platform.release()}",
+        "makemkv_version": makemkv_version,
+        "ffmpeg_version": ffmpeg_version,
         "job": job_summary,
         "recent_errors": recent_errors,
         "config": redacted_config,
@@ -1325,6 +1549,8 @@ async def generate_bug_report(
         f"**Engram version**: {__version__}",
         f"**OS**: {report['os']}",
         f"**Python**: {report['python_version']}",
+        f"**MakeMKV**: {makemkv_version}",
+        f"**FFmpeg**: {ffmpeg_version}",
         "",
     ]
     if job_summary:
@@ -1365,6 +1591,7 @@ async def generate_bug_report(
     )
 
     report["github_url"] = github_url
+    report["markdown"] = issue_body
     return report
 
 
@@ -1759,11 +1986,51 @@ async def rematch_job(
     job: DiscJob = Depends(get_job_or_404),
 ):
     """Re-match all titles for a job."""
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot re-match in state: {job.state.value}",
+        )
+
     from app.services.job_manager import job_manager
 
     await job_manager.rerun_matching(job.id, request.source_preference)
 
     return {"status": "rematching", "job_id": job.id}
+
+
+class RematchConflictRequest(BaseModel):
+    """Request model for re-matching all titles claiming one episode."""
+
+    episode_code: str
+
+
+@router.post("/jobs/{job_id}/rematch-conflict")
+async def rematch_conflict(
+    request: RematchConflictRequest,
+    job: DiscJob = Depends(get_job_or_404),
+):
+    """Deep re-match every title currently claiming ``episode_code``.
+
+    Re-runs the audio matcher with stricter parameters (denser sampling + a
+    higher vote requirement) for each contested title so a same-episode
+    collision can resolve either way.
+    """
+    from app.services.job_manager import job_manager
+
+    result = await job_manager.rematch_conflict(job.id, request.episode_code)
+    if not result["dispatched"] and not result["skipped"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No titles are currently matched to {request.episode_code}",
+        )
+
+    return {
+        "status": "rematching",
+        "episode_code": request.episode_code,
+        "title_ids": result["dispatched"],
+        "skipped": result["skipped"],
+    }
 
 
 @router.post("/jobs/{job_id}/titles/{title_id}/reassign")

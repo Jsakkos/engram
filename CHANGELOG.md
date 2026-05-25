@@ -2,6 +2,39 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [0.7.1] - 2026-05-23
+
+### Fixed
+- **Frozen-build database upgrades**: the packaged app now drops columns removed from the model on startup, fixing a crash when inserting a disc (`NOT NULL constraint failed: disc_jobs.is_transcoding_enabled`) for users upgrading from a build that still had the removed "Enable transcoding" setting (#190).
+
+## [0.7.0] - 2026-05-23
+
+### Added
+- **Pre-built subtitle cache**: ships a precomputed subtitle-vector cache so episode matching can run without scraping subtitle sites on every disc, falling back to live scraping only when a season isn't covered (#140). Cache builds are now resumable and log API status (#149), and the builder accepts a `--show-list` to target specific shows.
+- **Smarter episode matcher**: persistent on-disk caches plus a threaded provider scheduler and reworked subtitle providers (#155), a per-provider circuit breaker so a failing source no longer stalls a run, interpretable 0–1 confidence scores (#169), and automatic deep re-matching when episodes conflict (#171). Match results now surface which subtitle provider contributed (#158).
+- **Redesigned TV disc review**: an inspector-style layout with disc-level conflict detection, making it clearer which episodes clash before you commit (#165).
+- **Diagnostics improvements**: bug reports can be previewed before sending and now report real installed tool versions (#174).
+- **Resilient frontend**: API and WebSocket errors are handled gracefully with reconnection instead of breaking the dashboard (#180).
+- **Brand refresh**: the canonical Synapse v2 brand system (#156), plus an ambient ripping animation and a bottom-anchored status bar (#137).
+
+### Fixed
+- **Ripping reliability**: the long-held database session in `_run_ripping` is now tightly scoped to avoid blocking other work (#185), and MakeMKV subprocesses are drained on shutdown alongside matching-lifecycle fixes (#181).
+- **Movies**: long bonus tracks are no longer incorrectly flagged as needing review (#175).
+- **Review flow**: the Process action returns to the dashboard instead of erroring (#173), and re-running a match re-matches all titles with live progress (#164).
+- **MakeMKV validation**: the real installed version is detected from the robot-mode banner (#177).
+- **Subtitle matching**: subtitle download is skipped when the precomputed cache already covers a season (#163); tvsubtitles episode resolution and candidate parsing were corrected (#159); UTF-16-encoded SRTs are now accepted; OpenSubtitles quota is reported accurately and skipped when exhausted.
+- **Logging**: corrected log-source attribution and now surfaces disc-event errors that were previously silent (#168).
+- **Security**: hardened SSRF and path-traversal sinks flagged by CodeQL (#147).
+
+### Changed
+- **Subtitle cache format v2**: ~85% smaller on disk via a compact `uint16` encoding (#154).
+- **Documentation**: README reworked to be end-user-first with supporting docs consolidated (#162).
+- Codebase-wide simplification sweep for maintainability (#143).
+
+### Removed
+- The unimplemented "Enable transcoding" setting (#138).
+- The obsolete skyline-silhouette atmosphere layer (#139).
+
 ## [0.6.0] - 2026-05-02
 
 ### Added
