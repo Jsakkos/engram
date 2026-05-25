@@ -69,7 +69,10 @@ def main() -> None:
         pass  # Normal Ctrl+C shutdown
     except SystemExit as exc:
         sys.exit(exc.code)  # Preserve original exit code
-    except BaseException as exc:
+    except Exception as exc:
+        # KeyboardInterrupt / SystemExit are handled above; everything else
+        # (including module-level import errors) lands here so a frozen build
+        # keeps the console open with a visible traceback instead of vanishing.
         traceback.print_exc()
         if getattr(sys, "frozen", False):
             print(f"\nFatal error: {exc}")
