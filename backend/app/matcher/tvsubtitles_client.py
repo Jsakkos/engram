@@ -141,8 +141,8 @@ class TVSubtitlesClient:
         if show_id is None and results:
             logger.warning(
                 f"TVsubtitles: no title match for {show_name!r} among "
-                f"{[name for _, name in results[:5]]}; skipping (was silently "
-                f"picking the first result, which downloads the wrong show)."
+                f"{[name for _, name in results[:5]]}; skipping this provider "
+                f"(falling back rather than risk downloading the wrong show)."
             )
         self._show_id_cache[show_name] = show_id
         return show_id

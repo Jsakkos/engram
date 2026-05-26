@@ -21,10 +21,12 @@ per show (search + credits); does NOT modify the cache.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sqlite3
 import sys
 from collections import Counter
+from contextlib import closing
 from pathlib import Path
 
 import httpx
@@ -41,9 +43,11 @@ def _read_tmdb_token(cache_dir: Path) -> str:
     for db in candidates:
         if db.exists():
             try:
-                con = sqlite3.connect(db)
-                row = con.execute("select tmdb_api_key from app_config limit 1").fetchone()
-                con.close()
+                # closing() guarantees the connection is closed even if the query
+                # raises; a bare ``with sqlite3.connect()`` only manages the
+                # transaction, not closure.
+                with closing(sqlite3.connect(db)) as con:
+                    row = con.execute("select tmdb_api_key from app_config limit 1").fetchone()
                 if row and row[0]:
                     return row[0]
             except sqlite3.OperationalError:
@@ -175,6 +179,8 @@ def main() -> None:
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
+            # Best-effort: a redirected/wrapped stream may lack reconfigure or
+            # reject it; fall back to the default encoding.
             pass
 
     cache_root = Path(args.cache_dir).expanduser()
@@ -193,7 +199,6 @@ def main() -> None:
 
     headers = {"Authorization": f"Bearer {token}", "accept": "application/json"}
     records = []
-    import json
 
     with httpx.Client(
         base_url="https://api.themoviedb.org/3", headers=headers, timeout=30

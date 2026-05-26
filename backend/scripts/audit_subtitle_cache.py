@@ -28,6 +28,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 # Make ``app`` importable when run as ``scripts/audit_subtitle_cache.py``.
 _backend_dir = str(Path(__file__).parent.parent)
@@ -48,6 +49,8 @@ def _enable_utf8_stdout() -> None:
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
+            # Best-effort: a redirected/wrapped stream may lack reconfigure or
+            # reject it; fall back to the default encoding.
             pass
 
 
@@ -56,8 +59,6 @@ def _cached_shows(data_dir: Path) -> list[str]:
 
 
 def audit_show(client: TVSubtitlesClient, show: str) -> dict:
-    from urllib.parse import urljoin
-
     try:
         resp = client._post(urljoin(client.BASE_URL, "/search1.php"), data={"qs": show})
         resp.raise_for_status()
