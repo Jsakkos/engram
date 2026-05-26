@@ -10,6 +10,7 @@ Follows the same polling/callback pattern as DriveMonitor in sentinel.py.
 import asyncio
 import logging
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,9 @@ logger = logging.getLogger(__name__)
 # Number of consecutive polls with stable file sizes before triggering import
 STABILITY_THRESHOLD = 2
 
+# Matches "Season 1", "season 01", "Season 12", etc.
+_SEASON_RE = re.compile(r"^[Ss]eason\s*0*(\d+)$")
+
 
 class StagingWatcher:
     """Watches a staging directory for new subdirectories with MKV files.
@@ -27,12 +31,22 @@ class StagingWatcher:
     matching the DriveMonitor approach.
     """
 
-    def __init__(self, staging_path: str, config=None) -> None:
-        self._staging_path = Path(staging_path).expanduser()
+    def __init__(
+        self,
+        staging_path: str,
+        import_watch_path: str | None = None,
+        import_destination_mode: str = "library",
+        config=None,
+    ) -> None:
+        self._staging_path = Path(staging_path).expanduser() if staging_path else None
+        self._import_watch_path = (
+            Path(import_watch_path).expanduser() if import_watch_path else None
+        )
+        self._import_destination_mode = import_destination_mode
         self._running = False
         self._task: asyncio.Task | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._async_callback: Callable[[str, str, str], Any] | None = None
+        self._async_callback: Callable[[str, str, str, dict | None], Any] | None = None
         self._config = config
         self._poll_interval: float = 2.0
 
@@ -168,6 +182,111 @@ class StagingWatcher:
         stale_keys = [k for k in self._known_dirs if k not in seen_dirs]
         for key in stale_keys:
             del self._known_dirs[key]
+
+    def _scan_import_dir(self, root: Path) -> list[tuple[Path, int, int, dict]]:
+        """Detect ARM output structure under root and return import units.
+
+        Returns list of (dir_path, mkv_count, total_size, metadata) tuples.
+        """
+        units = []
+        try:
+            for entry in os.scandir(root):
+                if entry.is_file() and entry.name.lower().endswith(".mkv"):
+                    # Pattern C: MKVs directly in root — treat whole root as one unit
+                    mkv_count, total_size = self._count_mkvs(root)
+                    units.append(
+                        (
+                            root,
+                            mkv_count,
+                            total_size,
+                            {
+                                "structure": "flat",
+                                "show_name": None,
+                                "season": None,
+                                "destination_mode": self._import_destination_mode,
+                                "source": "import",
+                            },
+                        )
+                    )
+                    return units  # Whole root is one unit; stop scanning
+
+                if not entry.is_dir():
+                    continue
+
+                subdir = Path(entry.path)
+                # Check for Pattern B: subdir contains Season subdirs with MKVs
+                season_units = self._try_pattern_b(subdir)
+                if season_units:
+                    units.extend(season_units)
+                    continue
+
+                # Pattern A: subdir directly contains MKVs
+                mkv_count, total_size = self._count_mkvs(subdir)
+                if mkv_count > 0:
+                    units.append(
+                        (
+                            subdir,
+                            mkv_count,
+                            total_size,
+                            {
+                                "structure": "disc_folder",
+                                "show_name": None,
+                                "season": None,
+                                "destination_mode": self._import_destination_mode,
+                                "source": "import",
+                            },
+                        )
+                    )
+        except OSError as e:
+            logger.debug(f"Could not scan import directory {root}: {e}")
+        return units
+
+    def _try_pattern_b(self, show_dir: Path) -> list[tuple[Path, int, int, dict]]:
+        """Return season units if show_dir looks like a show-organised ARM folder."""
+        units = []
+        try:
+            for entry in os.scandir(show_dir):
+                if not entry.is_dir():
+                    continue
+                m = _SEASON_RE.match(entry.name)
+                if not m:
+                    continue
+                season_num = int(m.group(1))
+                season_dir = Path(entry.path)
+                mkv_count, total_size = self._count_mkvs(season_dir)
+                if mkv_count > 0:
+                    units.append(
+                        (
+                            season_dir,
+                            mkv_count,
+                            total_size,
+                            {
+                                "structure": "show_organised",
+                                "show_name": show_dir.name,
+                                "season": season_num,
+                                "destination_mode": self._import_destination_mode,
+                                "source": "import",
+                            },
+                        )
+                    )
+        except OSError:
+            pass
+        return units
+
+    def _count_mkvs(self, directory: Path) -> tuple[int, int]:
+        """Return (mkv_count, total_size_bytes) for MKVs directly inside directory."""
+        count, size = 0, 0
+        try:
+            for f in directory.iterdir():
+                if f.is_file() and f.suffix.lower() == ".mkv":
+                    count += 1
+                    try:
+                        size += f.stat().st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        return count, size
 
     def _scan_staging_dir(self) -> list[tuple[Path, int, int]]:
         """Scan staging directory for subdirectories with MKV files.
