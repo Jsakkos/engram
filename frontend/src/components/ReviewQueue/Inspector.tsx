@@ -5,7 +5,7 @@ import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../a
 import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
 import type { DiscTitle, Job } from '../../types';
 import type { Candidate, CoverageEntry } from './coverage';
-import type { RosterEpisode } from './types';
+import type { LLMSuggestion, RosterEpisode } from './types';
 import {
     confidenceColor,
     formatDuration,
@@ -41,10 +41,13 @@ export function Inspector({
     holders,
     titleIndexById,
     isRematching,
+    aiEpisodeMatchingEnabled,
     onAssign,
     onAction,
     onRematch,
     onDeepRematch,
+    onTryLLMMatch,
+    onAcceptLLMSuggestion,
 }: {
     title: DiscTitle;
     job: Job;
@@ -58,13 +61,18 @@ export function Inspector({
     holders: Map<string, number[]>;
     titleIndexById: Record<number, number>;
     isRematching: boolean;
+    aiEpisodeMatchingEnabled: boolean;
     onAssign: (code: string) => void;
     onAction: (action: TitleAction) => void;
     onRematch: (titleId: number, source: string) => void;
     onDeepRematch: (episodeCode: string) => void;
+    onTryLLMMatch: (titleId: number) => void;
+    onAcceptLLMSuggestion: (titleId: number, episodeNumber: number) => void;
 }) {
     const details = parseMatchDetails(title);
     const fileExists = details.error === 'file_exists';
+    const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
+    const season = job.detected_season ?? 1;
 
     // The set of episode codes held by OTHER titles → conflict source. Derived
     // from live selections (not the roster) so collisions surface even when the
@@ -149,6 +157,37 @@ export function Inspector({
                         <SvActionButton tone="yellow" size="sm" onClick={() => onAssign(suggestion.code)}>
                             Accept
                         </SvActionButton>
+                    </div>
+                )}
+
+                {/* LLM suggestion */}
+                {llmSuggestion && (
+                    <div style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', border: `1px solid ${sv.cyan}`, background: `${sv.cyan}0d` }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                    <span style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: '0.16em', color: sv.cyan, background: `${sv.cyan}22`, padding: '1px 6px', border: `1px solid ${sv.cyan}55` }}>
+                                        AI
+                                    </span>
+                                    <span style={{ fontFamily: sv.display, fontSize: 13, color: sv.cyan }}>
+                                        Suggested: <strong>S{String(season).padStart(2, '0')}E{String(llmSuggestion.episode).padStart(2, '0')}</strong>
+                                    </span>
+                                    <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>
+                                        {Math.round(llmSuggestion.confidence * 100)}%
+                                    </span>
+                                </div>
+                                <div style={{ fontFamily: sv.mono, fontSize: 10.5, color: sv.inkDim, lineHeight: 1.5 }}>
+                                    {llmSuggestion.reasoning}
+                                </div>
+                            </div>
+                            <SvActionButton
+                                tone="cyan"
+                                size="sm"
+                                onClick={() => onAcceptLLMSuggestion(title.id, llmSuggestion.episode)}
+                            >
+                                Accept AI suggestion
+                            </SvActionButton>
+                        </div>
                     </div>
                 )}
 
@@ -307,6 +346,16 @@ export function Inspector({
                     >
                         <SkipForward size={11} />
                     </SvActionButton>
+                    {aiEpisodeMatchingEnabled && (
+                        <SvActionButton
+                            tone="cyan"
+                            size="sm"
+                            onClick={() => onTryLLMMatch(title.id)}
+                            title="Run AI episode matching"
+                        >
+                            Try AI match
+                        </SvActionButton>
+                    )}
                     {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
                         <SvActionButton
                             tone="magenta"

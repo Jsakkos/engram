@@ -60,3 +60,55 @@ export async function apiFetchBlob(input: RequestInfo | URL, init?: RequestInit)
   const res = await request(input, init);
   return await res.blob();
 }
+
+// ---------------------------------------------------------------------------
+// Domain helpers
+// ---------------------------------------------------------------------------
+
+/** Shape returned by POST /api/jobs/{job_id}/titles/{title_id}/llm-match */
+export interface LLMMatchResult {
+  suggestion: {
+    episode: number;
+    confidence: number;
+    reasoning: string;
+    runner_up: { episode: number; confidence: number } | null;
+    model: string;
+  } | null;
+  reason: string | null;
+}
+
+/**
+ * Run the LLM episode matcher for a single title.
+ * The result is also persisted into `match_details.llm_suggestion` on the
+ * backend, so refreshing the job via GET will surface it in the Inspector.
+ */
+export async function runLLMMatch(jobId: number, titleId: number): Promise<LLMMatchResult> {
+  return apiFetch<LLMMatchResult>(
+    `/api/jobs/${jobId}/titles/${titleId}/llm-match`,
+    { method: 'POST' },
+  );
+}
+
+/**
+ * Reassign an episode code to a title, optionally tagging the source of the
+ * assignment (e.g. `'ai_llm'` when accepting an LLM suggestion).
+ */
+export async function reassignEpisode(
+  jobId: number,
+  titleId: number,
+  episodeCode: string,
+  edition?: string,
+  source?: string,
+): Promise<void> {
+  const body: Record<string, unknown> = { episode_code: episodeCode };
+  if (edition !== undefined) body.edition = edition;
+  if (source !== undefined) body.source = source;
+  return apiFetchVoid(
+    `/api/jobs/${jobId}/titles/${titleId}/reassign`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+}

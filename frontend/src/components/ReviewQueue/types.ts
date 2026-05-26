@@ -4,6 +4,14 @@
 
 import { DiscTitle } from '../../types';
 
+export interface LLMSuggestion {
+    episode: number;
+    confidence: number;
+    reasoning: string;
+    runner_up: { episode: number; confidence: number } | null;
+    model: string;
+}
+
 export interface MatchDetails {
     vote_count?: number;
     target_votes?: number;
@@ -21,6 +29,8 @@ export interface MatchDetails {
     matches_found?: number;
     conflict_reason?: string;
     auto_sorted?: string;
+    /** LLM-based episode suggestion, if one has been run for this title. */
+    llm_suggestion?: LLMSuggestion;
 }
 
 /** One episode slot from GET /api/jobs/{id}/season-roster. */
