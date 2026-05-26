@@ -68,3 +68,59 @@ class TestCompleteJsonAnthropic:
             result = await complete_json(prompt="x", schema=None, provider="anthropic", api_key="k")
 
         assert result == {"a": 1}
+
+
+class TestCompleteJsonOpenAI:
+    @pytest.mark.asyncio
+    async def test_openai_success(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(
+            {"choices": [{"message": {"content": '{"episode": 5, "confidence": 0.8}'}}]}
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(prompt="x", schema=None, provider="openai", api_key="sk-x")
+
+        assert result == {"episode": 5, "confidence": 0.8}
+        call = mock.post.await_args
+        assert call.args[0] == "https://api.openai.com/v1/chat/completions"
+        assert call.kwargs["headers"]["Authorization"] == "Bearer sk-x"
+        body = call.kwargs["json"]
+        assert body["model"] == "gpt-4o-mini"
+        assert body["temperature"] == 0
+
+    @pytest.mark.asyncio
+    async def test_openai_response_format_when_schema(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(
+            {"choices": [{"message": {"content": '{"episode": 1, "confidence": 0.5}'}}]}
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="x",
+                schema={"type": "object", "properties": {"episode": {"type": "integer"}}},
+                provider="openai",
+                api_key="sk-x",
+            )
+
+        body = mock.post.await_args.kwargs["json"]
+        assert body["response_format"] == {"type": "json_object"}
+
+
+class TestCompleteJsonOpenRouter:
+    @pytest.mark.asyncio
+    async def test_openrouter_success(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"choices": [{"message": {"content": '{"ok": true}'}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x", schema=None, provider="openrouter", api_key="sk-or-x"
+            )
+
+        assert result == {"ok": True}
+        call = mock.post.await_args
+        assert call.args[0] == "https://openrouter.ai/api/v1/chat/completions"
+        body = call.kwargs["json"]
+        assert body["model"] == "anthropic/claude-haiku-4-5-20251001"

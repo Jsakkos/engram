@@ -54,7 +54,14 @@ async def complete_json(
     try:
         if provider == "anthropic":
             return await _call_anthropic(prompt, api_key, model, max_tokens)
-        # additional providers wired in later tasks
+        if provider == "openai":
+            return await _call_openai_compatible(
+                prompt, api_key, OPENAI_API_URL, model, max_tokens, schema
+            )
+        if provider == "openrouter":
+            return await _call_openai_compatible(
+                prompt, api_key, OPENROUTER_API_URL, model, max_tokens, schema
+            )
         logger.warning("Unsupported AI provider: %s", provider)
         return None
     except httpx.HTTPError as e:
@@ -100,4 +107,39 @@ async def _call_anthropic(prompt: str, api_key: str, model: str, max_tokens: int
         if not content:
             return None
         text = content[0].get("text", "")
+        return _parse_json_text(text)
+
+
+async def _call_openai_compatible(
+    prompt: str,
+    api_key: str,
+    api_url: str,
+    model: str,
+    max_tokens: int,
+    schema: dict | None,
+) -> dict | None:
+    body: dict = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0,
+    }
+    if schema is not None:
+        body["response_format"] = {"type": "json_object"}
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+        resp = await client.post(
+            api_url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        choices = data.get("choices") or []
+        if not choices:
+            return None
+        text = choices[0].get("message", {}).get("content", "")
         return _parse_json_text(text)
