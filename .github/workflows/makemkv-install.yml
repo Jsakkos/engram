@@ -38,7 +38,7 @@ jobs:
         env:
           MAKEMKV_VERSION: ${{ matrix.version }}
           MAKEMKV_INSTALL_DIR: /tmp/makemkv-test
-        run: bash docker/install-makemkv.sh
+        run: sudo -E bash docker/install-makemkv.sh
 
       - name: Verify makemkvcon binary
         run: |

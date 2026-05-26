@@ -76,7 +76,7 @@ jobs:
           VERSION=$(docker run --rm \
             --entrypoint /usr/local/bin/install-makemkv.sh \
             -e MAKEMKV_DETECT_ONLY=1 \
-            engram:ci)
+            engram:ci || true)
           if [ -z "$VERSION" ]; then
             echo "::error::MakeMKV version detection returned empty — check if download page format changed"
             exit 1
