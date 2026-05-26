@@ -4,6 +4,11 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-26
+
+### Fixed
+- **Docker MakeMKV install failing on every container start** — the version-detection script scraped the MakeMKV download page for a Linux tarball link (`makemkv-bin-*.tar.gz`) that is no longer listed there; switched to the hash-file link (`makemkv-sha-*.txt`), which is present on every release and uses the same bare version format. Adds a `MAKEMKV_DETECT_ONLY=1` mode for CI verification and a nightly full-compile check workflow to catch future regressions. (#226)
+
 ## [0.8.0] - 2026-05-26
 
 ### Added
