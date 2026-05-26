@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass
 
 from app.core.ai_client import DEFAULT_MODELS, complete_json
+from app.core.security import sanitize_log_value
 from app.matcher.episode_identification import _clean_subtitle_text
 from app.matcher.tmdb_client import fetch_season_episodes
 
@@ -92,7 +93,7 @@ async def match_episode_via_llm(
         logger.info(
             "LLM matcher: transcript too short (%d chars) for %s S%02d",
             len(cleaned),
-            show_name,
+            sanitize_log_value(show_name),
             season,
         )
         return None
@@ -100,7 +101,9 @@ async def match_episode_via_llm(
     episodes = fetch_season_episodes(tmdb_show_id, season, tmdb_api_key)
     if not episodes:
         logger.warning(
-            "LLM matcher: no TMDB synopses for show_id=%s season=%d", tmdb_show_id, season
+            "LLM matcher: no TMDB synopses for show_id=%s season=%d",
+            sanitize_log_value(tmdb_show_id),
+            season,
         )
         return None
 
@@ -134,7 +137,9 @@ async def match_episode_via_llm(
 
     if confidence <= 0.0:
         logger.info(
-            "LLM matcher: confidence==0 (wrong show/season signal) for %s S%02d", show_name, season
+            "LLM matcher: confidence==0 (wrong show/season signal) for %s S%02d",
+            sanitize_log_value(show_name),
+            season,
         )
         return None
 

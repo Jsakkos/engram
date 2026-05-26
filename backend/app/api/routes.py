@@ -24,7 +24,7 @@ from sqlmodel import select
 
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
-from app.core.security import is_allowed_image_url
+from app.core.security import is_allowed_image_url, sanitize_log_value
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
 from app.matcher.tmdb_client import fetch_season_episodes
@@ -2412,7 +2412,7 @@ async def llm_match_title(
     try:
         suggestion = await _run_llm_match_for_title(title=title, job=job)
     except Exception:
-        logger.exception("LLM match endpoint failed for title %s", title_id)
+        logger.exception("LLM match endpoint failed for title %s", sanitize_log_value(title_id))
         return {"suggestion": None, "reason": "internal_error"}
 
     if not suggestion:
