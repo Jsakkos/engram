@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import subprocess
@@ -629,10 +630,22 @@ class EpisodeMatcher:
         """Clean transcription text to match TF-IDF vocabulary expectations."""
         return _clean_subtitle_text(text)
 
+    @staticmethod
+    def _resolve_source(mkv_file) -> str:
+        """Canonicalize a source path so the chunk hash + in-memory cache key
+        agree even when callers mix relative and absolute path strings.
+
+        Defensive against the (unlikely) case that one caller passes a
+        relative path and another the absolute one — they'd otherwise hash
+        to different on-disk chunk files for the same MKV, AND populate two
+        cache_key entries pointing at those distinct files.
+        """
+        return str(Path(mkv_file).resolve())
+
     def _chunk_path(self, mkv_file, start_time, duration):
         """On-disk path for the extracted chunk of (mkv_file, start, duration).
 
-        The source file's absolute path is hashed into the filename so two
+        The resolved absolute source path is hashed into the filename so two
         concurrent matches on different titles (under max_concurrent_matches)
         write to disjoint paths. Without this, both threads would target
         `chunk_{start}_{duration}.wav` simultaneously — the second writer
@@ -642,15 +655,15 @@ class EpisodeMatcher:
         per-disc collision probability is negligible. Kept short to stay well
         under Windows MAX_PATH (260) for nested cache dirs.
         """
-        import hashlib
-
-        src_hash = hashlib.sha1(str(mkv_file).encode("utf-8")).hexdigest()[:16]
+        src_hash = hashlib.sha1(self._resolve_source(mkv_file).encode("utf-8")).hexdigest()[:16]
         return self.temp_dir / f"chunk_{src_hash}_{start_time}_{duration}.wav"
 
     def extract_audio_chunk(self, mkv_file, start_time, duration=None):
         """Extract a chunk of audio from MKV file with caching."""
         duration = duration or self.chunk_duration
-        cache_key = (str(mkv_file), start_time, duration)
+        # Resolve once so the cache_key matches what _chunk_path hashes.
+        # A relative + absolute path for the same MKV must share the cache.
+        cache_key = (self._resolve_source(mkv_file), start_time, duration)
 
         if cache_key in self.audio_chunks:
             return self.audio_chunks[cache_key]
