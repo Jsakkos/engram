@@ -268,7 +268,13 @@ class FinalizationCoordinator:
                 f"Job {job_id}: conflict re-match exhausted at {last_depth} scan points; "
                 f"{list(conflicts)} still contested — handing to review"
             )
-            await self._clear_conflict_state(session, job)
+            # See _maybe_escalate_reviews: leave the counter at last_depth so
+            # re-entries see "exhausted" and bail. Popping it caused an
+            # infinite pass-1 loop when titles can't be untangled (e.g. all
+            # contested titles match the same episode regardless of depth).
+            if job.conflict_status and job.conflict_status.startswith(self._CONFLICT_NOTE_PREFIX):
+                job.conflict_status = None
+                await session.commit()
             return False
 
         # Re-match every distinct raw code in each tie (padded + unpadded), so
@@ -343,7 +349,16 @@ class FinalizationCoordinator:
                 f"Job {job_id}: review re-match exhausted at {last_depth} scan points; "
                 f"{len(review_titles)} title(s) still unresolved — handing to review"
             )
-            await self._clear_review_state(session, job)
+            # Leave ``_review_passes[job_id]`` at last_depth so the next
+            # ``check_job_completion`` re-entry sees the ladder as still
+            # exhausted and bails. Popping it here lets pass 1 re-fire on the
+            # very next recheck — an infinite loop when titles can never
+            # match (e.g. precomputed cache gap). The counter is reset for
+            # real via ``reset_conflict_passes`` on terminal-state transitions
+            # and by the "no review titles" branch above when titles resolve.
+            if job.conflict_status and job.conflict_status.startswith(self._REVIEW_NOTE_PREFIX):
+                job.conflict_status = None
+                await session.commit()
             return False
 
         dispatched: list[int] = []

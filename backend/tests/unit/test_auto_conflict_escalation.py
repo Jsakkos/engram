@@ -200,9 +200,35 @@ class TestEscalation:
         # Ladder exhausted (full coverage reached): hand back to the review path.
         result, status = await _escalate(coord, job_id)
         assert result is False
-        assert job_id not in coord._conflict_passes
+        # Counter stays at last_depth so a recheck (e.g. unrelated title
+        # finishing) sees "exhausted" again and doesn't re-fire pass 1.
+        assert coord._conflict_passes[job_id] == 101
         assert status is None
         assert {25, 50, 101}.issubset(set(depths))
+
+    async def test_exhausted_does_not_re_dispatch_on_recheck(self):
+        """After exhaustion, a re-entry from check_job_completion must NOT
+        re-fire pass 1 — that loops forever on conflicts that depth alone
+        can't break."""
+        job_id = await _seed_conflict(duration=3000)
+        depths: list[int] = []
+
+        async def fake(jid, ep, num_points=None, min_vote_count=None):
+            depths.append(num_points)
+            return {"dispatched": [1], "skipped": []}
+
+        coord = _coord_with(fake)
+
+        for _ in range(3):
+            await _escalate(coord, job_id)
+        result, _status = await _escalate(coord, job_id)
+        assert result is False  # exhausted
+
+        depths.clear()
+        result, status = await _escalate(coord, job_id)
+        assert result is False, "Exhausted conflict-escalation must not re-fire on recheck"
+        assert depths == [], f"Expected no re-dispatch, got depths {depths}"
+        assert status is None
 
     async def test_resolved_conflict_clears_state(self):
         job_id = await _seed_conflict()

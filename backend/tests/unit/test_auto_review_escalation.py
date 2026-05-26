@@ -120,9 +120,39 @@ class TestReviewEscalation:
 
         result, status = await _escalate(coord, job_id)
         assert result is False
-        assert job_id not in coord._review_passes
+        # Counter must NOT be popped on exhaustion — see
+        # test_exhausted_does_not_re_dispatch_on_recheck for why.
+        assert coord._review_passes[job_id] == 101
         assert status is None
         assert {25, 50, 101}.issubset(set(depths))
+
+    async def test_exhausted_does_not_re_dispatch_on_recheck(self):
+        """After the ladder exhausts on titles still in REVIEW, a subsequent
+        ``check_job_completion`` re-entry must NOT re-fire pass 1 — that's
+        an infinite loop. Caught live: titles whose precomputed-cache deps
+        are missing match nothing on every pass; if exhaustion pops the
+        counter, the next recheck reads last_depth=0 and starts pass 1 again.
+        """
+        job_id = await _seed_review(duration=3000)  # ladder = [25, 50, 101]
+        depths: list[int] = []
+
+        async def fake(jid, tid, source_preference=None, num_points=None, min_vote_count=None):
+            depths.append(num_points)
+
+        coord = _coord_with(fake)
+
+        # Walk the full ladder to exhaustion.
+        for _ in range(3):
+            await _escalate(coord, job_id)
+        result, _status = await _escalate(coord, job_id)
+        assert result is False  # exhausted
+
+        # Titles are still in REVIEW; the next re-entry must be a no-op.
+        depths.clear()
+        result, status = await _escalate(coord, job_id)
+        assert result is False, "Re-entry on exhausted review escalation must NOT re-fire"
+        assert depths == [], f"Expected no re-dispatch on recheck, got depths {depths}"
+        assert status is None
 
     async def test_resolved_title_clears_state(self):
         job_id = await _seed_review()
