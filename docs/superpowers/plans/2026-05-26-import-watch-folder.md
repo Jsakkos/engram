@@ -166,43 +166,41 @@ def _scan_import_dir(self, root: Path) -> list[tuple[Path, int, int, dict]]:
     """
     units = []
     try:
-        entries = list(os.scandir(root))
+        for entry in os.scandir(root):
+            if entry.is_file() and entry.name.lower().endswith(".mkv"):
+                # Pattern C: MKVs directly in root — treat whole root as one unit
+                mkv_count, total_size = self._count_mkvs(root)
+                units.append((root, mkv_count, total_size, {
+                    "structure": "flat",
+                    "show_name": None,
+                    "season": None,
+                    "destination_mode": self._import_destination_mode,
+                    "source": "import",
+                }))
+                return units  # Whole root is one unit; stop scanning
+
+            if not entry.is_dir():
+                continue
+
+            subdir = Path(entry.path)
+            # Check for Pattern B: subdir contains Season subdirs with MKVs
+            season_units = self._try_pattern_b(subdir)
+            if season_units:
+                units.extend(season_units)
+                continue
+
+            # Pattern A: subdir directly contains MKVs
+            mkv_count, total_size = self._count_mkvs(subdir)
+            if mkv_count > 0:
+                units.append((subdir, mkv_count, total_size, {
+                    "structure": "disc_folder",
+                    "show_name": None,
+                    "season": None,
+                    "destination_mode": self._import_destination_mode,
+                    "source": "import",
+                }))
     except OSError as e:
         logger.debug(f"Could not scan import directory {root}: {e}")
-        return units
-
-    # Pattern C check first: any MKV directly in root → whole root is one unit.
-    # Must be a pre-pass because os.scandir order is not guaranteed; without it a
-    # directory appearing before a root-level MKV would add spurious A/B units.
-    if any(e.is_file() and e.name.lower().endswith(".mkv") for e in entries):
-        mkv_count, total_size = self._count_mkvs(root)
-        units.append((root, mkv_count, total_size, {
-            "structure": "flat",
-            "show_name": None,
-            "season": None,
-            "destination_mode": self._import_destination_mode,
-            "source": "import",
-        }))
-        return units
-
-    # Pattern B / Pattern A: scan subdirectories only
-    for entry in entries:
-        if not entry.is_dir():
-            continue
-        subdir = Path(entry.path)
-        season_units = self._try_pattern_b(subdir)
-        if season_units:
-            units.extend(season_units)
-            continue
-        mkv_count, total_size = self._count_mkvs(subdir)
-        if mkv_count > 0:
-            units.append((subdir, mkv_count, total_size, {
-                "structure": "disc_folder",
-                "show_name": None,
-                "season": None,
-                "destination_mode": self._import_destination_mode,
-                "source": "import",
-            }))
     return units
 
 def _try_pattern_b(self, show_dir: Path) -> list[tuple[Path, int, int, dict]]:
@@ -226,8 +224,8 @@ def _try_pattern_b(self, show_dir: Path) -> list[tuple[Path, int, int, dict]]:
                     "destination_mode": self._import_destination_mode,
                     "source": "import",
                 }))
-    except OSError as e:
-        logger.debug(f"Could not scan show directory {show_dir}: {e}", exc_info=True)
+    except OSError:
+        pass
     return units
 
 def _count_mkvs(self, directory: Path) -> tuple[int, int]:
@@ -504,14 +502,8 @@ async def _check_staging(self) -> None:
                 continue
             await self._update_stability(dir_str, dir_path, mkv_count, total_size, metadata=None)
 
-        stale = [
-            k for k in self._known_dirs
-            if k not in seen_dirs
-            and (
-                not self._import_watch_path
-                or not str(k).startswith(str(self._import_watch_path))
-            )
-        ]
+        stale = [k for k in self._known_dirs if k not in seen_dirs
+                 and not str(k).startswith(str(self._import_watch_path or ""))]
         for key in stale:
             del self._known_dirs[key]
 
@@ -793,14 +785,17 @@ Near the top of `finalization_coordinator.py` (after the existing imports), add 
 ```python
 from pathlib import Path as _Path
 
-def _library_path_for_job(job, cfg, content_type: str) -> "_Path | None":
+def _library_path_for_job(job, content_type: str) -> "_Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
-    if job.destination_mode != "in_place" or not cfg.import_watch_path:
+    if job.destination_mode != "in_place":
         return None
-    return _Path(cfg.import_watch_path) / ("Movies" if content_type == "movie" else "TV")
+    from app.services.config_service import get_config_sync
+    cfg = get_config_sync()
+    if not cfg.import_watch_path:
+        return None
+    root = _Path(cfg.import_watch_path)
+    return root / ("Movies" if content_type == "movie" else "TV")
 ```
-
-`cfg` is the `AppConfig` already fetched at the start of the finalization step — thread it in rather than issuing a blocking `get_config_sync()` call from inside the async coroutine body.
 
 - [ ] **Step 2: Update TV episode organiser calls**
 
@@ -818,7 +813,7 @@ org_result = await asyncio.to_thread(
 with:
 
 ```python
-_lib_path = _library_path_for_job(job, cfg, "tv")
+_lib_path = _library_path_for_job(job, "tv")
 if _lib_path:
     from app.core.organizer import organize_tv_episode
     org_result = await asyncio.to_thread(
@@ -854,7 +849,7 @@ org_result = await asyncio.to_thread(
 with:
 
 ```python
-_lib_path = _library_path_for_job(job, cfg, "tv")
+_lib_path = _library_path_for_job(job, "tv")
 org_result = await asyncio.to_thread(
     organize_tv_extras,
     source_file,
@@ -881,7 +876,7 @@ org_result = await asyncio.to_thread(
 with:
 
 ```python
-_lib_path = _library_path_for_job(job, cfg, "movie")
+_lib_path = _library_path_for_job(job, "movie")
 if _lib_path:
     from app.core.organizer import organize_movie
     org_result = await asyncio.to_thread(
