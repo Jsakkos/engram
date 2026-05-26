@@ -8,6 +8,7 @@
 # version is already built. Technique adapted from jlesage/docker-makemkv.
 #
 # Build is CLI-only (./configure --disable-gui) so Qt is not required.
+# CI runs this script with `sudo -E` so ldconfig can write /etc/ld.so.cache.
 set -euo pipefail
 
 INSTALL_DIR="${MAKEMKV_INSTALL_DIR:-/config/makemkv}"
