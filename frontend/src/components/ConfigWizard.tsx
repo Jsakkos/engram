@@ -16,12 +16,14 @@ const AI_PROVIDER_LABELS: Record<string, string> = {
     anthropic: 'Anthropic',
     openai: 'OpenAI',
     openrouter: 'OpenRouter',
+    gemini: 'Google Gemini',
 };
 
 const AI_KEY_PLACEHOLDERS: Record<string, string> = {
     anthropic: 'sk-ant-...',
     openai: 'sk-...',
     openrouter: 'sk-or-...',
+    gemini: 'AIzaSy...',
 };
 
 interface NamingPreset {
@@ -66,6 +68,7 @@ interface ConfigData {
     namingMovieFormat: string;
     discdbEnabled: boolean;
     aiIdentificationEnabled: boolean;
+    aiEpisodeMatchingEnabled: boolean;
     aiProvider: string;
     aiApiKey: string;
     discdbContributionsEnabled: boolean;
@@ -126,6 +129,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingMovieFormat: '{title} ({year})',
         discdbEnabled: true,
         aiIdentificationEnabled: false,
+        aiEpisodeMatchingEnabled: false,
         aiProvider: 'anthropic',
         aiApiKey: '',
         discdbContributionsEnabled: false,
@@ -207,6 +211,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
                     discdbEnabled: data.discdb_enabled ?? true,
                     aiIdentificationEnabled: data.ai_identification_enabled ?? false,
+                    aiEpisodeMatchingEnabled: data.ai_episode_matching_enabled ?? false,
                     aiProvider: data.ai_provider || 'anthropic',
                     aiApiKey: data.ai_api_key === '***' ? '' : (data.ai_api_key || ''),
                     discdbContributionsEnabled: data.discdb_contributions_enabled ?? false,
@@ -310,6 +315,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_movie_format: config.namingMovieFormat,
                     discdb_enabled: config.discdbEnabled,
                     ai_identification_enabled: config.aiIdentificationEnabled,
+                    ai_episode_matching_enabled: config.aiEpisodeMatchingEnabled,
                     ai_provider: config.aiProvider,
                     ...optional('ai_api_key', config.aiApiKey),
                     discdb_contributions_enabled: config.discdbContributionsEnabled,
@@ -720,6 +726,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                         <option value="anthropic">Anthropic (Claude)</option>
                                         <option value="openai">OpenAI</option>
                                         <option value="openrouter">OpenRouter</option>
+                                        <option value="gemini">Google Gemini</option>
                                     </select>
                                 </div>
                                 <div className="form-group">
@@ -736,6 +743,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     <span className="form-hint">
                                         API key for {providerLabel}. Used only when TMDB lookup fails.
                                     </span>
+                                </div>
+                                <div className="form-group checkbox-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.aiEpisodeMatchingEnabled}
+                                            onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
+                                        />
+                                        <span className="checkbox-text">
+                                            <strong>AI-Powered Episode Matching (TV)</strong>
+                                            <span className="checkbox-hint">
+                                                When audio fingerprint matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
+                                            </span>
+                                        </span>
+                                    </label>
                                 </div>
                             </>
                         )}
