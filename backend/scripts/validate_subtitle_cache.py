@@ -146,9 +146,38 @@ def validate(assets_dir: Path) -> ValidationResult:
     # `get("shows", {})` falls back to {} only when the key is *absent* —
     # `"shows": null` would return None and len(None) raises TypeError,
     # bypassing the accumulated failures list. `or {}` handles both.
-    n_shows = len(manifest.get("shows") or {})
+    shows = manifest.get("shows") or {}
+    n_shows = len(shows)
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
+
+    # Manifest-↔-tarball consistency: every (show, season) the manifest claims
+    # coverage for MUST have a matching .npz + .index.json in the tarball. A
+    # mismatch here is exactly the misconfiguration that hit TNG S7 D2: the
+    # build script published a manifest entry without writing the vectors, so
+    # the matcher at runtime warns + falls back to scraping for every title.
+    # Refuse the publish instead of letting it ship.
+    if tarball_readable and shows:
+        try:
+            # Import locally so the validator module stays importable in test
+            # contexts that don't ship the matcher (CI smoke uses a stub).
+            from app.matcher.subtitle_utils import sanitize_filename
+        except ImportError:
+            sanitize_filename = None  # type: ignore[assignment]
+
+        if sanitize_filename is not None:
+            for show_name, entry in shows.items():
+                seasons = (entry or {}).get("seasons", []) if isinstance(entry, dict) else []
+                show_slug = sanitize_filename(show_name)
+                for season in seasons:
+                    npz_member = f"precomputed/{show_slug}/S{season:02d}.npz"
+                    idx_member = f"precomputed/{show_slug}/S{season:02d}.index.json"
+                    missing_files = [m for m in (npz_member, idx_member) if m not in members]
+                    if missing_files:
+                        failures.append(
+                            f"manifest lists {show_name!r} S{season:02d} but the tarball "
+                            f"is missing {missing_files}"
+                        )
 
     # tarball.stat() can re-raise OSError on its own — a permission flip
     # between tarfile.open succeeding and reaching this line would otherwise

@@ -408,6 +408,208 @@ class TestPrecomputedCache:
 
 
 @pytest.mark.unit
+class TestStaleManifestPruning:
+    """When the manifest lists a show/season but the on-disk vector files
+    are missing, `_load_precomputed_season` must:
+
+    1. Return None (so the caller falls back to scraping).
+    2. Prune the stale season from the in-memory cached manifest so the
+       same warning doesn't re-fire for every title in the disc.
+
+    The persistent manifest.json on disk is left untouched — the next
+    `ensure_precomputed_cache` run owns that.
+    """
+
+    def _write_manifest_with_show(self, cache_dir, shows):
+        from app.matcher.vectorizer_config import (
+            CACHE_FORMAT_VERSION,
+            vectorizer_config_hash,
+        )
+
+        precomputed = cache_dir / "precomputed"
+        precomputed.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "cache_format_version": CACHE_FORMAT_VERSION,
+            "vectorizer_config_hash": vectorizer_config_hash(),
+            "shows": shows,
+        }
+        (precomputed / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    def _make_matcher(self, cache_dir, show_name):
+        # The EpisodeMatcher constructor pulls in ctranslate2, which is heavy
+        # but always available in this project's test env. We never actually
+        # call identify_episode — only the pure manifest-handling method.
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        return EpisodeMatcher(
+            cache_dir=cache_dir,
+            show_name=show_name,
+            model_name="tiny",  # never loaded; we don't call ASR
+        )
+
+    def test_missing_files_prunes_season_from_cached_manifest(self, tmp_path):
+        self._write_manifest_with_show(
+            tmp_path,
+            {"Star Trek: The Next Generation": {"tmdb_id": 1, "seasons": [6, 7]}},
+        )
+        matcher = self._make_matcher(tmp_path, "Star Trek: The Next Generation")
+        # First call: S07 listed in manifest, no files on disk.
+        assert matcher._load_precomputed_season(7) is None
+        # The cached manifest must now report S07 as gone, so a second call
+        # (e.g., next title on the same disc) does NOT re-fire the warning.
+        manifest = matcher._precomputed_manifest
+        seasons = manifest["shows"]["Star Trek: The Next Generation"]["seasons"]
+        assert 7 not in seasons
+        # S06 was never touched.
+        assert 6 in seasons
+
+    def test_missing_files_prunes_show_when_no_seasons_left(self, tmp_path):
+        self._write_manifest_with_show(
+            tmp_path,
+            {"Star Trek: The Next Generation": {"tmdb_id": 1, "seasons": [7]}},
+        )
+        matcher = self._make_matcher(tmp_path, "Star Trek: The Next Generation")
+        matcher._load_precomputed_season(7)
+        # When the last season for a show is pruned, drop the show entirely so
+        # the in-memory manifest stays internally consistent.
+        assert "Star Trek: The Next Generation" not in matcher._precomputed_manifest["shows"]
+
+    def test_repeat_call_does_not_re_warn(self, tmp_path, caplog):
+        """The warning must fire at most once per (show, season), even when
+        every title on a disc triggers a fresh _load_precomputed_season call.
+        """
+        import logging
+
+        from loguru import logger as loguru_logger
+
+        self._write_manifest_with_show(
+            tmp_path,
+            {"Star Trek: The Next Generation": {"tmdb_id": 1, "seasons": [7]}},
+        )
+        matcher = self._make_matcher(tmp_path, "Star Trek: The Next Generation")
+
+        # Bridge loguru -> caplog so pytest's WARNING capture sees the warning.
+        class _Sink:
+            def __init__(self):
+                self.messages = []
+
+            def __call__(self, message):
+                record = message.record
+                if record["level"].no >= logging.WARNING:
+                    self.messages.append(record["message"])
+
+        sink = _Sink()
+        sink_id = loguru_logger.add(sink, level="WARNING")
+        try:
+            matcher._load_precomputed_season(7)  # first call -> warns
+            matcher._load_precomputed_season(7)  # second call -> silent
+            matcher._load_precomputed_season(7)  # third call -> silent
+        finally:
+            loguru_logger.remove(sink_id)
+
+        warnings_about_missing = [m for m in sink.messages if "files are missing" in m]
+        assert len(warnings_about_missing) == 1, (
+            f"Expected exactly one stale-cache warning, got {len(warnings_about_missing)}: "
+            f"{warnings_about_missing}"
+        )
+
+
+@pytest.mark.unit
+class TestTfidfMatcherStaleness:
+    """The matcher's cached TfidfMatcher must not silently reuse the wrong
+    reference set across identify_episode calls.
+
+    Background: when the precomputed cache covers S07, the matcher's
+    `ref_file_order` is populated with episode codes ("S07E01"...). If a
+    later call falls back to scraping (e.g. precomputed files vanished
+    between titles, or different season requested), the new call's
+    `coverages` dict is keyed by SRT file paths — but the cached matcher
+    still returns episode codes. Hitting `coverages[rf_str]` raises
+    KeyError("S07E07"), which the chunk loop swallows as a rejected
+    chunk — surfacing as the user's "0 matched / N rejected" symptom
+    even when the audio + subtitles are both fine.
+
+    The fix: track a fingerprint of what the matcher was prepared for
+    and rebuild when it changes.
+    """
+
+    def test_load_precomputed_changes_ref_signature(self):
+        ref_matrix = csr_matrix(np.eye(2))
+        m = TfidfMatcher()
+        m.load_precomputed(ref_matrix, ["S07E01", "S07E02"], np.array([1.0, 1.0]))
+        sig1 = m.reference_signature()
+        m2 = TfidfMatcher()
+        m2.load_precomputed(ref_matrix, ["S08E01", "S08E02"], np.array([1.0, 1.0]))
+        sig2 = m2.reference_signature()
+        assert sig1 != sig2, "Reference signature must change with reference codes"
+
+    def test_signature_distinguishes_precomputed_from_scraping(self, tmp_path):
+        # Same season number, same show, but different MODE: precomputed
+        # (codes-keyed) vs scraping (path-keyed). Signature must differ so
+        # the cached matcher gets rebuilt.
+        ref_matrix = csr_matrix(np.eye(1))
+        m_pre = TfidfMatcher()
+        m_pre.load_precomputed(ref_matrix, ["S07E01"], np.array([1.0]))
+
+        srt = tmp_path / "show.S07E01.srt"
+        srt.write_text("1\n00:00:01,000 --> 00:00:02,000\nhello\n", encoding="utf-8")
+        m_scrape = TfidfMatcher()
+        m_scrape.prepare([srt], SubtitleCache())
+        assert m_pre.reference_signature() != m_scrape.reference_signature()
+
+
+@pytest.mark.unit
+class TestUniqueChunkPaths:
+    """Chunk + preprocessed tempfile paths must be unique per source file.
+
+    Two matcher threads (running under max_concurrent_matches >= 2) on the
+    same disc samples chunks at the same offsets. If both threads write to
+    the same on-disk path, the second writer corrupts the first thread's
+    file mid-PyAV-decode -> av.error.InvalidDataError, OR the second reader
+    silently picks up the first writer's audio (wrong audio, wrong match).
+
+    These tests pin down the property: chunk and preprocessed paths must
+    differ when the source MKV differs, even at identical (start, duration).
+    """
+
+    def _make_matcher(self, tmp_path):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        return EpisodeMatcher(
+            cache_dir=tmp_path,
+            show_name="Test Show",
+            model_name="tiny",
+        )
+
+    def test_chunk_path_differs_per_source_mkv(self, tmp_path):
+        matcher = self._make_matcher(tmp_path)
+        path_a = matcher._chunk_path("/some/dir/title_t00.mkv", 1473, 30)
+        path_b = matcher._chunk_path("/some/dir/title_t01.mkv", 1473, 30)
+        assert path_a != path_b, (
+            "Concurrent matches on different titles must not collide on the same on-disk chunk path"
+        )
+
+    def test_chunk_path_stable_for_same_source(self, tmp_path):
+        # Same source, same offset/duration -> same path (so the on-disk
+        # cache hit guard `if not chunk_path.exists()` still saves work).
+        matcher = self._make_matcher(tmp_path)
+        path_a = matcher._chunk_path("/some/dir/title_t00.mkv", 1473, 30)
+        path_b = matcher._chunk_path("/some/dir/title_t00.mkv", 1473, 30)
+        assert path_a == path_b
+
+    def test_preprocessed_path_differs_per_source(self, tmp_path):
+        # The Whisper preprocessor writes to a temp dir whose filename used to
+        # be derived only from the input file's stem. Two source chunks with
+        # the same stem (different parent dirs) would collide there.
+        from app.matcher.asr_models import FasterWhisperModel
+
+        model = FasterWhisperModel.__new__(FasterWhisperModel)
+        a = model._preprocessed_path_for("/job_A/whisper_chunks/chunk_1473_30.wav")
+        b = model._preprocessed_path_for("/job_B/whisper_chunks/chunk_1473_30.wav")
+        assert a != b
+
+
+@pytest.mark.unit
 class TestModuleHelpers:
     def test_detect_file_encoding_handles_error(self, tmp_path):
         # Nonexistent file -> safe utf-8 fallback (no raise).
