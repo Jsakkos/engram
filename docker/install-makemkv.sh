@@ -16,12 +16,26 @@ DL_BASE="https://www.makemkv.com/download"
 MARKER="${INSTALL_DIR}/.installed-version"
 
 resolve_latest_version() {
-    # The download page lists the current tarball, e.g. makemkv-bin-1.18.1.tar.gz
+    # The download page no longer lists Linux tarballs directly; scrape the
+    # hash file link instead (e.g. makemkv-sha-1.18.3.txt) — same version
+    # format, present on every release.
     curl -fsSL "${DL_BASE}/" \
-        | grep -oE 'makemkv-bin-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' \
+        | grep -oE 'makemkv-sha-[0-9]+\.[0-9]+\.[0-9]+\.txt' \
         | head -n1 \
-        | sed -E 's/makemkv-bin-([0-9.]+)\.tar\.gz/\1/'
+        | sed -E 's/makemkv-sha-([0-9.]+)\.txt/\1/'
 }
+
+# Detect-only mode: resolve latest version, print it, and exit. Used by CI to
+# verify the download page is still parseable without running the full compile.
+if [ "${MAKEMKV_DETECT_ONLY:-}" = "1" ]; then
+    DETECTED="$(resolve_latest_version || true)"
+    if [ -z "${DETECTED}" ]; then
+        echo "ERROR: could not resolve latest MakeMKV version — download page format may have changed" >&2
+        exit 1
+    fi
+    echo "${DETECTED}"
+    exit 0
+fi
 
 if [ "${VERSION}" = "latest" ]; then
     VERSION="$(resolve_latest_version || true)"
