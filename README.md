@@ -79,10 +79,9 @@ No Python or Node.js required — the Config Wizard opens in your browser on fir
 |----------|----------|-----|
 | Windows | `engram-windows-x64.zip` | `engram.exe` |
 | Linux (x64) | `engram-linux-x64.tar.gz` | `./engram/engram` |
-| macOS (Apple Silicon) | `engram-macos-arm64.tar.gz` | `./engram/engram` |
-| macOS (Intel) | `engram-macos-x64.tar.gz` | `./engram/engram` |
+| macOS | `engram-macos-arm64.tar.gz` | `./engram/engram` |
 
-On macOS, pick the build that matches your chip: **Apple Silicon** (M1/M2/M3/M4) → `arm64`, **Intel** → `x64`. Run `uname -m` if unsure (`arm64` vs `x86_64`). macOS has no automatic optical-drive detection — use the staging-folder workflow (see [Linux / macOS setup](docs/guide/linux-setup.md)).
+On macOS, download `engram-macos-arm64.tar.gz`. It runs natively on Apple Silicon (M1/M2/M3/M4) and transparently on Intel Macs via Rosetta 2. macOS has no automatic optical-drive detection — use the staging-folder workflow (see [Linux / macOS setup](docs/guide/linux-setup.md)).
 
 ### Option B: From source (all platforms)
 

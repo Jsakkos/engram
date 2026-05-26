@@ -194,10 +194,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15-intel # Intel x64
-            arch: x64
-            file_arch: x86_64
-          - runner: macos-14 # Apple Silicon arm64
+          - runner: macos-14 # Apple Silicon arm64 (also runs on Intel via Rosetta 2)
             arch: arm64
             file_arch: arm64
     steps:
@@ -295,9 +292,6 @@ jobs:
           name: engram-linux-x64
       - uses: actions/download-artifact@v8
         with:
-          name: engram-macos-x64
-      - uses: actions/download-artifact@v8
-        with:
           name: engram-macos-arm64
       - uses: softprops/action-gh-release@v3
         with:
@@ -307,5 +301,4 @@ jobs:
           files: |
             engram-windows-x64.zip
             engram-linux-x64.tar.gz
-            engram-macos-x64.tar.gz
             engram-macos-arm64.tar.gz
