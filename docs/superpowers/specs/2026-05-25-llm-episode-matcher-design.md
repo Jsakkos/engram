@@ -200,6 +200,36 @@ User accepts via existing review-accept path; organizer uses the accepted code
 - `llm_episode_matcher.py`: happy-path test + `confidence == 0` drop test first, then implement.
 - Curator integration test goes red before the curator change lands.
 
+## Documentation deliverables
+
+User-facing docs ship as part of this feature, not as a follow-up. The mkdocs-material site at https://jsakkos.github.io/engram/ is updated in the same PR.
+
+### New page
+
+- **`docs/guide/llm-episode-matcher.md`** — dedicated feature page. Sections:
+  - **What it is** — one-paragraph plain-English description of the LLM fallback.
+  - **When it runs** — auto-fallback conditions (primary low-confidence + season known + config enabled) and the manual "Try AI match" button.
+  - **Enabling it** — link to `getting-started/configuration.md` for the toggle and provider setup.
+  - **Provider recommendation** — Gemini Flash-Lite as the highest-accuracy/$ option for this task, with a link to https://aistudio.google.com/apikey for getting a free-tier key.
+  - **Accuracy expectations** — summary table from the two eval memos (episodic shows excellent, framing-device serialization weak), with shows-known-to-work and shows-known-to-struggle examples. Source: [[project_llm_episode_id_research]], [[project_llm_episode_id_gemini]].
+  - **Privacy** — explicit note that the cleaned transcript is sent to the configured AI provider over the network. Disabled by default.
+  - **Cost** — sub-cent-per-episode at Gemini Flash-Lite pricing; free tier suffices for typical home use.
+  - **Confirmation requirement** — the LLM never auto-organizes; results always route through the review queue.
+
+### Updated pages
+
+- **`docs/getting-started/configuration.md`** — add settings-reference entries for `ai_episode_matching_enabled` and the new `gemini` provider option. Cross-link to the new feature page and to the existing AI-disc-ID section.
+- **`docs/guide/review-queue.md`** — describe the LLM suggestion row (visually distinct from audio candidates) and the "Try AI match" button (when it appears, what it does, what to expect).
+- **`docs/api/rest.md`** — document `POST /api/titles/{title_id}/llm-match`: path params, response shape (`{"suggestion": LLMEpisodeMatch | null, "reason": str | null}`), error conditions.
+- **`mkdocs.yml`** — add the new feature page to the "User Guide" nav section.
+- **`README.md`** — one-line Features bullet near the existing "Audio fingerprint matching" bullet, gated on AI configuration being enabled.
+- **`CHANGELOG.md`** — `### Added` entry under the next unreleased version describing the user-visible behaviour: opt-in LLM episode-matching fallback with Gemini support, surfaces through the review queue.
+
+### Out of scope for docs (v1)
+
+- No screenshots — the review-queue spec image surface already covers the relevant area; new screenshots can come after first real-world use shapes the UI.
+- No deep-dive eval write-up in the public docs — the project-memory memos and the experiment harness in `artifacts/issue-109-llm-episode-id/` are sufficient internal references.
+
 ## Out of scope (explicit YAGNI for v1)
 
 - No prompt-engineering harness inside the app — the experiment harness in `artifacts/issue-109-llm-episode-id/` remains the reference.
