@@ -742,6 +742,7 @@ def fetch_season_episodes(show_id: str, season_number: int, api_key: str) -> lis
             "episode_number": ep.get("episode_number"),
             "name": ep.get("name") or "",
             "runtime": ep.get("runtime") or 0,
+            "overview": ep.get("overview") or "",
         }
         for ep in season_data.get("episodes", [])
         if ep.get("episode_number") is not None
