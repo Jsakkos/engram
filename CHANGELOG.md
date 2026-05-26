@@ -4,9 +4,27 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-26
+
+### Fixed
+- **Docker MakeMKV install failing on every container start** — the version-detection script scraped the MakeMKV download page for a Linux tarball link (`makemkv-bin-*.tar.gz`) that is no longer listed there; switched to the hash-file link (`makemkv-sha-*.txt`), which is present on every release and uses the same bare version format. Adds a `MAKEMKV_DETECT_ONLY=1` mode for CI verification and a nightly full-compile check workflow to catch future regressions. (#226)
+
+## [0.8.0] - 2026-05-26
+
 ### Added
 - **LLM episode matching (opt-in)** — when audio fingerprint matching can't confidently identify a TV episode, an LLM compares the cleaned transcript against the season's TMDB synopses and suggests an episode through the review queue. Supports Gemini, Anthropic, OpenAI, and OpenRouter providers (Gemini Flash-Lite recommended); shares the existing `ai_provider`/`ai_api_key` settings. Never auto-organizes — always requires user confirmation. (#109)
-- **Google Gemini provider** added to the AI provider list, usable by both AI title resolution and the new episode matcher.
+- **Google Gemini provider** added to the AI provider list, usable by both AI title resolution and the new LLM episode matcher.
+- **Docker / Linux container support** — official Docker image with a single-volume design (`/config` holds the database, logs, caches, and HF models). MakeMKV is compiled from source on first start to avoid redistribution restrictions; the stored MakeMKV license key is automatically seeded into MakeMKV's `settings.conf`. `docker-compose.yml` and full documentation included. (#193)
+- **LAN access toggle** — opt-in setting in Preferences that binds the server to `0.0.0.0` so the dashboard is reachable from other devices on the local network. Settings panel shows the LAN URL, a copy button, and a QR code; a "restart to apply" notice appears until the socket is rebound. The `HOST` environment variable still takes precedence for Docker / headless deployments. (#211)
+
+### Fixed
+- **TV extras tagging after organize failure** — if organizing an extras track failed (e.g. destination already exists), the `is_extra` flag was silently dropped and the UI showed the track as an ordinary completed episode instead of marking it with an EXTRA chip. (#224)
+- **Per-track deep re-match missing from inspector** — the v0.7 inspector redesign removed the per-track "Deep re-match" button for low-confidence titles; only the disc-level conflict re-match was preserved. Restored the per-track action and wired a `deep` flag through `RematchRequest` → `rematch_single_title` → matcher (stricter scan points and vote thresholds). (#224)
+- **Auto-escalation never fired for needs-review titles** — `_maybe_escalate_conflicts` only escalated episode collisions, not titles routed to REVIEW. Added `_maybe_escalate_reviews` on the same 10 → 25 → full-coverage ladder; separate pass counters for conflicts vs. reviews prevent them from clearing each other (which previously pinned the ladder at pass 1). (#224)
+- **Race condition on shared matcher temp files** — concurrent title threads writing `chunk_{start}_{dur}.wav` and `preprocessed_{stem}.wav` without a source-file disambiguator caused PyAV `InvalidDataError` when two threads sampled the same offset. Chunk and preprocessed paths now hash the canonical source path to keep them per-source. (#216)
+- **Stale precomputed-cache manifest entries** — when `manifest.json` claimed coverage for a show/season whose `.npz` was missing, the fallback warning fired once per title and the in-memory manifest was never corrected, causing repeated spurious warnings. Stale entries are now pruned from the manifest on detection. (#216)
+- **TF-IDF matcher reference-set reuse** — `TfidfMatcher` reused across calls with a different reference set (precomputed episode codes vs. scraped SRT paths) caused silent `KeyError` swallows that rejected every chunk. The matcher is rebuilt when its `reference_signature()` changes. (#216)
+- **Config dropdowns unreadable on Windows** — native `<select>` elements render with the OS-controlled light background on Windows, making options invisible against the dark Synapse v2 theme. Replaced all 7 config `<select>` elements with a new `EngramSelect` component built on Radix UI, which renders the popup as React DOM and respects theme tokens.
 
 ## [0.7.3] - 2026-05-25
 
