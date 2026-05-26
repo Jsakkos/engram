@@ -1927,6 +1927,7 @@ class ReassignRequest(BaseModel):
 
     episode_code: str
     edition: str | None = None
+    source: str = "user"
 
 
 class ReleaseGroupRequest(BaseModel):
@@ -2324,7 +2325,9 @@ async def reassign_episode(
     from app.services.job_manager import job_manager
 
     try:
-        await job_manager.reassign_episode(job.id, title_id, request.episode_code, request.edition)
+        await job_manager.reassign_episode(
+            job.id, title_id, request.episode_code, request.edition, source=request.source
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
 

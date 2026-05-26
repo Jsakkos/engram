@@ -775,3 +775,79 @@ class TestProcessMatchedGuard:
 
         detail = await client.get(f"/api/jobs/{job_id}")
         assert detail.json()["state"] == "review_needed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestReassignWithSource:
+    """Tests for the optional source parameter on episode reassignment."""
+
+    async def test_source_ai_llm_persisted(self, client):
+        """When source='ai_llm' is passed, it is stored on the title."""
+        async with async_session() as s:
+            job = DiscJob(
+                drive_id="TEST:",
+                volume_label="X_S1D1",
+                state=JobState.REVIEW_NEEDED,
+                content_type=ContentType.TV,
+            )
+            s.add(job)
+            await s.commit()
+            await s.refresh(job)
+            title = DiscTitle(
+                job_id=job.id,
+                title_index=0,
+                duration_seconds=1200,
+                state=TitleState.REVIEW,
+            )
+            s.add(title)
+            await s.commit()
+            await s.refresh(title)
+            job_id = job.id
+            title_id = title.id
+
+        r = await client.post(
+            f"/api/jobs/{job_id}/titles/{title_id}/reassign",
+            json={"episode_code": "S01E03", "source": "ai_llm"},
+        )
+        assert r.status_code == 200
+
+        async with async_session() as s:
+            refreshed = await s.get(DiscTitle, title_id)
+            assert refreshed.matched_episode == "S01E03"
+            assert refreshed.match_source == "ai_llm"
+
+    async def test_source_defaults_to_user(self, client):
+        """When source is omitted, match_source defaults to 'user'."""
+        async with async_session() as s:
+            job = DiscJob(
+                drive_id="TEST:",
+                volume_label="Y_S1D1",
+                state=JobState.REVIEW_NEEDED,
+                content_type=ContentType.TV,
+            )
+            s.add(job)
+            await s.commit()
+            await s.refresh(job)
+            title = DiscTitle(
+                job_id=job.id,
+                title_index=0,
+                duration_seconds=1200,
+                state=TitleState.REVIEW,
+            )
+            s.add(title)
+            await s.commit()
+            await s.refresh(title)
+            job_id = job.id
+            title_id = title.id
+
+        r = await client.post(
+            f"/api/jobs/{job_id}/titles/{title_id}/reassign",
+            json={"episode_code": "S01E05"},
+        )
+        assert r.status_code == 200
+
+        async with async_session() as s:
+            refreshed = await s.get(DiscTitle, title_id)
+            assert refreshed.matched_episode == "S01E05"
+            assert refreshed.match_source == "user"

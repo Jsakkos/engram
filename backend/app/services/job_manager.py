@@ -842,8 +842,14 @@ class JobManager:
         title_id: int,
         episode_code: str,
         edition: str | None = None,
+        source: str = "user",
     ) -> None:
-        """Manually reassign an episode for a title. Sets match_source='user'."""
+        """Manually reassign an episode for a title.
+
+        ``source`` defaults to "user" (manual reassignment). When the user
+        accepts an LLM suggestion via the review UI, pass source="ai_llm" so
+        downstream consumers can distinguish that path.
+        """
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)
             if not title or title.job_id != job_id:
@@ -851,7 +857,7 @@ class JobManager:
 
             title.matched_episode = episode_code
             title.match_confidence = 1.0
-            title.match_source = "user"
+            title.match_source = source
             if edition is not None:
                 title.edition = edition
             if title.state != TitleState.MATCHED:
@@ -865,10 +871,12 @@ class JobManager:
                 TitleState.MATCHED.value,
                 matched_episode=episode_code,
                 match_confidence=1.0,
-                match_source="user",
+                match_source=source,
             )
 
-        logger.info(f"Job {job_id}: title {title_id} manually reassigned to {episode_code}")
+        logger.info(
+            f"Job {job_id}: title {title_id} reassigned to {episode_code} (source={source})"
+        )
 
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
