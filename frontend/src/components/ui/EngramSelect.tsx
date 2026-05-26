@@ -26,6 +26,7 @@ export function EngramSelect({ id, value, onValueChange, options, disabled }: En
             </Select.Trigger>
             <Select.Portal>
                 <Select.Content className="sv-select-content" position="popper" sideOffset={4}>
+                    <Select.ScrollUpButton className="sv-select-scroll-btn">▴</Select.ScrollUpButton>
                     <Select.Viewport>
                         {options.map((opt) => (
                             <Select.Item key={opt.value} value={opt.value} className="sv-select-item">
@@ -34,6 +35,7 @@ export function EngramSelect({ id, value, onValueChange, options, disabled }: En
                             </Select.Item>
                         ))}
                     </Select.Viewport>
+                    <Select.ScrollDownButton className="sv-select-scroll-btn">▾</Select.ScrollDownButton>
                 </Select.Content>
             </Select.Portal>
         </Select.Root>

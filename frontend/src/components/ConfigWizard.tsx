@@ -789,7 +789,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                             <EngramSelect
                                                 id="discdbContributionTier"
                                                 value={String(config.discdbContributionTier)}
-                                                onValueChange={(v) => handleInputChange('discdbContributionTier', parseInt(v))}
+                                                onValueChange={(v) => handleInputChange('discdbContributionTier', parseInt(v, 10))}
                                                 options={[
                                                     { value: '2', label: 'Automatic — share auto-collected data' },
                                                     { value: '3', label: 'Full — prompt for UPC and images' },
