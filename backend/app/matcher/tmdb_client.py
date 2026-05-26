@@ -96,7 +96,7 @@ def _tmdb_auth(api_key: str) -> tuple[dict, dict]:
     return headers, params
 
 
-_TMDB_API_HOST = "api.themoviedb.org"
+_TMDB_ALLOWED_HOSTS = frozenset({"api.themoviedb.org"})
 
 
 def _tmdb_get_json(url: str, api_key: str, query_params: dict | None = None) -> dict | None:
@@ -105,28 +105,25 @@ def _tmdb_get_json(url: str, api_key: str, query_params: dict | None = None) -> 
     Returns None if the request fails (logs the error). Raises nothing —
     callers supply their own default return value.
 
-    Guards against SSRF: the URL is parsed and rebuilt from a fixed
-    ``https://api.themoviedb.org`` base plus the parsed path/query, so
-    a corrupted show/season id interpolated into the URL string can never
-    redirect the request to another host. ``urlparse`` + explicit host check
-    is the CodeQL-recognised taint barrier for py/partial-ssrf.
+    Guards against SSRF: the URL hostname must be in the allowlist
+    ``_TMDB_ALLOWED_HOSTS``. Callers in this module build URLs from
+    f-strings interpolating show/season IDs; the hostname allowlist check is
+    the CodeQL-recognised taint barrier for py/partial-ssrf (set-membership
+    against a literal frozenset).
     """
     parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.netloc != _TMDB_API_HOST:
-        logger.error(f"TMDB request rejected: URL host is not {_TMDB_API_HOST}")
+    if parsed.scheme != "https" or parsed.hostname not in _TMDB_ALLOWED_HOSTS:
+        logger.error("TMDB request rejected: URL host is not in allowlist")
         return None
-    safe_url = f"https://{_TMDB_API_HOST}{parsed.path}"
-    if parsed.query:
-        safe_url = f"{safe_url}?{parsed.query}"
     headers, params = _tmdb_auth(api_key)
     if query_params:
         params.update(query_params)
     try:
-        response = requests.get(safe_url, headers=headers, params=params, timeout=30)
+        response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        logger.error(f"TMDB request failed for {safe_url}: {e}")
+        logger.error(f"TMDB request failed for {url}: {e}")
         return None
 
 
