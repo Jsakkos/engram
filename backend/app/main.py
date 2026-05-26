@@ -46,6 +46,14 @@ async def lifespan(app: FastAPI):
 
     config = await get_config()
 
+    # Reconcile a stored MakeMKV key into MakeMKV's settings.conf on boot so
+    # makemkvcon is registered even if the key was entered before this bridge
+    # existed (idempotent — skips the write when already in sync).
+    if config.makemkv_key:
+        from app.core.makemkv_registration import write_makemkv_settings
+
+        await asyncio.to_thread(write_makemkv_settings, config.makemkv_key)
+
     # Auto-detect MakeMKV if path is empty
     if not config.makemkv_path:
         makemkv_result = await asyncio.to_thread(detect_makemkv)

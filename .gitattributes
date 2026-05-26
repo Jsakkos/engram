@@ -1,0 +1,6 @@
+# Shell scripts must use LF so they run inside Linux containers — a CRLF in the
+# shebang line breaks execution ("bad interpreter").
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf
+docker/install-makemkv.sh text eol=lf
+Dockerfile text eol=lf

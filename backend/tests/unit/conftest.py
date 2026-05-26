@@ -108,6 +108,14 @@ async def isolate_database(monkeypatch):
     monkeypatch.setattr(_config_mod, "_sync_engine", _unit_sync_engine)
     monkeypatch.setattr(_config_mod, "_get_sync_engine", lambda: _unit_sync_engine)
 
+    # Neutralize MakeMKV settings.conf writes so tests that save a makemkv_key
+    # never touch the developer's real ~/.MakeMKV/settings.conf. config_service
+    # imports this lazily, so patching the source attribute is enough. Tests in
+    # test_makemkv_registration.py bind the real function at import and pass
+    # explicit tmp paths, so they're unaffected.
+    _reg_mod = importlib.import_module("app.core.makemkv_registration")
+    monkeypatch.setattr(_reg_mod, "write_makemkv_settings", lambda *a, **k: False)
+
     yield
 
     async with _unit_engine.begin() as conn:

@@ -1,0 +1,30 @@
+# Keep the build context small and free of host-only / secret artifacts.
+
+# Python
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+# The dev database holds API keys/credentials — never bake it into an image.
+backend/engram.db
+backend/engram.db-*
+backend/.engram
+
+# Build outputs (regenerated inside the image)
+frontend/node_modules
+frontend/dist
+backend/dist
+backend/build
+backend/*.spec
+
+# Repo tooling / docs / local junk
+.git
+.github
+.claude
+artifacts/
+docs/
+*.log
+*.png

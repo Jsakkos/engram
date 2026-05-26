@@ -122,6 +122,24 @@ npm run dev
 
 Open http://localhost:5173 in your browser. See the [installation guide](docs/getting-started/installation.md) for distro-specific prerequisites and verification steps.
 
+### Option C: Docker (Linux)
+
+Run Engram as a container with the optical drive passed through from the host:
+
+```bash
+git clone https://github.com/Jsakkos/engram.git
+cd engram
+# Set MAKEMKV_APP_KEY (and PUID/PGID) in docker-compose.yml, then:
+docker compose up -d
+```
+
+Open http://localhost:8000 and complete the setup wizard. MakeMKV is compiled
+into the `./config` volume on first start (one-time), so the image itself ships
+no MakeMKV binaries. Optical-disc ripping requires a real Linux host with a
+drive — Docker Desktop on Windows/macOS can run the UI but can't pass through
+`/dev/sr0`. See the [Docker deployment guide](docs/deployment/docker.md) for
+volumes, device passthrough, GPU notes, and troubleshooting.
+
 ## Configuration
 
 On first launch the Config Wizard walks you through setup: MakeMKV path, library paths, TMDB token, and more. Settings are stored in the database and editable from the Settings page.

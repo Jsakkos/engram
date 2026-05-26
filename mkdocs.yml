@@ -62,6 +62,8 @@ nav:
     - Review Queue: guide/review-queue.md
     - Job History: guide/history.md
     - LLM Episode Matcher: guide/llm-episode-matcher.md
+  - Deployment:
+    - Docker (Linux): deployment/docker.md
   - Architecture:
     - Overview: architecture/overview.md
     - State Machine: architecture/state-machine.md
