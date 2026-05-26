@@ -2,6 +2,8 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [Unreleased]
+
 ## [0.8.0] - 2026-05-26
 
 ### Added
