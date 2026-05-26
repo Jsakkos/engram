@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
+import { EngramSelect } from './ui/EngramSelect';
 import './ConfigWizard.css';
 
 interface ConfigWizardProps {
@@ -718,16 +719,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             <>
                                 <div className="form-group">
                                     <label htmlFor="aiProvider">AI Provider</label>
-                                    <select
+                                    <EngramSelect
                                         id="aiProvider"
                                         value={config.aiProvider}
-                                        onChange={(e) => handleInputChange('aiProvider', e.target.value)}
-                                    >
-                                        <option value="anthropic">Anthropic (Claude)</option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="openrouter">OpenRouter</option>
-                                        <option value="gemini">Google Gemini</option>
-                                    </select>
+                                        onValueChange={(v) => handleInputChange('aiProvider', v)}
+                                        options={[
+                                            { value: 'anthropic', label: 'Anthropic (Claude)' },
+                                            { value: 'openai', label: 'OpenAI' },
+                                            { value: 'openrouter', label: 'OpenRouter' },
+                                            { value: 'gemini', label: 'Google Gemini' },
+                                        ]}
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label htmlFor="aiApiKey">
@@ -784,14 +786,15 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     <>
                                         <div className="form-group">
                                             <label htmlFor="discdbContributionTier">Contribution Level</label>
-                                            <select
+                                            <EngramSelect
                                                 id="discdbContributionTier"
-                                                value={config.discdbContributionTier}
-                                                onChange={(e) => handleInputChange('discdbContributionTier', parseInt(e.target.value))}
-                                            >
-                                                <option value={2}>Automatic — share auto-collected data</option>
-                                                <option value={3}>Full — prompt for UPC and images</option>
-                                            </select>
+                                                value={String(config.discdbContributionTier)}
+                                                onValueChange={(v) => handleInputChange('discdbContributionTier', parseInt(v))}
+                                                options={[
+                                                    { value: '2', label: 'Automatic — share auto-collected data' },
+                                                    { value: '3', label: 'Full — prompt for UPC and images' },
+                                                ]}
+                                            />
                                         </div>
 
                                         <div className="form-group">
@@ -839,16 +842,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="conflictResolution">Default Conflict Resolution</label>
-                            <select
+                            <EngramSelect
                                 id="conflictResolution"
                                 value={config.conflictResolutionDefault}
-                                onChange={(e) => handleInputChange('conflictResolutionDefault', e.target.value)}
-                            >
-                                <option value="ask">Always ask me</option>
-                                <option value="rename">Automatically rename (keep both)</option>
-                                <option value="overwrite">Automatically overwrite</option>
-                                <option value="skip">Automatically skip</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('conflictResolutionDefault', v)}
+                                options={[
+                                    { value: 'ask', label: 'Always ask me' },
+                                    { value: 'rename', label: 'Automatically rename (keep both)' },
+                                    { value: 'overwrite', label: 'Automatically overwrite' },
+                                    { value: 'skip', label: 'Automatically skip' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 What should Engram do when a file already exists in your library?
                             </span>
@@ -856,16 +860,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="stagingCleanup">Staging Cleanup Policy</label>
-                            <select
+                            <EngramSelect
                                 id="stagingCleanup"
                                 value={config.stagingCleanupPolicy}
-                                onChange={(e) => handleInputChange('stagingCleanupPolicy', e.target.value)}
-                            >
-                                <option value="on_success">Clean on success (delete after organization)</option>
-                                <option value="on_completion">Clean on completion (delete after success or failure)</option>
-                                <option value="after_days">Clean after N days</option>
-                                <option value="manual">Manual only (never auto-delete)</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('stagingCleanupPolicy', v)}
+                                options={[
+                                    { value: 'on_success', label: 'Clean on success (delete after organization)' },
+                                    { value: 'on_completion', label: 'Clean on completion (delete after success or failure)' },
+                                    { value: 'after_days', label: 'Clean after N days' },
+                                    { value: 'manual', label: 'Manual only (never auto-delete)' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 When should staging files be automatically deleted? A single Blu-ray rip can be 30-50GB.
                             </span>
@@ -890,14 +895,15 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="watchdogEnabled">Stale-Job Watchdog</label>
-                            <select
+                            <EngramSelect
                                 id="watchdogEnabled"
                                 value={config.watchdogEnabled ? 'on' : 'off'}
-                                onChange={(e) => handleInputChange('watchdogEnabled', e.target.value === 'on')}
-                            >
-                                <option value="on">Enabled (auto-advance stuck jobs)</option>
-                                <option value="off">Disabled</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('watchdogEnabled', v === 'on')}
+                                options={[
+                                    { value: 'on', label: 'Enabled (auto-advance stuck jobs)' },
+                                    { value: 'off', label: 'Disabled' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 When a job stops making progress for longer than its phase timeout, Engram
                                 resolves the stuck tracks (ripped-but-unmatched → review) and moves the job
@@ -955,15 +961,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="extrasPolicy">Extras Handling</label>
-                            <select
+                            <EngramSelect
                                 id="extrasPolicy"
                                 value={config.extrasPolicy}
-                                onChange={(e) => handleInputChange('extrasPolicy', e.target.value)}
-                            >
-                                <option value="keep">Keep all extras (organize to Extras/ folder)</option>
-                                <option value="skip">Skip extras (discard after ripping)</option>
-                                <option value="ask">Ask me (show in Review Queue)</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
+                                options={[
+                                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
+                                    { value: 'skip', label: 'Skip extras (discard after ripping)' },
+                                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 How to handle bonus content that doesn&apos;t match any episode runtime.
                             </span>
@@ -971,7 +978,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="namingConvention">Naming Convention</label>
-                            <select
+                            <EngramSelect
                                 id="namingConvention"
                                 value={
                                     NAMING_PRESETS.find(
@@ -980,19 +987,20 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                             p.episodeFormat === config.namingEpisodeFormat,
                                     )?.id ?? 'custom'
                                 }
-                                onChange={(e) => {
-                                    const preset = NAMING_PRESETS.find((p) => p.id === e.target.value);
+                                onValueChange={(v) => {
+                                    const preset = NAMING_PRESETS.find((p) => p.id === v);
                                     if (preset) {
                                         handleInputChange('namingSeasonFormat', preset.seasonFormat);
                                         handleInputChange('namingEpisodeFormat', preset.episodeFormat);
                                     }
                                 }}
-                            >
-                                <option value="plex">Plex (Season 01 / Show - S01E01)</option>
-                                <option value="kodi">Kodi (Season 1 / Show - S01E01)</option>
-                                <option value="minimal">Minimal (S01 / Show - S01E01)</option>
-                                <option value="custom">Custom</option>
-                            </select>
+                                options={[
+                                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
+                                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
+                                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
+                                    { value: 'custom', label: 'Custom' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
                             </span>
