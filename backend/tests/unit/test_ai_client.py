@@ -124,3 +124,136 @@ class TestCompleteJsonOpenRouter:
         assert call.args[0] == "https://openrouter.ai/api/v1/chat/completions"
         body = call.kwargs["json"]
         assert body["model"] == "anthropic/claude-haiku-4-5-20251001"
+
+
+class TestCompleteJsonGemini:
+    @pytest.mark.asyncio
+    async def test_gemini_success(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(
+            {
+                "candidates": [
+                    {"content": {"parts": [{"text": '{"episode": 3, "confidence": 0.95}'}]}}
+                ]
+            }
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="match this episode",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "episode": {"type": "integer"},
+                        "confidence": {"type": "number"},
+                    },
+                    "required": ["episode", "confidence"],
+                },
+                provider="gemini",
+                api_key="AIzaSy-x",
+            )
+
+        assert result == {"episode": 3, "confidence": 0.95}
+        call = mock.post.await_args
+        url = call.args[0]
+        assert url.startswith(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+        )
+        assert call.kwargs["headers"]["x-goog-api-key"] == "AIzaSy-x"
+
+        body = call.kwargs["json"]
+        gen_cfg = body["generationConfig"]
+        assert gen_cfg["responseMimeType"] == "application/json"
+        assert gen_cfg["responseSchema"]["properties"]["episode"]["type"] == "integer"
+        assert body["contents"][0]["parts"][0]["text"] == "match this episode"
+
+    @pytest.mark.asyncio
+    async def test_gemini_no_schema_still_works(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"candidates": [{"content": {"parts": [{"text": '{"x": 1}'}]}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x", schema=None, provider="gemini", api_key="AIzaSy-x"
+            )
+
+        assert result == {"x": 1}
+        body = mock.post.await_args.kwargs["json"]
+        gen_cfg = body["generationConfig"]
+        assert gen_cfg["responseMimeType"] == "application/json"
+        assert "responseSchema" not in gen_cfg
+
+    @pytest.mark.asyncio
+    async def test_gemini_empty_candidates_returns_none(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"candidates": []})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(prompt="x", schema=None, provider="gemini", api_key="k")
+
+        assert result is None
+
+
+class TestRateLimitRetry:
+    @pytest.mark.asyncio
+    async def test_429_then_success(self):
+        from httpx import HTTPStatusError, Request, Response
+
+        from app.core.ai_client import complete_json
+
+        bad_resp = MagicMock()
+        bad_resp.status_code = 429
+        req = Request("POST", "http://x")
+        bad_resp.raise_for_status.side_effect = HTTPStatusError(
+            "429", request=req, response=Response(429, request=req)
+        )
+        bad_resp.json.return_value = {}
+
+        good_resp = MagicMock()
+        good_resp.status_code = 200
+        good_resp.raise_for_status = MagicMock()
+        good_resp.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": '{"ok": true}'}]}}]
+        }
+
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(side_effect=[bad_resp, good_resp])
+
+        with (
+            patch("app.core.ai_client.httpx.AsyncClient", return_value=client),
+            patch("app.core.ai_client.asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await complete_json(prompt="x", schema=None, provider="gemini", api_key="k")
+
+        assert result == {"ok": True}
+        assert client.post.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_429_exhausted_returns_none(self):
+        from httpx import HTTPStatusError, Request, Response
+
+        from app.core.ai_client import complete_json
+
+        bad_resp = MagicMock()
+        bad_resp.status_code = 429
+        req = Request("POST", "http://x")
+        bad_resp.raise_for_status.side_effect = HTTPStatusError(
+            "429", request=req, response=Response(429, request=req)
+        )
+        bad_resp.json.return_value = {}
+
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=bad_resp)
+
+        with (
+            patch("app.core.ai_client.httpx.AsyncClient", return_value=client),
+            patch("app.core.ai_client.asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await complete_json(prompt="x", schema=None, provider="gemini", api_key="k")
+
+        assert result is None
+        assert client.post.await_count == 4  # initial + 3 retries

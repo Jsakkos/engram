@@ -6,8 +6,10 @@ authentication and structured-JSON convention (prompt-only for anthropic,
 response_format for openai/openrouter, responseSchema for gemini).
 """
 
+import asyncio
 import json
 import logging
+import random
 
 import httpx
 
@@ -26,6 +28,27 @@ DEFAULT_MODELS = {
 }
 
 _TIMEOUT_SECONDS = 30.0
+
+MAX_RETRIES = 3
+_BACKOFF_BASE = 1.0  # seconds
+
+
+async def _with_429_retry(coro_factory):
+    """Call coro_factory() up to MAX_RETRIES+1 times, backing off on 429.
+
+    coro_factory must be a no-arg callable returning a fresh coroutine each call.
+    """
+    delay = _BACKOFF_BASE
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            return await coro_factory()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 429 or attempt == MAX_RETRIES:
+                raise
+            jitter = random.uniform(0, 0.25 * delay)
+            await asyncio.sleep(delay + jitter)
+            delay *= 2
+    return None
 
 
 async def complete_json(
@@ -51,19 +74,32 @@ async def complete_json(
         logger.warning("Unknown AI provider: %s", provider)
         return None
 
-    try:
-        if provider == "anthropic":
-            return await _call_anthropic(prompt, api_key, model, max_tokens)
-        if provider == "openai":
-            return await _call_openai_compatible(
+    if provider == "anthropic":
+
+        def factory():
+            return _call_anthropic(prompt, api_key, model, max_tokens)
+    elif provider == "openai":
+
+        def factory():
+            return _call_openai_compatible(
                 prompt, api_key, OPENAI_API_URL, model, max_tokens, schema
             )
-        if provider == "openrouter":
-            return await _call_openai_compatible(
+    elif provider == "openrouter":
+
+        def factory():
+            return _call_openai_compatible(
                 prompt, api_key, OPENROUTER_API_URL, model, max_tokens, schema
             )
+    elif provider == "gemini":
+
+        def factory():
+            return _call_gemini(prompt, api_key, model, max_tokens, schema)
+    else:
         logger.warning("Unsupported AI provider: %s", provider)
         return None
+
+    try:
+        return await _with_429_retry(factory)
     except httpx.HTTPError as e:
         logger.warning("AI provider %s HTTP error: %s", provider, e, exc_info=True)
         return None
@@ -142,4 +178,46 @@ async def _call_openai_compatible(
         if not choices:
             return None
         text = choices[0].get("message", {}).get("content", "")
+        return _parse_json_text(text)
+
+
+async def _call_gemini(
+    prompt: str,
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    schema: dict | None,
+) -> dict | None:
+    url = f"{GEMINI_API_BASE}/{model}:generateContent"
+    generation_config: dict = {
+        "responseMimeType": "application/json",
+        "maxOutputTokens": max_tokens,
+        "temperature": 0,
+    }
+    if schema is not None:
+        generation_config["responseSchema"] = schema
+
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": generation_config,
+    }
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+        resp = await client.post(
+            url,
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json=body,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        candidates = data.get("candidates") or []
+        if not candidates:
+            return None
+        parts = candidates[0].get("content", {}).get("parts") or []
+        if not parts:
+            return None
+        text = parts[0].get("text", "")
         return _parse_json_text(text)
