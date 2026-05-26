@@ -313,6 +313,12 @@ class MatchingCoordinator:
 
             await ws_manager.broadcast_title_update(job_id, title.id, TitleState.MATCHING.value)
 
+        # Reset the stale-job watchdog clock at dispatch so a (deep) re-match —
+        # especially an auto-escalation that holds the job in MATCHING — isn't
+        # force-advanced during the setup window before the first progress signal.
+        if self._note_activity:
+            self._note_activity(job_id)
+
         # Fire-and-forget: matching runs in background, progress via WebSocket
         match_task = asyncio.create_task(
             self.match_single_file(job_id, title_id, file_path, num_points, min_vote_count)
@@ -489,9 +495,14 @@ class MatchingCoordinator:
                             if handled:
                                 return
                 except Exception as e:
+                    # Surface the full traceback: a silently-failing TMDB runtime
+                    # fetch here disables automatic extras detection (the pre-filter
+                    # is the only thing that flags non-episode bonus tracks before
+                    # the matcher tries to force them onto an episode).
                     logger.warning(
                         f"[MATCH] Title {title_id} (Job {job_id}): duration pre-filter failed: {e}. "
-                        f"Proceeding with matching normally."
+                        f"Proceeding with matching normally.",
+                        exc_info=True,
                     )
 
         # 5. Acquire semaphore to limit concurrent matching
@@ -623,15 +634,38 @@ class MatchingCoordinator:
 
                 elapsed = time.monotonic() - match_start
 
+                # Race guard: if the title was force-advanced or per-track-skipped
+                # while this match was running, respect that decision — don't clobber
+                # match_details (which would wipe the forced_review flag and let the
+                # review-escalation re-dispatch the title, manifesting as
+                # "Skip/Force does nothing").
+                if title.match_details:
+                    try:
+                        existing = json.loads(title.match_details)
+                    except (json.JSONDecodeError, TypeError):
+                        existing = None
+                    if isinstance(existing, dict) and existing.get("forced_review"):
+                        logger.info(
+                            f"[MATCH] Title {title_id} (Job {job_id}): force-advanced during "
+                            f"match ({elapsed:.1f}s) — leaving title untouched."
+                        )
+                        await self._check_job_completion(session, job_id)
+                        return
+
                 # Update title with match result
                 title.matched_episode = result.episode_code
                 title.match_confidence = result.confidence
 
                 if result.needs_review:
-                    if result.episode_code:
-                        title.state = TitleState.MATCHED
-                    else:
-                        title.state = TitleState.REVIEW
+                    # A low-confidence result always goes to REVIEW — even when the
+                    # matcher emits a best-guess episode code. Auto-organizing a
+                    # borderline guess silently mis-files content (e.g. a bonus
+                    # track that slipped past the duration pre-filter lands on the
+                    # wrong episode instead of being flagged as an extra). The
+                    # auto review-escalation deep re-matches it next; if it still
+                    # can't resolve, the user decides. matched_episode is kept as
+                    # the inspector's starting suggestion.
+                    title.state = TitleState.REVIEW
 
                     logger.info(
                         f"[MATCH] Title {title_id} (Job {job_id}): needs review — "
@@ -818,6 +852,11 @@ class MatchingCoordinator:
             )
         else:
             title.state = TitleState.COMPLETED
+            # The duration pre-filter already classified this as an extra; the
+            # only thing that failed is the file move (e.g. destination exists
+            # from a previous rip). Tag it so the UI still shows EXTRA — without
+            # this, a re-run hides the chip on every collided extra.
+            title.is_extra = True
             title.match_details = json.dumps(
                 {
                     "auto_sorted": "extras",

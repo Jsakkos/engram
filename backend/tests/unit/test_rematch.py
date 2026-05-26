@@ -159,6 +159,30 @@ async def test_rematch_title_with_engram_clears_and_rematches(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
+async def test_rematch_engram_pings_watchdog_clock(monkeypatch, tmp_path):
+    """Engram re-match dispatch pings note_activity so the stale-job watchdog
+    doesn't force-advance a job that is actively (deep) re-matching."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    fake_file = staging_dir / "title_t00.mkv"
+    fake_file.touch()
+
+    job, title = await _seed_job_and_title(
+        staging_path=str(staging_dir),
+        output_filename=str(fake_file),
+    )
+
+    coordinator = _make_coordinator(monkeypatch)
+    coordinator.match_single_file = AsyncMock()
+    pinged: list[int] = []
+    coordinator._note_activity = lambda jid: pinged.append(jid)
+
+    await coordinator.rematch_single_title(job.id, title.id, source_preference="engram")
+
+    assert job.id in pinged
+
+
+@pytest.mark.asyncio
 async def test_rematch_title_missing_file_raises(monkeypatch):
     """rematch_single_title raises ValueError when staging file doesn't exist."""
     job, title = await _seed_job_and_title(
@@ -170,6 +194,52 @@ async def test_rematch_title_missing_file_raises(monkeypatch):
 
     with pytest.raises(ValueError, match="[Ss]taging file"):
         await coordinator.rematch_single_title(job.id, title.id, source_preference="engram")
+
+
+@pytest.mark.asyncio
+async def test_rematch_single_title_deep_uses_strict_params(monkeypatch):
+    """job_manager.rematch_single_title(deep=True) threads STRICT scan params."""
+    from app.services.job_manager import job_manager
+    from app.services.matching_coordinator import STRICT_MIN_VOTES, STRICT_SCAN_POINTS
+
+    captured: dict = {}
+
+    async def _capture(
+        job_id, title_id, source_preference=None, num_points=None, min_vote_count=None
+    ):
+        captured.update(
+            source_preference=source_preference,
+            num_points=num_points,
+            min_vote_count=min_vote_count,
+        )
+
+    monkeypatch.setattr(job_manager._matching, "rematch_single_title", _capture)
+
+    await job_manager.rematch_single_title(7, 3, source_preference="engram", deep=True)
+
+    assert captured["num_points"] == STRICT_SCAN_POINTS
+    assert captured["min_vote_count"] == STRICT_MIN_VOTES
+    assert captured["source_preference"] == "engram"
+
+
+@pytest.mark.asyncio
+async def test_rematch_single_title_shallow_keeps_defaults(monkeypatch):
+    """Without deep, rematch_single_title leaves matcher params at their defaults."""
+    from app.services.job_manager import job_manager
+
+    captured: dict = {}
+
+    async def _capture(
+        job_id, title_id, source_preference=None, num_points=None, min_vote_count=None
+    ):
+        captured.update(num_points=num_points, min_vote_count=min_vote_count)
+
+    monkeypatch.setattr(job_manager._matching, "rematch_single_title", _capture)
+
+    await job_manager.rematch_single_title(7, 3, source_preference="engram")
+
+    assert captured["num_points"] is None
+    assert captured["min_vote_count"] is None
 
 
 @pytest.mark.asyncio

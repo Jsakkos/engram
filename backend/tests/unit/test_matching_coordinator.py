@@ -137,6 +137,11 @@ class TestHandleExtras:
                 job.id, title.id, title, job, tmp_path / "x.mkv", 10.0, [22, 44], session
             )
             assert title.state == TitleState.COMPLETED
+            # The title IS an extra — the duration pre-filter classified it as one;
+            # the move just failed (e.g. destination already exists from a previous
+            # rip). The UI should still show it as EXTRA, not as a vanilla completed
+            # track. Without this flag, the chip silently disappears.
+            assert title.is_extra is True
             assert json.loads(title.match_details)["organize_error"] == "boom"
 
 

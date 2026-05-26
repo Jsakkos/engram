@@ -81,6 +81,9 @@ class JobResponse(BaseModel):
     subtitles_total: int | None = None
     subtitles_failed: int | None = None
     review_reason: str | None = None
+    # Transient auto-resolution note set during conflict / review escalation
+    # (e.g. "Resolving episode conflicts — pass 2 of 3"). Cleared on resolution.
+    conflict_status: str | None = None
     created_at: datetime | str | None = None
 
     model_config = {"from_attributes": True}
@@ -151,6 +154,10 @@ class JobDetailResponse(BaseModel):
     disc_number: int = 1
     error_message: str | None = None
     review_reason: str | None = None
+    # Transient auto-resolution note (e.g. "Resolving episode conflicts — pass 2 of 3"
+    # / "Deep re-matching low-confidence titles — pass 1 of 3"). Set while the
+    # finalization coordinator is auto-escalating; cleared on resolution.
+    conflict_status: str | None = None
     # Classification
     classification_source: str = "heuristic"
     classification_confidence: float = 0.0
@@ -638,6 +645,7 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "disc_number": job.disc_number,
         "error_message": job.error_message,
         "review_reason": job.review_reason,
+        "conflict_status": job.conflict_status,
         "classification_source": job.classification_source,
         "classification_confidence": job.classification_confidence,
         "tmdb_id": job.tmdb_id,
@@ -1920,6 +1928,7 @@ class RematchRequest(BaseModel):
     """Request model for re-matching titles."""
 
     source_preference: Literal["discdb", "engram"] | None = None
+    deep: bool = False
 
 
 class ReassignRequest(BaseModel):
@@ -2247,7 +2256,9 @@ async def rematch_title(
     from app.services.job_manager import job_manager
 
     try:
-        await job_manager.rematch_single_title(job.id, title_id, request.source_preference)
+        await job_manager.rematch_single_title(
+            job.id, title_id, request.source_preference, deep=request.deep
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
 

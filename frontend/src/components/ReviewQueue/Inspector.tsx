@@ -64,7 +64,7 @@ export function Inspector({
     aiEpisodeMatchingEnabled: boolean;
     onAssign: (code: string) => void;
     onAction: (action: TitleAction) => void;
-    onRematch: (titleId: number, source: string) => void;
+    onRematch: (titleId: number, source: string, deep?: boolean) => void;
     onDeepRematch: (episodeCode: string) => void;
     onTryLLMMatch: (titleId: number) => void;
     onAcceptLLMSuggestion: (titleId: number, episodeNumber: number) => void;
@@ -356,6 +356,20 @@ export function Inspector({
                             Try AI match
                         </SvActionButton>
                     )}
+                    {/* Per-track deep re-match — re-run the matcher on just this title
+                        at strict depth/votes (distinct from the conflict banner, which
+                        re-matches every title claiming the contested episode). */}
+                    <SvActionButton
+                        tone="magenta"
+                        size="sm"
+                        onClick={() => onRematch(title.id, 'engram', true)}
+                        disabled={isRematching}
+                        title="Deep re-match this track (denser sampling + stricter votes)"
+                        ariaLabel="Deep re-match this track"
+                    >
+                        <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
+                        <span style={{ marginLeft: 6 }}>Re-match</span>
+                    </SvActionButton>
                     {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
                         <SvActionButton
                             tone="magenta"
