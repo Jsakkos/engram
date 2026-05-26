@@ -115,6 +115,12 @@ When you submit a review (TV or movie), the following happens:
     - **TV**: `TV/Show/Season XX/Show - SXXEXX.mkv`
 5. The dashboard card updates in real time as organization proceeds, and the job moves to `COMPLETED` when finished.
 
+## AI Suggestion Row
+
+When [AI-Powered Episode Matching](llm-episode-matcher.md) is enabled and a title falls into review, you'll see a cyan **AI** badge with the suggested episode, the LLM's confidence, and a one-sentence rationale. Click **Accept AI suggestion** to confirm — this routes through the same reassignment path as manual confirmation and is recorded with `match_source = "ai_llm"`.
+
+Even when the auto-fallback hasn't run, you can click **Try AI match** on any title in review to trigger the LLM matcher on demand.
+
 ## Error Handling
 
 If the review submission fails (network error, backend unavailable), an error banner appears at the top of the review page with the specific error message. You can retry without losing your selections -- all state is maintained locally until a successful submission.

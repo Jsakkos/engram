@@ -2,6 +2,12 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **LLM episode matching (opt-in)** — when audio fingerprint matching can't confidently identify a TV episode, an LLM compares the cleaned transcript against the season's TMDB synopses and suggests an episode through the review queue. Supports Gemini, Anthropic, OpenAI, and OpenRouter providers (Gemini Flash-Lite recommended); shares the existing `ai_provider`/`ai_api_key` settings. Never auto-organizes — always requires user confirmation. (#109)
+- **Google Gemini provider** added to the AI provider list, usable by both AI title resolution and the new episode matcher.
+
 ## [0.7.3] - 2026-05-25
 
 ### Fixed

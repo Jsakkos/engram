@@ -40,6 +40,7 @@
 - **Automatic disc detection** — monitors optical drives and starts processing on insertion
 - **Smart classification** — distinguishes TV shows from movies using duration analysis, TMDB lookup, and TheDiscDB; uses the MakeMKV disc name as a TMDB fallback for merged-word volume labels (e.g. `STRANGENEWWORLDS_SEASON3`)
 - **Audio fingerprint matching** — identifies TV episodes via ASR transcription matched against subtitles
+- **LLM episode matching (opt-in)** — when audio matching is uncertain, send the transcript + TMDB synopses to your configured AI provider for a suggested episode (Gemini, Anthropic, OpenAI, or OpenRouter). Always confirmed via the review queue.
 - **Subtitle downloads** — fetches subtitles via the OpenSubtitles.com REST API (preferred, free tier available) with Addic7ed as fallback
 - **Real-time dashboard** — web UI with WebSocket live updates, progress tracking, and notifications
 - **Human-in-the-loop** — review queue for low-confidence matches, unreadable disc labels, and ambiguous content with a pre-filled correction modal

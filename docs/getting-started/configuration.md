@@ -122,6 +122,22 @@ The `conflict_resolution_default` field accepts one of three values:
 - `"overwrite"` -- replace existing files
 - `"ask"` -- prompt via the review queue
 
+### AI-Powered Title Resolution
+
+`ai_identification_enabled` (default: `false`) — when enabled, Engram sends the disc volume label and any collected metadata to your configured AI provider to help resolve ambiguous or unrecognised disc titles.
+
+| Field | Description | Notes |
+|-------|-------------|-------|
+| `ai_identification_enabled` | Enable AI-assisted disc title resolution | Requires `ai_provider` and `ai_api_key` |
+| `ai_provider` | AI provider to use | `anthropic`, `openai`, `openrouter`, `gemini` |
+| `ai_api_key` | API key for the selected provider | Redacted in API responses |
+
+### AI-Powered Episode Matching
+
+`ai_episode_matching_enabled` (default: `false`) — when enabled, low-confidence TV episode matches are sent to your configured AI provider with the season's TMDB synopses for a suggested episode. Always surfaces through the [review queue](../guide/review-queue.md); never auto-organizes. Shares `ai_provider`/`ai_api_key` with [AI-Powered Title Resolution](#ai-powered-title-resolution).
+
+See the [LLM Episode Matcher guide](../guide/llm-episode-matcher.md) for accuracy expectations and provider recommendations (Gemini Flash-Lite is best on this task).
+
 ### Extras Policy
 
 Controls how bonus content (behind-the-scenes, deleted scenes, etc.) is handled during organization:
