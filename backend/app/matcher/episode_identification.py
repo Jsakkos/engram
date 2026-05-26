@@ -823,6 +823,40 @@ class EpisodeMatcher:
         self.reference_files_cache[cache_key] = reference_files
         return reference_files
 
+    def transcribe_full(self, video_file) -> str | None:
+        """Whisper-transcribe the entire video file, returning the cleaned text.
+
+        Returns None when extraction or transcription fails, or when the
+        returned text has fewer than 50 characters (matches the existing
+        _match_full_file guard).
+        """
+        try:
+            duration = get_video_duration(str(video_file))
+        except Exception as e:
+            logger.error(
+                f"transcribe_full: duration lookup failed for {video_file}: {e}",
+                exc_info=True,
+            )
+            return None
+
+        model_config = {"type": "whisper", "name": self.model_name, "device": self.device}
+        try:
+            model = get_cached_model(model_config)
+            audio_path = self.extract_audio_chunk(video_file, start_time=0, duration=duration)
+            result = model.transcribe(audio_path)
+            full = (result.get("text") or "").strip()
+        except Exception as e:
+            logger.warning(
+                f"transcribe_full: transcription failed for {video_file}: {e}",
+                exc_info=True,
+            )
+            return None
+
+        if len(full) < 50:
+            logger.info(f"transcribe_full: too little text ({len(full)} chars) for {video_file}")
+            return None
+        return full
+
     def _match_full_file(self, video_file, model_config, reference_files, duration):
         """
         Fallback: matching by transcribing the ENTIRE file.
@@ -830,74 +864,46 @@ class EpisodeMatcher:
         """
         logger.warning(f"Starting FULL FILE transcription fallback for {video_file}...")
 
-        # Handle backward compatibility for string model names
-        if isinstance(model_config, str):
-            model_config = {
-                "type": "whisper",
-                "name": model_config,
-                "device": self.device,
-            }
-        elif isinstance(model_config, dict):
-            if "device" not in model_config:
-                model_config = model_config.copy()
-                model_config["device"] = self.device
-
-        # Use cached model
-        model = get_cached_model(model_config)
-
-        try:
-            # Extract the FULL audio
-            # We use a slightly different path logic handled by extract_audio_chunk with duration
-            audio_path = self.extract_audio_chunk(video_file, start_time=0, duration=duration)
-
-            logger.info(f"Transcribing full audio ({duration}s)...")
-            result = model.transcribe(audio_path)
-            full_transcription = result["text"]
-
-            if not full_transcription or len(full_transcription) < 50:
-                logger.warning("Full file transcription yielded too little text.")
-                return None
-
-            logger.info(
-                f"Full transcription complete ({len(full_transcription)} chars). Comparing..."
-            )
-
-            best_confidence = 0
-            best_match = None
-
-            # Use TF-IDF for full-file matching too (fast and accurate)
-            if self.tfidf_matcher is None or not self.tfidf_matcher.is_prepared:
-                self.tfidf_matcher = TfidfMatcher()
-                self.tfidf_matcher.prepare(reference_files, self.subtitle_cache)
-
-            cleaned_transcription = self.clean_text(full_transcription)
-            tfidf_results = self.tfidf_matcher.match(cleaned_transcription)
-
-            if tfidf_results:
-                best_rf, best_confidence = tfidf_results[0]
-                best_match = Path(best_rf)
-
-            logger.info(f"Fallback classification complete. Best confidence: {best_confidence:.2f}")
-
-            if best_confidence > self.min_confidence:
-                try:
-                    season, episode = extract_season_episode(best_match.stem)
-                    return {
-                        "season": season,
-                        "episode": episode,
-                        "confidence": best_confidence,
-                        "reference_file": str(best_match),
-                        "matched_at": 0,
-                        "method": "full_transcription",
-                    }
-                except Exception as e:
-                    logger.error(f"Error extracting s/e from matched file {best_match}: {e}")
-
+        full_transcription = self.transcribe_full(video_file)
+        if not full_transcription:
+            logger.warning("Full file transcription yielded too little text.")
             return None
 
-        except Exception as e:
-            logger.error(f"Error during full file fallback: {e}", exc_info=True)
-            return None
+        logger.info(f"Full transcription complete ({len(full_transcription)} chars). Comparing...")
+
+        best_confidence = 0
+        best_match = None
+
+        # Use TF-IDF for full-file matching too (fast and accurate)
+        if self.tfidf_matcher is None or not self.tfidf_matcher.is_prepared:
+            self.tfidf_matcher = TfidfMatcher()
+            self.tfidf_matcher.prepare(reference_files, self.subtitle_cache)
+
+        cleaned_transcription = self.clean_text(full_transcription)
+        tfidf_results = self.tfidf_matcher.match(cleaned_transcription)
+
+        if tfidf_results:
+            best_rf, best_confidence = tfidf_results[0]
+            best_match = Path(best_rf)
+
+        logger.info(f"Fallback classification complete. Best confidence: {best_confidence:.2f}")
+
+        if best_confidence > self.min_confidence:
+            try:
+                season, episode = extract_season_episode(best_match.stem)
+                return {
+                    "season": season,
+                    "episode": episode,
+                    "confidence": best_confidence,
+                    "reference_file": str(best_match),
+                    "matched_at": 0,
+                    "method": "full_transcription",
+                    "transcript": full_transcription,
+                }
+            except Exception as e:
+                logger.error(f"Error extracting s/e from matched file {best_match}: {e}")
+
+        return None
 
     def identify_episode(
         self,

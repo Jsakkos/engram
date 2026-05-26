@@ -7,6 +7,7 @@ The ASR (faster-whisper) and ffmpeg subprocess paths are NOT exercised here.
 """
 
 import json
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -619,3 +620,63 @@ class TestModuleHelpers:
         f = tmp_path / "sub.srt"
         f.write_text("héllo", encoding="utf-8")
         assert "llo" in ei.read_file_with_fallback(str(f))
+
+
+@pytest.mark.unit
+class TestTranscribeFull:
+    def test_invokes_whisper_and_returns_text(self, tmp_path):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
+        fake_model = MagicMock()
+        fake_model.transcribe.return_value = {"text": " hello world from the episode " * 10}
+
+        with (
+            patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
+            patch("app.matcher.episode_identification.get_cached_model", return_value=fake_model),
+            patch("app.matcher.episode_identification.get_video_duration", return_value=1320),
+        ):
+            text = matcher.transcribe_full(tmp_path / "fake.mkv")
+
+        assert text is not None
+        assert "hello world" in text
+
+    def test_returns_none_on_extraction_failure(self, tmp_path):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
+
+        with (
+            patch.object(matcher, "extract_audio_chunk", side_effect=RuntimeError("ffmpeg boom")),
+            patch("app.matcher.episode_identification.get_video_duration", return_value=1320),
+        ):
+            text = matcher.transcribe_full(tmp_path / "fake.mkv")
+
+        assert text is None
+
+
+@pytest.mark.unit
+class TestMatchFullFileSurfacesTranscript:
+    def test_match_dict_includes_transcript(self, tmp_path):
+        """When _match_full_file produces a transcript, the returned dict should expose it."""
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
+        # Stub the underlying transcription to a known value
+        with (
+            patch.object(matcher, "transcribe_full", return_value="long fake transcript " * 50),
+            patch.object(matcher, "tfidf_matcher", create=True) as tfidf_mock,
+        ):
+            tfidf_mock.match.return_value = [("S01E03.srt", 0.85)]
+            tfidf_mock.is_prepared = True
+
+            result = matcher._match_full_file(
+                video_file=tmp_path / "x.mkv",
+                model_config={"type": "whisper", "name": "small", "device": "cpu"},
+                reference_files=[tmp_path / "S01E03.srt"],
+                duration=1320,
+            )
+
+        assert result is not None
+        assert "transcript" in result
+        assert result["transcript"].startswith("long fake transcript")
