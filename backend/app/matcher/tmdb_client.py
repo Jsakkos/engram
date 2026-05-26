@@ -5,7 +5,6 @@ import time
 from collections.abc import Callable
 from functools import lru_cache, wraps
 from typing import Any, TypeVar
-from urllib.parse import urlparse
 
 import requests
 from loguru import logger
@@ -96,25 +95,30 @@ def _tmdb_auth(api_key: str) -> tuple[dict, dict]:
     return headers, params
 
 
-_TMDB_ALLOWED_HOSTS = frozenset({"api.themoviedb.org"})
+_TMDB_BASE_URL = "https://api.themoviedb.org"
 
 
-def _tmdb_get_json(url: str, api_key: str, query_params: dict | None = None) -> dict | None:
-    """Perform an authenticated TMDB GET and return parsed JSON.
+def _tmdb_get_json(path: str, api_key: str, query_params: dict | None = None) -> dict | None:
+    """Perform an authenticated TMDB GET against ``_TMDB_BASE_URL + path``.
 
-    Returns None if the request fails (logs the error). Raises nothing —
-    callers supply their own default return value.
+    ``path`` is a relative URL path (e.g. ``/3/tv/12345/season/1``). The full
+    request URL is built inside the function from a constant base, so a
+    user-controlled show/season ID interpolated into ``path`` can never
+    redirect the request to another host. Returns None on any request failure.
 
-    Guards against SSRF: the URL hostname must be in the allowlist
-    ``_TMDB_ALLOWED_HOSTS``. Callers in this module build URLs from
-    f-strings interpolating show/season IDs; the hostname allowlist check is
-    the CodeQL-recognised taint barrier for py/partial-ssrf (set-membership
-    against a literal frozenset).
+    SSRF note: prior versions accepted a full ``url`` argument and gated it
+    with a hostname allowlist; CodeQL did not recognise that as a taint
+    barrier (py/partial-ssrf). Constructing the URL here from a literal base
+    + a path argument means ``requests.get`` receives a string whose host
+    portion is unambiguously the constant base.
     """
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in _TMDB_ALLOWED_HOSTS:
-        logger.error("TMDB request rejected: URL host is not in allowlist")
+    if not path.startswith("/"):
+        path = "/" + path
+    # Reject any path that tries to escape the base via authority/scheme tricks.
+    if "://" in path or path.startswith("//"):
+        logger.error("TMDB request rejected: path attempts to override authority")
         return None
+    url = f"{_TMDB_BASE_URL}{path}"
     headers, params = _tmdb_auth(api_key)
     if query_params:
         params.update(query_params)
@@ -549,9 +553,7 @@ def _fetch_popular_shows_uncached(page: int) -> list[dict]:
     from app.services.config_service import get_config_sync
 
     api_key = get_config_sync().tmdb_api_key.strip()
-    url = "https://api.themoviedb.org/3/tv/popular"
-
-    data = _tmdb_get_json(url, api_key, {"language": "en-US", "page": page})
+    data = _tmdb_get_json("/3/tv/popular", api_key, {"language": "en-US", "page": page})
     if data is None:
         return []
     return data.get("results", [])
@@ -719,8 +721,7 @@ def fetch_season_episode_runtimes(show_id: str, season_number: int) -> list[int]
         logger.warning("TMDB API key not configured")
         return []
 
-    url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
-    season_data = _tmdb_get_json(url, tmdb_api_key)
+    season_data = _tmdb_get_json(f"/3/tv/{show_id}/season/{season_number}", tmdb_api_key)
     if season_data is None:
         return []
     episodes = season_data.get("episodes", [])
@@ -747,8 +748,7 @@ def fetch_season_episodes(show_id: str, season_number: int, api_key: str) -> lis
         logger.warning("TMDB API key not configured")
         return []
 
-    url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
-    season_data = _tmdb_get_json(url, api_key)
+    season_data = _tmdb_get_json(f"/3/tv/{show_id}/season/{season_number}", api_key)
     if season_data is None:
         return []
     return [
@@ -871,8 +871,7 @@ def fetch_movie_runtime(movie_id: str, api_key: str) -> int | None:
     if cached is not None:
         return cached
 
-    url = f"https://api.themoviedb.org/3/movie/{movie_id}"
-    data = _tmdb_get_json(url, api_key)
+    data = _tmdb_get_json(f"/3/movie/{movie_id}", api_key)
     if not data:
         return None
     runtime = data.get("runtime") or 0
