@@ -224,8 +224,7 @@
 
 .form-group input[type="text"],
 .form-group input[type="password"],
-.form-group input[type="number"],
-.form-group select {
+.form-group input[type="number"] {
     width: 100%;
     padding: 0.65rem 0.75rem;
     background: rgba(94, 234, 212, 0.04);
@@ -236,8 +235,7 @@
     transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
-.form-group input:focus,
-.form-group select:focus {
+.form-group input:focus {
     outline: none;
     border-color: var(--color-sv-cyan);
     box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
@@ -248,9 +246,95 @@
     color: var(--color-sv-ink-ghost);
 }
 
-.form-group select option {
-    background: var(--color-sv-bg1);
+/* ─── EngramSelect (Radix UI custom dropdown) ─────────────────────────── */
+.sv-select-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0.75rem;
+    background: rgba(94, 234, 212, 0.04);
+    border: 1px solid var(--color-sv-line-mid);
     color: var(--color-sv-ink);
+    font-size: 0.88rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    cursor: pointer;
+    transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.sv-select-trigger:hover {
+    background: rgba(94, 234, 212, 0.07);
+    border-color: rgba(94, 234, 212, 0.38);
+}
+
+.sv-select-trigger[data-state="open"],
+.sv-select-trigger:focus-visible {
+    outline: none;
+    border-color: var(--color-sv-cyan);
+    box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
+    background: rgba(94, 234, 212, 0.08);
+}
+
+.sv-select-trigger[data-disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.sv-select-icon {
+    color: var(--color-sv-cyan);
+    flex-shrink: 0;
+    margin-left: 8px;
+    transition: transform 160ms ease-out;
+    display: flex;
+    align-items: center;
+}
+
+.sv-select-trigger[data-state="open"] .sv-select-icon {
+    transform: rotate(180deg);
+}
+
+.sv-select-content {
+    background: var(--color-sv-bg1);
+    border: 1px solid var(--color-sv-line-hi);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(94, 234, 212, 0.08);
+    padding: 4px 0;
+    z-index: 9999;
+    min-width: var(--radix-select-trigger-width);
+    max-height: var(--radix-select-content-available-height);
+}
+
+.sv-select-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 7px 28px 7px 10px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.84rem;
+    color: var(--color-sv-ink);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    outline: none;
+    user-select: none;
+    transition: background 80ms ease-out, border-color 80ms ease-out, color 80ms ease-out;
+}
+
+.sv-select-item[data-highlighted] {
+    background: rgba(94, 234, 212, 0.09);
+    border-left-color: var(--color-sv-cyan);
+    color: var(--color-sv-cyan-hi);
+}
+
+.sv-select-item[data-state="checked"] {
+    color: var(--color-sv-cyan);
+    border-left-color: var(--color-sv-cyan);
+}
+
+.sv-select-indicator {
+    position: absolute;
+    right: 10px;
+    color: var(--color-sv-cyan);
+    font-size: 10px;
+    line-height: 1;
 }
 
 .form-hint {
