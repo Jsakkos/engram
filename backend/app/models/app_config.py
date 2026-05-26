@@ -109,6 +109,12 @@ class AppConfig(SQLModel, table=True):
     # Staging auto-import watcher
     staging_watch_enabled: bool = False  # Auto-import MKV folders from staging directory
 
+    # Import watch folder (for ARM / external ripper ingestion)
+    import_watch_path: str | None = Field(default=None)
+    import_destination_mode: str = Field(
+        default="library", sa_column_kwargs={"server_default": text("'library'")}
+    )
+
     # TheDiscDB
     discdb_enabled: bool = True  # Enable TheDiscDB lookups for disc identification
 
