@@ -83,3 +83,107 @@ class TestMatchEpisodeViaLLM:
             )
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_short_transcript_returns_none(self):
+        from app.matcher.llm_episode_matcher import match_episode_via_llm
+
+        with (
+            patch(
+                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                return_value=[{"episode_number": 1, "name": "X", "overview": "y"}],
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.complete_json",
+                new=AsyncMock(return_value={"episode": 1, "confidence": 0.9}),
+            ) as mock_ai,
+        ):
+            result = await match_episode_via_llm(
+                transcript="too short",
+                show_name="X",
+                season=1,
+                tmdb_show_id="1",
+                ai_provider="gemini",
+                ai_api_key="k",
+                tmdb_api_key="t",
+            )
+
+        assert result is None
+        mock_ai.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_synopses_returns_none(self):
+        from app.matcher.llm_episode_matcher import match_episode_via_llm
+
+        with (
+            patch(
+                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                return_value=[],
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.complete_json",
+                new=AsyncMock(return_value={"episode": 1, "confidence": 0.9}),
+            ) as mock_ai,
+        ):
+            result = await match_episode_via_llm(
+                transcript="x" * 600,
+                show_name="X",
+                season=1,
+                tmdb_show_id="1",
+                ai_provider="gemini",
+                ai_api_key="k",
+                tmdb_api_key="t",
+            )
+
+        assert result is None
+        mock_ai.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ai_returns_none(self):
+        from app.matcher.llm_episode_matcher import match_episode_via_llm
+
+        with (
+            patch(
+                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                return_value=[{"episode_number": 1, "name": "X", "overview": "y"}],
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.complete_json",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            result = await match_episode_via_llm(
+                transcript="x" * 600,
+                show_name="X",
+                season=1,
+                tmdb_show_id="1",
+                ai_provider="gemini",
+                ai_api_key="k",
+                tmdb_api_key="t",
+            )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_malformed_response_returns_none(self):
+        from app.matcher.llm_episode_matcher import match_episode_via_llm
+
+        with (
+            patch(
+                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                return_value=[{"episode_number": 1, "name": "X", "overview": "y"}],
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.complete_json",
+                new=AsyncMock(return_value={"reasoning": "oops"}),  # missing episode/confidence
+            ),
+        ):
+            result = await match_episode_via_llm(
+                transcript="x" * 600,
+                show_name="X",
+                season=1,
+                tmdb_show_id="1",
+                ai_provider="gemini",
+                ai_api_key="k",
+                tmdb_api_key="t",
+            )
+        assert result is None
