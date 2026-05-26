@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import subprocess
@@ -474,6 +475,16 @@ class TfidfMatcher:
     def is_prepared(self) -> bool:
         return self._prepared
 
+    def reference_signature(self) -> tuple | None:
+        """Fingerprint of what this matcher was prepared against; None if not prepared."""
+        if not self._prepared:
+            return None
+        # Mode distinguishes precomputed-codes from scraping-paths so a stale
+        # matcher from a prior precomputed call can't keep returning codes
+        # while the new call's `coverages` is path-keyed → KeyError.
+        mode = "precomputed" if self._precomputed else "scraping"
+        return (mode, tuple(self.ref_file_order))
+
 
 class MatchCoverage:
     """Tracks match coverage for an episode against a video file."""
@@ -610,15 +621,26 @@ class EpisodeMatcher:
         """Clean transcription text to match TF-IDF vocabulary expectations."""
         return _clean_subtitle_text(text)
 
+    @staticmethod
+    def _resolve_source(mkv_file) -> str:
+        """Canonical source-path form shared by chunk hash + in-memory cache key."""
+        return str(Path(mkv_file).resolve())
+
+    def _chunk_path(self, mkv_file, start_time, duration):
+        """Hash resolved source path into the filename so concurrent threads don't collide."""
+        src_hash = hashlib.sha1(self._resolve_source(mkv_file).encode("utf-8")).hexdigest()[:16]
+        return self.temp_dir / f"chunk_{src_hash}_{start_time}_{duration}.wav"
+
     def extract_audio_chunk(self, mkv_file, start_time, duration=None):
         """Extract a chunk of audio from MKV file with caching."""
         duration = duration or self.chunk_duration
-        cache_key = (str(mkv_file), start_time, duration)
+        # Resolve once so cache_key matches what _chunk_path hashes.
+        cache_key = (self._resolve_source(mkv_file), start_time, duration)
 
         if cache_key in self.audio_chunks:
             return self.audio_chunks[cache_key]
 
-        chunk_path = self.temp_dir / f"chunk_{start_time}_{duration}.wav"
+        chunk_path = self._chunk_path(mkv_file, start_time, duration)
         if not chunk_path.exists():
             cmd = [
                 "ffmpeg",
@@ -726,14 +748,16 @@ class EpisodeMatcher:
         if not precomputed_covers_season(
             self.cache_dir, self.show_name, season_number, manifest=manifest
         ):
-            # Surface the common misconfiguration: manifest lists the season but
-            # the vector files never made it to disk.
+            # Prune the stale season in-memory so the warning fires at most once per matcher.
             show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
             if show_entry and season_number in show_entry.get("seasons", []):
                 logger.warning(
                     f"Precomputed cache lists {self.show_name} S{season_number:02d} "
                     f"but its files are missing; using scraping"
                 )
+                show_entry["seasons"] = [s for s in show_entry["seasons"] if s != season_number]
+                if not show_entry["seasons"]:
+                    manifest["shows"].pop(self.show_name, None)
             return None
 
         precomputed_dir = self.cache_dir / "precomputed"
@@ -1024,8 +1048,19 @@ class EpisodeMatcher:
             }
             model = get_cached_model(model_config)
 
-            # Initialize TF-IDF matcher for this season (lazy, once per set of references)
-            if self.tfidf_matcher is None or not self.tfidf_matcher.is_prepared:
+            # Rebuild the cached matcher when the reference set changes — a stale
+            # precomputed-mode matcher returning codes would KeyError in path-keyed coverages.
+            expected_signature: tuple = (
+                ("precomputed", tuple(ref_episode_codes))
+                if using_precomputed
+                else ("scraping", tuple(str(rf) for rf in reference_files))
+            )
+            needs_rebuild = (
+                self.tfidf_matcher is None
+                or not self.tfidf_matcher.is_prepared
+                or self.tfidf_matcher.reference_signature() != expected_signature
+            )
+            if needs_rebuild:
                 logger.info("Initializing TF-IDF matcher for reference episodes...")
                 if progress_callback:
                     progress_callback("preparing_model", 10.0)
