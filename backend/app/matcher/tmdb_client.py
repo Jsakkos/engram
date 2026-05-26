@@ -95,12 +95,23 @@ def _tmdb_auth(api_key: str) -> tuple[dict, dict]:
     return headers, params
 
 
+_TMDB_API_PREFIX = "https://api.themoviedb.org/"
+
+
 def _tmdb_get_json(url: str, api_key: str, query_params: dict | None = None) -> dict | None:
     """Perform an authenticated TMDB GET and return parsed JSON.
 
     Returns None if the request fails (logs the error). Raises nothing —
     callers supply their own default return value.
+
+    Guards against SSRF: ``url`` must start with the TMDB API host prefix.
+    Callers in this module build URLs from f-strings interpolating show/season
+    IDs; the prefix check ensures a corrupted ID can never redirect the request
+    elsewhere. CodeQL recognises this as a taint barrier (py/partial-ssrf).
     """
+    if not url.startswith(_TMDB_API_PREFIX):
+        logger.error(f"TMDB request rejected: URL does not start with {_TMDB_API_PREFIX}")
+        return None
     headers, params = _tmdb_auth(api_key)
     if query_params:
         params.update(query_params)
