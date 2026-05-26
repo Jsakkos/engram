@@ -200,7 +200,7 @@ DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
     "openai": "gpt-4o-mini",
     "openrouter": "anthropic/claude-haiku-4-5-20251001",
-    "gemini": "gemini-flash-lite-latest",
+    "gemini": "gemini-2.5-flash-lite",
 }
 
 _TIMEOUT_SECONDS = 30.0
@@ -236,10 +236,10 @@ async def complete_json(
         logger.warning("Unsupported AI provider: %s", provider)
         return None
     except httpx.HTTPError as e:
-        logger.warning("AI provider %s HTTP error: %s", provider, e)
+        logger.warning("AI provider %s HTTP error: %s", provider, e, exc_info=True)
         return None
     except Exception as e:
-        logger.warning("AI provider %s unexpected error: %s", provider, e)
+        logger.warning("AI provider %s unexpected error: %s", provider, e, exc_info=True)
         return None
 
 
@@ -519,7 +519,7 @@ class TestCompleteJsonGemini:
         call = mock.post.await_args
         url = call.args[0]
         assert url.startswith(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
         )
         assert call.kwargs["headers"]["x-goog-api-key"] == "AIzaSy-x"
 
@@ -776,10 +776,10 @@ async def complete_json(
     try:
         return await _with_429_retry(factory)
     except httpx.HTTPError as e:
-        logger.warning("AI provider %s HTTP error: %s", provider, e)
+        logger.warning("AI provider %s HTTP error: %s", provider, e, exc_info=True)
         return None
     except Exception as e:
-        logger.warning("AI provider %s unexpected error: %s", provider, e)
+        logger.warning("AI provider %s unexpected error: %s", provider, e, exc_info=True)
         return None
 ```
 
@@ -1001,11 +1001,13 @@ git commit -m "feat(tmdb): include episode overview in fetch_season_episodes (#1
 
 ---
 
-## Task 8: Extract `transcribe_full` from `_match_full_file`
+## Task 8: Extract `transcribe_full` + surface transcript through `identify_episode`
 
 **Files:**
-- Modify: `backend/app/matcher/episode_identification.py:802-876` (`_match_full_file`)
+- Modify: `backend/app/matcher/episode_identification.py:802-876` (`_match_full_file`) + `identify_episode` return path
 - Modify: `backend/tests/unit/test_episode_identification.py` (add test) — or create if absent
+
+**Why both at once:** the curator's LLM fallback path (Task 11) needs the full transcript. If `_match_full_file` already produced one (the fallback case), we surface it in the result dict so the curator reuses it instead of re-running Whisper (1–3 min wasted). Doing the surfacing in Task 8 keeps Task 11 clean.
 
 - [ ] **Step 1: Verify the test module path exists**
 
@@ -1020,7 +1022,7 @@ If MISSING, create it with the header:
 from unittest.mock import MagicMock, patch
 ```
 
-- [ ] **Step 2: Add failing test for transcribe_full**
+- [ ] **Step 2: Add failing tests for transcribe_full + transcript surfacing**
 
 Append:
 
@@ -1031,14 +1033,15 @@ class TestTranscribeFull:
 
         matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
         fake_model = MagicMock()
-        fake_model.transcribe.return_value = {"text": " hello world from the episode "}
+        fake_model.transcribe.return_value = {"text": " hello world from the episode " * 10}
 
         with patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")), \
              patch("app.matcher.episode_identification.get_cached_model", return_value=fake_model), \
              patch("app.matcher.episode_identification.get_video_duration", return_value=1320):
             text = matcher.transcribe_full(tmp_path / "fake.mkv")
 
-        assert text == "hello world from the episode"
+        assert text is not None
+        assert "hello world" in text
 
     def test_returns_none_on_extraction_failure(self, tmp_path):
         from app.matcher.episode_identification import EpisodeMatcher
@@ -1050,16 +1053,40 @@ class TestTranscribeFull:
             text = matcher.transcribe_full(tmp_path / "fake.mkv")
 
         assert text is None
+
+
+class TestMatchFullFileSurfacesTranscript:
+    def test_match_dict_includes_transcript(self, tmp_path):
+        """When _match_full_file produces a transcript, the returned dict should expose it."""
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
+        # Stub the underlying transcription to a known value
+        with patch.object(matcher, "transcribe_full", return_value="long fake transcript " * 50), \
+             patch.object(matcher, "tfidf_matcher", create=True) as tfidf_mock:
+            tfidf_mock.match.return_value = [("S01E03.srt", 0.85)]
+            tfidf_mock.is_prepared = True
+
+            result = matcher._match_full_file(
+                video_file=tmp_path / "x.mkv",
+                model_config={"type": "whisper", "name": "small", "device": "cpu"},
+                reference_files=[tmp_path / "S01E03.srt"],
+                duration=1320,
+            )
+
+        assert result is not None
+        assert "transcript" in result
+        assert result["transcript"].startswith("long fake transcript")
 ```
 
 - [ ] **Step 3: Run, verify fail**
 
 ```bash
-cd backend && uv run pytest tests/unit/test_episode_identification.py::TestTranscribeFull -v
+cd backend && uv run pytest tests/unit/test_episode_identification.py::TestTranscribeFull tests/unit/test_episode_identification.py::TestMatchFullFileSurfacesTranscript -v
 ```
-Expected: AttributeError no `transcribe_full`.
+Expected: failures — `transcribe_full` method missing AND `transcript` key absent from `_match_full_file` return.
 
-- [ ] **Step 4: Add the method**
+- [ ] **Step 4: Add `transcribe_full` and surface transcript in `_match_full_file`**
 
 In `backend/app/matcher/episode_identification.py`, add the new method to `EpisodeMatcher` (place above `_match_full_file`):
 
@@ -1074,7 +1101,10 @@ In `backend/app/matcher/episode_identification.py`, add the new method to `Episo
         try:
             duration = get_video_duration(str(video_file))
         except Exception as e:
-            logger.error(f"transcribe_full: duration lookup failed for {video_file}: {e}")
+            logger.error(
+                f"transcribe_full: duration lookup failed for {video_file}: {e}",
+                exc_info=True,
+            )
             return None
 
         model_config = {"type": "whisper", "name": self.model_name, "device": self.device}
@@ -1084,7 +1114,10 @@ In `backend/app/matcher/episode_identification.py`, add the new method to `Episo
             result = model.transcribe(audio_path)
             full = (result.get("text") or "").strip()
         except Exception as e:
-            logger.warning(f"transcribe_full: transcription failed for {video_file}: {e}")
+            logger.warning(
+                f"transcribe_full: transcription failed for {video_file}: {e}",
+                exc_info=True,
+            )
             return None
 
         if len(full) < 50:
@@ -1093,7 +1126,31 @@ In `backend/app/matcher/episode_identification.py`, add the new method to `Episo
         return full
 ```
 
-Then replace the duplicated logic in `_match_full_file` (currently around lines 823-839) by calling `self.transcribe_full(video_file)` and treating None as the existing "too little text" branch.
+Then refactor `_match_full_file` to call `self.transcribe_full(video_file)` for the transcription step, AND include the resulting transcript in the returned match dict so callers can reuse it without a second ASR pass:
+
+```python
+    def _match_full_file(self, video_file, model_config, reference_files, duration):
+        """Fallback: matching by transcribing the ENTIRE file."""
+        logger.warning(f"Starting FULL FILE transcription fallback for {video_file}...")
+
+        full_transcription = self.transcribe_full(video_file)
+        if not full_transcription:
+            return None
+
+        # ... existing TF-IDF matching against reference_files using full_transcription ...
+        # When constructing the return dict, attach the transcript:
+        return {
+            "season": season,
+            "episode": episode,
+            "confidence": best_confidence,
+            "reference_file": str(best_match),
+            "matched_at": 0,
+            "method": "full_transcription",
+            "transcript": full_transcription,  # <-- new: enables LLM fallback reuse
+        }
+```
+
+Note: also ensure `identify_episode`'s final `return best_match` path (around line 1255 / 1280) preserves any `transcript` key from `_match_full_file` (the existing assignment `match["score"] = match["confidence"]` doesn't disturb it).
 
 - [ ] **Step 5: Run tests, verify pass + existing matcher tests still green**
 
@@ -1106,7 +1163,7 @@ Expected: all pass.
 
 ```bash
 git add backend/app/matcher/episode_identification.py backend/tests/unit/test_episode_identification.py
-git commit -m "refactor(matcher): extract transcribe_full from _match_full_file (#109)"
+git commit -m "refactor(matcher): extract transcribe_full + surface transcript for LLM reuse (#109)"
 ```
 
 ---
@@ -1163,11 +1220,12 @@ class TestMatchEpisodeViaLLM:
                 tmdb_api_key="t",
             )
 
+        from app.matcher.llm_episode_matcher import RunnerUp
         assert result is not None
         assert result.episode == 2
         assert result.confidence == 0.91
-        assert result.runner_up == {"episode": 1, "confidence": 0.04}
-        assert result.model == "gemini-flash-lite-latest"
+        assert result.runner_up == RunnerUp(episode=1, confidence=0.04)
+        assert result.model == "gemini-2.5-flash-lite"
 
     @pytest.mark.asyncio
     async def test_confidence_zero_returns_none(self):
@@ -1228,7 +1286,17 @@ from app.matcher.tmdb_client import fetch_season_episodes
 
 logger = logging.getLogger(__name__)
 
-MIN_TRANSCRIPT_CHARS = 500
+MIN_TRANSCRIPT_CHARS = 500  # silent/corrupt audio yields too little signal for synopsis matching
+
+
+@dataclass
+class RunnerUp:
+    """Second-best episode guess from the LLM. Typed (not a bare dict) so the
+    field names stay locked between the JSON schema and the Python object."""
+
+    episode: int
+    confidence: float
+
 
 PROMPT_TEMPLATE = """You are identifying which episode of "{show_name}" Season {season} this is, given the episode's full dialogue transcript.
 
@@ -1272,7 +1340,7 @@ class LLMEpisodeMatch:
     episode: int
     confidence: float
     reasoning: str
-    runner_up: dict | None
+    runner_up: RunnerUp | None
     model: str
 
 
@@ -1336,11 +1404,22 @@ async def match_episode_via_llm(
         )
         return None
 
+    runner_up_raw = raw.get("runner_up")
+    runner_up: RunnerUp | None = None
+    if isinstance(runner_up_raw, dict):
+        try:
+            runner_up = RunnerUp(
+                episode=int(runner_up_raw["episode"]),
+                confidence=float(runner_up_raw["confidence"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            runner_up = None  # malformed runner_up is non-fatal; drop it
+
     return LLMEpisodeMatch(
         episode=episode,
         confidence=confidence,
         reasoning=str(raw.get("reasoning") or ""),
-        runner_up=raw.get("runner_up") if isinstance(raw.get("runner_up"), dict) else None,
+        runner_up=runner_up,
         model=DEFAULT_MODELS.get(ai_provider, "unknown"),
     )
 ```
@@ -1533,7 +1612,7 @@ class TestLLMFallback:
 
         llm = LLMEpisodeMatch(
             episode=5, confidence=0.92, reasoning="r",
-            runner_up=None, model="gemini-flash-lite-latest",
+            runner_up=None, model="gemini-2.5-flash-lite",
         )
 
         with patch("app.services.config_service.get_config", new=AsyncMock(return_value=fake_config)), \
@@ -1544,7 +1623,7 @@ class TestLLMFallback:
         assert result.needs_review is True
         assert result.match_details["llm_suggestion"]["episode"] == 5
         assert result.match_details["llm_suggestion"]["confidence"] == 0.92
-        assert result.match_details["llm_suggestion"]["model"] == "gemini-flash-lite-latest"
+        assert result.match_details["llm_suggestion"]["model"] == "gemini-2.5-flash-lite"
 
     @pytest.mark.asyncio
     async def test_high_confidence_skips_llm(self, tmp_path):
@@ -1568,6 +1647,44 @@ class TestLLMFallback:
 
         assert result.needs_review is False
         mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_reuses_existing_transcript_no_double_asr(self, tmp_path):
+        """When the primary matcher already produced a transcript (full-file
+        fallback), curator should pass it through without re-running Whisper."""
+        from app.core.curator import EpisodeCurator
+        from app.matcher.llm_episode_matcher import LLMEpisodeMatch
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        curator = EpisodeCurator()
+        curator._matcher = MagicMock()
+        curator._matcher.identify_episode.return_value = {
+            "season": 1, "episode": 3, "confidence": 0.4, "score": 0.4,
+            "match_details": {}, "runner_ups": [],
+            "transcript": "primary already transcribed this " * 30,
+        }
+        # Sentinel — if curator calls transcribe_full, the test fails
+        curator._matcher.transcribe_full = MagicMock(side_effect=AssertionError("should not re-transcribe"))
+        curator._cache_dir = tmp_path
+        curator._initialized = True
+        curator._current_show = "Test"
+
+        fake_config = MagicMock(
+            ai_episode_matching_enabled=True, ai_api_key="k",
+            ai_provider="gemini", tmdb_api_key="t",
+        )
+        llm = LLMEpisodeMatch(episode=5, confidence=0.9, reasoning="r", runner_up=None,
+                              model="gemini-2.5-flash-lite")
+        with patch("app.services.config_service.get_config", new=AsyncMock(return_value=fake_config)), \
+             patch("app.matcher.tmdb_client.fetch_show_id", return_value="1234"), \
+             patch("app.core.curator.match_episode_via_llm", new=AsyncMock(return_value=llm)) as mock_llm:
+            result = await curator.match_single_file(tmp_path / "x.mkv", "Test", 1)
+
+        assert result.match_details["llm_suggestion"]["episode"] == 5
+        curator._matcher.transcribe_full.assert_not_called()
+        # The transcript that reached the LLM should be the one from the primary
+        passed_transcript = mock_llm.call_args.kwargs["transcript"]
+        assert passed_transcript.startswith("primary already transcribed this")
 ```
 
 - [ ] **Step 2: Run, verify fail**
@@ -1590,12 +1707,16 @@ In `match_single_file`, after the existing `if match and match.get("episode") is
 ```python
                 # LLM episode-matching fallback — only runs when the primary
                 # match needs review, config is enabled, and the season is known.
+                # Reuse the primary matcher's transcript if it took the
+                # full-file fallback path (avoids re-running Whisper).
                 if needs_review and season:
+                    existing_transcript = match.get("transcript") if match else None
                     enriched = await self._maybe_add_llm_suggestion(
                         file_path=file_path,
                         series_name=series_name,
                         season=season,
                         match_details=details,
+                        existing_transcript=existing_transcript,
                     )
                     if enriched is not None:
                         details = enriched
@@ -1617,11 +1738,13 @@ And the `else:` branch (no primary match) becomes:
                 details = match.get("match_details") if match else None
                 fallback = self._fallback_result(file_path, match_details=details)
                 if season:
+                    existing_transcript = match.get("transcript") if match else None
                     enriched = await self._maybe_add_llm_suggestion(
                         file_path=file_path,
                         series_name=series_name,
                         season=season,
                         match_details=fallback.match_details or {},
+                        existing_transcript=existing_transcript,
                     )
                     if enriched is not None:
                         fallback.match_details = enriched
@@ -1638,10 +1761,15 @@ Add the helper method on `EpisodeCurator`:
         series_name: str,
         season: int,
         match_details: dict,
+        existing_transcript: str | None = None,
     ) -> dict | None:
         """Run the LLM matcher when enabled and attach the suggestion to match_details.
 
         Returns the updated match_details dict, or None to keep the caller's dict.
+
+        ``existing_transcript`` lets callers pass through a transcript the
+        primary matcher already produced (via the full-file fallback path),
+        avoiding a duplicate Whisper run when the matcher just transcribed.
         """
         from app.services.config_service import get_config
 
@@ -1660,7 +1788,11 @@ Add the helper method on `EpisodeCurator`:
 
         if not self._matcher:
             return None
-        transcript = await asyncio.to_thread(self._matcher.transcribe_full, file_path)
+
+        if existing_transcript:
+            transcript = existing_transcript
+        else:
+            transcript = await asyncio.to_thread(self._matcher.transcribe_full, file_path)
         if not transcript:
             return None
 
@@ -1686,7 +1818,11 @@ Add the helper method on `EpisodeCurator`:
             "episode": suggestion.episode,
             "confidence": suggestion.confidence,
             "reasoning": suggestion.reasoning,
-            "runner_up": suggestion.runner_up,
+            "runner_up": (
+                {"episode": suggestion.runner_up.episode, "confidence": suggestion.runner_up.confidence}
+                if suggestion.runner_up is not None
+                else None
+            ),
             "model": suggestion.model,
         }
         return enriched
@@ -1713,6 +1849,7 @@ git commit -m "feat(curator): wire LLM episode-matcher fallback (#109)"
 **Files:**
 - Modify: `backend/app/services/job_manager.py:838-871`
 - Modify: `backend/app/api/routes.py:2309-2335` (ReassignRequest + endpoint)
+- Modify: `backend/app/models/disc_job.py:166` (update enum-of-strings comment so "ai_llm" stays discoverable)
 - Modify: `backend/tests/unit/test_job_manager.py` (or test_routes.py — extend existing)
 
 - [ ] **Step 1: Find the ReassignRequest model**
@@ -1756,6 +1893,14 @@ class TestReassignWithSource:
 cd backend && uv run pytest tests/integration/test_workflow.py::TestReassignWithSource -v
 ```
 Expected: fail (extra `source` field rejected or stored as default `"user"`).
+
+- [ ] **Step 3.5: Update `disc_job.py` comment to include `ai_llm`**
+
+In `backend/app/models/disc_job.py:166`, update the inline comment on `match_source` so the enum-of-strings stays discoverable:
+
+```python
+    match_source: str | None = Field(default=None)  # "discdb", "engram", "user", "ai_llm"
+```
 
 - [ ] **Step 4: Add `source` to job_manager.reassign_episode**
 
@@ -1875,7 +2020,7 @@ class TestLLMMatchEndpoint:
         async def fake_run(**kwargs):
             return {
                 "episode": 4, "confidence": 0.88, "reasoning": "r",
-                "runner_up": None, "model": "gemini-flash-lite-latest",
+                "runner_up": None, "model": "gemini-2.5-flash-lite",
             }
 
         monkeypatch.setattr(
@@ -1886,12 +2031,44 @@ class TestLLMMatchEndpoint:
         assert r.status_code == 200
         body = r.json()
         assert body["suggestion"]["episode"] == 4
+        assert body["reason"] is None
 
         async with async_session() as s:
             refreshed = await s.get(DiscTitle, title.id)
             import json
             details = json.loads(refreshed.match_details or "{}")
             assert details["llm_suggestion"]["episode"] == 4
+
+    @pytest.mark.asyncio
+    async def test_returns_cached_suggestion_without_re_transcribing(self, client, setup_db, monkeypatch):
+        """Idempotent under double-click: existing llm_suggestion returns immediately."""
+        from app.database import async_session
+        from app.models.disc_job import DiscJob, DiscTitle, JobState, ContentType, TitleState
+        import json
+
+        async with async_session() as s:
+            job = DiscJob(
+                volume_label="X_S1D1", state=JobState.REVIEW_NEEDED,
+                content_type=ContentType.TV, detected_title="X", detected_season=1,
+            )
+            s.add(job); await s.commit(); await s.refresh(job)
+            title = DiscTitle(
+                job_id=job.id, title_index=0, state=TitleState.REVIEW,
+                file_path="/tmp/x.mkv",
+                match_details=json.dumps({"llm_suggestion": {"episode": 9, "confidence": 0.7}}),
+            )
+            s.add(title); await s.commit(); await s.refresh(title)
+
+        async def boom(**_kw):
+            raise AssertionError("must not re-run transcription when cached")
+
+        monkeypatch.setattr("app.api.routes._run_llm_match_for_title", boom)
+
+        r = await client.post(f"/api/jobs/{job.id}/titles/{title.id}/llm-match")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["reason"] == "cached"
+        assert body["suggestion"]["episode"] == 9
 ```
 
 - [ ] **Step 2: Run, verify fail**
@@ -1951,7 +2128,11 @@ async def _run_llm_match_for_title(
         "episode": suggestion.episode,
         "confidence": suggestion.confidence,
         "reasoning": suggestion.reasoning,
-        "runner_up": suggestion.runner_up,
+        "runner_up": (
+            {"episode": suggestion.runner_up.episode, "confidence": suggestion.runner_up.confidence}
+            if suggestion.runner_up is not None
+            else None
+        ),
         "model": suggestion.model,
     }
 
@@ -1962,23 +2143,34 @@ async def llm_match_title(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
-    """Run the LLM episode matcher on a single title and persist the suggestion."""
+    """Run the LLM episode matcher on a single title and persist the suggestion.
+
+    Idempotent under double-clicks: if `match_details.llm_suggestion` is
+    already populated, returns it immediately (`reason: "cached"`) without
+    kicking off another 1–3 minute Whisper transcription. Re-running
+    intentionally is out of scope for v1.
+    """
     title = await session.get(DiscTitle, title_id)
     if not title or title.job_id != job.id:
         raise HTTPException(status_code=404, detail="Title not found")
 
+    # Cache-hit dedup: avoid duplicate expensive transcription on double-click.
+    import json
+    existing = json.loads(title.match_details or "{}") if title.match_details else {}
+    cached = existing.get("llm_suggestion")
+    if cached:
+        return {"suggestion": cached, "reason": "cached"}
+
     try:
         suggestion = await _run_llm_match_for_title(title=title, job=job)
-    except Exception as e:
-        logger.exception("LLM match endpoint failed: %s", e)
+    except Exception:
+        logger.exception("LLM match endpoint failed for title %s", title_id)
         return {"suggestion": None, "reason": "internal_error"}
 
     if not suggestion:
         return {"suggestion": None, "reason": "no_suggestion"}
 
     # Persist into match_details for refresh durability
-    import json
-    existing = json.loads(title.match_details or "{}") if title.match_details else {}
     existing["llm_suggestion"] = suggestion
     title.match_details = json.dumps(existing)
     session.add(title)
@@ -2255,7 +2447,7 @@ class TestLLMMatchingWorkflow:
         from app.matcher.llm_episode_matcher import LLMEpisodeMatch
         stable = LLMEpisodeMatch(
             episode=7, confidence=0.93, reasoning="distinct cargo dialogue",
-            runner_up={"episode": 6, "confidence": 0.12}, model="gemini-flash-lite-latest",
+            runner_up={"episode": 6, "confidence": 0.12}, model="gemini-2.5-flash-lite",
         )
 
         with patch("app.core.curator.match_episode_via_llm", new=AsyncMock(return_value=stable)), \
@@ -2497,7 +2689,7 @@ Run the LLM episode matcher for a single title and persist the suggestion to `ma
     "confidence": 0.93,
     "reasoning": "Mentions of named character and unique plot beat.",
     "runner_up": {"episode": 6, "confidence": 0.12},
-    "model": "gemini-flash-lite-latest"
+    "model": "gemini-2.5-flash-lite"
   },
   "reason": null
 }

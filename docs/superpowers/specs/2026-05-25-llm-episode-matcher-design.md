@@ -64,19 +64,28 @@ Per-provider default models:
 | anthropic | `claude-haiku-4-5-20251001` |
 | openai | `gpt-4o-mini` |
 | openrouter | `anthropic/claude-haiku-4-5-20251001` |
-| gemini | `gemini-flash-lite-latest` |
+| gemini | `gemini-2.5-flash-lite` (pinned for reproducibility — see note) |
 
 Built-in 429 backoff (1s/2s/4s, max 3 attempts) — Gemini free tier needs this.
 
+> **Note on Gemini model selection:** The internal eval (project memory: `project_llm_episode_id_gemini`) used `gemini-flash-lite-latest`, which is a real Google v1beta alias. Defaulting to the pinned `gemini-2.5-flash-lite` instead keeps results reproducible across Google's release cadence. Users can override via a per-call `model` parameter; `gemini-flash-lite-latest` and `gemini-2.0-flash-lite` are also valid.
+
 **`backend/app/matcher/llm_episode_matcher.py`** — The feature.
 
+Module owns a single constant `MIN_TRANSCRIPT_CHARS = 500` — transcripts shorter than this skip the LLM call entirely (silent/corrupt audio yields too little signal for synopsis matching).
+
 ```python
+@dataclass
+class RunnerUp:
+    episode: int
+    confidence: float
+
 @dataclass
 class LLMEpisodeMatch:
     episode: int
     confidence: float
     reasoning: str
-    runner_up: dict | None  # {"episode": int, "confidence": float}
+    runner_up: RunnerUp | None
     model: str
 
 async def match_episode_via_llm(
@@ -91,7 +100,7 @@ async def match_episode_via_llm(
 ) -> LLMEpisodeMatch | None: ...
 ```
 
-Fetches season synopses, cleans transcript with the existing `_clean_subtitle_text` from `app/matcher/episode_identification.py`, builds the prompt (ported from `artifacts/issue-109-llm-episode-id/PROMPT_TEMPLATE.md`), calls `ai_client.complete_json` with schema `{episode: int, confidence: float, reasoning: str, runner_up: {episode: int, confidence: float} | null}`. Returns None when `confidence == 0.0` (the "wrong show/season" signal) or when synopses are unavailable.
+Fetches season synopses, cleans transcript with the existing `_clean_subtitle_text` from `app/matcher/episode_identification.py`, builds the prompt (ported from `artifacts/issue-109-llm-episode-id/PROMPT_TEMPLATE.md`), calls `ai_client.complete_json` with schema `{episode: int, confidence: float, reasoning: str, runner_up: {episode: int, confidence: float} | null}`. Returns None when `confidence == 0.0` (the "wrong show/season" signal), when synopses are unavailable, or when the cleaned transcript is shorter than `MIN_TRANSCRIPT_CHARS`.
 
 ### Modified modules
 
@@ -123,8 +132,12 @@ ai_episode_matching_enabled AND ai_api_key AND job.detected_season?
   ↓ yes
 Resolve tmdb_show_id (fetch_show_id, cached)
   ↓
-Get full transcript — reuse the transcript produced by _match_full_file
-when the primary already took that path; otherwise call transcribe_full
+Get full transcript: if the primary match took the _match_full_file
+fallback, EpisodeMatcher.identify_episode includes match["transcript"]
+in its return dict — the curator passes that through to skip a second
+ASR pass. Otherwise the curator calls EpisodeMatcher.transcribe_full
+on the file directly. (Without this surfacing, the fallback path would
+re-transcribe the same MKV — 1–3 min of duplicated CPU.)
   ↓
 Fetch season synopses via TMDB (fetch_season_episodes with overview)
   ↓
@@ -150,6 +163,8 @@ User accepts via existing review-accept path; organizer uses the accepted code
 
 `POST /api/titles/{title_id}/llm-match` looks up the title's `file_path` + `job.detected_title` + `job.detected_season`, runs the same `transcribe_full → match_episode_via_llm` pipeline, returns the suggestion as JSON, and writes it into `title.match_details` so a page reload preserves it. No state transition (REVIEW stays REVIEW).
 
+**Cache-hit dedup:** before kicking off Whisper, the endpoint checks `title.match_details["llm_suggestion"]`. If a suggestion already exists, it's returned immediately with `reason: "cached"` — no second transcription. This makes the endpoint idempotent under double-clicks (Whisper takes 1–3 min on CPU; duplicate calls would otherwise queue under `max_concurrent_matches`). A true in-flight async lock is intentional v1 YAGNI: the cache-hit covers the common case; an explicit "re-run" UX (which intentionally invalidates the cache) can come later if needed.
+
 ## Error handling
 
 | Failure | Response |
@@ -158,12 +173,14 @@ User accepts via existing review-accept path; organizer uses the accepted code
 | `job.detected_season` is None | Skip + log info. No whole-show fallback. |
 | `fetch_show_id` returns None | Skip + log info. |
 | `fetch_season_episodes` returns [] | Skip + log warning. |
-| `transcribe_full` fails (ffmpeg/Whisper error) | Log warning, skip LLM; title keeps primary result. |
-| `transcribe_full` returns < 500 chars (silent / corrupt audio) | Skip LLM + log info — too little signal for synopsis matching. |
-| AI provider HTTP error (non-429) | Log warning with provider/status, return None. |
-| AI provider 429 | Exponential backoff in `ai_client` (1s/2s/4s, max 3 attempts), then give up + log. |
-| AI returns malformed JSON | Log + return None. (Schema-enforced for Gemini/OpenAI; Anthropic uses lenient parse.) |
-| Manual-trigger endpoint hits any failure | Returns 200 with `{"suggestion": null, "reason": "..."}` so the UI can show "couldn't suggest" without an error dialog. |
+| `transcribe_full` fails (ffmpeg/Whisper error) | `logger.warning(..., exc_info=True)`, skip LLM; title keeps primary result. |
+| `transcribe_full` returns < `MIN_TRANSCRIPT_CHARS` (500) (silent / corrupt audio) | Skip LLM + `logger.info` — too little signal for synopsis matching. |
+| AI provider HTTP error (non-429) | `logger.warning(..., exc_info=True)` with provider/status, return None. |
+| AI provider 429 | Exponential backoff in `ai_client` (1s/2s/4s, max 3 attempts), then give up + `logger.warning(..., exc_info=True)`. |
+| AI returns malformed JSON | `logger.warning(..., exc_info=True)` + return None. (Schema-enforced for Gemini/OpenAI; Anthropic uses lenient parse.) |
+| Manual-trigger endpoint hits any failure | Returns 200 with `{"suggestion": null, "reason": "..."}` so the UI can show "couldn't suggest" without an error dialog. Top-level catch uses `logger.exception(...)` (`exc_info=True` implicit). |
+
+> **Logging convention:** per `CLAUDE.md`'s error-handling rules, every except clause in this feature logs with `exc_info=True` so production logs retain the full stack trace. `logger.exception(...)` (which sets `exc_info=True` implicitly) is preferred at the top-level catch in the API endpoint.
 
 ## State invariants
 
