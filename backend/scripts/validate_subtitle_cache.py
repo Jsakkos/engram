@@ -151,18 +151,18 @@ def validate(assets_dir: Path) -> ValidationResult:
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
 
-    # Manifest-↔-tarball consistency: every (show, season) the manifest claims
-    # coverage for MUST have a matching .npz + .index.json in the tarball. A
-    # mismatch here is exactly the misconfiguration that hit TNG S7 D2: the
-    # build script published a manifest entry without writing the vectors, so
-    # the matcher at runtime warns + falls back to scraping for every title.
-    # Refuse the publish instead of letting it ship.
+    # Refuse builds where the manifest lists a (show, season) without its .npz + .index.json.
     if tarball_readable and shows:
         try:
-            # Import locally so the validator module stays importable in test
-            # contexts that don't ship the matcher (CI smoke uses a stub).
             from app.matcher.subtitle_utils import sanitize_filename
         except ImportError:
+            # A silently-skipped consistency check is worse than no check —
+            # a missing matcher in the publish-gate environment is itself a
+            # CI misconfiguration that must be surfaced, not swallowed.
+            failures.append(
+                "could not import sanitize_filename from app.matcher.subtitle_utils "
+                "— manifest-tarball consistency check skipped"
+            )
             sanitize_filename = None  # type: ignore[assignment]
 
         if sanitize_filename is not None:

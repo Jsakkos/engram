@@ -221,19 +221,7 @@ class FasterWhisperModel(ASRModel):
 
     @staticmethod
     def _preprocessed_path_for(audio_path: str | Path) -> Path:
-        """Where the preprocessed copy of ``audio_path`` should live.
-
-        Includes a hash of the input's resolved absolute path so concurrent
-        matcher threads on different source files never target the same
-        on-disk path. Resolution defends against the (unlikely but possible)
-        case of a caller passing a relative path: two callers in different
-        cwds would otherwise stringify identically and collide on the hash.
-        Previously the filename was derived only from `Path(audio_path).stem`,
-        so two threads sampling the same offset on different titles both
-        wrote to e.g. `preprocessed_chunk_1473_30.wav` — the second writer
-        truncated the first thread's file mid-PyAV-decode, surfacing as
-        `av.error.InvalidDataError` and a poisoned chunk in the loop.
-        """
+        """Hash resolved source path into the filename so concurrent threads don't collide."""
         temp_dir = Path(tempfile.gettempdir()) / "whisper_preprocessed"
         resolved = str(Path(audio_path).resolve())
         src_hash = hashlib.sha1(resolved.encode("utf-8")).hexdigest()[:16]

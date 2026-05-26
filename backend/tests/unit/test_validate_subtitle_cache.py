@@ -127,6 +127,31 @@ class TestValidate:
         failures = vsc.validate(tmp_path).failures
         assert any("shows dict in manifest is empty" in f for f in failures)
 
+    def test_consistency_check_records_failure_when_helper_unavailable(
+        self, vsc, tmp_path, monkeypatch
+    ):
+        """If the validator can't import `sanitize_filename`, the manifest-↔-
+        tarball gate would silently disappear — equivalent to no gate at all
+        in the very environment most likely to bypass it (a CI image missing
+        the matcher package). Surface it as a failure instead.
+        """
+        import builtins
+
+        _make_assets(vsc, tmp_path)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "app.matcher.subtitle_utils":
+                raise ImportError("simulated missing matcher package")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        failures = vsc.validate(tmp_path).failures
+        assert any("consistency check skipped" in f for f in failures), (
+            f"Expected import-failure surfaced as a validation failure, got: {failures}"
+        )
+
     def test_manifest_lists_season_without_vector_files_detected(self, vsc, tmp_path):
         """The manifest claims coverage for Show S07, but the tarball never
         shipped S07.npz / S07.index.json for it. This is the exact state the
