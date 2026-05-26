@@ -337,6 +337,19 @@
     line-height: 1;
 }
 
+.sv-select-scroll-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    color: var(--color-sv-cyan);
+    font-size: 10px;
+    cursor: default;
+    background: var(--color-sv-bg1);
+    border-top: 1px solid var(--color-sv-line);
+    border-bottom: 1px solid var(--color-sv-line);
+}
+
 .form-hint {
     display: block;
     margin-top: 0.45rem;
