@@ -46,11 +46,46 @@ class TestConflictHelpers:
         assert list(conflicts) == ["S01E03"]
         assert len(conflicts["S01E03"]) == 2
 
-    def test_detect_conflicts_ignores_non_matched_titles(self):
+    def test_detect_conflicts_includes_review_titles_with_borderline_episode(self):
+        """A borderline REVIEW title colliding with a confidently MATCHED title
+        on the same episode IS a conflict — auto-resolution needs to break the
+        tie together, not leave the confident one riding alongside the borderline
+        one."""
         titles = [
             _matched("S01E03"),
             SimpleNamespace(
-                state=TitleState.REVIEW, matched_episode="S01E03", duration_seconds=1380
+                state=TitleState.REVIEW,
+                matched_episode="S01E03",
+                duration_seconds=1380,
+                is_extra=False,
+                match_details=None,
+            ),
+        ]
+        conflicts = _detect_conflicts(titles)
+        assert list(conflicts) == ["S01E03"]
+        assert len(conflicts["S01E03"]) == 2
+
+    def test_detect_conflicts_excludes_extras_and_non_rematchable_reviews(self):
+        """Extras and titles parked in REVIEW for non-matching reasons (file_exists,
+        forced_review, etc.) don't count as conflict candidates even with a
+        matched_episode set."""
+        import json
+
+        titles = [
+            _matched("S01E03"),
+            SimpleNamespace(
+                state=TitleState.REVIEW,
+                matched_episode="S01E03",
+                duration_seconds=1380,
+                is_extra=True,
+                match_details=None,
+            ),
+            SimpleNamespace(
+                state=TitleState.REVIEW,
+                matched_episode="S01E03",
+                duration_seconds=1380,
+                is_extra=False,
+                match_details=json.dumps({"forced_review": True}),
             ),
         ]
         assert _detect_conflicts(titles) == {}
@@ -207,6 +242,60 @@ class TestEscalation:
         assert result is False
         assert job_id not in coord._conflict_passes  # no progress recorded → no loop
         assert status is None
+
+    async def test_review_title_with_episode_counts_as_conflict(self):
+        """A title in REVIEW with a (low-confidence) matched_episode that collides
+        with a confidently MATCHED title on the same episode must count as a conflict
+        — otherwise the borderline guess silently rides alongside the confident one
+        and the user sees an unresolved collision in the UI (only the borderline
+        title gets re-matched via review-escalation, not the pair together)."""
+        async with _unit_session_factory() as session:
+            job = DiscJob(
+                drive_id="E:",
+                volume_label="SHOW_S1D1",
+                content_type=ContentType.TV,
+                state=JobState.MATCHING,
+                detected_title="Some Show",
+                detected_season=1,
+                staging_path="/tmp/staging/job",
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            session.add(
+                DiscTitle(
+                    job_id=job.id,
+                    title_index=0,
+                    duration_seconds=2700,
+                    matched_episode="S01E05",
+                    match_confidence=0.85,
+                    state=TitleState.MATCHED,
+                )
+            )
+            session.add(
+                DiscTitle(
+                    job_id=job.id,
+                    title_index=1,
+                    duration_seconds=2700,
+                    matched_episode="S01E05",
+                    match_confidence=0.17,
+                    state=TitleState.REVIEW,
+                )
+            )
+            await session.commit()
+            job_id = job.id
+
+        calls: list[tuple] = []
+
+        async def fake(jid, ep, num_points=None, min_vote_count=None):
+            calls.append((ep, num_points))
+            return {"dispatched": [1, 2], "skipped": []}
+
+        coord = _coord_with(fake)
+        result, status = await _escalate(coord, job_id)
+        assert result is True
+        assert calls and calls[0][0] == "S01E05"
+        assert status and "pass 1" in status
 
     async def test_no_conflict_returns_false(self):
         async with _unit_session_factory() as session:

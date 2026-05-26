@@ -267,14 +267,18 @@ function ReviewQueue() {
 
     // --- API Handlers ---
 
-    const handleRematch = async (titleId: number, sourcePreference: string = 'engram') => {
+    const handleRematch = async (
+        titleId: number,
+        sourcePreference: string = 'engram',
+        deep: boolean = false,
+    ) => {
         setIsRematching(true);
         setError(null);
         try {
             const response = await fetch(`/api/jobs/${jobId}/titles/${titleId}/rematch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source_preference: sourcePreference }),
+                body: JSON.stringify({ source_preference: sourcePreference, deep }),
             });
             if (!response.ok) {
                 const text = await response.text();

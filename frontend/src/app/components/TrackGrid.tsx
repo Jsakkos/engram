@@ -7,14 +7,19 @@ import { formatBytesBinary } from "../../utils/formatting";
 
 interface TrackGridProps {
   tracks: Track[];
-  /** Skip a single stuck track (ripping/matching) → sends it to review. */
-  onSkip?: (trackId: string) => void;
+  /** Job-level escalation note (e.g. "Resolving episode conflicts — pass 2 of 3"
+   *  / "Deep re-matching low-confidence titles — pass 1 of 3"). When set, the
+   *  currently-matching tracks get a "DEEP RE-MATCH" chip so the user sees that
+   *  the spinning matching state is an auto-resolution pass, not initial work. */
+  conflictStatus?: string;
 }
 
-// Track states where a per-track "skip" makes sense (still in flight). PENDING is
-// intentionally excluded — selected titles only briefly sit there before ripping, and
-// the backend skip endpoint still accepts PENDING if ever needed.
-const SKIPPABLE: ReadonlyArray<TrackState> = ["ripping", "matching"];
+/** Parse "… pass N of M" out of a conflict_status note, if present. */
+function parsePassInfo(note?: string): string | null {
+  if (!note) return null;
+  const m = /pass (\d+) of (\d+)/i.exec(note);
+  return m ? `${m[1]}/${m[2]}` : null;
+}
 
 interface StateConfig {
   label: string;
@@ -46,7 +51,8 @@ const matchSourceLabel = (source?: string): string => {
   return "ENGRAM";
 };
 
-export const TrackGrid = React.memo(function TrackGrid({ tracks, onSkip }: TrackGridProps) {
+export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus }: TrackGridProps) {
+  const passInfo = parsePassInfo(conflictStatus);
   return (
     <div data-testid="sv-track-grid" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <SvLabel>TRACK STATUS</SvLabel>
@@ -125,9 +131,18 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, onSkip }: Track
                     </div>
                   )}
 
-                  {/* Quality / source / extra badges */}
-                  {(track.videoResolution || track.edition || track.isExtra || track.matchSource) && (
+                  {/* Quality / source / extra / deep-rematch badges */}
+                  {(track.videoResolution || track.edition || track.isExtra || track.matchSource || (conflictStatus && track.state === "matching")) && (
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                      {conflictStatus && track.state === "matching" && (
+                        <SvBadge
+                          size="sm"
+                          tone={sv.magenta}
+                          testid={`deep-rematch-chip-${track.id}`}
+                        >
+                          {passInfo ? `DEEP · ${passInfo}` : "DEEP RE-MATCH"}
+                        </SvBadge>
+                      )}
                       {track.matchSource && (
                         <SvBadge
                           size="sm"
@@ -149,33 +164,6 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, onSkip }: Track
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                  {onSkip && SKIPPABLE.includes(track.state) && (
-                    <button
-                      type="button"
-                      data-testid={`track-skip-${track.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm("Skip this track and send it to review?")) {
-                          onSkip(track.id);
-                        }
-                      }}
-                      title="Skip this track — send to review"
-                      aria-label="Skip this track"
-                      style={{
-                        fontFamily: sv.mono,
-                        fontSize: 9,
-                        fontWeight: 700,
-                        letterSpacing: "0.18em",
-                        color: sv.yellow,
-                        background: "transparent",
-                        border: `1px solid ${sv.yellow}66`,
-                        padding: "2px 6px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      SKIP
-                    </button>
-                  )}
                   {Icon && (
                     <motion.div
                       animate={

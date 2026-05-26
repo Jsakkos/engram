@@ -105,6 +105,7 @@ class JobManager:
             active_jobs=self._active_jobs,
             match_single_file=self._matching.match_single_file,
             rematch_conflict=self._matching.rematch_conflict,
+            rematch_title=self._matching.rematch_single_title,
         )
         self._simulation.set_callbacks(
             subtitle_ready=self._matching._subtitle_ready,
@@ -699,6 +700,7 @@ class JobManager:
                 if file_path is not None:
                     title.output_filename = str(file_path)
                     title.state = TitleState.REVIEW
+                    title.match_details = self._forced_review_details(title.match_details, reason)
                     err = None
                 else:
                     title.state = TitleState.FAILED
@@ -741,6 +743,10 @@ class JobManager:
             err = "Skipped by user" if target == TitleState.FAILED else None
             if target == TitleState.FAILED and not title.match_details:
                 title.match_details = json.dumps({"reason": "Skipped by user"})
+            elif target == TitleState.REVIEW:
+                title.match_details = self._forced_review_details(
+                    title.match_details, "Skipped by user"
+                )
             session.add(title)
             await session.commit()
             logger.info(
@@ -751,6 +757,26 @@ class JobManager:
 
             await self._finalization.check_job_completion(session, job_id)
         return True
+
+    @staticmethod
+    def _forced_review_details(existing: str | None, reason: str) -> str:
+        """Tag a title's match_details as force-advanced/skipped to REVIEW.
+
+        The ``forced_review`` flag tells the auto review-escalation to leave this
+        title alone — it was deliberately handed to a human, not flagged by the
+        matcher for a deeper retry.
+        """
+        data: dict = {}
+        if existing:
+            try:
+                parsed = json.loads(existing)
+                if isinstance(parsed, dict):
+                    data = parsed
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+        data["forced_review"] = True
+        data.setdefault("reason", reason)
+        return json.dumps(data)
 
     @staticmethod
     def _phase_timeout(config, state: JobState) -> int | None:
@@ -934,10 +960,25 @@ class JobManager:
         await self._rerun_matching(job_id, source_preference)
 
     async def rematch_single_title(
-        self, job_id: int, title_id: int, source_preference: str | None = None
+        self,
+        job_id: int,
+        title_id: int,
+        source_preference: str | None = None,
+        deep: bool = False,
     ) -> None:
-        """Re-match a single title. Delegates to matching coordinator."""
-        await self._matching.rematch_single_title(job_id, title_id, source_preference)
+        """Re-match a single title. Delegates to matching coordinator.
+
+        ``deep`` re-runs the engram matcher at strict scan density + vote gate
+        (the same params as conflict escalation), giving a low-confidence title a
+        real chance to resolve instead of re-failing at the original depth.
+        """
+        await self._matching.rematch_single_title(
+            job_id,
+            title_id,
+            source_preference,
+            num_points=STRICT_SCAN_POINTS if deep else None,
+            min_vote_count=STRICT_MIN_VOTES if deep else None,
+        )
 
     async def rematch_conflict(self, job_id: int, episode_code: str) -> dict:
         """Deep re-match every title claiming ``episode_code`` (strict params).
