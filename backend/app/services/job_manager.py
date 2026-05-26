@@ -874,10 +874,12 @@ class JobManager:
                 match_source=source,
             )
 
+        safe_job = sanitize_log_value(job_id)
+        safe_title = sanitize_log_value(title_id)
         safe_episode = sanitize_log_value(episode_code)
         safe_source = sanitize_log_value(source)
         logger.info(
-            f"Job {job_id}: title {title_id} reassigned to {safe_episode} (source={safe_source})"
+            f"Job {safe_job}: title {safe_title} reassigned to {safe_episode} (source={safe_source})"
         )
 
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:

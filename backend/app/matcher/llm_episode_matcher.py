@@ -89,21 +89,23 @@ async def match_episode_via_llm(
 ) -> LLMEpisodeMatch | None:
     """Run LLM episode matching. Returns None on any failure or zero-confidence."""
     cleaned = _clean_subtitle_text(transcript)
+    safe_show = sanitize_log_value(show_name)
+    safe_season = sanitize_log_value(season)
     if len(cleaned) < MIN_TRANSCRIPT_CHARS:
         logger.info(
-            "LLM matcher: transcript too short (%d chars) for %s S%02d",
+            "LLM matcher: transcript too short (%d chars) for %s S%s",
             len(cleaned),
-            sanitize_log_value(show_name),
-            season,
+            safe_show,
+            safe_season,
         )
         return None
 
     episodes = fetch_season_episodes(tmdb_show_id, season, tmdb_api_key)
     if not episodes:
         logger.warning(
-            "LLM matcher: no TMDB synopses for show_id=%s season=%d",
+            "LLM matcher: no TMDB synopses for show_id=%s season=%s",
             sanitize_log_value(tmdb_show_id),
-            season,
+            safe_season,
         )
         return None
 
@@ -137,9 +139,9 @@ async def match_episode_via_llm(
 
     if confidence <= 0.0:
         logger.info(
-            "LLM matcher: confidence==0 (wrong show/season signal) for %s S%02d",
-            sanitize_log_value(show_name),
-            season,
+            "LLM matcher: confidence==0 (wrong show/season signal) for %s S%s",
+            safe_show,
+            safe_season,
         )
         return None
 
