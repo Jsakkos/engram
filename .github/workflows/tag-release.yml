@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     # Squash-merge of a release PR produces "chore: release v0.x.y (#NNN)"
     if: "contains(github.event.head_commit.message, 'chore: release v')"
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      tag_exists: ${{ steps.tag_check.outputs.exists }}
     steps:
       - uses: actions/checkout@v6
 
@@ -45,14 +48,14 @@ jobs:
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 
-      - name: Dispatch release workflow
-        # GITHUB_TOKEN-pushed tags don't fire push:tags workflows; dispatch explicitly.
-        # Guard matches the push step so we don't re-trigger builds on an existing tag.
-        if: steps.tag_check.outputs.exists == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          sleep 5
-          gh workflow run release.yml \
-            --ref "${{ steps.version.outputs.tag }}" \
-            --field tag="${{ steps.version.outputs.tag }}"
+  release:
+    name: Trigger release build
+    needs: tag
+    # GITHUB_TOKEN-pushed tags don't fire push:tags workflows, so we call release.yml
+    # directly via workflow_call — no workflow scope token needed.
+    if: needs.tag.result == 'success' && needs.tag.outputs.tag_exists == 'false'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    permissions:
+      contents: write
