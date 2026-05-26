@@ -79,6 +79,9 @@ class DiscJob(SQLModel, table=True):
 
     # Subtitle tracking
     subtitle_status: str | None = None  # "downloading", "completed", "partial", "failed", None
+    # Subtitle-specific failure detail, kept separate from the catch-all
+    # error_message so the two can't clobber each other or leak across banners.
+    subtitle_error_message: str | None = None
     subtitles_downloaded: int = 0
     subtitles_total: int = 0
     subtitles_failed: int = 0
@@ -160,7 +163,7 @@ class DiscTitle(SQLModel, table=True):
     is_extra: bool = False  # True if organized as extra content
 
     # Match source tracking
-    match_source: str | None = Field(default=None)  # "discdb", "engram", "user"
+    match_source: str | None = Field(default=None)  # "discdb", "engram", "user", "ai_llm"
     discdb_match_details: str | None = Field(default=None)  # DiscDB match preserved separately
     discdb_flagged: bool = Field(default=False)  # User flagged DiscDB data as incorrect
     discdb_flag_reason: str | None = Field(default=None)  # Reason for flag

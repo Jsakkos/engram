@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "motion/react";
 import { CheckCircle2, Clock, Database } from "lucide-react";
-import { IcoDisc } from "./icons";
+import { IcoDisc, IcoRetry } from "./icons";
 import { StateIndicator } from "./StateIndicator";
 import { TrackGrid } from "./TrackGrid";
 import { usePosterImage } from "./DiscCard/hooks/usePosterImage";
@@ -67,6 +67,7 @@ export interface DiscData {
   currentSpeed?: string;
   etaSeconds?: number;
   subtitleStatus?: string;
+  subtitleError?: string;
   startedAt?: string;
   needsReview?: boolean;
   conflictStatus?: string;
@@ -78,7 +79,7 @@ interface DiscCardProps {
   onReview?: () => void;
   onReIdentify?: () => void;
   onAdvance?: () => void;
-  onSkipTrack?: (trackId: string) => void;
+  onReportBug?: () => void;
 }
 
 /**
@@ -172,7 +173,7 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onSkipTrack }, ref) => {
+  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onReportBug }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
@@ -320,14 +321,6 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       {failedTrackCount} FAILED
                     </span>
                   )}
-                  {disc.subtitleStatus === 'failed' && (
-                    <span
-                      title="Subtitle download failed"
-                      style={{ fontSize: 16, color: sv.yellow }}
-                    >
-                      ⚠
-                    </span>
-                  )}
                   {elapsed && (
                     <div
                       title="Elapsed time"
@@ -352,9 +345,39 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReview={onReview}
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
+                    onReportBug={onReportBug}
                   />
                 </div>
               </div>
+
+              {/* No reference subtitles — loud + actionable while the job is still
+                  actionable. Hidden once completed (e.g. user assigned manually). */}
+              {disc.subtitleStatus === 'failed' && disc.state !== 'completed' && (
+                <div
+                  role="alert"
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    marginBottom: 16,
+                    padding: "10px 12px",
+                    border: `1px solid ${sv.red}`,
+                    borderLeft: `3px solid ${sv.red}`,
+                    background: "rgba(255, 77, 79, 0.08)",
+                    fontFamily: sv.mono,
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    letterSpacing: "0.02em",
+                    color: sv.red,
+                  }}
+                >
+                  <span aria-hidden style={{ flexShrink: 0 }}>⚠</span>
+                  <span>
+                    {disc.subtitleError ||
+                      "No subtitles found — episode matching can't run. Open to assign episodes manually."}
+                  </span>
+                </div>
+              )}
 
               {/* Scanning / identifying — full disc-insert visualization */}
               {disc.state === "scanning" && (() => {
@@ -421,36 +444,72 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       color={sv.yellow}
                     />
                   </div>
-                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
+                  <TrackGrid tracks={disc.tracks} />
                 </div>
               )}
 
               {/* Matching */}
               {disc.state === "matching" && disc.tracks && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <PulseCaption
-                    color={sv.amber}
-                    extra={
-                      disc.subtitleStatus === 'downloading' ? (
-                        <span style={{ color: sv.cyan, fontSize: 10 }}>
-                          (downloading subtitles)
-                        </span>
-                      ) : undefined
-                    }
-                  >
-                    › MATCHING EPISODES…
-                  </PulseCaption>
-                  {disc.conflictStatus && (
+                  {disc.conflictStatus ? (
                     <div
+                      data-testid="deep-rematch-banner"
                       style={{
-                        fontFamily: sv.mono,
-                        fontSize: 11,
-                        color: sv.amber,
-                        letterSpacing: "0.04em",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        padding: "10px 12px",
+                        border: `1px solid ${sv.magenta}66`,
+                        background: `${sv.magenta}10`,
                       }}
                     >
-                      {disc.conflictStatus}
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        style={{ flexShrink: 0, marginTop: 1 }}
+                      >
+                        <IcoRetry size={14} color={sv.magenta} />
+                      </motion.div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            fontFamily: sv.mono,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: sv.magenta,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {disc.conflictStatus}
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: sv.mono,
+                            fontSize: 10,
+                            color: sv.inkDim,
+                            marginTop: 4,
+                            letterSpacing: "0.02em",
+                          }}
+                        >
+                          Auto-resolving without manual review — each pass scans more of the
+                          track. This can take a few minutes per pass.
+                        </div>
+                      </div>
                     </div>
+                  ) : (
+                    <PulseCaption
+                      color={sv.amber}
+                      extra={
+                        disc.subtitleStatus === 'downloading' ? (
+                          <span style={{ color: sv.cyan, fontSize: 10 }}>
+                            (downloading subtitles)
+                          </span>
+                        ) : undefined
+                      }
+                    >
+                      › MATCHING EPISODES…
+                    </PulseCaption>
                   )}
                   <div
                     style={{
@@ -465,9 +524,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       color={sv.green}
                     />
                     <SvStat
-                      label="IN PROGRESS"
+                      label={disc.conflictStatus ? "RE-MATCHING" : "IN PROGRESS"}
                       value={String(disc.tracks.filter(t => t.state === "matching").length)}
-                      color={sv.amber}
+                      color={disc.conflictStatus ? sv.magenta : sv.amber}
                     />
                     <SvStat
                       label="PENDING"
@@ -475,7 +534,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       color={sv.inkDim}
                     />
                   </div>
-                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
+                  <TrackGrid tracks={disc.tracks} conflictStatus={disc.conflictStatus} />
                 </div>
               )}
 
@@ -503,7 +562,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       color={sv.purple}
                     />
                   </div>
-                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
+                  <TrackGrid tracks={disc.tracks} />
                 </div>
               )}
 
@@ -513,7 +572,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   <PulseCaption color={sv.amber}>
                     › PROCESSING…
                   </PulseCaption>
-                  <TrackGrid tracks={disc.tracks} onSkip={onSkipTrack} />
+                  <TrackGrid tracks={disc.tracks} />
                 </div>
               )}
 

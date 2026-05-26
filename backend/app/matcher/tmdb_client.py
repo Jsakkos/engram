@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from functools import lru_cache, wraps
 from typing import Any, TypeVar
+from urllib.parse import urlparse
 
 import requests
 from loguru import logger
@@ -95,12 +96,25 @@ def _tmdb_auth(api_key: str) -> tuple[dict, dict]:
     return headers, params
 
 
+_TMDB_ALLOWED_HOSTS = frozenset({"api.themoviedb.org"})
+
+
 def _tmdb_get_json(url: str, api_key: str, query_params: dict | None = None) -> dict | None:
     """Perform an authenticated TMDB GET and return parsed JSON.
 
     Returns None if the request fails (logs the error). Raises nothing —
     callers supply their own default return value.
+
+    Guards against SSRF: the URL hostname must be in the allowlist
+    ``_TMDB_ALLOWED_HOSTS``. Callers in this module build URLs from
+    f-strings interpolating show/season IDs; the hostname allowlist check is
+    the CodeQL-recognised taint barrier for py/partial-ssrf (set-membership
+    against a literal frozenset).
     """
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in _TMDB_ALLOWED_HOSTS:
+        logger.error("TMDB request rejected: URL host is not in allowlist")
+        return None
     headers, params = _tmdb_auth(api_key)
     if query_params:
         params.update(query_params)
@@ -742,6 +756,7 @@ def fetch_season_episodes(show_id: str, season_number: int, api_key: str) -> lis
             "episode_number": ep.get("episode_number"),
             "name": ep.get("name") or "",
             "runtime": ep.get("runtime") or 0,
+            "overview": ep.get("overview") or "",
         }
         for ep in season_data.get("episodes", [])
         if ep.get("episode_number") is not None

@@ -1,0 +1,58 @@
+name: Tag Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# See ci.yml for context on the Node 24 opt-in.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  tag:
+    name: Tag release commit
+    runs-on: ubuntu-latest
+    # Squash-merge of a release PR produces "chore: release v0.x.y (#NNN)"
+    if: "contains(github.event.head_commit.message, 'chore: release v')"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' backend/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tagging: v$VERSION"
+
+      - name: Check if tag already exists
+        id: tag_check
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.version.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.tag }} already exists — skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Dispatch release workflow
+        # GITHUB_TOKEN-pushed tags don't fire push:tags workflows; dispatch explicitly.
+        # Guard matches the push step so we don't re-trigger builds on an existing tag.
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 5
+          gh workflow run release.yml \
+            --ref "${{ steps.version.outputs.tag }}" \
+            --field tag="${{ steps.version.outputs.tag }}"

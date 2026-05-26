@@ -775,3 +775,180 @@ class TestProcessMatchedGuard:
 
         detail = await client.get(f"/api/jobs/{job_id}")
         assert detail.json()["state"] == "review_needed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestReassignWithSource:
+    """Tests for the optional source parameter on episode reassignment."""
+
+    async def test_source_ai_llm_persisted(self, client):
+        """When source='ai_llm' is passed, it is stored on the title."""
+        async with async_session() as s:
+            job = DiscJob(
+                drive_id="TEST:",
+                volume_label="X_S1D1",
+                state=JobState.REVIEW_NEEDED,
+                content_type=ContentType.TV,
+            )
+            s.add(job)
+            await s.commit()
+            await s.refresh(job)
+            title = DiscTitle(
+                job_id=job.id,
+                title_index=0,
+                duration_seconds=1200,
+                state=TitleState.REVIEW,
+            )
+            s.add(title)
+            await s.commit()
+            await s.refresh(title)
+            job_id = job.id
+            title_id = title.id
+
+        r = await client.post(
+            f"/api/jobs/{job_id}/titles/{title_id}/reassign",
+            json={"episode_code": "S01E03", "source": "ai_llm"},
+        )
+        assert r.status_code == 200
+
+        async with async_session() as s:
+            refreshed = await s.get(DiscTitle, title_id)
+            assert refreshed.matched_episode == "S01E03"
+            assert refreshed.match_source == "ai_llm"
+
+    async def test_source_defaults_to_user(self, client):
+        """When source is omitted, match_source defaults to 'user'."""
+        async with async_session() as s:
+            job = DiscJob(
+                drive_id="TEST:",
+                volume_label="Y_S1D1",
+                state=JobState.REVIEW_NEEDED,
+                content_type=ContentType.TV,
+            )
+            s.add(job)
+            await s.commit()
+            await s.refresh(job)
+            title = DiscTitle(
+                job_id=job.id,
+                title_index=0,
+                duration_seconds=1200,
+                state=TitleState.REVIEW,
+            )
+            s.add(title)
+            await s.commit()
+            await s.refresh(title)
+            job_id = job.id
+            title_id = title.id
+
+        r = await client.post(
+            f"/api/jobs/{job_id}/titles/{title_id}/reassign",
+            json={"episode_code": "S01E05"},
+        )
+        assert r.status_code == 200
+
+        async with async_session() as s:
+            refreshed = await s.get(DiscTitle, title_id)
+            assert refreshed.matched_episode == "S01E05"
+            assert refreshed.match_source == "user"
+
+
+class TestLLMMatchEndpoint:
+    @pytest.mark.asyncio
+    async def test_returns_suggestion_and_persists(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock  # noqa: F401
+
+        from app.database import async_session
+        from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
+
+        async with async_session() as s:
+            job = DiscJob(
+                drive_id="TEST:",
+                volume_label="X_S1D1",
+                state=JobState.REVIEW_NEEDED,
+                content_type=ContentType.TV,
+                detected_title="The Expanse",
+                detected_season=1,
+            )
+            s.add(job)
+            await s.commit()
+            await s.refresh(job)
+            title = DiscTitle(
+                job_id=job.id,
+                title_index=0,
+                state=TitleState.REVIEW,
+                duration_seconds=1200,
+                file_path="/tmp/x.mkv",
+            )
+            s.add(title)
+            await s.commit()
+            await s.refresh(title)
+
+        async def fake_run(**kwargs):
+            return {
+                "episode": 4,
+                "confidence": 0.88,
+                "reasoning": "r",
+                "runner_up": None,
+                "model": "gemini-2.5-flash-lite",
+            }
+
+        monkeypatch.setattr("app.api.routes._run_llm_match_for_title", fake_run)
+
+        r = await client.post(f"/api/jobs/{job.id}/titles/{title.id}/llm-match")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["suggestion"]["episode"] == 4
+        assert body["reason"] is None
+
+        async with async_session() as s:
+            refreshed = await s.get(DiscTitle, title.id)
+            import json
+
+            details = json.loads(refreshed.match_details or "{}")
+            assert details["llm_suggestion"]["episode"] == 4
+
+    @pytest.mark.asyncio
+    async def test_returns_cached_suggestion_without_re_transcribing(
+        self, client, setup_db, monkeypatch
+    ):
+        """Idempotent under double-click: existing llm_suggestion returns immediately."""
+        import json
+
+        from app.database import async_session
+        from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
+
+        async with async_session() as s:
+            job = DiscJob(
+                drive_id="TEST:",
+                volume_label="X_S1D1",
+                state=JobState.REVIEW_NEEDED,
+                content_type=ContentType.TV,
+                detected_title="X",
+                detected_season=1,
+            )
+            s.add(job)
+            await s.commit()
+            await s.refresh(job)
+            title = DiscTitle(
+                job_id=job.id,
+                title_index=0,
+                state=TitleState.REVIEW,
+                duration_seconds=1200,
+                file_path="/tmp/x.mkv",
+                match_details=json.dumps({"llm_suggestion": {"episode": 9, "confidence": 0.7}}),
+            )
+            s.add(title)
+            await s.commit()
+            await s.refresh(title)
+
+        async def boom(**_kw):
+            raise AssertionError("must not re-run transcription when cached")
+
+        monkeypatch.setattr("app.api.routes._run_llm_match_for_title", boom)
+
+        r = await client.post(f"/api/jobs/{job.id}/titles/{title.id}/llm-match")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["reason"] == "cached"
+        assert body["suggestion"]["episode"] == 9

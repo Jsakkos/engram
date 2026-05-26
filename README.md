@@ -40,6 +40,7 @@
 - **Automatic disc detection** — monitors optical drives and starts processing on insertion
 - **Smart classification** — distinguishes TV shows from movies using duration analysis, TMDB lookup, and TheDiscDB; uses the MakeMKV disc name as a TMDB fallback for merged-word volume labels (e.g. `STRANGENEWWORLDS_SEASON3`)
 - **Audio fingerprint matching** — identifies TV episodes via ASR transcription matched against subtitles
+- **LLM episode matching (opt-in)** — when audio matching is uncertain, send the transcript + TMDB synopses to your configured AI provider for a suggested episode (Gemini, Anthropic, OpenAI, or OpenRouter). Always confirmed via the review queue.
 - **Subtitle downloads** — fetches subtitles via the OpenSubtitles.com REST API (preferred, free tier available) with Addic7ed as fallback
 - **Real-time dashboard** — web UI with WebSocket live updates, progress tracking, and notifications
 - **Human-in-the-loop** — review queue for low-confidence matches, unreadable disc labels, and ambiguous content with a pre-filled correction modal
@@ -67,13 +68,21 @@ On all platforms, Engram supports a **staging folder workflow**: drop a folder o
 
 - [MakeMKV](https://www.makemkv.com/) with a valid license
 - A TMDB API Read Access Token (v4) from [TMDB](https://www.themoviedb.org/settings/api)
-- If running from source: Python 3.11+ with [uv](https://docs.astral.sh/uv/), and Node.js 24
+- If running from source: Python 3.11–3.13 with [uv](https://docs.astral.sh/uv/), and Node.js 24 (Python 3.14 is not yet supported — some ML dependencies have no 3.14 wheels)
 
 ## Install
 
-### Option A: Standalone executable (Windows)
+### Option A: Standalone executable (Windows, Linux, macOS)
 
-Download `engram-windows-x64.zip` from the [Releases](https://github.com/Jsakkos/engram/releases) page, extract it, and run `engram.exe`. No Python or Node.js required — the Config Wizard opens in your browser on first launch.
+No Python or Node.js required — the Config Wizard opens in your browser on first launch. Download the build for your platform from the [Releases](https://github.com/Jsakkos/engram/releases) page, extract it, and run the `engram` executable:
+
+| Platform | Download | Run |
+|----------|----------|-----|
+| Windows | `engram-windows-x64.zip` | `engram.exe` |
+| Linux (x64) | `engram-linux-x64.tar.gz` | `./engram/engram` |
+| macOS | `engram-macos-arm64.tar.gz` | `./engram/engram` |
+
+On macOS, download `engram-macos-arm64.tar.gz`. It runs natively on Apple Silicon (M1/M2/M3/M4) and transparently on Intel Macs via Rosetta 2. macOS has no automatic optical-drive detection — use the staging-folder workflow (see [Linux / macOS setup](docs/guide/linux-setup.md)).
 
 ### Option B: From source (all platforms)
 
@@ -112,6 +121,24 @@ npm run dev
 ```
 
 Open http://localhost:5173 in your browser. See the [installation guide](docs/getting-started/installation.md) for distro-specific prerequisites and verification steps.
+
+### Option C: Docker (Linux)
+
+Run Engram as a container with the optical drive passed through from the host:
+
+```bash
+git clone https://github.com/Jsakkos/engram.git
+cd engram
+# Set MAKEMKV_APP_KEY (and PUID/PGID) in docker-compose.yml, then:
+docker compose up -d
+```
+
+Open http://localhost:8000 and complete the setup wizard. MakeMKV is compiled
+into the `./config` volume on first start (one-time), so the image itself ships
+no MakeMKV binaries. Optical-disc ripping requires a real Linux host with a
+drive — Docker Desktop on Windows/macOS can run the UI but can't pass through
+`/dev/sr0`. See the [Docker deployment guide](docs/deployment/docker.md) for
+volumes, device passthrough, GPU notes, and troubleshooting.
 
 ## Configuration
 

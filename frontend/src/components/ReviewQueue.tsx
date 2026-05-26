@@ -13,6 +13,7 @@ import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, no
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
+import { runLLMMatch, reassignEpisode } from '../api/client';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
@@ -170,6 +171,7 @@ function ReviewQueue() {
     const [titleActions, setTitleActions] = useState<Record<number, TitleAction>>({});
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
     const [rematchNotice, setRematchNotice] = useState<string | null>(null);
+    const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
 
     const { roster, error: rosterError, episodeName } = useSeasonRoster(jobId);
 
@@ -177,6 +179,18 @@ function ReviewQueue() {
         fetchJobDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [jobId]);
+
+    // Fetch config once on mount to know whether AI matching is enabled.
+    useEffect(() => {
+        fetch('/api/config')
+            .then((r) => r.ok ? r.json() : null)
+            .then((data) => {
+                if (data?.ai_episode_matching_enabled) {
+                    setAiEpisodeMatchingEnabled(true);
+                }
+            })
+            .catch(() => {/* non-critical */});
+    }, []);
 
     const fetchJobDetails = async () => {
         try {
@@ -253,14 +267,18 @@ function ReviewQueue() {
 
     // --- API Handlers ---
 
-    const handleRematch = async (titleId: number, sourcePreference: string = 'engram') => {
+    const handleRematch = async (
+        titleId: number,
+        sourcePreference: string = 'engram',
+        deep: boolean = false,
+    ) => {
         setIsRematching(true);
         setError(null);
         try {
             const response = await fetch(`/api/jobs/${jobId}/titles/${titleId}/rematch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source_preference: sourcePreference }),
+                body: JSON.stringify({ source_preference: sourcePreference, deep }),
             });
             if (!response.ok) {
                 const text = await response.text();
@@ -333,6 +351,39 @@ function ReviewQueue() {
             setError(err instanceof Error ? err.message : 'Failed to deep re-match');
         } finally {
             setIsRematching(false);
+        }
+    };
+
+    // Run the LLM matcher for a single title, then refresh so the persisted
+    // llm_suggestion in match_details surfaces in the Inspector.
+    const handleTryLLMMatch = async (titleId: number) => {
+        if (!jobId) return;
+        setError(null);
+        try {
+            await runLLMMatch(parseInt(jobId), titleId);
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('LLM match failed', err);
+            setError(err instanceof Error ? err.message : 'AI match failed');
+        }
+    };
+
+    // Accept an LLM suggestion: reassign the episode tagged as 'ai_llm' source,
+    // then refresh the title list so the Inspector reflects the new assignment.
+    const handleAcceptLLMSuggestion = async (titleId: number, episodeNumber: number) => {
+        if (!jobId) return;
+        const seasonNum = job?.detected_season ?? 1;
+        const seasonStr = String(seasonNum).padStart(2, '0');
+        const epStr = String(episodeNumber).padStart(2, '0');
+        const code = `S${seasonStr}E${epStr}`;
+        setError(null);
+        try {
+            await reassignEpisode(parseInt(jobId), titleId, code, undefined, 'ai_llm');
+            handleEpisodeChange(titleId, code);
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('Accept LLM suggestion failed', err);
+            setError(err instanceof Error ? err.message : 'Failed to accept AI suggestion');
         }
     };
 
@@ -723,15 +774,18 @@ function ReviewQueue() {
             {/* Content */}
             <div className="max-w-[1280px] mx-auto px-6 py-8 relative z-0 pb-24">
                 {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
+                {/* Subtitle failure and any other job error are independent now that
+                    subtitle detail lives on its own field — both can surface. */}
+                {job.subtitle_status === 'failed' && (
+                    <SvNotice tone="error">
+                        › {job.subtitle_error_message ||
+                            "NO REFERENCE SUBTITLES FOUND — EPISODE MATCHING CAN'T RUN. ASSIGN EPISODES MANUALLY BELOW."}
+                    </SvNotice>
+                )}
                 {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
                 {hasConflicts && (
                     <SvNotice tone="warn">
                         › {collisions.size} EPISODE CONFLICT{collisions.size > 1 ? 'S' : ''} — TWO TITLES SHARE AN EPISODE. RESOLVE BEFORE SAVING.
-                    </SvNotice>
-                )}
-                {job.subtitle_status === 'failed' && !job.error_message?.includes('Subtitle') && (
-                    <SvNotice tone="warn">
-                        › SUBTITLE DOWNLOAD FAILED. MANUAL FETCH MAY BE REQUIRED.
                     </SvNotice>
                 )}
                 {rosterError && (
@@ -837,10 +891,13 @@ function ReviewQueue() {
                                 holders={holders}
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
+                                aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
                                 onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}
                                 onAction={(a) => handleTitleAction(selectedTitle.id, a)}
                                 onRematch={handleRematch}
                                 onDeepRematch={handleRematchConflict}
+                                onTryLLMMatch={handleTryLLMMatch}
+                                onAcceptLLMSuggestion={handleAcceptLLMSuggestion}
                             />
                         ) : (
                             <SvPanel pad={24}>

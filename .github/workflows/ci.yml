@@ -232,6 +232,62 @@ jobs:
           DEBUG: "true"
           DATABASE_URL: "sqlite+aiosqlite:///./engram_smoke.db"
 
+  dependency-resolution:
+    name: Dependency Resolution (Python ${{ matrix.python }}, ${{ matrix.os }})
+    # Reproduces the macOS source-install path so a too-new interpreter or a
+    # missing platform wheel (e.g. onnxruntime) is caught before a user hits it.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+      - name: uv sync on Python ${{ matrix.python }}
+        run: uv sync --no-install-project --python ${{ matrix.python }}
+
+  dependency-resolution-py314-guard:
+    name: Reject Python 3.14 (requires-python cap)
+    # Regression guard for the source-install failure reported on r/MakeMKV:
+    # onnxruntime has no cp314 wheel, so the requires-python upper bound must
+    # keep uv off Python 3.14. If this job starts failing because uv sync
+    # *succeeded* on 3.14, raise the cap and refresh this guard.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+      - name: uv sync must reject Python 3.14
+        shell: bash
+        run: |
+          # If 3.14 can't be provisioned (network, indexing, uv version gap) the
+          # guard can't run — skip rather than fail for an unrelated reason.
+          if ! uv python install 3.14; then
+            echo "Python 3.14 unavailable via uv — skipping guard."
+            exit 0
+          fi
+          if uv sync --no-install-project --python 3.14; then
+            echo "ERROR: uv sync unexpectedly succeeded on Python 3.14."
+            echo "The requires-python cap (<3.14) is missing or onnxruntime now ships cp314 wheels."
+            exit 1
+          fi
+          echo "OK: Python 3.14 correctly rejected by the requires-python cap."
+
   alembic-check:
     name: Alembic Migration Sanity
     runs-on: ubuntu-latest

@@ -153,6 +153,84 @@ async def test_engram_matching_sets_match_source(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_needs_review_match_routes_to_review_not_matched(monkeypatch):
+    """A low-confidence (needs_review) result must go to REVIEW even when the
+    matcher emits a best-guess episode code — otherwise a borderline guess (e.g.
+    a bonus track that slipped past the duration pre-filter) is silently organized
+    as the wrong episode instead of being flagged. The auto review-escalation then
+    deep re-matches it; if still unresolved, the user decides."""
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+
+    job, title = await _seed_job_and_title()
+
+    mock_result = MagicMock()
+    mock_result.episode_code = "S01E07"  # best guess, but...
+    mock_result.confidence = 0.41
+    mock_result.needs_review = True  # ...not confident
+    mock_result.match_details = {"method": "subtitle", "score": 0.41}
+
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    coordinator = _make_coordinator(monkeypatch, discdb_mappings={})
+
+    await coordinator._match_single_file_inner(
+        job.id, title.id, Path("/tmp/staging/test/title_t00.mkv")
+    )
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        assert title.state == TitleState.REVIEW
+        # No ENGRAM badge: the matcher never made a confident auto-match.
+        assert title.match_source is None
+
+
+@pytest.mark.asyncio
+async def test_match_respects_force_advance_race(monkeypatch):
+    """If a title is force-advanced (forced_review=True in match_details) while
+    its match task is in flight, the task's result must NOT overwrite the title.
+    Without this guard, force-advance / per-track skip can race with matching:
+    the task finishes a moment later, clobbers match_details (wiping the
+    forced_review flag), and the auto review-escalation immediately re-dispatches
+    the title — visible as 'Skip / Force does nothing.'"""
+    import json
+
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+
+    # Seed a title already in REVIEW with the forced_review marker (i.e. another
+    # path force-advanced it while the matching task was running).
+    job, title = await _seed_job_and_title(
+        state=TitleState.REVIEW,
+        match_details=json.dumps({"forced_review": True, "reason": "stale timeout"}),
+    )
+
+    mock_result = MagicMock()
+    mock_result.episode_code = "S01E03"
+    mock_result.confidence = 0.85
+    mock_result.needs_review = False
+    mock_result.match_details = {"score": 0.85, "vote_count": 7}
+
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    coordinator = _make_coordinator(monkeypatch, discdb_mappings={})
+
+    await coordinator._match_single_file_inner(
+        job.id, title.id, Path("/tmp/staging/test/title_t00.mkv")
+    )
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        # Forced state must survive: REVIEW, no episode, forced_review marker intact.
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode is None
+        details = json.loads(title.match_details)
+        assert details.get("forced_review") is True
+
+
+@pytest.mark.asyncio
 async def test_discdb_match_details_stored_separately(monkeypatch):
     """discdb_match_details should be a copy of match_details at assignment time."""
     from app.core.discdb_classifier import DiscDbTitleMapping

@@ -2,6 +2,57 @@
 
 All notable changes to Engram will be documented in this file.
 
+## [Unreleased]
+
+## [0.8.0] - 2026-05-26
+
+### Added
+- **LLM episode matching (opt-in)** — when audio fingerprint matching can't confidently identify a TV episode, an LLM compares the cleaned transcript against the season's TMDB synopses and suggests an episode through the review queue. Supports Gemini, Anthropic, OpenAI, and OpenRouter providers (Gemini Flash-Lite recommended); shares the existing `ai_provider`/`ai_api_key` settings. Never auto-organizes — always requires user confirmation. (#109)
+- **Google Gemini provider** added to the AI provider list, usable by both AI title resolution and the new LLM episode matcher.
+- **Docker / Linux container support** — official Docker image with a single-volume design (`/config` holds the database, logs, caches, and HF models). MakeMKV is compiled from source on first start to avoid redistribution restrictions; the stored MakeMKV license key is automatically seeded into MakeMKV's `settings.conf`. `docker-compose.yml` and full documentation included. (#193)
+- **LAN access toggle** — opt-in setting in Preferences that binds the server to `0.0.0.0` so the dashboard is reachable from other devices on the local network. Settings panel shows the LAN URL, a copy button, and a QR code; a "restart to apply" notice appears until the socket is rebound. The `HOST` environment variable still takes precedence for Docker / headless deployments. (#211)
+
+### Fixed
+- **TV extras tagging after organize failure** — if organizing an extras track failed (e.g. destination already exists), the `is_extra` flag was silently dropped and the UI showed the track as an ordinary completed episode instead of marking it with an EXTRA chip. (#224)
+- **Per-track deep re-match missing from inspector** — the v0.7 inspector redesign removed the per-track "Deep re-match" button for low-confidence titles; only the disc-level conflict re-match was preserved. Restored the per-track action and wired a `deep` flag through `RematchRequest` → `rematch_single_title` → matcher (stricter scan points and vote thresholds). (#224)
+- **Auto-escalation never fired for needs-review titles** — `_maybe_escalate_conflicts` only escalated episode collisions, not titles routed to REVIEW. Added `_maybe_escalate_reviews` on the same 10 → 25 → full-coverage ladder; separate pass counters for conflicts vs. reviews prevent them from clearing each other (which previously pinned the ladder at pass 1). (#224)
+- **Race condition on shared matcher temp files** — concurrent title threads writing `chunk_{start}_{dur}.wav` and `preprocessed_{stem}.wav` without a source-file disambiguator caused PyAV `InvalidDataError` when two threads sampled the same offset. Chunk and preprocessed paths now hash the canonical source path to keep them per-source. (#216)
+- **Stale precomputed-cache manifest entries** — when `manifest.json` claimed coverage for a show/season whose `.npz` was missing, the fallback warning fired once per title and the in-memory manifest was never corrected, causing repeated spurious warnings. Stale entries are now pruned from the manifest on detection. (#216)
+- **TF-IDF matcher reference-set reuse** — `TfidfMatcher` reused across calls with a different reference set (precomputed episode codes vs. scraped SRT paths) caused silent `KeyError` swallows that rejected every chunk. The matcher is rebuilt when its `reference_signature()` changes. (#216)
+- **Config dropdowns unreadable on Windows** — native `<select>` elements render with the OS-controlled light background on Windows, making options invisible against the dark Synapse v2 theme. Replaced all 7 config `<select>` elements with a new `EngramSelect` component built on Radix UI, which renders the popup as React DOM and respects theme tokens.
+
+## [0.7.3] - 2026-05-25
+
+### Fixed
+- **Ripping progress detection**: MakeMKV robot-mode output (`PRGC`/`PRGV`) was misread — the leading field is a message code (not a title index) and progress is `value/65536` (not `current/total`) — producing phantom "title 5018 is ripping" states and >100% per-title progress bars. The filesystem monitor (output-file sizes) is now the single source of per-title and overall progress; the stall-watchdog heartbeat is also fed from it (#209).
+- **Redundant disc re-scans during ripping**: each title previously triggered its own `makemkvcon` invocation, re-opening and re-scanning the whole disc every time. Ripping now issues one `makemkvcon … all` pass for the full disc selection, falling back to individual re-rips only for any titles missing from that pass (#209).
+
+### Changed
+- **macOS Intel build dropped**: `llvmlite` 0.46.0 (December 2025) no longer ships macOS x86_64 wheels; building from source fails on Python 3.13. The `engram-macos-x64` release artifact is removed. Intel Mac users should use `engram-macos-arm64.tar.gz`, which runs transparently on Intel Macs via Rosetta 2.
+- **Subtitle cache build speed**: seasons already covered on disk are skipped on each daily run — no TMDB, OpenSubtitles, or scraper calls — until a configurable freshness window (default 30 days) expires or `--refresh` forces a full re-harvest. Previously every season was re-attempted on each run regardless of prior coverage (#204).
+
+## [0.7.2] - 2026-05-25
+
+### Fixed
+- **macOS frozen-build launch crash**: the packaged app now calls `multiprocessing.freeze_support()`
+  before spawning workers, preventing an infinite fork-bomb on macOS where the spawn start method
+  caused worker processes to re-execute the frozen entry point — opening endless browser windows and
+  crashing immediately (#206).
+- **macOS Intel binary mislabeled as x64**: `macos-latest` GitHub Actions runner is Apple Silicon,
+  so prior releases shipped an arm64 binary as `engram-macos-x64.tar.gz` (Intel Macs received
+  "bad CPU type"). CI now builds on `macos-13` (x64) and `macos-14` (arm64) separately (#206).
+- **Python 3.14 incompatibility**: `requires-python` capped to `<3.14` as `onnxruntime` (via
+  `faster-whisper`) has no cp314 wheel; backend Python pinned to 3.13 (#206).
+
+### Added
+- **macOS Apple Silicon download**: `engram-macos-arm64.tar.gz` is now published as a dedicated
+  release artifact for M1/M2/M3/M4 Macs (#206).
+
+### Changed
+- **Hardened cross-platform smoke tests**: release builds assert binary architecture with `file`
+  and a process-count guard (≤ 2 processes) catches re-spawn bugs headlessly; CI runs `uv sync`
+  resolution across Python 3.11–3.13 on Ubuntu and macOS arm64 (#206).
+
 ## [0.7.1] - 2026-05-23
 
 ### Fixed

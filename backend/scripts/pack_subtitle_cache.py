@@ -49,6 +49,12 @@ from loguru import logger
 from scipy import sparse
 
 from app.matcher.episode_identification import EpisodeMatcher, SubtitleCache
+from app.matcher.subtitle_utils import (
+    MULTI_EP_RE as _MULTI_EP_RE,
+)
+from app.matcher.subtitle_utils import (
+    SINGLE_EP_RE as _SINGLE_EP_RE,
+)
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
 from app.matcher.vectorizer_config import (
@@ -59,11 +65,9 @@ from app.matcher.vectorizer_config import (
     vectorizer_config_hash,
 )
 
-# "S01E01" (single) -- the only shape the harvester writes. A multi-episode file
-# ("S01E01E02") is ambiguous to vectorize as one row, so it's logged and skipped.
-_SINGLE_EP_RE = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,4})\.srt$")
-_MULTI_EP_RE = re.compile(r"[Ss]\d{1,2}[Ee]\d{1,4}[Ee]\d{1,4}")
-
+# Single/multi-episode filename shapes live in subtitle_utils so the build
+# harvester's complete-on-disk fast path and this disk-only packer agree on what
+# a cached episode looks like (imported above as _SINGLE_EP_RE / _MULTI_EP_RE).
 _TRAILING_YEAR_RE = re.compile(r"\s*\(\d{4}\)\s*$")
 
 

@@ -21,6 +21,7 @@ from unittest.mock import patch
 import pytest
 
 import app.services.config_service as cfg_svc
+from app.matcher import coverage_tracker
 from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
@@ -64,7 +65,7 @@ class TestHarvestShowAccumulatesTally:
     RunTally fields the final summary reports. A regression here would mean
     the user sees zeros at the end of a real run."""
 
-    def test_per_status_counts_accumulated(self, bsc):
+    def test_per_status_counts_accumulated(self, bsc, tmp_path):
         """One season with mixed cached / downloaded / not_found episodes —
         each must increment the matching tally field."""
 
@@ -106,12 +107,13 @@ class TestHarvestShowAccumulatesTally:
                 "min_episodes_ratio": 0.5,
                 "sleep": 0,
                 "retry_low_coverage": True,  # bypass the W3 skip-list fast-path
+                "refresh": True,  # bypass the complete-on-disk fast-path
                 "skip_window_days": 30,
             },
         )()
 
         with patch.object(bsc, "download_subtitles", side_effect=fake_download):
-            bsc._harvest_show(show, args, tally)
+            bsc._harvest_show(show, args, tally, tmp_path)
 
         assert tally.cache_hits == 1
         assert tally.downloaded == 2
@@ -122,7 +124,7 @@ class TestHarvestShowAccumulatesTally:
         # are both excluded.
         assert tally.by_source == {"opensubtitles_api": 1, "addic7ed": 1}
 
-    def test_on_season_done_called_on_success_skip_and_fail(self, bsc):
+    def test_on_season_done_called_on_success_skip_and_fail(self, bsc, tmp_path):
         """The progress-bar advance hook must fire for every season —
         otherwise the bar stalls on shows with mixed outcomes."""
 
@@ -172,18 +174,154 @@ class TestHarvestShowAccumulatesTally:
                 "min_episodes_ratio": 0.5,
                 "sleep": 0,
                 "retry_low_coverage": True,  # bypass the W3 skip-list fast-path
+                "refresh": True,  # bypass the complete-on-disk fast-path
                 "skip_window_days": 30,
             },
         )()
         calls = []
 
         with patch.object(bsc, "download_subtitles", side_effect=downloads):
-            bsc._harvest_show(show, args, tally, on_season_done=lambda: calls.append(None))
+            bsc._harvest_show(
+                show, args, tally, tmp_path, on_season_done=lambda: calls.append(None)
+            )
 
         assert len(calls) == 3, "on_season_done must fire once per season"
         assert tally.seasons_done == 1
         assert tally.seasons_skipped_below_threshold == 1
         assert tally.seasons_failed == 1
+
+
+@pytest.mark.unit
+class TestHarvestShowCompleteOnDisk:
+    """A season already at/above the coverage threshold is shipped straight from
+    the SRTs on disk without calling download_subtitles — the fast path that
+    keeps daily re-runs near-instant and stops re-scraping the missing tail."""
+
+    @staticmethod
+    def _write_min_srt(path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("1\n00:00:01,000 --> 00:01:00,000\nhello\n", encoding="utf-8")
+
+    def test_covered_season_shipped_from_disk_without_network(self, bsc, tmp_path):
+        from app.matcher.subtitle_utils import sanitize_filename
+
+        show = {"name": "Disk Show", "tmdb_id": 555, "seasons": 1}
+        data_dir = tmp_path / "data" / sanitize_filename(show["name"])
+        for code in ("S01E01", "S01E02"):
+            self._write_min_srt(data_dir / f"{show['name']} - {code}.srt")
+        # Prior attempt at full coverage → is_done() returns True.
+        coverage_tracker.record(555, 1, total=2, covered=2)
+
+        args = type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.5,
+                "sleep": 0,
+                "retry_low_coverage": False,
+                "refresh": False,
+                "skip_window_days": 30,
+            },
+        )()
+        tally = bsc.RunTally()
+
+        def boom(*a, **k):
+            raise AssertionError("download_subtitles must not run for a complete-on-disk season")
+
+        with patch.object(bsc, "download_subtitles", side_effect=boom):
+            harvested = bsc._harvest_show(show, args, tally, tmp_path)
+
+        assert sorted(code for _s, code, _p in harvested) == ["S01E01", "S01E02"]
+        assert tally.seasons_from_disk == 1
+        assert tally.seasons_done == 1
+        # Disk-shipped episodes count toward episodes_from_disk, NOT cache_hits —
+        # keeping cache_hit_rate a meaningful quota metric.
+        assert tally.episodes_from_disk == 2
+        assert tally.cache_hits == 0
+
+    def test_record_present_but_srts_gone_falls_back_to_harvest(self, bsc, tmp_path):
+        """A coverage record with no SRTs on disk (e.g. a wiped cache) must NOT
+        skip — it falls through to a normal harvest."""
+        show = {"name": "Gone Show", "tmdb_id": 557, "seasons": 1}
+        coverage_tracker.record(557, 1, total=1, covered=1)  # record, but no SRTs staged
+
+        args = type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.5,
+                "sleep": 0,
+                "retry_low_coverage": True,
+                "refresh": False,
+                "skip_window_days": 30,
+            },
+        )()
+        tally = bsc.RunTally()
+        called = []
+
+        def fake_download(show_name, season, *, use_precomputed=False):
+            called.append((show_name, season))
+            return {
+                "show_name": show_name,
+                "season": season,
+                "total_episodes": 1,
+                "episodes": [
+                    {"code": "S01E01", "status": "not_found", "path": None, "source": None}
+                ],
+                "cache_dir": "/tmp",
+            }
+
+        with patch.object(bsc, "download_subtitles", side_effect=fake_download):
+            bsc._harvest_show(show, args, tally, tmp_path)
+
+        assert called == [("Gone Show", 1)], "must re-harvest when SRTs are missing"
+        assert tally.seasons_from_disk == 0
+
+    def test_refresh_forces_reharvest_even_when_covered(self, bsc, tmp_path):
+        """--refresh re-harvests a covered-on-disk season instead of shipping it."""
+        from app.matcher.subtitle_utils import sanitize_filename
+
+        show = {"name": "Disk Show", "tmdb_id": 556, "seasons": 1}
+        data_dir = tmp_path / "data" / sanitize_filename(show["name"])
+        self._write_min_srt(data_dir / f"{show['name']} - S01E01.srt")
+        coverage_tracker.record(556, 1, total=1, covered=1)
+
+        args = type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.5,
+                "sleep": 0,
+                "retry_low_coverage": True,
+                "refresh": True,
+                "skip_window_days": 30,
+            },
+        )()
+        tally = bsc.RunTally()
+        called = []
+
+        def fake_download(show_name, season, *, use_precomputed=False):
+            called.append((show_name, season))
+            return {
+                "show_name": show_name,
+                "season": season,
+                "total_episodes": 1,
+                "episodes": [
+                    {
+                        "code": "S01E01",
+                        "status": "cached",
+                        "path": str(data_dir / f"{show_name} - S01E01.srt"),
+                        "source": "cache",
+                    }
+                ],
+                "cache_dir": str(data_dir),
+            }
+
+        with patch.object(bsc, "download_subtitles", side_effect=fake_download):
+            bsc._harvest_show(show, args, tally, tmp_path)
+
+        assert called == [("Disk Show", 1)], "refresh must re-harvest via download_subtitles"
+        assert tally.seasons_from_disk == 0
 
 
 _SHOW = "Test Show"

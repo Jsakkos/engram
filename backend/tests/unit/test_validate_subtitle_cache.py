@@ -31,7 +31,18 @@ def _make_assets(
     tarball_members: list[str] | None = None,
     corrupt_sha: bool = False,
 ) -> None:
-    """Build a synthetic release-assets dir at ``assets_dir``."""
+    """Build a synthetic release-assets dir at ``assets_dir``.
+
+    When the manifest declares show/season coverage, the helper drops a
+    matching ``S{nn}.npz`` + ``S{nn}.index.json`` under the show's
+    ``sanitize_filename`` slug so the manifest-↔-tarball consistency gate
+    in `validate()` sees the files it expects. Tests that exercise the
+    missing-files failure path opt out by passing ``tarball_members``
+    explicitly (no per-show files written) or by overriding shows with
+    an entry whose seasons list excludes those files.
+    """
+    from app.matcher.subtitle_utils import sanitize_filename
+
     assets_dir.mkdir(parents=True, exist_ok=True)
     build_dir = assets_dir / "_build" / "precomputed"
     build_dir.mkdir(parents=True)
@@ -39,6 +50,19 @@ def _make_assets(
     (build_dir / "manifest.json").write_text(
         "{}", encoding="utf-8"
     )  # in-tar manifest; validator only checks members
+
+    # Default manifest used to drive vector-file placement; tests can override.
+    default_shows = {"Some Show": {"tmdb_id": 1, "seasons": [1], "episode_counts": {"1": 3}}}
+    effective_shows = (manifest_overrides or {}).get("shows", default_shows) or {}
+    if tarball_members is None:
+        for show_name, entry in effective_shows.items():
+            if not isinstance(entry, dict):
+                continue
+            show_dir = build_dir / sanitize_filename(show_name)
+            show_dir.mkdir(parents=True, exist_ok=True)
+            for season in entry.get("seasons", []):
+                (show_dir / f"S{season:02d}.npz").write_bytes(b"fake-npz")
+                (show_dir / f"S{season:02d}.index.json").write_text('["S01E01"]', encoding="utf-8")
 
     tarball = assets_dir / "engram-subtitle-cache.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
@@ -102,6 +126,62 @@ class TestValidate:
         _make_assets(vsc, tmp_path, manifest_overrides={"shows": {}})
         failures = vsc.validate(tmp_path).failures
         assert any("shows dict in manifest is empty" in f for f in failures)
+
+    def test_consistency_check_records_failure_when_helper_unavailable(
+        self, vsc, tmp_path, monkeypatch
+    ):
+        """If the validator can't import `sanitize_filename`, the manifest-↔-
+        tarball gate would silently disappear — equivalent to no gate at all
+        in the very environment most likely to bypass it (a CI image missing
+        the matcher package). Surface it as a failure instead.
+        """
+        import builtins
+
+        _make_assets(vsc, tmp_path)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "app.matcher.subtitle_utils":
+                raise ImportError("simulated missing matcher package")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        failures = vsc.validate(tmp_path).failures
+        assert any("consistency check skipped" in f for f in failures), (
+            f"Expected import-failure surfaced as a validation failure, got: {failures}"
+        )
+
+    def test_manifest_lists_season_without_vector_files_detected(self, vsc, tmp_path):
+        """The manifest claims coverage for Show S07, but the tarball never
+        shipped S07.npz / S07.index.json for it. This is the exact state the
+        TNG-S7-D2 rip hit: matcher warns + falls back to scraping for every
+        title. The publish gate must reject the build instead of letting it
+        roll out to end-users.
+        """
+        # Tarball with only the top-level required entries, no per-show files.
+        _make_assets(
+            vsc,
+            tmp_path,
+            tarball_members=[
+                "precomputed",
+                "precomputed/idf.npy",
+                "precomputed/manifest.json",
+            ],
+            manifest_overrides={
+                "shows": {
+                    "Star Trek: The Next Generation": {
+                        "tmdb_id": 655,
+                        "seasons": [7],
+                        "episode_counts": {"7": 26},
+                    }
+                }
+            },
+        )
+        failures = vsc.validate(tmp_path).failures
+        assert any("Star Trek: The Next Generation" in f and "S07" in f for f in failures), (
+            f"Expected per-show/season files-missing failure, got: {failures}"
+        )
 
     def test_missing_manifest_reports_clean_failure(self, vsc, tmp_path):
         # No assets at all — what happens when `gh release download` produces

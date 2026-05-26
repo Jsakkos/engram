@@ -279,3 +279,177 @@ class TestEnsureInitialized:
         with patch.dict(sys.modules, {"app.matcher.episode_identification": None}):
             ok = curator._ensure_initialized("Show")
         assert ok is False
+
+
+@pytest.mark.unit
+class TestLLMFallback:
+    @pytest.mark.asyncio
+    async def test_disabled_in_config_skips_llm(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.core.curator import EpisodeCurator, MatchResult
+
+        curator = EpisodeCurator()
+        curator._matcher = MagicMock()
+        curator._matcher.identify_episode.return_value = {
+            "season": 1,
+            "episode": 3,
+            "confidence": 0.5,
+            "score": 0.5,
+            "match_details": {},
+            "runner_ups": [],
+        }
+        curator._cache_dir = tmp_path
+        curator._initialized = True
+        curator._current_show = "Test"
+
+        fake_config = MagicMock(ai_episode_matching_enabled=False, ai_api_key="k")
+        with (
+            patch(
+                "app.services.config_service.get_config", new=AsyncMock(return_value=fake_config)
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.match_episode_via_llm", new=AsyncMock()
+            ) as mock_llm,
+        ):
+            result = await curator.match_single_file(tmp_path / "x.mkv", "Test", 1)
+
+        assert isinstance(result, MatchResult)
+        mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_triggers_llm_and_attaches_suggestion(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.core.curator import EpisodeCurator
+        from app.matcher.llm_episode_matcher import LLMEpisodeMatch
+
+        curator = EpisodeCurator()
+        curator._matcher = MagicMock()
+        curator._matcher.identify_episode.return_value = {
+            "season": 1,
+            "episode": 3,
+            "confidence": 0.4,
+            "score": 0.4,
+            "match_details": {},
+            "runner_ups": [],
+        }
+        curator._matcher.transcribe_full = MagicMock(return_value="x" * 600)
+        curator._cache_dir = tmp_path
+        curator._initialized = True
+        curator._current_show = "Test"
+
+        fake_config = MagicMock(
+            ai_episode_matching_enabled=True,
+            ai_api_key="k",
+            ai_provider="gemini",
+            tmdb_api_key="t",
+        )
+
+        llm = LLMEpisodeMatch(
+            episode=5,
+            confidence=0.92,
+            reasoning="r",
+            runner_up=None,
+            model="gemini-2.5-flash-lite",
+        )
+
+        with (
+            patch(
+                "app.services.config_service.get_config", new=AsyncMock(return_value=fake_config)
+            ),
+            patch("app.matcher.tmdb_client.fetch_show_id", return_value="1234"),
+            patch("app.core.curator.match_episode_via_llm", new=AsyncMock(return_value=llm)),
+        ):
+            result = await curator.match_single_file(tmp_path / "x.mkv", "Test", 1)
+
+        assert result.needs_review is True
+        assert result.match_details["llm_suggestion"]["episode"] == 5
+        assert result.match_details["llm_suggestion"]["confidence"] == 0.92
+        assert result.match_details["llm_suggestion"]["model"] == "gemini-2.5-flash-lite"
+
+    @pytest.mark.asyncio
+    async def test_high_confidence_skips_llm(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.core.curator import EpisodeCurator
+
+        curator = EpisodeCurator()
+        curator._matcher = MagicMock()
+        curator._matcher.identify_episode.return_value = {
+            "season": 1,
+            "episode": 3,
+            "confidence": 0.92,
+            "score": 0.9,
+            "match_details": {},
+            "runner_ups": [],
+        }
+        curator._cache_dir = tmp_path
+        curator._initialized = True
+        curator._current_show = "Test"
+
+        fake_config = MagicMock(ai_episode_matching_enabled=True, ai_api_key="k")
+        with (
+            patch(
+                "app.services.config_service.get_config", new=AsyncMock(return_value=fake_config)
+            ),
+            patch("app.core.curator.match_episode_via_llm", new=AsyncMock()) as mock_llm,
+        ):
+            result = await curator.match_single_file(tmp_path / "x.mkv", "Test", 1)
+
+        assert result.needs_review is False
+        mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_reuses_existing_transcript_no_double_asr(self, tmp_path):
+        """When the primary matcher already produced a transcript (full-file
+        fallback), curator should pass it through without re-running Whisper."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.core.curator import EpisodeCurator
+        from app.matcher.llm_episode_matcher import LLMEpisodeMatch
+
+        curator = EpisodeCurator()
+        curator._matcher = MagicMock()
+        curator._matcher.identify_episode.return_value = {
+            "season": 1,
+            "episode": 3,
+            "confidence": 0.4,
+            "score": 0.4,
+            "match_details": {},
+            "runner_ups": [],
+            "transcript": "primary already transcribed this " * 30,
+        }
+        # Sentinel — if curator calls transcribe_full, the test fails
+        curator._matcher.transcribe_full = MagicMock(
+            side_effect=AssertionError("should not re-transcribe")
+        )
+        curator._cache_dir = tmp_path
+        curator._initialized = True
+        curator._current_show = "Test"
+
+        fake_config = MagicMock(
+            ai_episode_matching_enabled=True,
+            ai_api_key="k",
+            ai_provider="gemini",
+            tmdb_api_key="t",
+        )
+        llm = LLMEpisodeMatch(
+            episode=5, confidence=0.9, reasoning="r", runner_up=None, model="gemini-2.5-flash-lite"
+        )
+        with (
+            patch(
+                "app.services.config_service.get_config", new=AsyncMock(return_value=fake_config)
+            ),
+            patch("app.matcher.tmdb_client.fetch_show_id", return_value="1234"),
+            patch(
+                "app.core.curator.match_episode_via_llm", new=AsyncMock(return_value=llm)
+            ) as mock_llm,
+        ):
+            result = await curator.match_single_file(tmp_path / "x.mkv", "Test", 1)
+
+        assert result.match_details["llm_suggestion"]["episode"] == 5
+        curator._matcher.transcribe_full.assert_not_called()
+        # The transcript that reached the LLM should be the one from the primary
+        passed_transcript = mock_llm.call_args.kwargs["transcript"]
+        assert passed_transcript.startswith("primary already transcribed this")

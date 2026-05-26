@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Bug, X, Copy, Check, ArrowRight, Loader2 } from "lucide-react";
+import { Bug, X, Copy, Check, ArrowRight, Loader2, Download } from "lucide-react";
 import { SvPanel, SvLabel, SvNotice, sv } from "../app/components/synapse";
+import { apiFetch, apiFetchBlob } from "../api/client";
 
 interface BugReport {
   app_version: string;
@@ -23,6 +24,11 @@ interface BugReport {
   config: Record<string, string | number | boolean>;
   github_url: string;
   markdown: string;
+  // Bundle-preview hints (present when a job_id was supplied).
+  bundle_available?: boolean;
+  has_scan_log?: boolean;
+  coverage_seasons?: number;
+  tmdb_cached?: boolean;
 }
 
 interface BugReportModalProps {
@@ -81,6 +87,7 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<BugReport | null>(null);
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -88,6 +95,7 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
       setReport(null);
       setError(null);
       setCopied(false);
+      setDownloading(false);
       return;
     }
 
@@ -100,11 +108,7 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
         ? `/api/diagnostics/report?job_id=${jobId}`
         : "/api/diagnostics/report";
 
-    fetch(url)
-      .then(async (resp) => {
-        if (!resp.ok) throw new Error(`Request failed (${resp.status})`);
-        return (await resp.json()) as BugReport;
-      })
+    apiFetch<BugReport>(url)
       .then((data) => {
         if (!cancelled) setReport(data);
       })
@@ -130,6 +134,29 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
       setError("Could not copy to clipboard.");
     }
   }, [report]);
+
+  const handleDownloadBundle = useCallback(async () => {
+    if (jobId == null) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      const blob = await apiFetchBlob(`/api/diagnostics/report/${jobId}/bundle`);
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = `engram-bug-report-job-${jobId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Defer revocation: Safari/some Firefox start the download asynchronously
+      // and revoking synchronously cancels it, yielding a 0-byte file.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to download bundle.");
+    } finally {
+      setDownloading(false);
+    }
+  }, [jobId]);
 
   useEffect(() => {
     if (!open) return;
@@ -300,6 +327,23 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
                       </Section>
                     )}
 
+                    {report.bundle_available && (
+                      <Section title="Bundle Contents">
+                        <KvRow label="Job logs" value="Scoped to this job" />
+                        <KvRow label="Disc & tracks" value="Full per-track detail" />
+                        <KvRow
+                          label="Cache"
+                          value={`${report.coverage_seasons ?? 0} season(s) recorded · TMDB ${
+                            report.tmdb_cached ? "cached" : "not cached"
+                          }`}
+                        />
+                        <KvRow
+                          label="Scan log"
+                          value={report.has_scan_log ? "Included" : "Not present"}
+                        />
+                      </Section>
+                    )}
+
                     <Section title="Config">
                       {Object.entries(report.config).map(([k, v]) => (
                         <KvRow key={k} label={k} value={String(v)} />
@@ -350,6 +394,31 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
                   borderTop: `1px solid ${sv.line}`,
                 }}
               >
+                {jobId != null && (
+                  <button
+                    onClick={handleDownloadBundle}
+                    disabled={!report || downloading}
+                    data-testid="bug-report-download"
+                    style={{
+                      ...buttonBase,
+                      marginRight: "auto",
+                      color: sv.cyanHi,
+                      border: `1px solid ${sv.cyan}`,
+                      background: `${sv.cyan}1f`,
+                      boxShadow: `0 0 14px ${sv.cyan}4d`,
+                      opacity: report && !downloading ? 1 : 0.5,
+                      cursor: report && !downloading ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    {downloading ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Download size={14} />
+                    )}
+                    {downloading ? "Bundling…" : "Download Bundle"}
+                  </button>
+                )}
+
                 <button
                   onClick={handleCopy}
                   disabled={!report}

@@ -535,3 +535,34 @@ class TestFetchMovieRuntime:
         err.raise_for_status = Mock(side_effect=requests.exceptions.HTTPError("500 Server Error"))
         mock_get.return_value = err
         assert tmdb_client.fetch_movie_runtime("123", "test_key") is None
+
+
+class TestFetchSeasonEpisodesOverview:
+    def test_includes_overview(self):
+        from unittest.mock import patch
+
+        from app.matcher.tmdb_client import fetch_season_episodes
+
+        fake = {
+            "episodes": [
+                {"episode_number": 1, "name": "Pilot", "runtime": 42, "overview": "A new dawn."},
+                {"episode_number": 2, "name": "Cargo", "runtime": 41, "overview": ""},
+            ]
+        }
+        with patch("app.matcher.tmdb_client._tmdb_get_json", return_value=fake):
+            eps = fetch_season_episodes("1234", 1, "fake-key")
+
+        assert len(eps) == 2
+        assert eps[0]["overview"] == "A new dawn."
+        assert eps[1]["overview"] == ""
+
+    def test_overview_missing_defaults_to_empty(self):
+        from unittest.mock import patch
+
+        from app.matcher.tmdb_client import fetch_season_episodes
+
+        fake = {"episodes": [{"episode_number": 1, "name": "Pilot", "runtime": 42}]}
+        with patch("app.matcher.tmdb_client._tmdb_get_json", return_value=fake):
+            eps = fetch_season_episodes("1234", 1, "fake-key")
+
+        assert eps[0]["overview"] == ""

@@ -133,6 +133,27 @@ POST /api/jobs/{job_id}/approve-all
 
 Approve all pending review items and continue processing.
 
+### `POST /api/jobs/{job_id}/titles/{title_id}/llm-match`
+
+Run the LLM episode matcher for a single title and persist the suggestion to `match_details.llm_suggestion`. Requires `ai_episode_matching_enabled` and the job to have a known `detected_title` + `detected_season`.
+
+**Response (200):**
+
+```json
+{
+  "suggestion": {
+    "episode": 7,
+    "confidence": 0.93,
+    "reasoning": "Mentions of named character and unique plot beat.",
+    "runner_up": {"episode": 6, "confidence": 0.12},
+    "model": "gemini-2.5-flash-lite"
+  },
+  "reason": null
+}
+```
+
+When no suggestion is available (feature disabled, no transcript, no synopses, AI returned zero confidence, or any internal error), `suggestion` is `null` and `reason` describes why (`"no_suggestion"`, `"cached"`, or `"internal_error"`). On a cached hit (the suggestion was already computed for this title), the existing suggestion is returned with `reason: "cached"` to avoid duplicate Whisper transcription.
+
 ---
 
 ## Configuration

@@ -174,20 +174,6 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
-    async function skipTrack(jobId: string, titleId: string, target: 'review' | 'fail' = 'review') {
-        try {
-            await apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/skip`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ target }),
-            });
-            // Title + job will update via WebSocket
-        } catch (error) {
-            console.error('Failed to skip track:', error);
-            toast.error('Failed to skip the track. Please try again.');
-        }
-    }
-
     async function clearCompleted() {
         try {
             const completedJobs = jobs.filter(j => j.state === 'completed');
@@ -381,7 +367,6 @@ export function useJobManagement(devMode: boolean = false) {
         isConnected,
         cancelJob,
         advanceJob,
-        skipTrack,
         clearCompleted,
         setJobName,
         reIdentifyJob,

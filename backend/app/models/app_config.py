@@ -103,6 +103,9 @@ class AppConfig(SQLModel, table=True):
     ai_identification_enabled: bool = False  # Enable AI-powered title resolution
     ai_provider: str = "anthropic"  # "anthropic" | "openai" | "openrouter"
     ai_api_key: str = ""  # API key for the selected provider
+    ai_episode_matching_enabled: bool = (
+        False  # Enable LLM-based episode identification fallback (uses ai_provider/ai_api_key)
+    )
     # Staging auto-import watcher
     staging_watch_enabled: bool = False  # Auto-import MKV folders from staging directory
 
@@ -120,6 +123,11 @@ class AppConfig(SQLModel, table=True):
     opensubtitles_api_key: str = ""
     opensubtitles_username: str = ""
     opensubtitles_password: str = ""
+
+    # Network access
+    # When True, the server binds 0.0.0.0 (reachable on the LAN) instead of localhost.
+    # Read at startup before uvicorn binds; an explicit HOST env var takes precedence.
+    allow_lan_access: bool = Field(default=False, sa_column_kwargs={"server_default": text("0")})
 
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

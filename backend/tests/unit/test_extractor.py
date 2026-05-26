@@ -19,6 +19,7 @@ from app.core.extractor import (
     MakeMKVExtractor,
     _extract_created_mkv,
     _find_linux_mount_point,
+    _is_stalled,
     _safe_callback,
     _save_makemkv_log,
     _to_drive_spec,
@@ -100,6 +101,25 @@ class TestFindLinuxMountPoint:
     def test_returns_none_on_read_error(self):
         with patch("builtins.open", side_effect=OSError("nope")):
             assert _find_linux_mount_point("/dev/sr0") is None
+
+
+@pytest.mark.unit
+class TestIsStalled:
+    """The stall decision is liveness-based: a rip is stalled only when there has
+    been no progress (file growth OR MakeMKV stdout) for `timeout` seconds. A small
+    track that finished writing but is still emitting progress must NOT be stalled.
+    """
+
+    def test_recent_progress_is_not_stalled(self):
+        # Last progress 10s ago, 120s timeout -> healthy.
+        assert _is_stalled(now=1000.0, last_progress=990.0, timeout=120.0) is False
+
+    def test_no_progress_past_timeout_is_stalled(self):
+        # 150s since last progress, 120s timeout -> stalled.
+        assert _is_stalled(now=1000.0, last_progress=850.0, timeout=120.0) is True
+
+    def test_exactly_at_timeout_is_stalled(self):
+        assert _is_stalled(now=1000.0, last_progress=880.0, timeout=120.0) is True
 
 
 @pytest.mark.unit

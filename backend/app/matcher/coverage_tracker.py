@@ -21,6 +21,39 @@ from typing import Any
 from app.matcher import tmdb_persistent_cache
 
 
+def _fresh_record(
+    tmdb_id: int,
+    season: int,
+    window_days: int,
+) -> dict[str, Any] | None:
+    """Return the coverage row for ``(tmdb_id, season)`` iff it was recorded
+    within ``window_days``, else None (no row, or stale).
+
+    Shared by ``should_skip`` (low-coverage branch) and ``is_done``
+    (at/above-threshold branch) so both agree on what "recent enough to
+    trust" means.
+    """
+    conn = tmdb_persistent_cache.get_conn()
+    row = conn.execute(
+        "SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "
+        "FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?",
+        (tmdb_id, season),
+    ).fetchone()
+    if row is None:
+        return None
+
+    attempted_at, total, covered, ratio = row
+    if time.time() - attempted_at > window_days * 86400:
+        return None
+
+    return {
+        "attempted_at": attempted_at,
+        "total_episodes": total,
+        "covered_episodes": covered,
+        "coverage_ratio": ratio,
+    }
+
+
 def should_skip(
     tmdb_id: int,
     season: int,
@@ -34,27 +67,79 @@ def should_skip(
     The caller logs ``prior_row`` so the user sees why a season was
     skipped without having to inspect the DB by hand.
     """
+    row = _fresh_record(tmdb_id, season, skip_window_days)
+    if row is None or row["coverage_ratio"] >= min_ratio:
+        return False, None
+    return True, row
+
+
+def is_done(
+    tmdb_id: int,
+    season: int,
+    min_ratio: float,
+    window_days: int = 30,
+) -> tuple[bool, dict[str, Any] | None]:
+    """Return ``(done, prior_row)``.
+
+    ``done`` is True iff a prior attempt was recorded within ``window_days``
+    AND its coverage_ratio was at or above ``min_ratio`` — i.e. the season
+    already reached the coverage threshold and can be shipped from the SRTs
+    already on disk without re-hitting TMDB/OpenSubtitles/scrapers. The
+    symmetric complement of ``should_skip``: a fresh record is either
+    below-threshold (skip), at/above-threshold (done), or absent/stale
+    (neither — harvest normally).
+    """
+    row = _fresh_record(tmdb_id, season, window_days)
+    if row is None or row["coverage_ratio"] < min_ratio:
+        return False, None
+    return True, row
+
+
+def get_show_coverage(tmdb_id: int) -> list[dict[str, Any]]:
+    """Return every recorded coverage row for a show, oldest season first.
+
+    Read-only; returns ``[]`` when the cache DB doesn't exist. Used by the
+    diagnostics bundle to surface why subtitle matching may have come up
+    short for a series (e.g. a season recorded at 10% coverage that the
+    skip window subsequently suppressed).
+    """
+    if not tmdb_persistent_cache.CACHE_DB_PATH.exists():
+        return []
     conn = tmdb_persistent_cache.get_conn()
-    row = conn.execute(
-        "SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "
-        "FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?",
-        (tmdb_id, season),
-    ).fetchone()
-    if row is None:
-        return False, None
+    rows = conn.execute(
+        "SELECT season, attempted_at, total_episodes, covered_episodes, coverage_ratio "
+        "FROM subtitle_coverage WHERE tmdb_id = ? ORDER BY season",
+        (tmdb_id,),
+    ).fetchall()
+    return [
+        {
+            "season": season,
+            "attempted_at": attempted_at,
+            "total_episodes": total,
+            "covered_episodes": covered,
+            "coverage_ratio": ratio,
+        }
+        for season, attempted_at, total, covered, ratio in rows
+    ]
 
-    attempted_at, total, covered, ratio = row
-    age_seconds = time.time() - attempted_at
-    if age_seconds > skip_window_days * 86400:
-        return False, None
-    if ratio >= min_ratio:
-        return False, None
 
-    return True, {
-        "attempted_at": attempted_at,
-        "total_episodes": total,
-        "covered_episodes": covered,
-        "coverage_ratio": ratio,
+def get_cache_status(tmdb_id: int | None, season: int | None = None) -> dict[str, Any]:
+    """Summarise cache state for a job's series, for the diagnostics bundle.
+
+    Returns subtitle-coverage rows for the show plus whether TMDB show and
+    season metadata are currently cached. Empty/False when ``tmdb_id`` is
+    unknown (movies, unidentified discs). All reads are read-only.
+    """
+    if tmdb_id is None:
+        return {"coverage": [], "tmdb_show_cached": False, "tmdb_season_cached": False}
+    return {
+        "coverage": get_show_coverage(tmdb_id),
+        "tmdb_show_cached": tmdb_persistent_cache.is_cached(f"show_details:{tmdb_id}"),
+        "tmdb_season_cached": (
+            tmdb_persistent_cache.is_cached(f"season:{tmdb_id}:{season}")
+            if season is not None
+            else False
+        ),
     }
 
 

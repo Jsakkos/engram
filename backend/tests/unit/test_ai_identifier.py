@@ -67,7 +67,7 @@ class TestIdentifyFromLabel:
         mock_client = _make_mock_client(
             {"content": [{"text": '{"title": "Inception", "year": 2010, "type": "movie"}'}]}
         )
-        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock_client):
             result = await identify_from_label("INCEPTION_2010", "anthropic", "sk-ant-test")
 
         assert result is not None
@@ -87,7 +87,7 @@ class TestIdentifyFromLabel:
                 ]
             }
         )
-        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock_client):
             result = await identify_from_label("BB_S1D1", "openai", "sk-test")
 
         assert result is not None
@@ -103,7 +103,7 @@ class TestIdentifyFromLabel:
                 ]
             }
         )
-        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock_client):
             result = await identify_from_label("THE_OFFICE_S1D1", "openrouter", "sk-or-test")
 
         assert result is not None
@@ -122,7 +122,7 @@ class TestIdentifyFromLabel:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(side_effect=Exception("Connection refused"))
 
-        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock_client):
             result = await identify_from_label("TEST", "anthropic", "key")
 
         assert result is None
@@ -132,7 +132,7 @@ class TestIdentifyFromLabel:
         mock_client = _make_mock_client(
             {"content": [{"text": '{"title": null, "year": null, "type": null}'}]}
         )
-        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock_client):
             result = await identify_from_label("RANDOM_GARBAGE", "anthropic", "key")
 
         assert result is None
@@ -140,7 +140,7 @@ class TestIdentifyFromLabel:
     @pytest.mark.asyncio
     async def test_empty_content_list(self):
         mock_client = _make_mock_client({"content": []})
-        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock_client):
             result = await identify_from_label("TEST", "anthropic", "key")
 
         assert result is None
@@ -148,7 +148,7 @@ class TestIdentifyFromLabel:
     @pytest.mark.asyncio
     async def test_openai_empty_choices(self):
         mock_client = _make_mock_client({"choices": []})
-        with patch("app.core.ai_identifier.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock_client):
             result = await identify_from_label("TEST", "openai", "key")
 
         assert result is None

@@ -53,8 +53,8 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache
-from app.matcher.subtitle_utils import sanitize_filename
-from app.matcher.testing_service import download_subtitles, get_last_quota
+from app.matcher.subtitle_utils import discover_season_srts, sanitize_filename
+from app.matcher.testing_service import download_subtitles, get_last_quota, probe_os_quota
 from app.matcher.tmdb_client import (
     fetch_show_details,
     fetch_show_id,
@@ -82,7 +82,14 @@ class RunTally:
     downloaded: int = 0
     cache_hits: int = 0
     not_found: int = 0
+    # Episodes shipped by the complete-on-disk fast path. Tracked separately
+    # from cache_hits (which counts the downloader's own local-cache hits) so
+    # cache_hit_rate stays a meaningful quota-consumption metric and the
+    # per-show banner doesn't mislabel "shipped from disk, no network" as
+    # "retrieved from download cache".
+    episodes_from_disk: int = 0
     seasons_done: int = 0
+    seasons_from_disk: int = 0
     seasons_skipped_below_threshold: int = 0
     seasons_failed: int = 0
     # Per-provider download counts (opensubtitles_api, addic7ed, tvsubtitles).
@@ -239,19 +246,63 @@ def _harvest_show(
     show: dict,
     args,
     tally: RunTally,
+    cache_dir: Path,
     on_season_done=None,
 ) -> list[tuple[int, str, Path]]:
     """Download subtitles for every season. Returns [(season, episode_code, srt_path)].
 
     Mutates ``tally`` in place with per-status counts so the caller can render
-    progress without re-walking the episode lists. ``on_season_done``, if
-    given, is invoked after each season finishes (success, skip, or fail) so
-    the caller can advance a Progress bar without coupling to its
-    implementation.
+    progress without re-walking the episode lists. ``cache_dir`` is the root
+    subtitle cache (``<cache>/data/<show>/...`` holds the SRTs) used by the
+    complete-on-disk fast path. ``on_season_done``, if given, is invoked after
+    each season finishes (success, skip, or fail) so the caller can advance a
+    Progress bar without coupling to its implementation.
     """
     harvested: list[tuple[int, str, Path]] = []
     canonical = show["name"]
+    season_data_dir = cache_dir / "data" / sanitize_filename(canonical)
     for season in range(1, show["seasons"] + 1):
+        # Complete-on-disk fast path: a season that previously reached the
+        # coverage threshold is shipped straight from the SRTs already on disk
+        # — no TMDB enumeration, no OpenSubtitles search, no scraper grind, no
+        # per-season sleep. This is what keeps daily re-runs near-instant and
+        # stops re-scraping the permanently-missing tail of every covered
+        # season. --refresh forces a full re-harvest to fill gaps providers
+        # may have added since.
+        if not args.refresh:
+            done, _ = coverage_tracker.is_done(
+                show["tmdb_id"],
+                season,
+                args.min_episodes_ratio,
+                args.skip_window_days,
+            )
+            if done:
+                on_disk = discover_season_srts(season_data_dir, season)
+                if on_disk:
+                    for code, path in on_disk:
+                        harvested.append((season, code, path))
+                    tally.episodes_from_disk += len(on_disk)
+                    tally.seasons_done += 1
+                    tally.seasons_from_disk += 1
+                    logger.info(
+                        f"  {canonical} S{season:02d}: complete on disk "
+                        f"({len(on_disk)} eps); shipping without network "
+                        f"(--refresh to re-harvest)"
+                    )
+                    if on_season_done is not None:
+                        on_season_done()
+                    continue
+                # A coverage record exists but the SRTs are gone (e.g. a wiped
+                # CI cache). Log it so a re-harvested "done" season isn't a
+                # silent surprise, then fall through to harvest from scratch.
+                # No on_season_done() here: the normal harvest path below calls
+                # it exactly once for this season — a second call would
+                # over-advance the progress bar.
+                logger.info(
+                    f"  {canonical} S{season:02d}: coverage recorded but SRTs "
+                    f"missing on disk; re-harvesting from scratch"
+                )
+
         if not args.retry_low_coverage:
             skip, prev = coverage_tracker.should_skip(
                 show["tmdb_id"],
@@ -389,6 +440,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Re-harvest seasons already covered on disk instead of shipping them "
+            "from disk without re-downloading (the default). Use periodically to "
+            "fill in episodes providers may have added since the last build."
+        ),
+    )
+    parser.add_argument(
         "--skip-window-days",
         type=int,
         default=30,
@@ -423,6 +483,15 @@ def main() -> int:
         and config.opensubtitles_password
     ):
         logger.info("OpenSubtitles API: ACTIVE — bulk season downloads enabled")
+        # Probe remaining daily download quota up front so the user can see
+        # whether there's budget for this run before any harvesting starts.
+        # probe_os_quota logs in and queries user_info, which does NOT consume
+        # download quota, and is best-effort (returns None on any failure).
+        remaining = probe_os_quota(config)
+        logger.info(
+            f"OpenSubtitles quota: "
+            f"{remaining if remaining is not None else 'n/a'} downloads remaining today"
+        )
     else:
         logger.warning(
             "OpenSubtitles API: INACTIVE — credentials missing; falling back to "
@@ -469,7 +538,12 @@ def main() -> int:
         shows_task = progress.add_task("Building cache", total=len(shows))
         for idx, show in enumerate(shows, 1):
             show_start = time.monotonic()
-            tally_snapshot = (tally.cache_hits, tally.downloaded, tally.not_found)
+            tally_snapshot = (
+                tally.cache_hits,
+                tally.downloaded,
+                tally.not_found,
+                tally.episodes_from_disk,
+            )
             # `transient` is a Progress() constructor argument that makes
             # the whole bar vanish on exit, not a per-task option — passing
             # it here is silently stored as task metadata and has no visual
@@ -488,6 +562,7 @@ def main() -> int:
                 show,
                 args,
                 tally,
+                cache_dir,
                 on_season_done=lambda task=season_task: progress.advance(task),
             )
             progress.remove_task(season_task)
@@ -508,10 +583,13 @@ def main() -> int:
             delta_hits = tally.cache_hits - tally_snapshot[0]
             delta_dls = tally.downloaded - tally_snapshot[1]
             delta_nf = tally.not_found - tally_snapshot[2]
+            delta_disk = tally.episodes_from_disk - tally_snapshot[3]
+            got = delta_hits + delta_dls + delta_disk
             console.log(
                 f"[green]OK[/] {show['name']} — "
-                f"{delta_hits + delta_dls}/{delta_hits + delta_dls + delta_nf} episodes "
-                f"({delta_hits} cached, {delta_dls} new, {delta_nf} missing) "
+                f"{got}/{got + delta_nf} episodes "
+                f"({delta_disk} from disk, {delta_hits} cached, {delta_dls} new, "
+                f"{delta_nf} missing) "
                 f"in {int(time.monotonic() - show_start)}s"
             )
 
@@ -631,7 +709,10 @@ def main() -> int:
         "[bold]Final summary[/]: "
         f"{len(manifest_shows)} shows, {total_episodes} episodes packaged "
         f"({size_mb:.1f} MB)\n"
-        f"  episodes seen:    {tally.cache_hits + tally.downloaded + tally.not_found}\n"
+        f"  episodes seen:    "
+        f"{tally.cache_hits + tally.downloaded + tally.not_found + tally.episodes_from_disk}\n"
+        f"  from disk:        {tally.episodes_from_disk} "
+        f"({tally.seasons_from_disk} covered seasons shipped without network)\n"
         f"  cache hits:       {tally.cache_hits}\n"
         f"  new downloads:    {tally.downloaded}\n"
         f"  not found:        {tally.not_found}\n"

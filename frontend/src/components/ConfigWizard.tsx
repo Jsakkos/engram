@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
+import { EngramSelect } from './ui/EngramSelect';
 import './ConfigWizard.css';
 
 interface ConfigWizardProps {
@@ -15,12 +17,14 @@ const AI_PROVIDER_LABELS: Record<string, string> = {
     anthropic: 'Anthropic',
     openai: 'OpenAI',
     openrouter: 'OpenRouter',
+    gemini: 'Google Gemini',
 };
 
 const AI_KEY_PLACEHOLDERS: Record<string, string> = {
     anthropic: 'sk-ant-...',
     openai: 'sk-...',
     openrouter: 'sk-or-...',
+    gemini: 'AIzaSy...',
 };
 
 interface NamingPreset {
@@ -65,6 +69,7 @@ interface ConfigData {
     namingMovieFormat: string;
     discdbEnabled: boolean;
     aiIdentificationEnabled: boolean;
+    aiEpisodeMatchingEnabled: boolean;
     aiProvider: string;
     aiApiKey: string;
     discdbContributionsEnabled: boolean;
@@ -75,6 +80,15 @@ interface ConfigData {
     opensubtitlesApiKey: string;
     opensubtitlesUsername: string;
     opensubtitlesPassword: string;
+    allowLanAccess: boolean;
+}
+
+interface NetworkInfo {
+    lan_access_enabled: boolean;
+    active_lan_bound: boolean;
+    lan_ip: string | null;
+    port: number;
+    lan_url: string | null;
 }
 
 interface ToolDetectionResult {
@@ -116,6 +130,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingMovieFormat: '{title} ({year})',
         discdbEnabled: true,
         aiIdentificationEnabled: false,
+        aiEpisodeMatchingEnabled: false,
         aiProvider: 'anthropic',
         aiApiKey: '',
         discdbContributionsEnabled: false,
@@ -126,7 +141,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         opensubtitlesApiKey: '',
         opensubtitlesUsername: '',
         opensubtitlesPassword: '',
+        allowLanAccess: false,
     });
+    const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
@@ -136,6 +153,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
 
     const totalSteps = 4;
+
+    const fetchNetworkInfo = useCallback(async () => {
+        try {
+            const res = await fetch('/api/network/info');
+            if (res.ok) setNetworkInfo(await res.json());
+        } catch {
+            // non-fatal; address panel renders nothing if unreachable
+        }
+    }, []);
+
+    // Fetch network info when the LAN toggle is enabled; clear stale data when disabled.
+    useEffect(() => {
+        if (config.allowLanAccess) {
+            fetchNetworkInfo();
+        } else {
+            setNetworkInfo(null);
+        }
+    }, [config.allowLanAccess, fetchNetworkInfo]);
 
     // Load existing config on mount
     useEffect(() => {
@@ -177,6 +212,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
                     discdbEnabled: data.discdb_enabled ?? true,
                     aiIdentificationEnabled: data.ai_identification_enabled ?? false,
+                    aiEpisodeMatchingEnabled: data.ai_episode_matching_enabled ?? false,
                     aiProvider: data.ai_provider || 'anthropic',
                     aiApiKey: data.ai_api_key === '***' ? '' : (data.ai_api_key || ''),
                     discdbContributionsEnabled: data.discdb_contributions_enabled ?? false,
@@ -187,6 +223,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     opensubtitlesApiKey: data.opensubtitles_api_key === '***' ? '' : (data.opensubtitles_api_key || ''),
                     opensubtitlesUsername: data.opensubtitles_username || '',
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
+                    allowLanAccess: data.allow_lan_access ?? false,
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -279,6 +316,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_movie_format: config.namingMovieFormat,
                     discdb_enabled: config.discdbEnabled,
                     ai_identification_enabled: config.aiIdentificationEnabled,
+                    ai_episode_matching_enabled: config.aiEpisodeMatchingEnabled,
                     ai_provider: config.aiProvider,
                     ...optional('ai_api_key', config.aiApiKey),
                     discdb_contributions_enabled: config.discdbContributionsEnabled,
@@ -289,6 +327,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     ...optional('opensubtitles_api_key', config.opensubtitlesApiKey),
                     opensubtitles_username: config.opensubtitlesUsername,
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
+                    allow_lan_access: config.allowLanAccess,
                     setup_complete: true,
                 }),
             });
@@ -680,15 +719,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             <>
                                 <div className="form-group">
                                     <label htmlFor="aiProvider">AI Provider</label>
-                                    <select
+                                    <EngramSelect
                                         id="aiProvider"
                                         value={config.aiProvider}
-                                        onChange={(e) => handleInputChange('aiProvider', e.target.value)}
-                                    >
-                                        <option value="anthropic">Anthropic (Claude)</option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="openrouter">OpenRouter</option>
-                                    </select>
+                                        onValueChange={(v) => handleInputChange('aiProvider', v)}
+                                        options={[
+                                            { value: 'anthropic', label: 'Anthropic (Claude)' },
+                                            { value: 'openai', label: 'OpenAI' },
+                                            { value: 'openrouter', label: 'OpenRouter' },
+                                            { value: 'gemini', label: 'Google Gemini' },
+                                        ]}
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label htmlFor="aiApiKey">
@@ -704,6 +745,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     <span className="form-hint">
                                         API key for {providerLabel}. Used only when TMDB lookup fails.
                                     </span>
+                                </div>
+                                <div className="form-group checkbox-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.aiEpisodeMatchingEnabled}
+                                            onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
+                                        />
+                                        <span className="checkbox-text">
+                                            <strong>AI-Powered Episode Matching (TV)</strong>
+                                            <span className="checkbox-hint">
+                                                When audio fingerprint matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
+                                            </span>
+                                        </span>
+                                    </label>
                                 </div>
                             </>
                         )}
@@ -730,14 +786,15 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     <>
                                         <div className="form-group">
                                             <label htmlFor="discdbContributionTier">Contribution Level</label>
-                                            <select
+                                            <EngramSelect
                                                 id="discdbContributionTier"
-                                                value={config.discdbContributionTier}
-                                                onChange={(e) => handleInputChange('discdbContributionTier', parseInt(e.target.value))}
-                                            >
-                                                <option value={2}>Automatic — share auto-collected data</option>
-                                                <option value={3}>Full — prompt for UPC and images</option>
-                                            </select>
+                                                value={String(config.discdbContributionTier)}
+                                                onValueChange={(v) => handleInputChange('discdbContributionTier', parseInt(v, 10))}
+                                                options={[
+                                                    { value: '2', label: 'Automatic — share auto-collected data' },
+                                                    { value: '3', label: 'Full — prompt for UPC and images' },
+                                                ]}
+                                            />
                                         </div>
 
                                         <div className="form-group">
@@ -785,16 +842,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="conflictResolution">Default Conflict Resolution</label>
-                            <select
+                            <EngramSelect
                                 id="conflictResolution"
                                 value={config.conflictResolutionDefault}
-                                onChange={(e) => handleInputChange('conflictResolutionDefault', e.target.value)}
-                            >
-                                <option value="ask">Always ask me</option>
-                                <option value="rename">Automatically rename (keep both)</option>
-                                <option value="overwrite">Automatically overwrite</option>
-                                <option value="skip">Automatically skip</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('conflictResolutionDefault', v)}
+                                options={[
+                                    { value: 'ask', label: 'Always ask me' },
+                                    { value: 'rename', label: 'Automatically rename (keep both)' },
+                                    { value: 'overwrite', label: 'Automatically overwrite' },
+                                    { value: 'skip', label: 'Automatically skip' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 What should Engram do when a file already exists in your library?
                             </span>
@@ -802,16 +860,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="stagingCleanup">Staging Cleanup Policy</label>
-                            <select
+                            <EngramSelect
                                 id="stagingCleanup"
                                 value={config.stagingCleanupPolicy}
-                                onChange={(e) => handleInputChange('stagingCleanupPolicy', e.target.value)}
-                            >
-                                <option value="on_success">Clean on success (delete after organization)</option>
-                                <option value="on_completion">Clean on completion (delete after success or failure)</option>
-                                <option value="after_days">Clean after N days</option>
-                                <option value="manual">Manual only (never auto-delete)</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('stagingCleanupPolicy', v)}
+                                options={[
+                                    { value: 'on_success', label: 'Clean on success (delete after organization)' },
+                                    { value: 'on_completion', label: 'Clean on completion (delete after success or failure)' },
+                                    { value: 'after_days', label: 'Clean after N days' },
+                                    { value: 'manual', label: 'Manual only (never auto-delete)' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 When should staging files be automatically deleted? A single Blu-ray rip can be 30-50GB.
                             </span>
@@ -836,14 +895,15 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="watchdogEnabled">Stale-Job Watchdog</label>
-                            <select
+                            <EngramSelect
                                 id="watchdogEnabled"
                                 value={config.watchdogEnabled ? 'on' : 'off'}
-                                onChange={(e) => handleInputChange('watchdogEnabled', e.target.value === 'on')}
-                            >
-                                <option value="on">Enabled (auto-advance stuck jobs)</option>
-                                <option value="off">Disabled</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('watchdogEnabled', v === 'on')}
+                                options={[
+                                    { value: 'on', label: 'Enabled (auto-advance stuck jobs)' },
+                                    { value: 'off', label: 'Disabled' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 When a job stops making progress for longer than its phase timeout, Engram
                                 resolves the stuck tracks (ripped-but-unmatched → review) and moves the job
@@ -901,15 +961,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="extrasPolicy">Extras Handling</label>
-                            <select
+                            <EngramSelect
                                 id="extrasPolicy"
                                 value={config.extrasPolicy}
-                                onChange={(e) => handleInputChange('extrasPolicy', e.target.value)}
-                            >
-                                <option value="keep">Keep all extras (organize to Extras/ folder)</option>
-                                <option value="skip">Skip extras (discard after ripping)</option>
-                                <option value="ask">Ask me (show in Review Queue)</option>
-                            </select>
+                                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
+                                options={[
+                                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
+                                    { value: 'skip', label: 'Skip extras (discard after ripping)' },
+                                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 How to handle bonus content that doesn&apos;t match any episode runtime.
                             </span>
@@ -917,7 +978,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group">
                             <label htmlFor="namingConvention">Naming Convention</label>
-                            <select
+                            <EngramSelect
                                 id="namingConvention"
                                 value={
                                     NAMING_PRESETS.find(
@@ -926,19 +987,20 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                             p.episodeFormat === config.namingEpisodeFormat,
                                     )?.id ?? 'custom'
                                 }
-                                onChange={(e) => {
-                                    const preset = NAMING_PRESETS.find((p) => p.id === e.target.value);
+                                onValueChange={(v) => {
+                                    const preset = NAMING_PRESETS.find((p) => p.id === v);
                                     if (preset) {
                                         handleInputChange('namingSeasonFormat', preset.seasonFormat);
                                         handleInputChange('namingEpisodeFormat', preset.episodeFormat);
                                     }
                                 }}
-                            >
-                                <option value="plex">Plex (Season 01 / Show - S01E01)</option>
-                                <option value="kodi">Kodi (Season 1 / Show - S01E01)</option>
-                                <option value="minimal">Minimal (S01 / Show - S01E01)</option>
-                                <option value="custom">Custom</option>
-                            </select>
+                                options={[
+                                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
+                                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
+                                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
+                                    { value: 'custom', label: 'Custom' },
+                                ]}
+                            />
                             <span className="form-hint">
                                 Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
                             </span>
@@ -973,6 +1035,91 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     </span>
                                 </div>
                             </>
+                        )}
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.allowLanAccess}
+                                    onChange={(e) => handleInputChange('allowLanAccess', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Allow access from other devices on my network (LAN)</strong>
+                                    <span className="checkbox-hint">
+                                        ⚠ Engram has no login — anyone on your network can view and control it.
+                                        Use only on a trusted home network. Takes effect after restarting Engram.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {config.allowLanAccess && (
+                            <div className="lan-address-panel">
+                                {!networkInfo ? (
+                                    <div className="lan-loading">Detecting network address…</div>
+                                ) : networkInfo.active_lan_bound ? (
+                                    <>
+                                        <div className="lan-status-live">
+                                            <span className="lan-status-dot" />
+                                            Engram is live on your network
+                                        </div>
+                                        {networkInfo.lan_url && (
+                                            <>
+                                                <div className="lan-url-row">
+                                                    <code className="lan-url">{networkInfo.lan_url}</code>
+                                                    <button
+                                                        type="button"
+                                                        className="lan-copy-btn"
+                                                        onClick={() => {
+                                                            navigator.clipboard?.writeText(networkInfo.lan_url as string).catch(() => {
+                                                                // HTTP context (LAN): clipboard API unavailable; select text for manual copy
+                                                                const el = document.querySelector('.lan-url') as HTMLElement;
+                                                                if (el) window.getSelection()?.selectAllChildren(el);
+                                                            });
+                                                        }}
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </div>
+                                                <div className="lan-qr">
+                                                    <QRCodeSVG value={networkInfo.lan_url} size={120} />
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="lan-restart-notice">
+                                            Save settings and restart Engram to apply.
+                                        </div>
+                                        {networkInfo.lan_url && (
+                                            <>
+                                                <span className="form-hint">After restart, access Engram at:</span>
+                                                <div className="lan-url-row">
+                                                    <code className="lan-url">{networkInfo.lan_url}</code>
+                                                    <button
+                                                        type="button"
+                                                        className="lan-copy-btn"
+                                                        onClick={() => {
+                                                            navigator.clipboard?.writeText(networkInfo.lan_url as string).catch(() => {
+                                                                // HTTP context (LAN): clipboard API unavailable; select text for manual copy
+                                                                const el = document.querySelector('.lan-url') as HTMLElement;
+                                                                if (el) window.getSelection()?.selectAllChildren(el);
+                                                            });
+                                                        }}
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </div>
+                                                <div className="lan-qr lan-qr-pending">
+                                                    <QRCodeSVG value={networkInfo.lan_url} size={120} />
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         )}
 
                         <div className="config-summary">

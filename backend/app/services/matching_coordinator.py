@@ -14,6 +14,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
 from app.core.errors import MatchingError
+from app.core.log_context import job_log_context
 from app.database import async_session
 from app.models import DiscJob
 from app.models.disc_job import DiscTitle, TitleState
@@ -112,8 +113,10 @@ class MatchingCoordinator:
             job = await session.get(DiscJob, job_id)
             if job is None:
                 return
-            update_values: dict = {"subtitle_status": None}
-            # Only wipe error_message if it came from the subtitle pipeline.
+            update_values: dict = {"subtitle_status": None, "subtitle_error_message": None}
+            # Only wipe the catch-all error_message if it came from the subtitle
+            # pipeline's exception path (the actionable "no subtitles" detail lives
+            # on subtitle_error_message, cleared unconditionally above).
             if job.error_message and (
                 job.error_message.startswith("Subtitle download")
                 or job.error_message.startswith("Download error")
@@ -310,6 +313,12 @@ class MatchingCoordinator:
 
             await ws_manager.broadcast_title_update(job_id, title.id, TitleState.MATCHING.value)
 
+        # Reset the stale-job watchdog clock at dispatch so a (deep) re-match —
+        # especially an auto-escalation that holds the job in MATCHING — isn't
+        # force-advanced during the setup window before the first progress signal.
+        if self._note_activity:
+            self._note_activity(job_id)
+
         # Fire-and-forget: matching runs in background, progress via WebSocket
         match_task = asyncio.create_task(
             self.match_single_file(job_id, title_id, file_path, num_points, min_vote_count)
@@ -319,6 +328,26 @@ class MatchingCoordinator:
         )
 
     async def match_single_file(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> None:
+        """Run matching for a single ripped file, tagging logs with the job id.
+
+        Self-tags so every matching log line carries ``job=<id>`` regardless of
+        how this is reached — task spawn, direct ``await`` from an API handler
+        (deep re-match / conflict resolution), or via the injected callback used
+        by the identification/finalization coordinators.
+        """
+        with job_log_context(job_id):
+            await self._run_match_single_file(
+                job_id, title_id, file_path, num_points, min_vote_count
+            )
+
+    async def _run_match_single_file(
         self,
         job_id: int,
         title_id: int,
@@ -466,9 +495,14 @@ class MatchingCoordinator:
                             if handled:
                                 return
                 except Exception as e:
+                    # Surface the full traceback: a silently-failing TMDB runtime
+                    # fetch here disables automatic extras detection (the pre-filter
+                    # is the only thing that flags non-episode bonus tracks before
+                    # the matcher tries to force them onto an episode).
                     logger.warning(
                         f"[MATCH] Title {title_id} (Job {job_id}): duration pre-filter failed: {e}. "
-                        f"Proceeding with matching normally."
+                        f"Proceeding with matching normally.",
+                        exc_info=True,
                     )
 
         # 5. Acquire semaphore to limit concurrent matching
@@ -600,15 +634,38 @@ class MatchingCoordinator:
 
                 elapsed = time.monotonic() - match_start
 
+                # Race guard: if the title was force-advanced or per-track-skipped
+                # while this match was running, respect that decision — don't clobber
+                # match_details (which would wipe the forced_review flag and let the
+                # review-escalation re-dispatch the title, manifesting as
+                # "Skip/Force does nothing").
+                if title.match_details:
+                    try:
+                        existing = json.loads(title.match_details)
+                    except (json.JSONDecodeError, TypeError):
+                        existing = None
+                    if isinstance(existing, dict) and existing.get("forced_review"):
+                        logger.info(
+                            f"[MATCH] Title {title_id} (Job {job_id}): force-advanced during "
+                            f"match ({elapsed:.1f}s) — leaving title untouched."
+                        )
+                        await self._check_job_completion(session, job_id)
+                        return
+
                 # Update title with match result
                 title.matched_episode = result.episode_code
                 title.match_confidence = result.confidence
 
                 if result.needs_review:
-                    if result.episode_code:
-                        title.state = TitleState.MATCHED
-                    else:
-                        title.state = TitleState.REVIEW
+                    # A low-confidence result always goes to REVIEW — even when the
+                    # matcher emits a best-guess episode code. Auto-organizing a
+                    # borderline guess silently mis-files content (e.g. a bonus
+                    # track that slipped past the duration pre-filter lands on the
+                    # wrong episode instead of being flagged as an extra). The
+                    # auto review-escalation deep re-matches it next; if it still
+                    # can't resolve, the user decides. matched_episode is kept as
+                    # the inspector's starting suggestion.
+                    title.state = TitleState.REVIEW
 
                     logger.info(
                         f"[MATCH] Title {title_id} (Job {job_id}): needs review — "
@@ -795,6 +852,11 @@ class MatchingCoordinator:
             )
         else:
             title.state = TitleState.COMPLETED
+            # The duration pre-filter already classified this as an extra; the
+            # only thing that failed is the file move (e.g. destination exists
+            # from a previous rip). Tag it so the UI still shows EXTRA — without
+            # this, a re-run hides the chip on every collided extra.
+            title.is_extra = True
             title.match_details = json.dumps(
                 {
                     "auto_sorted": "extras",
@@ -1036,7 +1098,12 @@ class MatchingCoordinator:
 
             error_msg = None
             if status == "failed":
-                error_msg = "Subtitle download failed: No subtitles found"
+                error_msg = (
+                    f"No reference subtitles found for '{show_name}'. Episode matching "
+                    "can't run without them — add an OpenSubtitles API key in Settings, "
+                    "drop .srt files into the show's cache folder, or assign episodes "
+                    "manually in Review."
+                )
 
             if using_precomputed:
                 logger.info(
@@ -1050,14 +1117,14 @@ class MatchingCoordinator:
                 )
 
             async with async_session() as session:
-                update_values = {"subtitle_status": status}
+                # Always assign subtitle_error_message: the actionable string on
+                # failure, None on success/partial so a stale banner from a prior
+                # attempt is cleared. Kept off the catch-all error_message.
+                update_values = {"subtitle_status": status, "subtitle_error_message": error_msg}
 
                 if result.get("show_name") and result["show_name"] != show_name:
                     logger.info(f"Updating job {job_id} title to canonical: {result['show_name']}")
                     update_values["detected_title"] = result["show_name"]
-
-                if error_msg:
-                    update_values["error_message"] = error_msg
 
                 await session.execute(
                     update(DiscJob).where(DiscJob.id == job_id).values(**update_values)

@@ -13,6 +13,19 @@ from app.main import app
 from app.models import AppConfig
 
 
+@pytest.fixture(autouse=True)
+def no_real_makemkv_settings(monkeypatch):
+    """Never write the developer's real ~/.MakeMKV/settings.conf during tests.
+
+    A saved makemkv_key flows into write_makemkv_settings; stub it so integration
+    runs can't clobber a real MakeMKV license. config_service imports it lazily,
+    so patching the source attribute is enough.
+    """
+    import app.core.makemkv_registration as _reg
+
+    monkeypatch.setattr(_reg, "write_makemkv_settings", lambda *a, **k: False)
+
+
 @pytest.fixture(autouse=True, scope="session")
 def enable_debug_mode():
     """Enable debug mode for all integration tests.

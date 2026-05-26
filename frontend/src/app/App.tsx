@@ -10,6 +10,7 @@ import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
+import BugReportModal from "../components/BugReportModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
 import LibraryPage from "../components/LibraryPage";
@@ -111,8 +112,9 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, cancelJob, advanceJob, skipTrack, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
+  const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
 
   // Show the full-screen Splash with a "RECONNECTING…" label when the
   // WebSocket has been down for >2.5s. The grace period absorbs momentary
@@ -503,12 +505,12 @@ function MainDashboard() {
                   disc={disc}
                   onCancel={disc.state !== 'completed' && disc.state !== 'error' ? () => cancelJob(disc.id) : undefined}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
-                  onSkipTrack={(trackId) => skipTrack(disc.id, trackId)}
                   onReview={disc.needsReview ? () => navigate(`/review/${disc.id}`) : undefined}
                   onReIdentify={disc.needsReview && disc.title ? () => {
                     const job = jobs.find(j => String(j.id) === disc.id);
                     if (job) setReIdentifyTarget(job);
                   } : undefined}
+                  onReportBug={() => setBugReportJobId(Number(disc.id))}
                 />
               ))}
             </AnimatePresence>
@@ -552,6 +554,13 @@ function MainDashboard() {
           />
         )}
       </AnimatePresence>
+
+      {/* Bug Report Modal — appears when user reports a bug for an active job */}
+      <BugReportModal
+        open={bugReportJobId != null}
+        jobId={bugReportJobId ?? undefined}
+        onClose={() => setBugReportJobId(null)}
+      />
 
       {/* Onboarding Wizard (first run) */}
       {showOnboarding && (

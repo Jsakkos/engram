@@ -146,9 +146,38 @@ def validate(assets_dir: Path) -> ValidationResult:
     # `get("shows", {})` falls back to {} only when the key is *absent* —
     # `"shows": null` would return None and len(None) raises TypeError,
     # bypassing the accumulated failures list. `or {}` handles both.
-    n_shows = len(manifest.get("shows") or {})
+    shows = manifest.get("shows") or {}
+    n_shows = len(shows)
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
+
+    # Refuse builds where the manifest lists a (show, season) without its .npz + .index.json.
+    if tarball_readable and shows:
+        try:
+            from app.matcher.subtitle_utils import sanitize_filename
+        except ImportError:
+            # A silently-skipped consistency check is worse than no check —
+            # a missing matcher in the publish-gate environment is itself a
+            # CI misconfiguration that must be surfaced, not swallowed.
+            failures.append(
+                "could not import sanitize_filename from app.matcher.subtitle_utils "
+                "— manifest-tarball consistency check skipped"
+            )
+            sanitize_filename = None  # type: ignore[assignment]
+
+        if sanitize_filename is not None:
+            for show_name, entry in shows.items():
+                seasons = (entry or {}).get("seasons", []) if isinstance(entry, dict) else []
+                show_slug = sanitize_filename(show_name)
+                for season in seasons:
+                    npz_member = f"precomputed/{show_slug}/S{season:02d}.npz"
+                    idx_member = f"precomputed/{show_slug}/S{season:02d}.index.json"
+                    missing_files = [m for m in (npz_member, idx_member) if m not in members]
+                    if missing_files:
+                        failures.append(
+                            f"manifest lists {show_name!r} S{season:02d} but the tarball "
+                            f"is missing {missing_files}"
+                        )
 
     # tarball.stat() can re-raise OSError on its own — a permission flip
     # between tarfile.open succeeding and reaching this line would otherwise

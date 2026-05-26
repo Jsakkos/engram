@@ -3,8 +3,19 @@
 Wraps the entire import and startup sequence in error handling so that
 any crash — including module-level import errors — keeps the console
 window open with a visible traceback.
+
+The startup runs under an ``if __name__ == "__main__"`` guard with
+``multiprocessing.freeze_support()`` called first. In a frozen build the
+multiprocessing ``spawn`` start method (the default on macOS and Windows)
+relaunches *this same executable* for every worker process. Without the
+guard each relaunch would re-run the whole startup — re-binding the port,
+re-opening the browser, and spawning yet more workers — a fork-bomb that
+opens an endless stream of browser tabs until the machine gives out.
+``freeze_support()`` intercepts those relaunches and exits before reaching
+``main()``.
 """
 
+import multiprocessing
 import socket
 import sys
 import traceback
@@ -26,41 +37,61 @@ def _find_free_port(host: str, preferred: int, max_attempts: int = 20) -> int:
         return s.getsockname()[1]
 
 
-try:
-    import threading
-    import webbrowser
+def main() -> None:
+    try:
+        import threading
+        import webbrowser
 
-    import uvicorn
+        import uvicorn
 
-    from app.main import app, settings
+        from app.core.network import ALL_INTERFACES, resolve_startup_host
+        from app.main import app, settings
 
-    is_frozen = getattr(sys, "frozen", False)
-    port = _find_free_port(settings.host, settings.port) if is_frozen else settings.port
+        is_frozen = getattr(sys, "frozen", False)
+        host = resolve_startup_host(settings.host)
+        port = _find_free_port(host, settings.port) if is_frozen else settings.port
 
-    if port != settings.port:
-        print(f"Port {settings.port} in use, using {port} instead")
+        if port != settings.port:
+            print(f"Port {settings.port} in use, using {port} instead")
 
-    if is_frozen:
-        # Open browser after a short delay to let the server bind the port
-        url = f"http://{settings.host}:{port}"
-        threading.Timer(1.5, webbrowser.open, args=[url]).start()
+        # Record what we actually bound so the dashboard can report the LAN URL.
+        app.state.bound_host = host
+        app.state.bound_port = port
 
-    uvicorn.run(
-        app,
-        host=settings.host,
-        port=port,
-        # reload is incompatible with frozen PyInstaller bundles
-        reload=False if is_frozen else settings.debug,
-        factory=False,
-    )
-except KeyboardInterrupt:
-    pass  # Normal Ctrl+C shutdown
-except SystemExit as exc:
-    sys.exit(exc.code)  # Preserve original exit code
-except BaseException as exc:
-    traceback.print_exc()
-    if getattr(sys, "frozen", False):
-        print(f"\nFatal error: {exc}")
-        print("Check ~/.engram/engram.log for details")
-        input("Press Enter to exit...")
-    sys.exit(1)
+        if is_frozen:
+            # Open browser after a short delay to let the server bind the port.
+            # When bound to all interfaces, open localhost (http://0.0.0.0 is not
+            # a valid client address); LAN clients use the address shown in the UI.
+            browser_host = "localhost" if host == ALL_INTERFACES else host
+            url = f"http://{browser_host}:{port}"
+            threading.Timer(1.5, webbrowser.open, args=[url]).start()
+
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            # reload is incompatible with frozen PyInstaller bundles
+            reload=False if is_frozen else settings.debug,
+            factory=False,
+        )
+    except KeyboardInterrupt:
+        pass  # Normal Ctrl+C shutdown
+    except SystemExit as exc:
+        sys.exit(exc.code)  # Preserve original exit code
+    except Exception as exc:
+        # KeyboardInterrupt / SystemExit are handled above; everything else
+        # (including module-level import errors) lands here so a frozen build
+        # keeps the console open with a visible traceback instead of vanishing.
+        traceback.print_exc()
+        if getattr(sys, "frozen", False):
+            print(f"\nFatal error: {exc}")
+            print("Check ~/.engram/engram.log for details")
+            input("Press Enter to exit...")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    # Must run before any multiprocessing work and before main() so that
+    # spawn-relaunched worker processes exit here instead of re-running startup.
+    multiprocessing.freeze_support()
+    main()

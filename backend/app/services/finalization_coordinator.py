@@ -48,12 +48,56 @@ def _normalize_episode_code(code: str | None) -> str:
 
 
 def _detect_conflicts(titles) -> dict[str, list]:
-    """Group ``MATCHED`` titles by canonical episode code, keeping only ties."""
+    """Group titles by canonical episode code, keeping only ties.
+
+    Considers MATCHED titles AND REVIEW titles that still carry the matcher's
+    borderline best-guess episode code. A confidently-matched title colliding
+    with a low-confidence REVIEW title on the same episode IS a conflict the
+    auto-resolution should break — handling only MATCHED-vs-MATCHED leaves the
+    pair stuck (the borderline one re-matches alone via review-escalation while
+    the confident one rides alongside, never resolving the collision).
+    Excludes extras, force-advanced titles, and REVIEW titles parked for
+    non-matching reasons (file_exists / subtitle_failed).
+    """
     by_ep: dict[str, list] = {}
     for t in titles:
-        if t.state == TitleState.MATCHED and t.matched_episode:
+        if not t.matched_episode:
+            continue
+        if t.state == TitleState.MATCHED:
+            by_ep.setdefault(_normalize_episode_code(t.matched_episode), []).append(t)
+        elif t.state == TitleState.REVIEW and _is_rematchable_review(t):
             by_ep.setdefault(_normalize_episode_code(t.matched_episode), []).append(t)
     return {ep: tl for ep, tl in by_ep.items() if len(tl) > 1}
+
+
+# REVIEW reasons a deeper matcher pass cannot fix — never auto re-match these.
+_NON_REMATCHABLE_REVIEW_ERRORS = {"file_exists", "subtitle_download_failed"}
+
+
+def _is_rematchable_review(t) -> bool:
+    """A REVIEW title whose low confidence a denser matcher pass could plausibly fix.
+
+    Excludes extras (not episodes) and titles parked in REVIEW for non-matching
+    reasons (organization conflicts, missing reference subtitles) — re-running the
+    audio matcher on those just wastes a pass.
+    """
+    if t.state != TitleState.REVIEW or t.is_extra:
+        return False
+    if t.match_details:
+        try:
+            details = json.loads(t.match_details)
+        except (json.JSONDecodeError, TypeError):
+            details = None
+        if isinstance(details, dict):
+            if details.get("error") in _NON_REMATCHABLE_REVIEW_ERRORS:
+                return False
+            if details.get("auto_sorted") == "extras":
+                return False
+            # Force-advanced (watchdog) or user-skipped → deliberate hand-to-human;
+            # re-matching would undo that and risk re-entering a stuck state.
+            if details.get("forced_review"):
+                return False
+    return True
 
 
 def _full_coverage_points(titles) -> int:
@@ -115,10 +159,13 @@ class FinalizationCoordinator:
         self._active_jobs: dict = None
         self._match_single_file: callable = None
         self._rematch_conflict: callable = None
+        self._rematch_title: callable = None
 
-        # Last scan depth attempted per job while auto-resolving a collision.
-        # Transient (in memory); cleared on resolution, exhaustion, or restart.
+        # Last scan depth attempted per job while auto-resolving. Transient (in
+        # memory); cleared on resolution, exhaustion, or restart. Conflicts and
+        # plain reviews escalate on separate counters so one can't stall the other.
         self._conflict_passes: dict[int, int] = {}
+        self._review_passes: dict[int, int] = {}
 
     def set_callbacks(
         self,
@@ -128,6 +175,7 @@ class FinalizationCoordinator:
         active_jobs,
         match_single_file=None,
         rematch_conflict=None,
+        rematch_title=None,
     ) -> None:
         """Set cross-coordinator callbacks."""
         self._run_ripping = run_ripping
@@ -135,10 +183,19 @@ class FinalizationCoordinator:
         self._active_jobs = active_jobs
         self._match_single_file = match_single_file
         self._rematch_conflict = rematch_conflict
+        self._rematch_title = rematch_title
 
     def reset_conflict_passes(self, job_id: int) -> None:
-        """Forget any in-progress conflict escalation for ``job_id``."""
+        """Forget any in-progress auto-escalation for ``job_id`` (conflict + review).
+
+        Called from terminal-state hooks and from rerun-matching, where the whole
+        escalation history is meant to be discarded. Intra-pass bail-outs in the
+        finalization loop use the per-kind ``_clear_conflict_state`` /
+        ``_clear_review_state`` helpers instead so the two escalations don't
+        clobber each other's progress counter.
+        """
         self._conflict_passes.pop(job_id, None)
+        self._review_passes.pop(job_id, None)
 
     async def on_terminal_clear_conflicts(self, job_id: int, _state) -> None:
         """Terminal-state hook: drop conflict-escalation tracking for the job.
@@ -154,10 +211,30 @@ class FinalizationCoordinator:
                 job.conflict_status = None
                 await session.commit()
 
+    # Note prefixes used to identify whose escalation set ``conflict_status`` so
+    # each clear path only wipes its own note (avoids the conflict path flickering
+    # the review note off mid-pass when both are running in the same job).
+    _CONFLICT_NOTE_PREFIX = "Resolving episode conflicts"
+    _REVIEW_NOTE_PREFIX = "Deep re-matching low-confidence"
+
     async def _clear_conflict_state(self, session, job) -> None:
-        """Drop escalation tracking and clear the transient dashboard note."""
-        self.reset_conflict_passes(job.id)
-        if job.conflict_status is not None:
+        """Drop only the conflict-escalation tracking + note for ``job``.
+
+        Review-escalation state is intentionally left alone — wiping it from
+        here was a bug that pinned review-escalation at pass 1 forever, because
+        every check_job_completion re-entry first runs conflict-escalate (which
+        clears, when no MATCHED collisions are present) and then review-escalate
+        (which reads the now-zeroed counter and re-dispatches at the lowest depth).
+        """
+        self._conflict_passes.pop(job.id, None)
+        if job.conflict_status and job.conflict_status.startswith(self._CONFLICT_NOTE_PREFIX):
+            job.conflict_status = None
+            await session.commit()
+
+    async def _clear_review_state(self, session, job) -> None:
+        """Drop only the review-escalation tracking + note for ``job``."""
+        self._review_passes.pop(job.id, None)
+        if job.conflict_status and job.conflict_status.startswith(self._REVIEW_NOTE_PREFIX):
             job.conflict_status = None
             await session.commit()
 
@@ -191,7 +268,13 @@ class FinalizationCoordinator:
                 f"Job {job_id}: conflict re-match exhausted at {last_depth} scan points; "
                 f"{list(conflicts)} still contested — handing to review"
             )
-            await self._clear_conflict_state(session, job)
+            # See _maybe_escalate_reviews: leave the counter at last_depth so
+            # re-entries see "exhausted" and bail. Popping it caused an
+            # infinite pass-1 loop when titles can't be untangled (e.g. all
+            # contested titles match the same episode regardless of depth).
+            if job.conflict_status and job.conflict_status.startswith(self._CONFLICT_NOTE_PREFIX):
+                job.conflict_status = None
+                await session.commit()
             return False
 
         # Re-match every distinct raw code in each tie (padded + unpadded), so
@@ -231,6 +314,94 @@ class FinalizationCoordinator:
         logger.info(
             f"Job {job_id}: deep re-match for conflicts {list(conflicts)} at "
             f"{next_depth} scan points (pass {pass_no}/{len(ladder)}, titles {dispatched})"
+        )
+        return True
+
+    async def _maybe_escalate_reviews(self, session, job, titles) -> bool:
+        """Deep re-match low-confidence REVIEW titles, escalating scan depth.
+
+        Complements :meth:`_maybe_escalate_conflicts`: where that breaks same-
+        episode ties, this gives a single low-confidence title (no collision)
+        progressively deeper matcher passes before handing it to manual review.
+        Depth-only ladder, capped at full coverage; a per-job pass counter
+        (separate from the conflict counter) guarantees termination.
+
+        Returns ``True`` if a re-match was dispatched (job held in MATCHING; the
+        caller should return and let completion re-entry pick it back up).
+        """
+        job_id = job.id
+        # Episode re-matching only applies to TV.
+        if job.content_type != ContentType.TV or self._rematch_title is None:
+            await self._clear_review_state(session, job)
+            return False
+
+        review_titles = [t for t in titles if _is_rematchable_review(t)]
+        if not review_titles:
+            await self._clear_review_state(session, job)
+            return False
+
+        ladder = _conflict_scan_ladder(review_titles)
+        last_depth = self._review_passes.get(job_id, 0)
+        next_depth = next((d for d in ladder if d > last_depth), None)
+
+        if next_depth is None:
+            logger.info(
+                f"Job {job_id}: review re-match exhausted at {last_depth} scan points; "
+                f"{len(review_titles)} title(s) still unresolved — handing to review"
+            )
+            # Leave ``_review_passes[job_id]`` at last_depth so the next
+            # ``check_job_completion`` re-entry sees the ladder as still
+            # exhausted and bails. Popping it here lets pass 1 re-fire on the
+            # very next recheck — an infinite loop when titles can never
+            # match (e.g. precomputed cache gap). The counter is reset for
+            # real via ``reset_conflict_passes`` on terminal-state transitions
+            # and by the "no review titles" branch above when titles resolve.
+            if job.conflict_status and job.conflict_status.startswith(self._REVIEW_NOTE_PREFIX):
+                job.conflict_status = None
+                await session.commit()
+            return False
+
+        dispatched: list[int] = []
+        for t in review_titles:
+            try:
+                await self._rematch_title(
+                    job_id,
+                    t.id,
+                    source_preference="engram",
+                    num_points=next_depth,
+                    min_vote_count=None,
+                )
+                dispatched.append(t.id)
+            except Exception as e:
+                # e.g. staging file missing (ValueError) — skip this title rather
+                # than aborting the whole pass. Catch broadly (not BaseException,
+                # so CancelledError still propagates).
+                logger.warning(f"Review re-match: skipping title {t.id} (job {job_id}): {e}")
+
+        if not dispatched:
+            await self._clear_review_state(session, job)
+            return False
+
+        self._review_passes[job_id] = next_depth
+        pass_no = ladder.index(next_depth) + 1
+        job.conflict_status = (
+            f"Deep re-matching low-confidence titles — pass {pass_no} of {len(ladder)}"
+        )
+        job.updated_at = datetime.now(UTC)
+        if job.state != JobState.MATCHING:
+            job.state = JobState.MATCHING
+        await session.commit()
+        await ws_manager.broadcast_job_update(
+            job_id,
+            JobState.MATCHING.value,
+            content_type=job.content_type.value if job.content_type else None,
+            detected_title=job.detected_title,
+            detected_season=job.detected_season,
+            conflict_status=job.conflict_status,
+        )
+        logger.info(
+            f"Job {job_id}: deep review re-match at {next_depth} scan points "
+            f"(pass {pass_no}/{len(ladder)}, titles {dispatched})"
         )
         return True
 
@@ -291,6 +462,11 @@ class FinalizationCoordinator:
         # has_review short-circuit so a pass that leaves one title unmatched
         # doesn't abort escalation of the titles still colliding.
         if await self._maybe_escalate_conflicts(session, job, titles):
+            return
+
+        # Then give plain low-confidence reviews (no collision) escalating deep
+        # re-match passes before surfacing them for manual assignment.
+        if await self._maybe_escalate_reviews(session, job, titles):
             return
 
         # Review takes priority: while ANY title still needs manual review, do

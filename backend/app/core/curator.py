@@ -9,6 +9,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.matcher.llm_episode_matcher import match_episode_via_llm
+
 logger = logging.getLogger(__name__)
 
 
@@ -231,6 +233,22 @@ class EpisodeCurator:
                     details = dict(details)  # Copy to avoid mutating original
                     details["runner_ups"] = match["runner_ups"]
 
+                # LLM episode-matching fallback — only runs when the primary
+                # match needs review, config is enabled, and the season is known.
+                # Reuse the primary matcher's transcript if it took the
+                # full-file fallback path (avoids re-running Whisper).
+                if needs_review and season:
+                    existing_transcript = match.get("transcript") if match else None
+                    enriched = await self._maybe_add_llm_suggestion(
+                        file_path=file_path,
+                        series_name=series_name,
+                        season=season,
+                        match_details=details,
+                        existing_transcript=existing_transcript,
+                    )
+                    if enriched is not None:
+                        details = enriched
+
                 return MatchResult(
                     file_path=file_path,
                     episode_code=episode_code,
@@ -242,12 +260,101 @@ class EpisodeCurator:
             else:
                 # No match found - fall back to filename, preserving stats if available
                 details = match.get("match_details") if match else None
-                return self._fallback_result(file_path, match_details=details)
+                fallback = self._fallback_result(file_path, match_details=details)
+                if season:
+                    existing_transcript = match.get("transcript") if match else None
+                    enriched = await self._maybe_add_llm_suggestion(
+                        file_path=file_path,
+                        series_name=series_name,
+                        season=season,
+                        match_details=fallback.match_details or {},
+                        existing_transcript=existing_transcript,
+                    )
+                    if enriched is not None:
+                        fallback.match_details = enriched
+                return fallback
 
         except Exception as e:
             logger.error(f"Matcher error for {file_path}: {e}")
             # Fall back to filename parsing
             return self._fallback_result(file_path)
+
+    async def _maybe_add_llm_suggestion(
+        self,
+        *,
+        file_path: Path,
+        series_name: str,
+        season: int,
+        match_details: dict,
+        existing_transcript: str | None = None,
+    ) -> dict | None:
+        """Run the LLM matcher when enabled and attach the suggestion to match_details.
+
+        Returns the updated match_details dict, or None to keep the caller's dict.
+
+        ``existing_transcript`` lets callers pass through a transcript the
+        primary matcher already produced (via the full-file fallback path),
+        avoiding a duplicate Whisper run when the matcher just transcribed.
+        """
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        if not config or not getattr(config, "ai_episode_matching_enabled", False):
+            return None
+        if not config.ai_api_key:
+            return None
+
+        # Resolve TMDB show id (synchronous, run in thread)
+        from app.matcher.tmdb_client import fetch_show_id
+
+        tmdb_show_id = await asyncio.to_thread(fetch_show_id, series_name)
+        if not tmdb_show_id:
+            logger.info(f"LLM fallback: no TMDB show_id for {series_name!r}")
+            return None
+
+        if not self._matcher:
+            return None
+
+        if existing_transcript:
+            transcript = existing_transcript
+        else:
+            transcript = await asyncio.to_thread(self._matcher.transcribe_full, file_path)
+        if not transcript:
+            return None
+
+        try:
+            suggestion = await match_episode_via_llm(
+                transcript=transcript,
+                show_name=series_name,
+                season=season,
+                tmdb_show_id=str(tmdb_show_id),
+                ai_provider=config.ai_provider,
+                ai_api_key=config.ai_api_key,
+                tmdb_api_key=config.tmdb_api_key,
+            )
+        except Exception as e:
+            logger.warning(f"LLM fallback raised: {e}", exc_info=True)
+            return None
+
+        if not suggestion:
+            return None
+
+        enriched = dict(match_details) if match_details else {}
+        enriched["llm_suggestion"] = {
+            "episode": suggestion.episode,
+            "confidence": suggestion.confidence,
+            "reasoning": suggestion.reasoning,
+            "runner_up": (
+                {
+                    "episode": suggestion.runner_up.episode,
+                    "confidence": suggestion.runner_up.confidence,
+                }
+                if suggestion.runner_up is not None
+                else None
+            ),
+            "model": suggestion.model,
+        }
+        return enriched
 
     def _parse_episode_from_filename(self, filename: str) -> str | None:
         """Try to parse episode code from filename.

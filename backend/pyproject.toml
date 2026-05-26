@@ -1,10 +1,10 @@
 [project]
 name = "engram-backend"
-version = "0.7.1"
+version = "0.8.0"
 description = "Engram - Disc ripping and media organization backend"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "alembic>=1.13.0",
     "fastapi>=0.109.0",

@@ -137,6 +137,11 @@ class TestHandleExtras:
                 job.id, title.id, title, job, tmp_path / "x.mkv", 10.0, [22, 44], session
             )
             assert title.state == TitleState.COMPLETED
+            # The title IS an extra — the duration pre-filter classified it as one;
+            # the move just failed (e.g. destination already exists from a previous
+            # rip). The UI should still show it as EXTRA, not as a vanilla completed
+            # track. Without this flag, the chip silently disappears.
+            assert title.is_extra is True
             assert json.loads(title.match_details)["organize_error"] == "boom"
 
 
@@ -229,3 +234,58 @@ class TestRematchSingleTitle:
         coord = _make_coord()
         with pytest.raises(ValueError):
             await coord.rematch_single_title(9999, 9999, source_preference="discdb")
+
+
+@pytest.mark.unit
+class TestDownloadSubtitlesMessaging:
+    """When a show has no reference subtitles anywhere, the actionable detail
+    lives on the dedicated subtitle_error_message field (not the catch-all
+    error_message, which other failure paths also write to).
+    """
+
+    def _mock(self, monkeypatch, episodes):
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
+        monkeypatch.setattr(
+            "app.matcher.testing_service.download_subtitles",
+            lambda show, season: {"episodes": episodes, "show_name": show},
+        )
+
+    async def test_no_subtitles_sets_actionable_show_specific_message(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(monkeypatch, [{"status": "not_found"}, {"status": "not_found"}])
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job_id = job.id
+
+        await coord.download_subtitles(job_id, "The Osbournes", 1)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "failed"
+            msg = refreshed.subtitle_error_message or ""
+            assert "The Osbournes" in msg
+            assert "manually" in msg.lower()
+            # The catch-all field must stay clean so it can't leak into other banners.
+            assert refreshed.error_message is None
+
+    async def test_partial_download_clears_stale_subtitle_error(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(monkeypatch, [{"status": "downloaded"}, {"status": "not_found"}])
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job.subtitle_error_message = "stale message from a prior attempt"
+            session.add(job)
+            await session.commit()
+            job_id = job.id
+
+        await coord.download_subtitles(job_id, "The Osbournes", 1)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "partial"
+            assert refreshed.subtitle_error_message is None

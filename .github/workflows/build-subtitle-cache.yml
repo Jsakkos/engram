@@ -48,7 +48,7 @@ jobs:
       # restore-keys pulls in the most recent prior cache. SRTs are plain text
       # and stay on the runner only — they are never added to the release tarball.
       - name: Restore harvested-subtitle cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.engram/cache/data
           key: subtitle-srt-${{ github.run_id }}
