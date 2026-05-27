@@ -11,7 +11,7 @@ import { ArrowUp, ExternalLink, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { SvPanel, sv } from "../app/components/synapse";
-import { apiFetchVoid } from "../api/client";
+import { apiFetchVoid, ApiError } from "../api/client";
 import type { UpdateStatus } from "../types";
 
 interface UpdateModalProps {
@@ -48,10 +48,9 @@ export default function UpdateModal({
             onClose();
             toast.info("Restarting to apply update…");
         } catch (err) {
-            const status = (err as { status?: number }).status;
-            if (status === 409) {
+            if (err instanceof ApiError && err.status === 409) {
                 toast.error("A disc operation is in progress. Please wait before restarting.");
-            } else if (status === 400) {
+            } else if (err instanceof ApiError && err.status === 400) {
                 toast.error("Updates cannot be applied in dev mode.");
             } else {
                 toast.error(
@@ -166,6 +165,7 @@ export default function UpdateModal({
                                     </h2>
                                 </div>
                                 <button
+                                    type="button"
                                     onClick={onClose}
                                     aria-label="Close"
                                     style={{
@@ -247,6 +247,7 @@ export default function UpdateModal({
                                 }}
                             >
                                 <button
+                                    type="button"
                                     onClick={handleSkip}
                                     style={{
                                         ...buttonBase,
@@ -260,6 +261,7 @@ export default function UpdateModal({
 
                                 {isFrozen ? (
                                     <button
+                                        type="button"
                                         onClick={handleRestart}
                                         disabled={restarting}
                                         style={{

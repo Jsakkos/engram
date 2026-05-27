@@ -9,7 +9,7 @@ import { useState } from "react";
 import { ArrowUp, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { sv } from "./synapse";
-import { apiFetchVoid } from "../../api/client";
+import { apiFetchVoid, ApiError } from "../../api/client";
 import type { UpdateStatus } from "../../types";
 
 interface UpdateBannerProps {
@@ -33,10 +33,9 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
             await apiFetchVoid("/api/updates/restart", { method: "POST" });
             toast.info("Restarting to apply update…");
         } catch (err) {
-            const status = (err as { status?: number }).status;
-            if (status === 409) {
+            if (err instanceof ApiError && err.status === 409) {
                 toast.error("A disc operation is in progress. Please wait before restarting.");
-            } else if (status === 400) {
+            } else if (err instanceof ApiError && err.status === 400) {
                 toast.error("Updates cannot be applied in dev mode.");
             } else {
                 toast.error(
@@ -87,6 +86,7 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
             </span>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
+                    type="button"
                     onClick={onShowNotes}
                     style={{
                         fontFamily: sv.mono,
@@ -105,6 +105,7 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
 
                 {isFrozen && (
                     <button
+                        type="button"
                         onClick={handleRestart}
                         disabled={restarting}
                         style={{
@@ -128,6 +129,7 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
                 )}
 
                 <button
+                    type="button"
                     onClick={handleSkip}
                     title="Skip this version"
                     style={{
