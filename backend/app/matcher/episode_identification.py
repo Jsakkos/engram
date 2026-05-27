@@ -247,6 +247,21 @@ W_COVERAGE = 0.25
 # Floor so a decisive sweep with thin evidence still reads meaningfully, while
 # minimal evidence lands just under the 0.7 review gate.
 EVIDENCE_FLOOR = 0.30
+# Vote-boost parameters: when many independent chunks agree on a winner AND
+# the match is at least somewhat decisive (separation > NEAR_TIE_FLOOR), vote
+# evidence can relax the separation requirement.
+#   NEAR_TIE_FLOOR  — below this separation, no boost is applied. A close
+#     runner-up at any vote count is genuinely ambiguous.
+#   HIGH_CONSENSUS_REF — proportion of scan points for "full consensus" credit.
+#   HIGH_VOTE_REF   — absolute chunk count for "full vote" credit. Deep re-match
+#     uses 25 scan points; 15 chunks agreeing is strong absolute evidence.
+#   MAX_VOTE_BOOST  — maximum separation added by combined consensus + vote credit.
+#     At max boost, separation can be lifted by up to 0.30, which allows a match
+#     with separation ~0.52 to clear the 0.7 review gate (vs ~0.82 previously).
+NEAR_TIE_FLOOR = 0.15
+HIGH_CONSENSUS_REF = 0.60
+HIGH_VOTE_REF = 15
+MAX_VOTE_BOOST = 0.30
 
 
 def _clamp01(value: float) -> float:
@@ -277,15 +292,23 @@ def calibrate_confidence(
         derived evidence term, each in [0, 1].
 
     Formula:
-        confidence = separation * evidence
+        confidence = effective_separation * evidence
+        effective_separation = separation + vote_boost
+        vote_boost = MAX_VOTE_BOOST * (consensus / HIGH_CONSENSUS_REF)
+                                     * (vote_count / HIGH_VOTE_REF)
+                     only when separation > NEAR_TIE_FLOOR, else 0
         evidence   = EVIDENCE_FLOOR + (1-FLOOR) * (
                          W_CONSENSUS*consensus
                        + W_NORMALIZED_SCORE*normalized_score
                        + W_COVERAGE*coverage_norm)
 
-    Separation is the safety gate: a near-tie (two plausible episodes) craters
-    confidence regardless of how strong the evidence is, because none of the
-    evidence metrics looks at the runner-up.
+    Separation is the primary safety gate. For near-tie matches
+    (separation ≤ NEAR_TIE_FLOOR, i.e. the runner-up scored ≥ 85 % of the
+    winner), no boost is applied — a close runner-up is genuinely ambiguous
+    regardless of vote count. Above the floor, accumulated vote evidence from
+    many agreeing chunks can raise effective_separation by up to MAX_VOTE_BOOST,
+    allowing moderate-separation high-vote matches to clear the 0.7 review gate
+    without requiring a near-sweep.
     """
     eps = 1e-9
     separation = _clamp01(score_gap / score) if score > eps else 0.0
@@ -297,10 +320,27 @@ def calibrate_confidence(
         W_CONSENSUS * consensus + W_NORMALIZED_SCORE * normalized_score + W_COVERAGE * coverage_norm
     )
     evidence = EVIDENCE_FLOOR + (1.0 - EVIDENCE_FLOOR) * evidence_raw
-    confidence = _clamp01(separation * evidence)
+
+    # Vote-driven separation boost: near-ties are excluded (runner-up too close
+    # to trust vote count alone). Above the floor, both consensus fraction and
+    # absolute vote count must be high to earn the full boost — requiring many
+    # independent chunks to agree, not just a high proportion of a small sample.
+    if separation > NEAR_TIE_FLOOR:
+        vote_boost = (
+            MAX_VOTE_BOOST
+            * _clamp01(consensus / HIGH_CONSENSUS_REF)
+            * _clamp01(vote_count / HIGH_VOTE_REF)
+        )
+        effective_separation = _clamp01(separation + vote_boost)
+    else:
+        vote_boost = 0.0
+        effective_separation = separation
+    confidence = _clamp01(effective_separation * evidence)
 
     components = {
         "separation": separation,
+        "vote_boost": vote_boost,
+        "effective_separation": effective_separation,
         "consensus": consensus,
         "normalized_score": normalized_score,
         # Report the actual processed fraction (the metric), not the normalized
