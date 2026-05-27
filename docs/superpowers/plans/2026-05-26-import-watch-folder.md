@@ -226,8 +226,8 @@ def _try_pattern_b(self, show_dir: Path) -> list[tuple[Path, int, int, dict]]:
                     "destination_mode": self._import_destination_mode,
                     "source": "import",
                 }))
-    except OSError:
-        pass
+    except OSError as e:
+        logger.debug(f"Could not scan show directory {show_dir}: {e}", exc_info=True)
     return units
 
 def _count_mkvs(self, directory: Path) -> tuple[int, int]:
@@ -504,8 +504,14 @@ async def _check_staging(self) -> None:
                 continue
             await self._update_stability(dir_str, dir_path, mkv_count, total_size, metadata=None)
 
-        stale = [k for k in self._known_dirs if k not in seen_dirs
-                 and not str(k).startswith(str(self._import_watch_path or ""))]
+        stale = [
+            k for k in self._known_dirs
+            if k not in seen_dirs
+            and (
+                not self._import_watch_path
+                or not str(k).startswith(str(self._import_watch_path))
+            )
+        ]
         for key in stale:
             del self._known_dirs[key]
 
@@ -787,17 +793,14 @@ Near the top of `finalization_coordinator.py` (after the existing imports), add 
 ```python
 from pathlib import Path as _Path
 
-def _library_path_for_job(job, content_type: str) -> "_Path | None":
+def _library_path_for_job(job, cfg, content_type: str) -> "_Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
-    if job.destination_mode != "in_place":
+    if job.destination_mode != "in_place" or not cfg.import_watch_path:
         return None
-    from app.services.config_service import get_config_sync
-    cfg = get_config_sync()
-    if not cfg.import_watch_path:
-        return None
-    root = _Path(cfg.import_watch_path)
-    return root / ("Movies" if content_type == "movie" else "TV")
+    return _Path(cfg.import_watch_path) / ("Movies" if content_type == "movie" else "TV")
 ```
+
+`cfg` is the `AppConfig` already fetched at the start of the finalization step — thread it in rather than issuing a blocking `get_config_sync()` call from inside the async coroutine body.
 
 - [ ] **Step 2: Update TV episode organiser calls**
 
@@ -815,7 +818,7 @@ org_result = await asyncio.to_thread(
 with:
 
 ```python
-_lib_path = _library_path_for_job(job, "tv")
+_lib_path = _library_path_for_job(job, cfg, "tv")
 if _lib_path:
     from app.core.organizer import organize_tv_episode
     org_result = await asyncio.to_thread(
@@ -851,7 +854,7 @@ org_result = await asyncio.to_thread(
 with:
 
 ```python
-_lib_path = _library_path_for_job(job, "tv")
+_lib_path = _library_path_for_job(job, cfg, "tv")
 org_result = await asyncio.to_thread(
     organize_tv_extras,
     source_file,
@@ -878,7 +881,7 @@ org_result = await asyncio.to_thread(
 with:
 
 ```python
-_lib_path = _library_path_for_job(job, "movie")
+_lib_path = _library_path_for_job(job, cfg, "movie")
 if _lib_path:
     from app.core.organizer import organize_movie
     org_result = await asyncio.to_thread(
