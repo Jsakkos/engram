@@ -304,8 +304,8 @@ class StagingWatcher:
                             },
                         )
                     )
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug("Could not scan show directory %s: %s", show_dir, e)
         return units
 
     def _count_mkvs(self, directory: Path) -> tuple[int, int]:
@@ -318,9 +318,9 @@ class StagingWatcher:
                     try:
                         size += f.stat().st_size
                     except OSError:
-                        pass
-        except OSError:
-            pass
+                        pass  # File removed between iterdir and stat; skip size contribution
+        except OSError as e:
+            logger.debug("Could not scan directory %s: %s", directory, e)
         return count, size
 
     def _scan_staging_dir(self) -> list[tuple[Path, int, int]]:

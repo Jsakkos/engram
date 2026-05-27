@@ -415,7 +415,8 @@ class JobManager:
                 sa_select(DiscJob).where(DiscJob.staging_path == str(staging_dir))
             )
             if existing.scalar_one_or_none():
-                logger.info(f"Job already exists for staging path {staging_dir}, skipping")
+                safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                logger.info("Job already exists for staging path %s, skipping", safe_path)
                 return -1
 
             job = DiscJob(
@@ -438,9 +439,15 @@ class JobManager:
             await session.refresh(job)
 
             job_id = job.id
+            safe_path = str(staging_path).replace("\n", "").replace("\r", "")
+            safe_label = str(volume_label).replace("\n", "").replace("\r", "")
             logger.info(
-                f"Created {'import' if drive_id == 'import' else 'staging'} job {job_id} "
-                f"from {staging_path} (label: {volume_label}, destination: {destination_mode})"
+                "Created %s job %s from %s (label: %s, destination: %s)",
+                "import" if drive_id == "import" else "staging",
+                job_id,
+                safe_path,
+                safe_label,
+                destination_mode,
             )
 
         await event_broadcaster.broadcast_drive_inserted(drive_id, volume_label)
