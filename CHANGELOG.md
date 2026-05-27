@@ -4,6 +4,17 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-26
+
+### Added
+- **Import Watch Folder** — point Engram at any folder of pre-ripped MKV files (ARM output, NAS share, etc.) and it ingests them through the same identification → matching → organizing pipeline as a freshly ripped disc. Configured in Settings → Import Watch Folder; the watcher polls on a configurable interval and skips files still being written. (#233)
+- **Auto-update** — Engram now checks for new releases at startup, silently downloads the update in the background, verifies the SHA256 checksum, and prompts with a banner to "Restart to apply." Updates can be skipped per-version. Works for frozen (packaged) builds on Windows, macOS, and Linux; no-ops in development mode. (#235)
+
+### Fixed
+- **TVsubtitles show mislabeling** — the resolver previously took the first search hit without verifying the show name, so e.g. "2 Broke Girls" could be matched to Gilmore Girls, corrupting the cache. Results are now filtered by title similarity before accepting a match. Adds `audit_subtitle_cache.py` and `verify_cache_content.py` scripts for cache health checks. (#202)
+- **Docker image not published on release** — the `release.yml` dispatch in `tag-release.yml` was missing the `docker.yml` dispatch step, so Docker images were never pushed to GHCR on tagged releases. Also adds a manual `tag` input to `docker.yml` so a specific release can be re-published without re-running the full pipeline. (#231, #232)
+- **CI permission error on `tag-release.yml`** — the `actions: write` permission required to dispatch `release.yml` and `docker.yml` was missing, causing workflow dispatch to fail with a 403. (#230)
+
 ## [0.8.1] - 2026-05-26
 
 ### Fixed
