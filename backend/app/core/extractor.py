@@ -28,6 +28,11 @@ _CREATED_MKV_PATTERN = re.compile(r'["\']([^"\']+\.mkv)["\']')
 # callback and the job_manager fallback so the live update and History agree.
 STALL_FAILURE_REASON = "Ripping stalled — no progress; the disc may be dirty or damaged."
 
+# Consecutive stable-size polls required before declaring in-flight title completion.
+# Each poll is ~3 s apart, so STABLE_CHECKS_REQUIRED=3 means ~9 s of write-silence.
+# Post-process force checks bypass this requirement (process exit guarantees write done).
+STABLE_CHECKS_REQUIRED = 3
+
 
 def _to_drive_spec(drive: str) -> str:
     """Normalize a drive identifier into a MakeMKV drive spec.
@@ -450,10 +455,7 @@ class MakeMKVExtractor:
         # by brief MakeMKV write pauses (e.g. buffering or disc seeking) that
         # may hold the file size constant for one polling interval (~3 s).
         stable_counts: dict[str, int] = {}
-        # How many consecutive stable size polls are needed to declare a file
-        # complete *while the MakeMKV process is still running*.  Post-process
-        # force checks bypass this requirement entirely.
-        STABLE_CHECKS_REQUIRED = 3  # 3 × 3 s ≈ 9 s of write-silence needed
+        # STABLE_CHECKS_REQUIRED is a module-level constant (see top of file).
         _fs_lock = threading.Lock()
 
         def _fire_title_complete(fname: str, size: int) -> None:
@@ -701,8 +703,9 @@ class MakeMKVExtractor:
                         if len(commands) > 1:
                             break
 
-                    # Final fs check for this command — process has exited so
-                    # the write is guaranteed done; bypass stability counter.
+                    # Final fs check for this command.  process.wait() has
+                    # returned (success *or* error exit) so MakeMKV is no longer
+                    # writing; bypass the stability counter.
                     _check_for_completed_files(force=True)
 
                 # End of all commands

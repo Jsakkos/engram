@@ -11,8 +11,7 @@ import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
-# Match the constant used in extractor.py
-STABLE_CHECKS_REQUIRED = 3
+from app.core.extractor import STABLE_CHECKS_REQUIRED
 
 
 class TestCreatedMessageDoesNotFireCallback:
@@ -92,7 +91,17 @@ class TestStableSizeDetection:
         """Simulate one call to _check_for_completed_files with the given file sizes.
 
         ``sizes`` maps filename → current size (as if returned by stat().st_size).
-        Mirrors the new closure logic in extractor.py exactly.
+
+        .. warning::
+            This helper **mirrors** the closure logic inside
+            ``_rip_titles_unlocked._check_for_completed_files`` rather than
+            calling the real function directly.  The closure captures many
+            variables (``output_dir``, ``_fs_lock``, the callbacks, …) that
+            can't be constructed in isolation without running ``rip_titles()``.
+            If the production logic changes, this mirror must be kept in sync
+            manually.  Consider extracting ``_check_for_completed_files`` into
+            a ``TitleCompletionDetector`` class (module-level) so tests can
+            exercise the real implementation.
         """
         output_dir = Path("/output")
         known_files = state["known_files"]
@@ -151,7 +160,7 @@ class TestStableSizeDetection:
         # Stable polls 1 … STABLE_CHECKS_REQUIRED-1: still not fired
         for i in range(1, STABLE_CHECKS_REQUIRED):
             self._simulate_check(state, {"C1_t01.mkv": 2_193_000_000}, callback)
-            callback.assert_not_called(), f"should not fire after {i} stable checks"
+            assert callback.call_count == 0, f"should not fire after {i} stable checks"
 
         # The Nth consecutive stable poll fires
         self._simulate_check(state, {"C1_t01.mkv": 2_193_000_000}, callback)
