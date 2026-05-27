@@ -4,6 +4,8 @@ This model stores user-configurable settings that persist across restarts
 and can be modified via the UI.
 """
 
+from datetime import datetime
+
 from sqlalchemy import text
 from sqlmodel import Field, SQLModel
 
@@ -137,3 +139,7 @@ class AppConfig(SQLModel, table=True):
 
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard
+
+    # Auto-update preferences
+    skipped_update_version: str | None = None  # e.g. "0.8.2" — user dismissed this version
+    last_update_check: datetime | None = None  # informational timestamp
