@@ -1,13 +1,18 @@
 """Tests for extractor callback behavior.
 
 Verifies that the 'created' message from MakeMKV does NOT fire
-title_complete_callback, and that stable file size detection DOES.
+title_complete_callback, and that stable file size detection DOES — but
+only after STABLE_CHECKS_REQUIRED consecutive stable polls (in-flight) or
+immediately on a forced post-process check.
 """
 
 import re
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock
+
+# Match the constant used in extractor.py
+STABLE_CHECKS_REQUIRED = 3
 
 
 class TestCreatedMessageDoesNotFireCallback:
@@ -64,72 +69,187 @@ class TestCreatedMessageDoesNotFireCallback:
 
 
 class TestStableSizeDetection:
-    """Stable file size detection SHOULD fire title_complete_callback.
-
-    When a file's size is the same across two consecutive checks and > 0,
-    it means MakeMKV has finished writing to it.
+    """Stable file size detection SHOULD fire title_complete_callback — but only
+    after STABLE_CHECKS_REQUIRED consecutive stable polls (not after just one).
     """
 
-    def test_stable_size_fires_callback(self):
-        """Simulates _check_for_completed_files detecting a stable file."""
-        known_files: dict[str, int] = {"title00.mkv": 1_000_000}
-        completed_files: set[str] = set()
-        output_files: list[Path] = []
-        callback = MagicMock()
+    # ------------------------------------------------------------------
+    # Helper: simulate _check_for_completed_files with the new multi-check
+    # logic.  This mirrors the closure in extractor.py so tests stay in sync
+    # with production behaviour without needing to call rip_titles().
+    # ------------------------------------------------------------------
+
+    def _make_state(self):
+        """Return a fresh shared-state dict used by _simulate_check."""
+        return {
+            "known_files": {},
+            "completed_files": set(),
+            "stable_counts": {},
+            "output_files": [],
+        }
+
+    def _simulate_check(self, state, sizes: dict[str, int], callback, *, force: bool = False):
+        """Simulate one call to _check_for_completed_files with the given file sizes.
+
+        ``sizes`` maps filename → current size (as if returned by stat().st_size).
+        Mirrors the new closure logic in extractor.py exactly.
+        """
         output_dir = Path("/output")
+        known_files = state["known_files"]
+        completed_files = state["completed_files"]
+        stable_counts = state["stable_counts"]
+        output_files = state["output_files"]
 
-        # Simulate _check_for_completed_files logic:
-        # File exists with same size as last check → stable → complete
-        fname = "title00.mkv"
-        current_size = 1_000_000  # Same as known_files
+        def _fire(fname, size):
+            completed_files.add(fname)
+            stable_counts.pop(fname, None)
+            filepath = output_dir / fname
+            output_files.append(filepath)
+            callback(len(completed_files), filepath)
 
-        if fname in known_files:
-            if current_size == known_files[fname] and current_size > 0:
-                if fname not in completed_files:
-                    completed_files.add(fname)
-                    filepath = output_dir / fname
-                    output_files.append(filepath)
-                    if callback:
-                        callback(len(completed_files), filepath)
+        for fname, current_size in sizes.items():
+            if fname in completed_files:
+                continue
+            if fname in known_files:
+                if current_size > 0:
+                    if force:
+                        _fire(fname, current_size)
+                    elif current_size == known_files[fname]:
+                        stable_counts[fname] = stable_counts.get(fname, 0) + 1
+                        if stable_counts[fname] >= STABLE_CHECKS_REQUIRED:
+                            _fire(fname, current_size)
+                    else:
+                        stable_counts[fname] = 0
+            known_files[fname] = current_size
 
-        callback.assert_called_once_with(1, output_dir / "title00.mkv")
-        assert fname in completed_files
-        assert len(output_files) == 1
+    # ------------------------------------------------------------------
+    # Tests
+    # ------------------------------------------------------------------
+
+    def test_single_stable_check_does_not_fire(self):
+        """One stable poll is no longer enough — callback must NOT fire yet."""
+        state = self._make_state()
+        callback = MagicMock()
+
+        # First check: file appears at 96 MB
+        self._simulate_check(state, {"C1_t01.mkv": 96_000_000}, callback)
+        callback.assert_not_called()
+
+        # Second check: same size — one stable interval — still not enough
+        self._simulate_check(state, {"C1_t01.mkv": 96_000_000}, callback)
+        callback.assert_not_called()
+
+    def test_multi_stable_checks_fires_callback(self):
+        """Exactly STABLE_CHECKS_REQUIRED consecutive stable polls must fire."""
+        state = self._make_state()
+        callback = MagicMock()
+
+        # Seed known_files with first appearance
+        self._simulate_check(state, {"C1_t01.mkv": 2_193_000_000}, callback)
+        callback.assert_not_called()  # first appearance, not yet stable
+
+        # Stable polls 1 … STABLE_CHECKS_REQUIRED-1: still not fired
+        for i in range(1, STABLE_CHECKS_REQUIRED):
+            self._simulate_check(state, {"C1_t01.mkv": 2_193_000_000}, callback)
+            callback.assert_not_called(), f"should not fire after {i} stable checks"
+
+        # The Nth consecutive stable poll fires
+        self._simulate_check(state, {"C1_t01.mkv": 2_193_000_000}, callback)
+        callback.assert_called_once()
+        assert "C1_t01.mkv" in state["completed_files"]
+
+    def test_size_change_resets_stable_count(self):
+        """A size increase mid-rip resets the stability counter to zero."""
+        state = self._make_state()
+        callback = MagicMock()
+
+        # File appears (baseline — no count increment), then one stable check
+        self._simulate_check(state, {"C1_t01.mkv": 96_000_000}, callback)
+        self._simulate_check(state, {"C1_t01.mkv": 96_000_000}, callback)
+        # First call sets the baseline; second call is the 1st stable observation
+        assert state["stable_counts"].get("C1_t01.mkv", 0) == 1
+
+        # File grows — counter must reset
+        self._simulate_check(state, {"C1_t01.mkv": 500_000_000}, callback)
+        assert state["stable_counts"].get("C1_t01.mkv", 0) == 0
+        callback.assert_not_called()
+
+        # Stable counts restart from zero
+        self._simulate_check(state, {"C1_t01.mkv": 500_000_000}, callback)
+        assert state["stable_counts"].get("C1_t01.mkv", 0) == 1
+        callback.assert_not_called()
+
+    def test_stable_count_cleared_after_callback(self):
+        """stable_counts entry is removed once a file fires its callback."""
+        state = self._make_state()
+        callback = MagicMock()
+
+        # Seed + STABLE_CHECKS_REQUIRED stable polls
+        self._simulate_check(state, {"t01.mkv": 1_000_000_000}, callback)
+        for _ in range(STABLE_CHECKS_REQUIRED):
+            self._simulate_check(state, {"t01.mkv": 1_000_000_000}, callback)
+
+        callback.assert_called_once()
+        assert "t01.mkv" not in state["stable_counts"]
+
+    def test_force_fires_immediately_without_stability(self):
+        """force=True fires with only one look — process exit guarantees completeness."""
+        state = self._make_state()
+        callback = MagicMock()
+
+        # Seed the file so it's in known_files
+        self._simulate_check(state, {"C1_t01.mkv": 2_193_000_000}, callback)
+        callback.assert_not_called()
+
+        # force=True — fires immediately
+        self._simulate_check(state, {"C1_t01.mkv": 2_193_000_000}, callback, force=True)
+        callback.assert_called_once()
+        assert "C1_t01.mkv" in state["completed_files"]
+
+    def test_force_does_not_double_fire(self):
+        """force=True skips files already in completed_files."""
+        state = self._make_state()
+        callback = MagicMock()
+
+        # Seed + first forced completion
+        self._simulate_check(state, {"t01.mkv": 1_000_000_000}, callback)
+        self._simulate_check(state, {"t01.mkv": 1_000_000_000}, callback, force=True)
+        assert callback.call_count == 1
+
+        # Second force call must be a no-op
+        self._simulate_check(state, {"t01.mkv": 1_000_000_000}, callback, force=True)
+        assert callback.call_count == 1  # unchanged
+
+    def test_force_does_not_fire_for_zero_size(self):
+        """force=True must NOT fire for a 0-byte file (MakeMKV opened but didn't write)."""
+        state = self._make_state()
+        callback = MagicMock()
+
+        # File created at 0 bytes (MSG 'created' path seeds it at 0)
+        state["known_files"]["t01.mkv"] = 0
+
+        self._simulate_check(state, {"t01.mkv": 0}, callback, force=True)
+        callback.assert_not_called()
+        assert "t01.mkv" not in state["completed_files"]
 
     def test_growing_file_does_not_fire_callback(self):
         """A file whose size is still changing should NOT fire callback."""
-        known_files: dict[str, int] = {"title00.mkv": 500_000}
-        completed_files: set[str] = set()
+        state = self._make_state()
         callback = MagicMock()
 
-        fname = "title00.mkv"
-        current_size = 1_000_000  # Larger than last check — still growing
-
-        if fname in known_files:
-            if current_size == known_files[fname] and current_size > 0:
-                if fname not in completed_files:
-                    completed_files.add(fname)
-                    callback(len(completed_files), Path("/output") / fname)
-
-        # Update known size
-        known_files[fname] = current_size
+        self._simulate_check(state, {"title00.mkv": 500_000}, callback)
+        self._simulate_check(state, {"title00.mkv": 1_000_000}, callback)  # still growing
 
         callback.assert_not_called()
-        assert fname not in completed_files
+        assert "title00.mkv" not in state["completed_files"]
 
     def test_zero_size_file_does_not_fire_callback(self):
         """A file with 0 bytes should NOT be considered complete."""
-        known_files: dict[str, int] = {"title00.mkv": 0}
-        completed_files: set[str] = set()
+        state = self._make_state()
         callback = MagicMock()
 
-        fname = "title00.mkv"
-        current_size = 0
-
-        if fname in known_files:
-            if current_size == known_files[fname] and current_size > 0:
-                if fname not in completed_files:
-                    completed_files.add(fname)
-                    callback(len(completed_files), Path("/output") / fname)
+        # Seed at 0, check at 0 — size > 0 guard prevents firing
+        self._simulate_check(state, {"title00.mkv": 0}, callback)
+        self._simulate_check(state, {"title00.mkv": 0}, callback)
 
         callback.assert_not_called()
