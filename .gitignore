@@ -42,6 +42,9 @@ engram-windows-*.zip
 /screenshots/
 # docs/screenshots/ is intentionally tracked
 
+# Spike binaries (downloaded, not committed)
+spikes/**/bin/
+
 # MkDocs
 site/
 
