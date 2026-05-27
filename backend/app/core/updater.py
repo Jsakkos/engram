@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
+from enum import StrEnum
 from pathlib import Path
 
 import httpx
@@ -28,7 +29,7 @@ GITHUB_API_URL = "https://api.github.com/repos/Jsakkos/engram/releases/latest"
 STAGING_BASE = Path.home() / ".engram" / "update"
 
 
-class UpdateStatus(str):
+class UpdateStatus(StrEnum):
     """Update lifecycle state values."""
 
     IDLE = "idle"
@@ -209,9 +210,10 @@ class UpdateChecker:
             logger.info(f"Update {version} staged at {staging_dir}")
             await self._broadcast()
 
-        except UpdateError:
+        except UpdateError as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
             self.state = UpdateStatus.ERROR
+            self.error = str(exc)
             await self._broadcast()
         except Exception as exc:
             logger.error(f"Update download failed: {exc}", exc_info=True)
@@ -275,6 +277,10 @@ class UpdateChecker:
                 tar.extractall(dest_dir, filter="data")
         elif name.endswith(".zip"):
             with zipfile.ZipFile(archive_path, "r") as zf:
+                for member in zf.infolist():
+                    member_path = (dest_dir / member.filename).resolve()
+                    if not str(member_path).startswith(str(dest_dir.resolve())):
+                        raise UpdateError(f"Unsafe zip entry rejected: {member.filename}")
                 zf.extractall(dest_dir)
         else:
             raise UpdateError(f"Unknown archive format: {name}")
@@ -346,6 +352,7 @@ class UpdateChecker:
 
         active_states = [
             JobState.IDENTIFYING,
+            JobState.REVIEW_NEEDED,
             JobState.RIPPING,
             JobState.MATCHING,
             JobState.ORGANIZING,
