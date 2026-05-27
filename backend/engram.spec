@@ -116,7 +116,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=True,
-    icon="../frontend/public/brand/app-icons/windows/engram.ico",
+    icon=os.path.join(SPECPATH, "../frontend/public/brand/app-icons/windows/engram.ico"),
 )
 
 coll = COLLECT(
