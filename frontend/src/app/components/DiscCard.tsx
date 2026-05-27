@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
-import { CheckCircle2, Clock, Database } from "lucide-react";
+import { CheckCircle2, Clock, Database, Folder } from "lucide-react";
 import { IcoDisc, IcoRetry } from "./icons";
 import { StateIndicator } from "./StateIndicator";
 import { TrackGrid } from "./TrackGrid";
@@ -58,6 +58,7 @@ export interface DiscData {
   title: string;
   subtitle?: string;
   discLabel?: string;
+  sourceType?: 'disc' | 'import' | 'staging';
   coverUrl: string;
   mediaType: MediaType;
   state: DiscState;
@@ -287,6 +288,30 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2 }}>
                 <MediaTypeBadge mediaType={disc.mediaType} />
               </div>
+
+              {/* Source badge — folder icon for watch-folder-imported jobs */}
+              {disc.sourceType === 'import' && (
+                <div
+                  role="img"
+                  aria-label="Imported from watch folder"
+                  title="Imported from watch folder"
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    right: 6,
+                    zIndex: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 24,
+                    height: 24,
+                    background: `${sv.bg2}cc`,
+                    border: `1px solid ${sv.line}`,
+                  }}
+                >
+                  <Folder size={13} color={sv.cyanHi} />
+                </div>
+              )}
             </motion.div>
 
             {/* Content */}

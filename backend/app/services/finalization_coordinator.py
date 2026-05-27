@@ -22,6 +22,19 @@ from app.services.job_state_machine import JobStateMachine
 
 logger = logging.getLogger(__name__)
 
+
+def _library_path_for_job(job, content_type: str) -> "Path | None":
+    """Return a library_path override for in_place jobs, or None for library mode."""
+    if job.destination_mode != "in_place":
+        return None
+    from app.services.config_service import get_config_sync
+
+    cfg = get_config_sync()
+    if not cfg.import_watch_path:
+        return None
+    return Path(cfg.import_watch_path) / ("Movies" if content_type == "movie" else "TV")
+
+
 # --- Automatic conflict escalation ---------------------------------------
 # When two titles match the same episode, we re-run the audio matcher on the
 # contested titles at progressively denser sampling before falling back to
@@ -412,8 +425,10 @@ class FinalizationCoordinator:
         job.progress_percent = 100.0
         job.error_message = None
         db_config = await get_db_config()
+        _lib_path = _library_path_for_job(job, "tv")
         job.final_path = str(
-            Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
+            (_lib_path if _lib_path else Path(db_config.library_tv_path))
+            / (job.detected_title or job.volume_label)
         )
         await self._state_machine.transition_to_completed(job, session)
 
@@ -498,7 +513,7 @@ class FinalizationCoordinator:
 
     async def finalize_disc_job(self, job_id: int):
         """Run conflict resolution with cascading reassignment and organize matches."""
-        from app.core.organizer import tv_organizer
+        from app.core.organizer import organize_tv_episode, tv_organizer
 
         logger.info(f"Running conflict resolution for Job {job_id}")
 
@@ -690,12 +705,22 @@ class FinalizationCoordinator:
 
                 logger.info(f"Organizing Title {t.id} ({source_file.name}) -> {t.matched_episode}")
 
-                org_result = await asyncio.to_thread(
-                    tv_organizer.organize,
-                    source_file,
-                    job.detected_title,
-                    t.matched_episode,
-                )
+                _lib_path = _library_path_for_job(job, "tv")
+                if _lib_path:
+                    org_result = await asyncio.to_thread(
+                        organize_tv_episode,
+                        source_file,
+                        job.detected_title or job.volume_label,
+                        t.matched_episode,
+                        _lib_path,
+                    )
+                else:
+                    org_result = await asyncio.to_thread(
+                        tv_organizer.organize,
+                        source_file,
+                        job.detected_title,
+                        t.matched_episode,
+                    )
 
                 if org_result["success"]:
                     t.state = TitleState.COMPLETED
@@ -741,8 +766,10 @@ class FinalizationCoordinator:
                 from app.services.config_service import get_config as get_db_config
 
                 db_config = await get_db_config()
+                _lib_path = _library_path_for_job(job, "tv")
                 job.final_path = str(
-                    Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
+                    (_lib_path if _lib_path else Path(db_config.library_tv_path))
+                    / (job.detected_title or job.volume_label)
                 )
                 await self._state_machine.transition_to_completed(job, session)
             else:
@@ -759,7 +786,13 @@ class FinalizationCoordinator:
         """Apply a user's review decision for a title."""
         from datetime import UTC, datetime
 
-        from app.core.organizer import movie_organizer, organize_tv_extras, tv_organizer
+        from app.core.organizer import (
+            movie_organizer,
+            organize_movie,
+            organize_tv_episode,
+            organize_tv_extras,
+            tv_organizer,
+        )
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -860,12 +893,22 @@ class FinalizationCoordinator:
                         if edition and edition.lower() not in final_title.lower():
                             final_title = f"{final_title} {{edition-{edition}}}"
 
-                        org_result = await asyncio.to_thread(
-                            movie_organizer.organize,
-                            source_file,
-                            job.volume_label,
-                            final_title,
-                        )
+                        _lib_path = _library_path_for_job(job, "movie")
+                        if _lib_path:
+                            org_result = await asyncio.to_thread(
+                                organize_movie,
+                                source_file,
+                                final_title,
+                                None,  # year
+                                _lib_path,
+                            )
+                        else:
+                            org_result = await asyncio.to_thread(
+                                movie_organizer.organize,
+                                source_file,
+                                job.volume_label,
+                                final_title,
+                            )
 
                         if org_result["success"]:
                             title.state = TitleState.COMPLETED
@@ -941,24 +984,35 @@ class FinalizationCoordinator:
 
                         source_file = Path(disc_title.output_filename)
                         if source_file.exists():
+                            _lib_path = _library_path_for_job(job, "tv")
                             if disc_title.matched_episode == "extra":
                                 org_result = await asyncio.to_thread(
                                     organize_tv_extras,
                                     source_file,
                                     job.detected_title or job.volume_label,
                                     job.detected_season or 1,
+                                    library_path=_lib_path,
                                     disc_number=job.disc_number or 1,
                                     extra_index=extra_index,
                                     title_index=disc_title.title_index,
                                 )
                                 extra_index += 1
                             else:
-                                org_result = await asyncio.to_thread(
-                                    tv_organizer.organize,
-                                    source_file,
-                                    job.detected_title or job.volume_label,
-                                    disc_title.matched_episode,
-                                )
+                                if _lib_path:
+                                    org_result = await asyncio.to_thread(
+                                        organize_tv_episode,
+                                        source_file,
+                                        job.detected_title or job.volume_label,
+                                        disc_title.matched_episode,
+                                        _lib_path,
+                                    )
+                                else:
+                                    org_result = await asyncio.to_thread(
+                                        tv_organizer.organize,
+                                        source_file,
+                                        job.detected_title or job.volume_label,
+                                        disc_title.matched_episode,
+                                    )
                             if org_result["success"]:
                                 success_count += 1
                                 disc_title.organized_from = source_file.name
@@ -1022,7 +1076,7 @@ class FinalizationCoordinator:
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job without waiting for unresolved ones."""
-        from app.core.organizer import organize_tv_extras, tv_organizer
+        from app.core.organizer import organize_tv_episode, organize_tv_extras, tv_organizer
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -1052,24 +1106,35 @@ class FinalizationCoordinator:
                     logger.warning(f"Source file not found: {source_file}")
                     continue
 
+                _lib_path = _library_path_for_job(job, "tv")
                 if disc_title.matched_episode == "extra":
                     org_result = await asyncio.to_thread(
                         organize_tv_extras,
                         source_file,
                         job.detected_title or job.volume_label,
                         job.detected_season or 1,
+                        library_path=_lib_path,
                         disc_number=job.disc_number or 1,
                         extra_index=extra_index,
                         title_index=disc_title.title_index,
                     )
                     extra_index += 1
                 else:
-                    org_result = await asyncio.to_thread(
-                        tv_organizer.organize,
-                        source_file,
-                        job.detected_title or job.volume_label,
-                        disc_title.matched_episode,
-                    )
+                    if _lib_path:
+                        org_result = await asyncio.to_thread(
+                            organize_tv_episode,
+                            source_file,
+                            job.detected_title or job.volume_label,
+                            disc_title.matched_episode,
+                            _lib_path,
+                        )
+                    else:
+                        org_result = await asyncio.to_thread(
+                            tv_organizer.organize,
+                            source_file,
+                            job.detected_title or job.volume_label,
+                            disc_title.matched_episode,
+                        )
 
                 if org_result["success"]:
                     success_count += 1

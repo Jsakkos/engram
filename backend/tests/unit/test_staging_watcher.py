@@ -259,3 +259,228 @@ class TestStagingWatcherLifecycle:
         watcher.stop()
         watcher.stop()  # Should be no-op, no error
         assert watcher._running is False
+
+
+class TestImportWatcherStructureDetection:
+    """Tests for ARM output structure detection in _scan_import_dir."""
+
+    async def test_pattern_a_per_disc_subfolders(self, tmp_path):
+        """Direct subdirectory with MKVs → one import unit per subdir."""
+        watch_root = tmp_path / "arm_output"
+        watch_root.mkdir()
+        disc1 = watch_root / "THE_OFFICE_S1D1"
+        disc1.mkdir()
+        (disc1 / "title_t01.mkv").write_bytes(b"\x00" * 1024)
+        (disc1 / "title_t02.mkv").write_bytes(b"\x00" * 2048)
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(watch_root))
+        units = watcher._scan_import_dir(watch_root)
+
+        assert len(units) == 1
+        path, mkv_count, total_size, meta = units[0]
+        assert path == disc1
+        assert mkv_count == 2
+        assert total_size == 3072
+        assert meta["structure"] == "disc_folder"
+        assert meta["show_name"] is None
+        assert meta["season"] is None
+
+    async def test_pattern_b_show_organised(self, tmp_path):
+        """Show dir with Season subdirs → one job unit per season."""
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+        show = watch_root / "The Office"
+        show.mkdir()
+        s1 = show / "Season 1"
+        s1.mkdir()
+        (s1 / "title_t01.mkv").write_bytes(b"\x00" * 1024)
+        s2 = show / "Season 2"
+        s2.mkdir()
+        (s2 / "title_t01.mkv").write_bytes(b"\x00" * 2048)
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(watch_root))
+        units = watcher._scan_import_dir(watch_root)
+
+        assert len(units) == 2
+        seasons = {meta["season"]: (path, meta) for path, _, _, meta in units}
+        assert 1 in seasons and 2 in seasons
+        assert seasons[1][1]["show_name"] == "The Office"
+        assert seasons[1][1]["structure"] == "show_organised"
+        assert seasons[1][0] == s1
+        assert seasons[2][0] == s2
+
+    async def test_pattern_c_flat(self, tmp_path):
+        """MKVs directly in root → single job unit for whole directory."""
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+        (watch_root / "title_t01.mkv").write_bytes(b"\x00" * 1024)
+        (watch_root / "title_t02.mkv").write_bytes(b"\x00" * 2048)
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(watch_root))
+        units = watcher._scan_import_dir(watch_root)
+
+        assert len(units) == 1
+        path, mkv_count, total_size, meta = units[0]
+        assert path == watch_root
+        assert mkv_count == 2
+        assert total_size == 3072
+        assert meta["structure"] == "flat"
+
+    async def test_mixed_patterns_in_root(self, tmp_path):
+        """Root can contain both per-disc subfolders and show-organised subdirs."""
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+        disc = watch_root / "BOB_S1D1"
+        disc.mkdir()
+        (disc / "title_t01.mkv").write_bytes(b"\x00" * 1024)
+        show = watch_root / "The Wire"
+        show.mkdir()
+        s1 = show / "Season 1"
+        s1.mkdir()
+        (s1 / "title_t01.mkv").write_bytes(b"\x00" * 1024)
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(watch_root))
+        units = watcher._scan_import_dir(watch_root)
+
+        assert len(units) == 2
+        structures = {meta["structure"] for _, _, _, meta in units}
+        assert structures == {"disc_folder", "show_organised"}
+
+    async def test_empty_subdir_ignored(self, tmp_path):
+        """Subdirectories with no MKV files are not returned."""
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+        empty = watch_root / "EMPTY_DIR"
+        empty.mkdir()
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(watch_root))
+        units = watcher._scan_import_dir(watch_root)
+
+        assert units == []
+
+    async def test_destination_mode_in_metadata(self, tmp_path):
+        """destination_mode from constructor appears in metadata."""
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+        disc = watch_root / "DISC1"
+        disc.mkdir()
+        (disc / "t.mkv").write_bytes(b"\x00" * 100)
+
+        watcher = StagingWatcher(
+            "/tmp/staging",
+            import_watch_path=str(watch_root),
+            import_destination_mode="in_place",
+        )
+        units = watcher._scan_import_dir(watch_root)
+
+        assert units[0][3]["destination_mode"] == "in_place"
+
+
+class TestImportWatcherPolling:
+    """Tests for the full poll loop with import paths."""
+
+    async def test_import_dir_fires_after_stability(self, tmp_path):
+        """Import unit fires callback after STABILITY_THRESHOLD stable polls."""
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+        disc = watch_root / "THE_OFFICE_S1D1"
+        disc.mkdir()
+        (disc / "title_t01.mkv").write_bytes(b"\x00" * 1024)
+
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        watcher = StagingWatcher(str(staging), import_watch_path=str(watch_root))
+        callback = AsyncMock()
+        watcher._async_callback = callback
+
+        await watcher._check_staging()
+        callback.assert_not_called()
+
+        await watcher._check_staging()
+        callback.assert_not_called()
+
+        await watcher._check_staging()
+        callback.assert_called_once()
+
+        args = callback.call_args[0]
+        assert args[0] == "staging_ready"
+        assert args[1] == str(disc)
+        metadata = args[3] if len(args) > 3 else None
+        assert metadata is not None
+        assert metadata["source"] == "import"
+        assert metadata["structure"] == "disc_folder"
+
+    async def test_import_not_retriggered_after_fire(self, tmp_path):
+        """Import unit is not re-triggered in subsequent polls."""
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+        disc = watch_root / "DISC1"
+        disc.mkdir()
+        (disc / "t.mkv").write_bytes(b"\x00" * 100)
+
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        watcher = StagingWatcher(str(staging), import_watch_path=str(watch_root))
+        callback = AsyncMock()
+        watcher._async_callback = callback
+
+        for _ in range(3):
+            await watcher._check_staging()
+        assert callback.call_count == 1
+
+        for _ in range(5):
+            await watcher._check_staging()
+        assert callback.call_count == 1
+
+    async def test_staging_and_import_fire_independently(self, tmp_path):
+        """Existing staging scan and import scan are both active simultaneously."""
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        watch_root = tmp_path / "arm"
+        watch_root.mkdir()
+
+        disc = watch_root / "IMPORT_DISC"
+        disc.mkdir()
+        (disc / "t.mkv").write_bytes(b"\x00" * 100)
+
+        staging_sub = staging / "STAGING_DISC"
+        staging_sub.mkdir()
+        (staging_sub / "t.mkv").write_bytes(b"\x00" * 100)
+
+        watcher = StagingWatcher(str(staging), import_watch_path=str(watch_root))
+        callback = AsyncMock()
+        watcher._async_callback = callback
+
+        for _ in range(3):
+            await watcher._check_staging()
+
+        assert callback.call_count == 2
+        # One call should have metadata with source="import", other with metadata=None
+        sources = set()
+        for call in callback.call_args_list:
+            args = call[0]
+            meta = args[3] if len(args) > 3 else None
+            sources.add(meta["source"] if meta else "staging")
+        assert "import" in sources
+        assert "staging" in sources
+
+    async def test_metadata_fourth_arg_is_none_for_staging(self, tmp_path):
+        """Existing staging path callback passes None as fourth argument."""
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        sub = staging / "DISC"
+        sub.mkdir()
+        (sub / "t.mkv").write_bytes(b"\x00" * 100)
+
+        watcher = StagingWatcher(str(staging))
+        callback = AsyncMock()
+        watcher._async_callback = callback
+
+        for _ in range(3):
+            await watcher._check_staging()
+
+        callback.assert_called_once()
+        args = callback.call_args[0]
+        # Fourth arg should be None for staging-path callbacks
+        assert len(args) == 4
+        assert args[3] is None

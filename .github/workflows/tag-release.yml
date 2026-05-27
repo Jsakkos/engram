@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write  # needed to dispatch release.yml and docker.yml via gh workflow run
 
 # See ci.yml for context on the Node 24 opt-in.
 env:
@@ -56,3 +57,5 @@ jobs:
           gh workflow run release.yml \
             --ref "${{ steps.version.outputs.tag }}" \
             --field tag="${{ steps.version.outputs.tag }}"
+          gh workflow run docker.yml \
+            --ref "${{ steps.version.outputs.tag }}"
