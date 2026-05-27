@@ -206,15 +206,28 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                 </div>
               )}
 
-              {/* Review: no confident match — needs manual episode assignment */}
+              {/* Review: show best-guess episode when available, or "no match found" */}
               {track.state === "review" && (
                 <div style={{ marginTop: 4 }}>
                   <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.yellow, letterSpacing: "0.18em", fontWeight: 700 }}>
                     NEEDS REVIEW
                   </span>
-                  <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8 }}>
-                    no confident match — assign in review queue
-                  </span>
+                  {track.finalMatch ? (
+                    <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8 }}>
+                      best guess {track.finalMatch}
+                      {track.finalMatchConfidence !== undefined && (
+                        <> — {Math.round(track.finalMatchConfidence * 100)}% confidence</>
+                      )}
+                      {track.finalMatchVotes !== undefined && track.finalMatchTargetVotes !== undefined && (
+                        <> ({track.finalMatchVotes}/{track.finalMatchTargetVotes} votes)</>
+                      )}
+                      {" — confirm in review queue"}
+                    </span>
+                  ) : (
+                    <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8 }}>
+                      no match found — assign in review queue
+                    </span>
+                  )}
                 </div>
               )}
 

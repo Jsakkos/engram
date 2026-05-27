@@ -247,6 +247,31 @@ W_COVERAGE = 0.25
 # Floor so a decisive sweep with thin evidence still reads meaningfully, while
 # minimal evidence lands just under the 0.7 review gate.
 EVIDENCE_FLOOR = 0.30
+# Vote-boost parameters: when many independent chunks agree on a winner AND
+# the match is at least somewhat decisive (separation > NEAR_TIE_FLOOR), vote
+# evidence can relax the separation requirement.
+#   NEAR_TIE_FLOOR  — below this separation, no boost is applied. A close
+#     runner-up at any vote count is genuinely ambiguous.
+#   HIGH_CONSENSUS_REF — proportion of scan points for "full consensus" credit.
+#   HIGH_VOTE_REF   — absolute chunk count for "full vote" credit. Deep re-match
+#     uses 25 scan points; 15 chunks agreeing is strong absolute evidence.
+#   MAX_VOTE_BOOST  — maximum separation added by combined consensus + vote credit.
+#     At max boost, separation can be lifted by up to 0.30, which allows a match
+#     with separation ~0.52 to clear the 0.7 review gate (vs ~0.82 previously).
+# Vote-ratio path: a second independent confidence route that fires when the
+# winner matched far more chunks than the runner-up. score_gap (mean-cosine
+# difference) misses this signal because both candidates may score similarly
+# per-chunk even when one matched 3× more chunks overall.
+#   HIGH_VOTE_RATIO         — winner must have this many times the runner-up's
+#     vote count for full ratio credit (e.g. 103 vs 31 = 3.3×).
+#   MIN_CONSENSUS_FOR_RATIO — minimum winner consensus before the ratio path
+#     activates; prevents very sparse matches (e.g. 3/119) from passing.
+NEAR_TIE_FLOOR = 0.15
+HIGH_CONSENSUS_REF = 0.60
+HIGH_VOTE_REF = 15
+MAX_VOTE_BOOST = 0.30
+HIGH_VOTE_RATIO = 3.0
+MIN_CONSENSUS_FOR_RATIO = 0.50
 
 
 def _clamp01(value: float) -> float:
@@ -260,6 +285,7 @@ def calibrate_confidence(
     vote_count: int,
     target_votes: int,
     processed_coverage: float,
+    runner_up_votes: int = 0,
 ) -> tuple[float, dict[str, float]]:
     """Translate raw match signals into a 0-1 reviewer-facing confidence.
 
@@ -270,22 +296,44 @@ def calibrate_confidence(
         target_votes: total chunks sampled.
         processed_coverage: fraction of the file run through the matcher
             (samples * chunk_len / video_duration), NOT the matched fraction.
+        runner_up_votes: chunks that voted for the best alternative candidate.
+            When provided, enables the vote-ratio confidence path. Default 0
+            (ratio path disabled) for backward compatibility.
 
     Returns:
-        (confidence, components) where components reports the three independent
-        metrics (separation, consensus, normalized_score, coverage) plus the
-        derived evidence term, each in [0, 1].
+        (confidence, components) where components reports the independent
+        metrics (separation, consensus, normalized_score, coverage, evidence,
+        vote_boost, effective_separation, vote_ratio_score, ratio_confidence),
+        each in [0, 1].  ``vote_ratio`` is also included as a *raw* diagnostic
+        (winner_votes / runner_up_votes) and is NOT bounded to [0, 1] — it
+        equals 0.0 when the ratio path is inactive and can exceed 1.0
+        (e.g. 3.32 for 103 vs 31 votes) when it fires.
 
-    Formula:
-        confidence = separation * evidence
-        evidence   = EVIDENCE_FLOOR + (1-FLOOR) * (
-                         W_CONSENSUS*consensus
-                       + W_NORMALIZED_SCORE*normalized_score
-                       + W_COVERAGE*coverage_norm)
+    Two independent confidence paths — the higher wins:
 
-    Separation is the safety gate: a near-tie (two plausible episodes) craters
-    confidence regardless of how strong the evidence is, because none of the
-    evidence metrics looks at the runner-up.
+    Path 1 — separation-based (score_gap signal):
+        effective_separation = separation + vote_boost
+        vote_boost = MAX_VOTE_BOOST * (consensus / HIGH_CONSENSUS_REF)
+                                     * (vote_count / HIGH_VOTE_REF)
+                     only when separation > NEAR_TIE_FLOOR, else 0
+        base_confidence = effective_separation * evidence
+
+    Path 2 — vote-ratio (chunk-count signal, requires runner_up_votes > 0):
+        Fires when winner matched HIGH_VOTE_RATIO× more chunks than runner-up
+        AND overall consensus >= MIN_CONSENSUS_FOR_RATIO.
+        ratio_confidence = evidence
+                         * clamp(vote_ratio_score)
+                         * clamp(consensus / HIGH_CONSENSUS_REF)
+        where vote_ratio_score scales (vote_count/runner_up_votes) from 1× to
+        HIGH_VOTE_RATIO× into [0, 1].
+
+    confidence = max(base_confidence, ratio_confidence)
+
+    Rationale for Path 2: ranked_voting_score is a per-chunk mean cosine, so
+    a runner-up that matched ⅓ as many chunks as the winner may still produce
+    a similar mean cosine (and thus a small score_gap). Path 1 alone then
+    underestimates confidence. The vote-ratio path captures this: 103 vs 31
+    chunk matches is decisive regardless of whether the mean cosines are close.
     """
     eps = 1e-9
     separation = _clamp01(score_gap / score) if score > eps else 0.0
@@ -297,16 +345,53 @@ def calibrate_confidence(
         W_CONSENSUS * consensus + W_NORMALIZED_SCORE * normalized_score + W_COVERAGE * coverage_norm
     )
     evidence = EVIDENCE_FLOOR + (1.0 - EVIDENCE_FLOOR) * evidence_raw
-    confidence = _clamp01(separation * evidence)
+
+    # Path 1 — separation-based: near-ties are excluded (runner-up too close
+    # to trust vote count alone). Above the floor, both consensus fraction and
+    # absolute vote count must be high to earn the full boost — requiring many
+    # independent chunks to agree, not just a high proportion of a small sample.
+    if separation > NEAR_TIE_FLOOR:
+        vote_boost = (
+            MAX_VOTE_BOOST
+            * _clamp01(consensus / HIGH_CONSENSUS_REF)
+            * _clamp01(vote_count / HIGH_VOTE_REF)
+        )
+        effective_separation = _clamp01(separation + vote_boost)
+    else:
+        vote_boost = 0.0
+        effective_separation = separation
+    base_confidence = _clamp01(effective_separation * evidence)
+
+    # Path 2 — vote-ratio: fires when the winner matched significantly more
+    # chunks than the runner-up AND the overall consensus is strong. This
+    # captures cases where score_gap is small despite decisive chunk-count
+    # dominance (e.g. 103 vs 31 votes with similar per-chunk cosines).
+    vote_ratio = 0.0
+    vote_ratio_score = 0.0
+    ratio_confidence = 0.0
+    if runner_up_votes > 0 and consensus >= MIN_CONSENSUS_FOR_RATIO:
+        vote_ratio = vote_count / runner_up_votes
+        # Scale from [1×, HIGH_VOTE_RATIO×] → [0, 1]; below 1× impossible, above clamps to 1.
+        vote_ratio_score = _clamp01((vote_ratio - 1.0) / (HIGH_VOTE_RATIO - 1.0))
+        ratio_confidence = _clamp01(
+            evidence * vote_ratio_score * _clamp01(consensus / HIGH_CONSENSUS_REF)
+        )
+
+    confidence = max(base_confidence, ratio_confidence)
 
     components = {
         "separation": separation,
+        "vote_boost": vote_boost,
+        "effective_separation": effective_separation,
         "consensus": consensus,
         "normalized_score": normalized_score,
         # Report the actual processed fraction (the metric), not the normalized
         # form used inside the formula.
         "coverage": _clamp01(processed_coverage),
         "evidence": evidence,
+        "vote_ratio": vote_ratio,
+        "vote_ratio_score": vote_ratio_score,
+        "ratio_confidence": ratio_confidence,
     }
     return confidence, components
 
@@ -334,8 +419,10 @@ def _attach_calibrated_confidence(
     top1 = results_summary[0]["score"]
     if len(results_summary) >= 2:
         score_gap = top1 - results_summary[1]["score"]
+        runner_up_votes = results_summary[1].get("vote_count", 0)
     else:
         score_gap = top1
+        runner_up_votes = 0
 
     md = best_match.setdefault("match_details", {})
     target_votes = md.get("target_votes", 0)
@@ -352,14 +439,19 @@ def _attach_calibrated_confidence(
         vote_count=vote_count,
         target_votes=target_votes,
         processed_coverage=processed_coverage,
+        runner_up_votes=runner_up_votes,
     )
 
     best_match["confidence"] = confidence
     md["confidence"] = confidence
     md["score_gap"] = score_gap
     md["separation"] = components["separation"]
+    md["vote_boost"] = components["vote_boost"]
+    md["effective_separation"] = components["effective_separation"]
     md["normalized_score"] = components["normalized_score"]
     md["consensus"] = components["consensus"]
+    md["vote_ratio"] = components["vote_ratio"]
+    md["ratio_confidence"] = components["ratio_confidence"]
     md["coverage"] = components["coverage"]
 
     runner_ups = []

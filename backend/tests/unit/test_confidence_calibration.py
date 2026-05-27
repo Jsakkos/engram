@@ -89,6 +89,65 @@ def test_weak_uncontested_sweep_is_borderline():
     assert conf < 0.75, f"weak thin sweep should be modest, got {conf:.3f}"
 
 
+# --- Vote-ratio path ----------------------------------------------------------
+# ranked_voting_score is a per-chunk mean cosine. Two candidates with similar
+# per-chunk quality but very different chunk counts produce a small score_gap,
+# so Path 1 alone under-reports confidence. Path 2 (vote-ratio) captures this.
+
+
+def test_overwhelming_vote_ratio_clears_review():
+    """Real Gilded Age S03E01: 103/119 winner votes, 31 runner-up, score_gap tiny.
+
+    Without runner_up_votes the old formula gave ~0.20 (review). With vote_ratio
+    this should auto-match (>= 0.70).
+    """
+    conf, _ = calibrate_confidence(
+        score=0.203,
+        score_gap=0.042,
+        vote_count=103,
+        target_votes=119,
+        processed_coverage=1.0,
+        runner_up_votes=31,
+    )
+    assert conf >= 0.70, f"103 vs 31 votes (3.3x) should clear review, got {conf:.3f}"
+
+
+def test_close_vote_ratio_stays_review():
+    """Winner barely ahead in raw votes (10 vs 8) -> ratio path not triggered."""
+    conf, _ = calibrate_confidence(
+        score=0.18,
+        score_gap=0.04,
+        vote_count=10,
+        target_votes=25,
+        processed_coverage=0.30,
+        runner_up_votes=8,
+    )
+    assert conf < 0.70, f"1.25x vote ratio should not auto-match, got {conf:.3f}"
+
+
+def test_vote_ratio_requires_minimum_consensus():
+    """3/119 winner, 1/119 runner-up: 3x ratio but ~2% consensus -> still review."""
+    conf, _ = calibrate_confidence(
+        score=0.18,
+        score_gap=0.04,
+        vote_count=3,
+        target_votes=119,
+        processed_coverage=0.05,
+        runner_up_votes=1,
+    )
+    assert conf < 0.70, f"low consensus (2.5%%) must block ratio path, got {conf:.3f}"
+
+
+def test_vote_ratio_disabled_without_runner_up():
+    """Default runner_up_votes=0 must give the same result as omitting the arg."""
+    common = dict(
+        score=0.18, score_gap=0.04, vote_count=10, target_votes=25, processed_coverage=0.30
+    )
+    conf_explicit, _ = calibrate_confidence(**common, runner_up_votes=0)
+    conf_default, _ = calibrate_confidence(**common)
+    assert conf_explicit == conf_default
+
+
 # --- Monotonicity: the formula must move the right way ------------------------
 
 
@@ -118,13 +177,50 @@ def test_longer_file_not_more_confident():
 
 
 def test_components_reported_and_in_range():
+    """All components are present; all except vote_ratio are bounded [0, 1].
+
+    vote_ratio is the raw winner/runner-up chunk count ratio — a diagnostic
+    value intentionally not clamped (e.g. 103/31 = 3.32 for Gilded Age).
+    vote_ratio_score is its [0, 1] projection used inside the formula.
+    """
+    bounded_keys = (
+        "separation",
+        "consensus",
+        "normalized_score",
+        "coverage",
+        "evidence",
+        "vote_boost",
+        "effective_separation",
+        "vote_ratio_score",
+        "ratio_confidence",
+    )
+    all_keys = bounded_keys + ("vote_ratio",)
+
+    # Path 1 only (no runner_up_votes) — vote_ratio stays 0.0
     conf, comp = calibrate_confidence(
         score=0.18, score_gap=0.18, vote_count=8, target_votes=10, processed_coverage=AD_COVERAGE
     )
-    for key in ("separation", "consensus", "normalized_score", "coverage", "evidence"):
+    for key in all_keys:
         assert key in comp, f"missing component {key}"
+    for key in bounded_keys:
         assert 0.0 <= comp[key] <= 1.0, f"{key} out of range: {comp[key]}"
+    assert comp["vote_ratio"] == 0.0
     assert 0.0 <= conf <= 1.0
+
+    # Path 2 active (Gilded Age anchor) — vote_ratio is raw (> 1 is expected)
+    _, comp2 = calibrate_confidence(
+        score=0.203,
+        score_gap=0.042,
+        vote_count=103,
+        target_votes=119,
+        processed_coverage=1.0,
+        runner_up_votes=31,
+    )
+    for key in all_keys:
+        assert key in comp2, f"missing component {key} (ratio path)"
+    for key in bounded_keys:
+        assert 0.0 <= comp2[key] <= 1.0, f"{key} out of range (ratio path): {comp2[key]}"
+    assert comp2["vote_ratio"] > 1.0, "vote_ratio should be the raw >1 ratio when ratio path fires"
 
 
 def test_zero_target_votes_is_safe():
@@ -230,5 +326,15 @@ def test_attach_reports_independent_metrics():
     rs = _results_summary(("S1E13", 0.165, 8))
     _attach_calibrated_confidence(best, rs, video_duration=1320)
     md = best["match_details"]
-    for key in ("separation", "normalized_score", "consensus", "coverage", "score_gap"):
+    for key in (
+        "separation",
+        "vote_boost",
+        "effective_separation",
+        "normalized_score",
+        "consensus",
+        "coverage",
+        "score_gap",
+        "vote_ratio",
+        "ratio_confidence",
+    ):
         assert key in md, f"missing reported metric {key}"
