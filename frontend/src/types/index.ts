@@ -148,12 +148,37 @@ export interface TitlesDiscovered {
     detected_season?: number;
 }
 
+export interface UpdateStatusMessage {
+    type: 'update_status';
+    state: 'idle' | 'checking' | 'up_to_date' | 'downloading' | 'ready' | 'skipped' | 'error';
+    current_version: string;
+    latest_version?: string | null;
+    release_notes?: string | null;
+    release_url?: string | null;
+    download_progress?: number | null;
+    error?: string | null;
+    is_frozen?: boolean;
+}
+
+/** Snapshot of update state, stored in App.tsx state. */
+export interface UpdateStatus {
+    state: 'idle' | 'checking' | 'up_to_date' | 'downloading' | 'ready' | 'skipped' | 'error';
+    current_version: string;
+    latest_version: string | null;
+    release_notes: string | null;
+    release_url: string | null;
+    download_progress: number | null;
+    error: string | null;
+    is_frozen: boolean;
+}
+
 export type WebSocketMessage =
     | DriveEvent
     | JobUpdate
     | TitleUpdate
     | SubtitleEvent
-    | TitlesDiscovered;
+    | TitlesDiscovered
+    | UpdateStatusMessage;
 
 export interface Config {
     makemkv_path: string;

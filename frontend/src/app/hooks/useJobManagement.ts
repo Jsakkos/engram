@@ -31,6 +31,7 @@ const TERMINAL_TITLE_STATES = ['matched', 'completed', 'review', 'failed'];
 export function useJobManagement(devMode: boolean = false) {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [titlesMap, setTitlesMap] = useState<Record<number, DiscTitle[]>>({});
+    const [updateStatus, setUpdateStatus] = useState<import('../../types').UpdateStatus | null>(null);
 
     // Use WebSocket URL that works with Vite proxy
     // When running on localhost:5173, connects to ws://localhost:5173/ws (proxied to backend)
@@ -353,6 +354,21 @@ export function useJobManagement(devMode: boolean = false) {
                     ));
                     break;
 
+                case 'update_status': {
+                    const msg = message as import('../../types').UpdateStatusMessage;
+                    setUpdateStatus({
+                        state: msg.state,
+                        current_version: msg.current_version,
+                        latest_version: msg.latest_version ?? null,
+                        release_notes: msg.release_notes ?? null,
+                        release_url: msg.release_url ?? null,
+                        download_progress: msg.download_progress ?? null,
+                        error: msg.error ?? null,
+                        is_frozen: msg.is_frozen ?? false,
+                    });
+                    break;
+                }
+
                 default:
                     break;
             }
@@ -365,6 +381,7 @@ export function useJobManagement(devMode: boolean = false) {
         jobs,
         titlesMap,
         isConnected,
+        updateStatus,
         cancelJob,
         advanceJob,
         clearCompleted,
