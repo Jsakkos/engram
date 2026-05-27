@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Trash2, LayoutGrid, List, Info, X } from "lucide-react";
@@ -11,11 +11,14 @@ import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
 import BugReportModal from "../components/BugReportModal";
+import UpdateModal from "../components/UpdateModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
 import LibraryPage from "../components/LibraryPage";
 import { FEATURES } from "../config/constants";
 import type { Job } from "../types";
+import { toast } from "sonner";
+import { UpdateBanner } from "./components/UpdateBanner";
 import {
   Splash,
   SvAtmosphere,
@@ -112,9 +115,12 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
   const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const pendingUpdateVersionRef = useRef<string | null>(null);
 
   // Show the full-screen Splash with a "RECONNECTING…" label when the
   // WebSocket has been down for >2.5s. The grace period absorbs momentary
@@ -130,6 +136,19 @@ function MainDashboard() {
     const t = window.setTimeout(() => setShowOfflineSplash(true), 2500);
     return () => window.clearTimeout(t);
   }, [isConnected]);
+
+  // Show success toast after reconnection if an update was pending.
+  useEffect(() => {
+    if (isConnected && pendingUpdateVersionRef.current) {
+      if (
+        updateStatus?.state === "up_to_date" &&
+        updateStatus.current_version === pendingUpdateVersionRef.current
+      ) {
+        toast.success(`Updated to ${pendingUpdateVersionRef.current} ✓`);
+        pendingUpdateVersionRef.current = null;
+      }
+    }
+  }, [isConnected, updateStatus]);
 
   // Disc filtering and transformation
   const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
@@ -279,6 +298,18 @@ function MainDashboard() {
           )}
         </div>
       </div>
+
+      {/* Auto-update banner */}
+      {!updateDismissed && (
+        <UpdateBanner
+          updateStatus={updateStatus}
+          onShowNotes={() => setShowUpdateModal(true)}
+          onDismiss={() => setUpdateDismissed(true)}
+          onRestart={() => {
+            pendingUpdateVersionRef.current = updateStatus?.latest_version ?? null;
+          }}
+        />
+      )}
 
       {/* Platform guidance banner for Linux/macOS users */}
       <AnimatePresence>
@@ -560,6 +591,20 @@ function MainDashboard() {
         open={bugReportJobId != null}
         jobId={bugReportJobId ?? undefined}
         onClose={() => setBugReportJobId(null)}
+      />
+
+      {/* Update Modal — release notes opened from UpdateBanner */}
+      <UpdateModal
+        open={showUpdateModal}
+        updateStatus={updateStatus}
+        onClose={() => setShowUpdateModal(false)}
+        onDismiss={() => {
+          setUpdateDismissed(true);
+          setShowUpdateModal(false);
+        }}
+        onRestart={() => {
+          pendingUpdateVersionRef.current = updateStatus?.latest_version ?? null;
+        }}
       />
 
       {/* Onboarding Wizard (first run) */}
