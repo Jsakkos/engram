@@ -511,7 +511,7 @@ class FinalizationCoordinator:
 
     async def finalize_disc_job(self, job_id: int):
         """Run conflict resolution with cascading reassignment and organize matches."""
-        from app.core.organizer import tv_organizer
+        from app.core.organizer import organize_tv_episode, tv_organizer
 
         logger.info(f"Running conflict resolution for Job {job_id}")
 
@@ -705,8 +705,6 @@ class FinalizationCoordinator:
 
                 _lib_path = _library_path_for_job(job, "tv")
                 if _lib_path:
-                    from app.core.organizer import organize_tv_episode
-
                     org_result = await asyncio.to_thread(
                         organize_tv_episode,
                         source_file,
@@ -784,7 +782,13 @@ class FinalizationCoordinator:
         """Apply a user's review decision for a title."""
         from datetime import UTC, datetime
 
-        from app.core.organizer import movie_organizer, organize_tv_extras, tv_organizer
+        from app.core.organizer import (
+            movie_organizer,
+            organize_movie,
+            organize_tv_episode,
+            organize_tv_extras,
+            tv_organizer,
+        )
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -887,8 +891,6 @@ class FinalizationCoordinator:
 
                         _lib_path = _library_path_for_job(job, "movie")
                         if _lib_path:
-                            from app.core.organizer import organize_movie
-
                             org_result = await asyncio.to_thread(
                                 organize_movie,
                                 source_file,
@@ -978,8 +980,8 @@ class FinalizationCoordinator:
 
                         source_file = Path(disc_title.output_filename)
                         if source_file.exists():
+                            _lib_path = _library_path_for_job(job, "tv")
                             if disc_title.matched_episode == "extra":
-                                _lib_path = _library_path_for_job(job, "tv")
                                 org_result = await asyncio.to_thread(
                                     organize_tv_extras,
                                     source_file,
@@ -992,10 +994,7 @@ class FinalizationCoordinator:
                                 )
                                 extra_index += 1
                             else:
-                                _lib_path = _library_path_for_job(job, "tv")
                                 if _lib_path:
-                                    from app.core.organizer import organize_tv_episode
-
                                     org_result = await asyncio.to_thread(
                                         organize_tv_episode,
                                         source_file,
@@ -1073,7 +1072,7 @@ class FinalizationCoordinator:
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job without waiting for unresolved ones."""
-        from app.core.organizer import organize_tv_extras, tv_organizer
+        from app.core.organizer import organize_tv_episode, organize_tv_extras, tv_organizer
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -1103,8 +1102,8 @@ class FinalizationCoordinator:
                     logger.warning(f"Source file not found: {source_file}")
                     continue
 
+                _lib_path = _library_path_for_job(job, "tv")
                 if disc_title.matched_episode == "extra":
-                    _lib_path = _library_path_for_job(job, "tv")
                     org_result = await asyncio.to_thread(
                         organize_tv_extras,
                         source_file,
@@ -1117,10 +1116,7 @@ class FinalizationCoordinator:
                     )
                     extra_index += 1
                 else:
-                    _lib_path = _library_path_for_job(job, "tv")
                     if _lib_path:
-                        from app.core.organizer import organize_tv_episode
-
                         org_result = await asyncio.to_thread(
                             organize_tv_episode,
                             source_file,
