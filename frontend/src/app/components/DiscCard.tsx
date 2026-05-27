@@ -292,6 +292,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               {/* Source badge — folder icon for watch-folder-imported jobs */}
               {disc.sourceType === 'import' && (
                 <div
+                  role="img"
+                  aria-label="Imported from watch folder"
                   title="Imported from watch folder"
                   style={{
                     position: "absolute",
