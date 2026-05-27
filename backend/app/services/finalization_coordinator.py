@@ -425,8 +425,10 @@ class FinalizationCoordinator:
         job.progress_percent = 100.0
         job.error_message = None
         db_config = await get_db_config()
+        _lib_path = _library_path_for_job(job, "tv")
         job.final_path = str(
-            Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
+            (_lib_path if _lib_path else Path(db_config.library_tv_path))
+            / (job.detected_title or job.volume_label)
         )
         await self._state_machine.transition_to_completed(job, session)
 
@@ -764,8 +766,10 @@ class FinalizationCoordinator:
                 from app.services.config_service import get_config as get_db_config
 
                 db_config = await get_db_config()
+                _lib_path = _library_path_for_job(job, "tv")
                 job.final_path = str(
-                    Path(db_config.library_tv_path) / (job.detected_title or job.volume_label)
+                    (_lib_path if _lib_path else Path(db_config.library_tv_path))
+                    / (job.detected_title or job.volume_label)
                 )
                 await self._state_machine.transition_to_completed(job, session)
             else:

@@ -219,6 +219,31 @@ class JobManager:
                 )
                 logger.info(f"Restored {len(mappings_data)} DiscDB mappings for job {job.id}")
 
+    async def reload_staging_watcher(self) -> None:
+        """Stop and restart the staging/import watcher with the current DB config."""
+        from app.services.config_service import get_config as get_db_config
+
+        if self._staging_watcher:
+            self._staging_watcher.stop()
+            self._staging_watcher = None
+
+        config = await get_db_config()
+        need_watcher = (
+            config.staging_watch_enabled and config.staging_path
+        ) or config.import_watch_path
+        if need_watcher:
+            self._staging_watcher = StagingWatcher(
+                config.staging_path if config.staging_watch_enabled else "",
+                import_watch_path=config.import_watch_path or None,
+                import_destination_mode=config.import_destination_mode,
+                config=config,
+            )
+            self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
+            self._staging_watcher.start()
+            logger.info(
+                f"Staging watcher reloaded (import_watch_path={config.import_watch_path!r})"
+            )
+
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
         self._drive_monitor.stop()
