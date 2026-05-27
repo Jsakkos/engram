@@ -147,4 +147,6 @@ class AppConfig(SQLModel, table=True):
     # Chromaprint / fingerprint contributions
     fpcalc_path: str | None = Field(default=None)
     contribution_pseudonym: str | None = Field(default=None)
-    enable_fingerprint_contributions: bool = Field(default=True)
+    enable_fingerprint_contributions: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )

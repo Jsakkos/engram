@@ -23,3 +23,16 @@ def test_enable_fingerprint_contributions_defaults_true():
     """Opt-out default: contributions enabled unless explicitly disabled."""
     cfg = AppConfig()
     assert cfg.enable_fingerprint_contributions is True
+
+
+def test_enable_fingerprint_contributions_has_sql_server_default_true():
+    """The column DDL must carry server_default='1' so the frozen-build path
+    (_add_missing_columns in database.py) writes the correct default for existing DBs.
+    Frozen builds skip Alembic entirely, so the model declaration is the only source
+    of truth for that path."""
+    column = AppConfig.__table__.columns["enable_fingerprint_contributions"]
+    assert column.server_default is not None, (
+        "enable_fingerprint_contributions needs sa_column_kwargs={'server_default': text('1')} "
+        "so frozen-build users default to opt-in"
+    )
+    assert "1" in str(column.server_default.arg)
