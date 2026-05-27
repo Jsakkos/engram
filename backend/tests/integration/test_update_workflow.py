@@ -56,14 +56,20 @@ async def app_config():
 
 @pytest.fixture(autouse=True)
 def reset_update_checker():
-    """Reset singleton state between tests."""
-    original_state = update_checker.state
-    original_latest = update_checker.latest_version
-    original_frozen = update_checker._is_frozen
+    """Reset ALL singleton state between tests to prevent pollution."""
+    saved = {
+        "state": update_checker.state,
+        "latest_version": update_checker.latest_version,
+        "release_notes": update_checker.release_notes,
+        "release_url": update_checker.release_url,
+        "download_progress": update_checker.download_progress,
+        "staging_path": update_checker.staging_path,
+        "error": update_checker.error,
+        "_is_frozen": update_checker._is_frozen,
+    }
     yield
-    update_checker.state = original_state
-    update_checker.latest_version = original_latest
-    update_checker._is_frozen = original_frozen
+    for key, value in saved.items():
+        setattr(update_checker, key, value)
 
 
 class TestGetUpdateStatus:
