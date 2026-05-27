@@ -177,10 +177,13 @@ def test_longer_file_not_more_confident():
 
 
 def test_components_reported_and_in_range():
-    conf, comp = calibrate_confidence(
-        score=0.18, score_gap=0.18, vote_count=8, target_votes=10, processed_coverage=AD_COVERAGE
-    )
-    for key in (
+    """All components are present; all except vote_ratio are bounded [0, 1].
+
+    vote_ratio is the raw winner/runner-up chunk count ratio — a diagnostic
+    value intentionally not clamped (e.g. 103/31 = 3.32 for Gilded Age).
+    vote_ratio_score is its [0, 1] projection used inside the formula.
+    """
+    bounded_keys = (
         "separation",
         "consensus",
         "normalized_score",
@@ -188,13 +191,36 @@ def test_components_reported_and_in_range():
         "evidence",
         "vote_boost",
         "effective_separation",
-        "vote_ratio",
         "vote_ratio_score",
         "ratio_confidence",
-    ):
+    )
+    all_keys = bounded_keys + ("vote_ratio",)
+
+    # Path 1 only (no runner_up_votes) — vote_ratio stays 0.0
+    conf, comp = calibrate_confidence(
+        score=0.18, score_gap=0.18, vote_count=8, target_votes=10, processed_coverage=AD_COVERAGE
+    )
+    for key in all_keys:
         assert key in comp, f"missing component {key}"
+    for key in bounded_keys:
         assert 0.0 <= comp[key] <= 1.0, f"{key} out of range: {comp[key]}"
+    assert comp["vote_ratio"] == 0.0
     assert 0.0 <= conf <= 1.0
+
+    # Path 2 active (Gilded Age anchor) — vote_ratio is raw (> 1 is expected)
+    _, comp2 = calibrate_confidence(
+        score=0.203,
+        score_gap=0.042,
+        vote_count=103,
+        target_votes=119,
+        processed_coverage=1.0,
+        runner_up_votes=31,
+    )
+    for key in all_keys:
+        assert key in comp2, f"missing component {key} (ratio path)"
+    for key in bounded_keys:
+        assert 0.0 <= comp2[key] <= 1.0, f"{key} out of range (ratio path): {comp2[key]}"
+    assert comp2["vote_ratio"] > 1.0, "vote_ratio should be the raw >1 ratio when ratio path fires"
 
 
 def test_zero_target_votes_is_safe():
@@ -302,6 +328,8 @@ def test_attach_reports_independent_metrics():
     md = best["match_details"]
     for key in (
         "separation",
+        "vote_boost",
+        "effective_separation",
         "normalized_score",
         "consensus",
         "coverage",

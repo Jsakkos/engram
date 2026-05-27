@@ -215,10 +215,10 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                   {track.finalMatch ? (
                     <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8 }}>
                       best guess {track.finalMatch}
-                      {track.finalMatchConfidence != null && (
+                      {track.finalMatchConfidence !== undefined && (
                         <> — {Math.round(track.finalMatchConfidence * 100)}% confidence</>
                       )}
-                      {track.finalMatchVotes != null && track.finalMatchTargetVotes != null && (
+                      {track.finalMatchVotes !== undefined && track.finalMatchTargetVotes !== undefined && (
                         <> ({track.finalMatchVotes}/{track.finalMatchTargetVotes} votes)</>
                       )}
                       {" — confirm in review queue"}

@@ -303,8 +303,11 @@ def calibrate_confidence(
     Returns:
         (confidence, components) where components reports the independent
         metrics (separation, consensus, normalized_score, coverage, evidence,
-        vote_boost, effective_separation, vote_ratio, ratio_confidence), each
-        in [0, 1].
+        vote_boost, effective_separation, vote_ratio_score, ratio_confidence),
+        each in [0, 1].  ``vote_ratio`` is also included as a *raw* diagnostic
+        (winner_votes / runner_up_votes) and is NOT bounded to [0, 1] — it
+        equals 0.0 when the ratio path is inactive and can exceed 1.0
+        (e.g. 3.32 for 103 vs 31 votes) when it fires.
 
     Two independent confidence paths — the higher wins:
 
@@ -443,6 +446,8 @@ def _attach_calibrated_confidence(
     md["confidence"] = confidence
     md["score_gap"] = score_gap
     md["separation"] = components["separation"]
+    md["vote_boost"] = components["vote_boost"]
+    md["effective_separation"] = components["effective_separation"]
     md["normalized_score"] = components["normalized_score"]
     md["consensus"] = components["consensus"]
     md["vote_ratio"] = components["vote_ratio"]
