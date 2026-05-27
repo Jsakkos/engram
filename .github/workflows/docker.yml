@@ -3,6 +3,7 @@ name: Docker
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:  # manual trigger; dispatch with --ref vX.Y.Z to build and push to GHCR
   pull_request:
     paths:
       - "Dockerfile"
