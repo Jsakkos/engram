@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: write
-  actions: write  # needed to dispatch release.yml via gh workflow run
+  actions: write  # needed to dispatch release.yml and docker.yml via gh workflow run
 
 # See ci.yml for context on the Node 24 opt-in.
 env:
