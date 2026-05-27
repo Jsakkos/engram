@@ -108,6 +108,13 @@ async def lifespan(app: FastAPI):
 
     app.state.precomputed_cache_task = asyncio.create_task(ensure_precomputed_cache())
 
+    # Check for updates in the background — fire-and-forget, never blocks startup.
+    from app.core.updater import update_checker
+    from app.services.event_broadcaster import EventBroadcaster
+
+    update_checker.set_broadcaster(EventBroadcaster(ws_manager))
+    app.state.update_check_task = asyncio.create_task(update_checker.start())
+
     yield
 
     # Shutdown
@@ -115,6 +122,9 @@ async def lifespan(app: FastAPI):
     cache_task = getattr(app.state, "precomputed_cache_task", None)
     if cache_task and not cache_task.done():
         cache_task.cancel()
+    update_task = getattr(app.state, "update_check_task", None)
+    if update_task and not update_task.done():
+        update_task.cancel()
     await job_manager.stop()
     logger.info("Shutdown complete")
 

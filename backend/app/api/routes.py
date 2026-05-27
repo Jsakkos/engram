@@ -15,7 +15,7 @@ from typing import Literal
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func
@@ -25,6 +25,7 @@ from sqlmodel import select
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.security import is_allowed_image_url, sanitize_log_value
+from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
 from app.matcher.tmdb_client import fetch_season_episodes
@@ -2589,3 +2590,66 @@ async def submit_release_group_endpoint(
         "results": batch_result.results,
         "contribute_url": batch_result.contribute_url,
     }
+
+
+# ---------------------------------------------------------------------------
+# Update endpoints
+# ---------------------------------------------------------------------------
+
+
+class SkipVersionRequest(BaseModel):
+    version: str
+
+
+@router.get("/updates/status")
+async def get_update_status():
+    """Get current update check state."""
+    return update_checker.get_status()
+
+
+@router.post("/updates/skip")
+async def skip_update_version(body: SkipVersionRequest):
+    """Persist user's choice to skip a specific version."""
+    try:
+        await update_checker.skip_version(body.version)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.post("/updates/restart")
+async def restart_for_update(background_tasks: BackgroundTasks):
+    """Schedule update application after response is sent.
+
+    Returns 200 immediately; actual restart happens in a BackgroundTask so the
+    response has time to reach the client before the process exits/exec's.
+    """
+
+    # Guard checks run synchronously before returning 200
+    if not update_checker._is_frozen:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Updates can only be applied in frozen builds. "
+                f"Download manually from {update_checker.release_url or 'GitHub'}."
+            ),
+        )
+
+    if update_checker.state != UpdateStatus.READY:
+        raise HTTPException(status_code=400, detail="No staged update is ready to apply.")
+
+    try:
+        await update_checker._check_no_active_jobs()
+    except UpdateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    async def _do_restart() -> None:
+        try:
+            await update_checker.apply_update()
+        except PermissionError as exc:
+            logger.error(f"Update restart permission error: {exc}", exc_info=True)
+        except Exception as exc:
+            logger.error(f"Update restart failed: {exc}", exc_info=True)
+
+    background_tasks.add_task(_do_restart)
+    return {"ok": True}

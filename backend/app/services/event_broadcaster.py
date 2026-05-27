@@ -160,3 +160,35 @@ class EventBroadcaster:
     async def broadcast_subtitle_download_failed(self, job_id: int):
         """Broadcast subtitle download failed."""
         await self._ws.broadcast_subtitle_event(job_id, "failed")
+
+    # --- Update Events ---
+
+    async def broadcast_update_status(
+        self,
+        state: str,
+        latest_version: str | None = None,
+        release_notes: str | None = None,
+        release_url: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Broadcast update availability status to all connected clients.
+
+        current_version is always the running build's __version__ — injected here
+        so UpdateChecker doesn't need to import it separately.
+        """
+        from app import __version__
+
+        data: dict = {
+            "type": "update_status",
+            "state": state,
+            "current_version": __version__,
+        }
+        if latest_version is not None:
+            data["latest_version"] = latest_version
+        if release_notes is not None:
+            data["release_notes"] = release_notes
+        if release_url is not None:
+            data["release_url"] = release_url
+        if error is not None:
+            data["error"] = error
+        await self._ws.broadcast(data)
