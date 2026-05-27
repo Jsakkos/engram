@@ -293,6 +293,10 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: engram-macos-arm64
+      - name: Generate SHA256 checksums
+        run: |
+          sha256sum engram-windows-x64.zip engram-linux-x64.tar.gz engram-macos-arm64.tar.gz > sha256sums.txt
+          cat sha256sums.txt
       - uses: softprops/action-gh-release@v3
         with:
           draft: false
@@ -302,3 +306,4 @@ jobs:
             engram-windows-x64.zip
             engram-linux-x64.tar.gz
             engram-macos-arm64.tar.gz
+            sha256sums.txt
