@@ -15,10 +15,11 @@ import pytest
 from app.matcher.tvsubtitles_client import (
     TVSubtitlesClient,
     TVSubtitlesSubtitle,
+    _best_show_match,
     _extract_download_page_url,
     _extract_zip_path_from_js,
     _find_episode_page,
-    _parse_first_show_id,
+    _parse_show_results,
     _parse_subtitle_candidates,
 )
 
@@ -30,6 +31,19 @@ _SEARCH_HTML = """
   <a href="/tvshow-133.html">Breaking Bad</a>
   <a href="/tvshow-133-1.html">season 1</a>
   <a href="/tvshow-789.html">Better Call Saul</a>
+</body></html>
+"""
+
+# Real-shape search results for "2 Broke Girls": TVsubtitles substring-matches
+# "Girls" and orders by ascending internal show id, so the requested show is the
+# THIRD hit. The first hit is an unrelated show (Gilmore Girls). Picking the
+# first anchor downloaded all of Gilmore Girls under the "2 Broke Girls" name.
+_SEARCH_HTML_MULTI = """
+<html><body>
+  <a href="/tvshow-28.html">Gilmore Girls (2000-2007)</a>
+  <a href="/tvshow-432.html">Bad Girls (1999-2006)</a>
+  <a href="/tvshow-985.html">2 Broke Girls (2011-2017)</a>
+  <a href="/tvshow-1107.html">Girls (2012-2017)</a>
 </body></html>
 """
 
@@ -198,16 +212,60 @@ def _zip_with_srt(content: str = "subtitle content") -> bytes:
 
 
 @pytest.mark.unit
-class TestParseFirstShowId:
-    def test_returns_base_show_id_not_season(self):
-        """A search result page contains BOTH ``/tvshow-{id}.html`` and
-        ``/tvshow-{id}-{season}.html`` links from sidebar chrome. The
-        base show URL is what we want; the season variant would
-        construct a malformed second-season URL when re-templated."""
-        assert _parse_first_show_id(_SEARCH_HTML) == 133
+class TestParseShowResults:
+    def test_returns_base_show_id_and_name_not_season(self):
+        """A search page contains BOTH ``/tvshow-{id}.html`` and
+        ``/tvshow-{id}-{season}.html`` links from sidebar chrome. Only the
+        base show URLs are returned, each paired with its visible title."""
+        assert _parse_show_results(_SEARCH_HTML) == [
+            (133, "Breaking Bad"),
+            (789, "Better Call Saul"),
+        ]
 
-    def test_returns_none_when_no_match(self):
-        assert _parse_first_show_id("<html><body><a href='/about'>x</a></body></html>") is None
+    def test_returns_empty_when_no_match(self):
+        assert _parse_show_results("<html><body><a href='/about'>x</a></body></html>") == []
+
+
+@pytest.mark.unit
+class TestBestShowMatch:
+    def test_picks_named_show_not_first_result(self):
+        """The bug: TVsubtitles returns Gilmore Girls first for a
+        "2 Broke Girls" search (substring "Girls", ordered by show id). The
+        resolver must pick the result whose TITLE matches the request, not
+        the first anchor — otherwise the wrong show is downloaded."""
+        results = _parse_show_results(_SEARCH_HTML_MULTI)
+        assert _best_show_match(results, "2 Broke Girls") == 985
+
+    def test_ignores_year_range_suffix(self):
+        results = _parse_show_results(_SEARCH_HTML_MULTI)
+        assert _best_show_match(results, "Gilmore Girls") == 28
+
+    def test_normalizes_punctuation(self):
+        """Cache dir names use '-' where TVsubtitles uses ':' etc.; matching
+        must be punctuation-insensitive."""
+        results = [(655, "Star Trek: The Next Generation (1987-1994)")]
+        assert _best_show_match(results, "Star Trek - The Next Generation") == 655
+
+    def test_returns_none_when_no_title_matches(self):
+        """When no result's title matches, return None (fail closed) rather
+        than guessing — downloading nothing beats downloading the wrong show."""
+        results = _parse_show_results(_SEARCH_HTML_MULTI)
+        assert _best_show_match(results, "The Wire") is None
+
+
+@pytest.mark.unit
+class TestFindShowId:
+    def test_resolves_by_name_among_substring_collisions(self):
+        client = TVSubtitlesClient()
+        with patch.object(client, "_post") as mock_post:
+            mock_post.return_value = Mock(text=_SEARCH_HTML_MULTI, raise_for_status=Mock())
+            assert client._find_show_id("2 Broke Girls") == 985
+
+    def test_returns_none_when_no_name_match(self):
+        client = TVSubtitlesClient()
+        with patch.object(client, "_post") as mock_post:
+            mock_post.return_value = Mock(text=_SEARCH_HTML_MULTI, raise_for_status=Mock())
+            assert client._find_show_id("The Wire") is None
 
 
 @pytest.mark.unit

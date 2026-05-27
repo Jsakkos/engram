@@ -136,7 +136,14 @@ class TVSubtitlesClient:
             self._show_id_cache[show_name] = None
             return None
 
-        show_id = _parse_first_show_id(response.text)
+        results = _parse_show_results(response.text)
+        show_id = _best_show_match(results, show_name)
+        if show_id is None and results:
+            logger.warning(
+                f"TVsubtitles: no title match for {show_name!r} among "
+                f"{[name for _, name in results[:5]]}; skipping this provider "
+                f"(falling back rather than risk downloading the wrong show)."
+            )
         self._show_id_cache[show_name] = show_id
         return show_id
 
@@ -277,11 +284,9 @@ class TVSubtitlesClient:
         return zip_response.content
 
 
-def _parse_first_show_id(html: str) -> int | None:
-    """Find the first ``tvshow-{id}.html`` anchor on the search-results
-    page. The search page returns the homepage chrome plus a list of hits
-    near the bottom; ``find`` returns them in document order, which is also
-    the top-hit-first order TVsubtitles uses.
+def _parse_show_results(html: str) -> list[tuple[int, str]]:
+    """Return ``(show_id, title)`` for every show hit on the search-results
+    page, in document order.
 
     Subtleties verified against live HTML (2026-05-20):
 
@@ -292,16 +297,49 @@ def _parse_first_show_id(html: str) -> int | None:
       bare-path forms only.
     - The pattern matches ONLY the base show URL (no ``-{season}``
       suffix), otherwise we'd grab a season link from the "recently
-      updated" sidebar and later reconstruct a malformed season URL.
+      updated" sidebar.
+    - TVsubtitles ranks results by ascending internal show id, NOT by
+      relevance, and matches on substrings. So the caller must select by
+      title (see ``_best_show_match``) rather than trusting document order.
     """
     soup = BeautifulSoup(html, "html.parser")
     # Match: optional ``http(s)://www.tvsubtitles.net``, optional leading
     # slash, then ``tvshow-{id}.html`` with no ``-{season}`` suffix.
     pattern = re.compile(r"^(?:https?://www\.tvsubtitles\.net)?/?tvshow-(\d+)\.html$")
+    results: list[tuple[int, str]] = []
     for link in soup.find_all("a", href=pattern):
         m = pattern.match(link["href"])
         if m:
-            return int(m.group(1))
+            results.append((int(m.group(1)), link.get_text(strip=True)))
+    return results
+
+
+def _normalize_show_name(name: str) -> str:
+    """Lowercase and collapse all non-alphanumerics to single spaces, so
+    ``"Star Trek: TNG"`` and ``"Star Trek - TNG"`` compare equal."""
+    return re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+
+
+def _strip_year_suffix(title: str) -> str:
+    """Drop a trailing ``(YYYY-YYYY)`` / ``(YYYY- )`` air-date range that
+    TVsubtitles appends to titles, e.g. ``"2 Broke Girls (2011-2017)"``."""
+    return re.sub(r"\s*\((?:19|20)\d{2}[^)]*\)\s*$", "", title)
+
+
+def _best_show_match(results: list[tuple[int, str]], show_name: str) -> int | None:
+    """Pick the result whose title matches ``show_name``, ignoring the air-date
+    suffix and punctuation. Returns ``None`` if nothing matches.
+
+    TVsubtitles' search is a substring match ordered by show id, so the first
+    hit is frequently the wrong show (e.g. "2 Broke Girls" → "Gilmore Girls").
+    Requiring an exact normalized title match fails closed: better to fetch no
+    subtitles than the wrong show's. Fuzzy fallback is deliberately avoided
+    because substring/prefix matching is exactly what caused the mislabel bug.
+    """
+    target = _normalize_show_name(show_name)
+    for show_id, title in results:
+        if _normalize_show_name(_strip_year_suffix(title)) == target:
+            return show_id
     return None
 
 

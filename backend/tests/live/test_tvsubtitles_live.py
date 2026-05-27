@@ -45,11 +45,11 @@ class TestTVSubtitlesLive:
         except requests.ConnectionError as e:
             pytest.skip(f"TVsubtitles unreachable: {e}")
         # If show_id is None, EITHER the show isn't on TVsubtitles
-        # (unlikely for Breaking Bad) OR _parse_first_show_id failed.
+        # (unlikely for Breaking Bad) OR the search parser / title matcher failed.
         assert show_id is not None and show_id > 0, (
             "TVsubtitles search returned no show id for Breaking Bad — "
             "the search page layout may have changed and "
-            "_parse_first_show_id needs updating"
+            "_parse_show_results / _best_show_match need updating"
         )
 
     def test_get_best_subtitle_returns_candidate(self):
