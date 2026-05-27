@@ -28,6 +28,11 @@ _CREATED_MKV_PATTERN = re.compile(r'["\']([^"\']+\.mkv)["\']')
 # callback and the job_manager fallback so the live update and History agree.
 STALL_FAILURE_REASON = "Ripping stalled — no progress; the disc may be dirty or damaged."
 
+# Consecutive stable-size polls required before declaring in-flight title completion.
+# Each poll is ~3 s apart, so STABLE_CHECKS_REQUIRED=3 means ~9 s of write-silence.
+# Post-process force checks bypass this requirement (process exit guarantees write done).
+STABLE_CHECKS_REQUIRED = 3
+
 
 def _to_drive_spec(drive: str) -> str:
     """Normalize a drive identifier into a MakeMKV drive spec.
@@ -444,10 +449,42 @@ class MakeMKVExtractor:
         # Shared state for filesystem-based title completion detection.
         known_files: dict[str, int] = {}  # filename -> last known size
         completed_files: set[str] = set()
+        # Tracks consecutive polls where the file size has been stable.  We
+        # require STABLE_CHECKS_REQUIRED consecutive stable readings before
+        # declaring in-flight completion, which avoids false positives caused
+        # by brief MakeMKV write pauses (e.g. buffering or disc seeking) that
+        # may hold the file size constant for one polling interval (~3 s).
+        stable_counts: dict[str, int] = {}
+        # STABLE_CHECKS_REQUIRED is a module-level constant (see top of file).
         _fs_lock = threading.Lock()
 
-        def _check_for_completed_files():
-            """Scan output dir for newly completed .mkv files."""
+        def _fire_title_complete(fname: str, size: int) -> None:
+            """Mark *fname* complete and invoke the title callback (lock held)."""
+            completed_files.add(fname)
+            stable_counts.pop(fname, None)
+            filepath = output_dir / fname
+            output_files.append(filepath)
+            logger.info(f"Title file completed: {fname} ({size / 1024 / 1024:.0f} MB)")
+            if title_complete_callback:
+                _safe_callback(
+                    title_complete_callback,
+                    len(completed_files),
+                    filepath,
+                    label="title complete callback",
+                )
+
+        def _check_for_completed_files(force: bool = False) -> None:
+            """Scan output dir for newly completed .mkv files.
+
+            In-flight (``force=False``): requires *STABLE_CHECKS_REQUIRED*
+            consecutive polls with an identical, non-zero size before firing.
+            This prevents false positives from MakeMKV briefly pausing writes
+            between disc segments or while buffering.
+
+            Post-process (``force=True``): fires immediately for any file with
+            a non-zero size not yet marked complete.  Called after
+            ``process.wait()`` returns so the write is guaranteed finished.
+            """
             with _fs_lock:
                 try:
                     for mkv in output_dir.glob("*.mkv"):
@@ -456,22 +493,18 @@ class MakeMKVExtractor:
                             continue
                         current_size = mkv.stat().st_size
                         if fname in known_files:
-                            if current_size == known_files[fname] and current_size > 0:
-                                # Size stable between checks = file is complete
-                                completed_files.add(fname)
-                                filepath = output_dir / fname
-                                output_files.append(filepath)
-                                logger.info(
-                                    f"Title file completed: {fname} "
-                                    f"({current_size / 1024 / 1024:.0f} MB)"
-                                )
-                                if title_complete_callback:
-                                    _safe_callback(
-                                        title_complete_callback,
-                                        len(completed_files),
-                                        filepath,
-                                        label="title complete callback",
-                                    )
+                            if current_size > 0:
+                                if force:
+                                    # Process exited: write is guaranteed done.
+                                    _fire_title_complete(fname, current_size)
+                                elif current_size == known_files[fname]:
+                                    # Size unchanged since last check — increment counter.
+                                    stable_counts[fname] = stable_counts.get(fname, 0) + 1
+                                    if stable_counts[fname] >= STABLE_CHECKS_REQUIRED:
+                                        _fire_title_complete(fname, current_size)
+                                else:
+                                    # File is still growing — reset stability counter.
+                                    stable_counts[fname] = 0
                         known_files[fname] = current_size
                 except (OSError, PermissionError) as e:
                     logger.exception(f"Error checking for completed files: {e}")
@@ -670,8 +703,10 @@ class MakeMKVExtractor:
                         if len(commands) > 1:
                             break
 
-                    # Final fs check for this command
-                    _check_for_completed_files()
+                    # Final fs check for this command.  process.wait() has
+                    # returned (success *or* error exit) so MakeMKV is no longer
+                    # writing; bypass the stability counter.
+                    _check_for_completed_files(force=True)
 
                 # End of all commands
                 return (final_returncode, combined_stderr, stalled_commands)
@@ -706,8 +741,9 @@ class MakeMKVExtractor:
 
                     await asyncio.sleep(0.1)  # Yield to other tasks
 
-                # Final filesystem check after process exits
-                await asyncio.to_thread(_check_for_completed_files)
+                # Final filesystem check after process exits — force mode so
+                # any title not yet fired by the stability counter is caught.
+                await asyncio.to_thread(lambda: _check_for_completed_files(force=True))
 
                 returncode, stderr, stalled = future.result()
 
