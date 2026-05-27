@@ -155,9 +155,17 @@ class JobManager:
                 self._cleanup.run_timed_cleanup(config.staging_path, config.staging_cleanup_days)
             )
 
-        # Start staging watcher if enabled
-        if config.staging_watch_enabled and config.staging_path:
-            self._staging_watcher = StagingWatcher(config.staging_path, config=config)
+        # Start staging/import watcher if either feature is enabled
+        need_watcher = (
+            config.staging_watch_enabled and config.staging_path
+        ) or config.import_watch_path
+        if need_watcher:
+            self._staging_watcher = StagingWatcher(
+                config.staging_path if config.staging_watch_enabled else "",
+                import_watch_path=config.import_watch_path or None,
+                import_destination_mode=config.import_destination_mode,
+                config=config,
+            )
             self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
             self._staging_watcher.start()
 
@@ -210,6 +218,31 @@ class JobManager:
                     job.id, [DiscDbTitleMapping(**m) for m in mappings_data]
                 )
                 logger.info(f"Restored {len(mappings_data)} DiscDB mappings for job {job.id}")
+
+    async def reload_staging_watcher(self) -> None:
+        """Stop and restart the staging/import watcher with the current DB config."""
+        from app.services.config_service import get_config as get_db_config
+
+        if self._staging_watcher:
+            self._staging_watcher.stop()
+            self._staging_watcher = None
+
+        config = await get_db_config()
+        need_watcher = (
+            config.staging_watch_enabled and config.staging_path
+        ) or config.import_watch_path
+        if need_watcher:
+            self._staging_watcher = StagingWatcher(
+                config.staging_path if config.staging_watch_enabled else "",
+                import_watch_path=config.import_watch_path or None,
+                import_destination_mode=config.import_destination_mode,
+                config=config,
+            )
+            self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
+            self._staging_watcher.start()
+            logger.info(
+                f"Staging watcher reloaded (import_watch_path={config.import_watch_path!r})"
+            )
 
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
@@ -271,17 +304,25 @@ class JobManager:
                 logger.error(f"Failed to cancel jobs for {safe_drive}", exc_info=True)
             await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
 
-    async def _on_staging_event(self, event: str, staging_dir: str, label: str) -> None:
+    async def _on_staging_event(
+        self, event: str, staging_dir: str, label: str, metadata: dict | None = None
+    ) -> None:
         """Handle new staging directory detection from StagingWatcher."""
-        logger.info(f"Staging event: {event} dir={staging_dir} label={label}")
+        source = metadata.get("source") if metadata else "staging"
+        logger.info(f"Staging event: {event} dir={staging_dir} label={label} source={source}")
         if event == "staging_ready":
             try:
+                is_import = bool(metadata and metadata.get("source") == "import")
                 await self.create_job_from_staging(
                     staging_path=staging_dir,
                     volume_label=label,
                     content_type="unknown",
-                    detected_title=None,
-                    detected_season=None,
+                    detected_title=metadata.get("show_name") if is_import else None,
+                    detected_season=metadata.get("season") if is_import else None,
+                    destination_mode=metadata.get("destination_mode", "library")
+                    if is_import
+                    else "library",
+                    drive_id="import" if is_import else "staging",
                 )
             except Exception as e:
                 logger.error(
@@ -357,19 +398,33 @@ class JobManager:
         content_type: str = "unknown",
         detected_title: str | None = None,
         detected_season: int | None = None,
+        destination_mode: str = "library",
+        drive_id: str = "staging",
     ) -> int:
         """Create a job from pre-ripped MKV files in a staging directory."""
+        from sqlmodel import select as sa_select
+
         staging_dir = Path(staging_path)
 
         if not volume_label:
             volume_label = staging_dir.name.upper().replace(" ", "_")
 
         async with async_session() as session:
+            # Guard: don't create a duplicate job for the same staging directory
+            existing = await session.execute(
+                sa_select(DiscJob).where(DiscJob.staging_path == str(staging_dir))
+            )
+            if existing.scalar_one_or_none():
+                safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                logger.info("Job already exists for staging path %s, skipping", safe_path)
+                return -1
+
             job = DiscJob(
-                drive_id="staging",
+                drive_id=drive_id,
                 volume_label=volume_label,
                 staging_path=str(staging_dir),
                 state=JobState.IDENTIFYING,
+                destination_mode=destination_mode,
             )
 
             if content_type in ("tv", "movie"):
@@ -384,11 +439,18 @@ class JobManager:
             await session.refresh(job)
 
             job_id = job.id
+            safe_path = str(staging_path).replace("\n", "").replace("\r", "")
+            safe_label = str(volume_label).replace("\n", "").replace("\r", "")
             logger.info(
-                f"Created staging import job {job_id} from {staging_path} (label: {volume_label})"
+                "Created %s job %s from %s (label: %s, destination: %s)",
+                "import" if drive_id == "import" else "staging",
+                job_id,
+                safe_path,
+                safe_label,
+                destination_mode,
             )
 
-        await event_broadcaster.broadcast_drive_inserted("staging", volume_label)
+        await event_broadcaster.broadcast_drive_inserted(drive_id, volume_label)
 
         task = asyncio.create_task(
             with_job_log_context(job_id, self._identification.identify_from_staging(job_id))

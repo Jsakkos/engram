@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from sqlalchemy import text
 from sqlmodel import Field, SQLModel
 
 
@@ -92,6 +93,9 @@ class DiscJob(SQLModel, table=True):
     completed_at: datetime | None = Field(default=None)  # When job reached terminal state
     cleared_at: datetime | None = Field(default=None)  # Soft-delete: hidden from dashboard
     error_message: str | None = None
+    destination_mode: str = Field(
+        default="library", sa_column_kwargs={"server_default": text("'library'")}
+    )
     review_reason: str | None = None  # Human-readable reason why review is needed
     conflict_status: str | None = None  # Transient note while auto-resolving episode conflicts
 

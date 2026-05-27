@@ -84,6 +84,7 @@ class JobResponse(BaseModel):
     # Transient auto-resolution note set during conflict / review escalation
     # (e.g. "Resolving episode conflicts — pass 2 of 3"). Cleared on resolution.
     conflict_status: str | None = None
+    destination_mode: str = "library"
     created_at: datetime | str | None = None
 
     model_config = {"from_attributes": True}
@@ -260,6 +261,9 @@ class ConfigResponse(BaseModel):
     opensubtitles_api_key: str  # "***" if set
     opensubtitles_username: str
     opensubtitles_password: str  # "***" if set
+    # Import watch folder
+    import_watch_path: str | None = None
+    import_destination_mode: str = "library"
     # Network access
     allow_lan_access: bool
     # Onboarding
@@ -324,6 +328,9 @@ class ConfigUpdate(BaseModel):
     opensubtitles_api_key: str | None = None
     opensubtitles_username: str | None = None
     opensubtitles_password: str | None = None
+    # Import watch folder
+    import_watch_path: str | None = None
+    import_destination_mode: str | None = None
     # Network access
     allow_lan_access: bool | None = None
     # Onboarding
@@ -998,6 +1005,9 @@ async def get_config() -> ConfigResponse:
         opensubtitles_api_key="***" if config.opensubtitles_api_key else "",  # Redacted
         opensubtitles_username=config.opensubtitles_username,
         opensubtitles_password="***" if config.opensubtitles_password else "",  # Redacted
+        # Import watch folder
+        import_watch_path=config.import_watch_path,
+        import_destination_mode=config.import_destination_mode,
         # Network access
         allow_lan_access=config.allow_lan_access,
         # Onboarding
@@ -1049,7 +1059,11 @@ async def update_config(config: ConfigUpdate) -> dict:
     from app.services.config_service import update_config as update_db_config
 
     # Build kwargs from non-None fields
-    update_data = {k: v for k, v in config.model_dump().items() if v is not None}
+    # Allow None through for import_watch_path so users can clear the field
+    _nullable_fields = {"import_watch_path"}
+    update_data = {
+        k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
+    }
 
     # Validate naming format strings before persisting
     from app.core.organizer import (
@@ -1079,6 +1093,18 @@ async def update_config(config: ConfigUpdate) -> dict:
 
     if update_data:
         await update_db_config(**update_data)
+
+    # Reload the staging watcher if watch-related settings changed
+    _watch_fields = {
+        "staging_watch_enabled",
+        "staging_path",
+        "import_watch_path",
+        "import_destination_mode",
+    }
+    if update_data.keys() & _watch_fields:
+        from app.services.job_manager import job_manager
+
+        await job_manager.reload_staging_watcher()
 
     return {"status": "updated", "persisted": True}
 

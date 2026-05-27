@@ -55,6 +55,9 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     title: job.detected_title || job.volume_label,
     subtitle: `${displayType} • ${job.volume_label}`,
     discLabel: job.volume_label,
+    sourceType: job.drive_id === 'import' ? 'import'
+      : job.drive_id === 'staging' ? 'staging'
+      : 'disc',
     coverUrl: `/api/jobs/${job.id}/poster`,
     mediaType: mediaType,
     state: mapJobStateToDiscState(job.state),

@@ -111,10 +111,11 @@ async def update_config(**kwargs) -> AppConfig:
         # Special handling for sensitive fields: don't overwrite with empty strings
         sensitive_fields = {"makemkv_key", "tmdb_api_key"}
 
+        _nullable_fields = {"import_watch_path"}
         for key, value in kwargs.items():
             if not hasattr(config, key):
                 continue
-            if value is None:
+            if value is None and key not in _nullable_fields:
                 continue
             # Skip empty strings for sensitive fields (keep existing value)
             if key in sensitive_fields and isinstance(value, str) and not value.strip():

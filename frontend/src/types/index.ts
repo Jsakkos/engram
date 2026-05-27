@@ -37,6 +37,7 @@ export interface Job {
     subtitles_failed?: number;
     review_reason?: string | null;
     conflict_status?: string | null;
+    destination_mode?: string;
     created_at?: string;
 }
 
