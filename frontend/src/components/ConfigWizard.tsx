@@ -505,7 +505,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         </div>
 
                         <div className="form-group" style={{ marginTop: '1.5rem' }}>
-                            <label>Import Watch Folder</label>
+                            <label htmlFor="importWatchPath">Import Watch Folder</label>
                             <span className="form-hint" style={{ display: 'block', marginBottom: '0.5rem' }}>
                                 Automatically import MKV files ripped by AutomaticRippingMachine or similar tools.
                                 Engram detects per-disc subfolders, show-organised trees, and flat layouts.
@@ -543,9 +543,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                                     padding: '0.375rem 0.875rem',
                                                     fontSize: '0.85rem',
                                                     cursor: 'pointer',
-                                                    background: config.importDestinationMode === mode ? 'var(--accent-cyan, #00b4d8)' : 'transparent',
-                                                    color: config.importDestinationMode === mode ? '#000' : 'inherit',
-                                                    border: '1px solid var(--border-faint, #444)',
+                                                    background: config.importDestinationMode === mode ? 'var(--color-sv-cyan)' : 'transparent',
+                                                    color: config.importDestinationMode === mode ? 'var(--color-sv-bg0)' : 'inherit',
+                                                    border: '1px solid var(--color-sv-line-mid)',
                                                     fontWeight: config.importDestinationMode === mode ? 700 : 400,
                                                     marginRight: mode === 'library' ? -1 : 0,
                                                 }}
