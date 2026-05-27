@@ -51,6 +51,8 @@ export default function UpdateModal({
             const status = (err as { status?: number }).status;
             if (status === 409) {
                 toast.error("A disc operation is in progress. Please wait before restarting.");
+            } else if (status === 400) {
+                toast.error("Updates cannot be applied in dev mode.");
             } else {
                 toast.error(
                     `Restart failed. Download manually from GitHub: ${updateStatus?.release_url ?? ""}`,
