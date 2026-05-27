@@ -379,7 +379,7 @@ class UpdateChecker:
 
         logger.info(f"Applying update: {sys.executable} -> {new_binary}")
         shutil.copy2(str(new_binary), sys.executable)
-        os.chmod(sys.executable, 0o755)
+        os.chmod(sys.executable, 0o750)
         # os.execv replaces the process image — same PID, same port, zero downtime
         os.execv(sys.executable, sys.argv)
 

@@ -193,12 +193,14 @@ class TestUpdateCheckerStates:
 
     async def test_apply_update_raises_with_active_jobs(self, monkeypatch):
         """apply_update() must refuse when a job is actively ripping/matching."""
+        import sys as _sys
+
         from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
         from sqlalchemy.orm import sessionmaker
         from sqlalchemy.pool import StaticPool
         from sqlmodel import SQLModel
 
-        import app.core.updater as updater_mod
+        updater_mod = _sys.modules["app.core.updater"]
         from app.models import DiscJob, JobState
 
         engine = create_async_engine(
