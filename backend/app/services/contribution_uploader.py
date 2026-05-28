@@ -7,6 +7,7 @@ fingerprint network server. Phase 1 built the queue; this service drains it.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,9 +16,11 @@ import httpx
 from loguru import logger
 from sqlmodel import select
 
+from app import __version__
 from app.database import async_session
 from app.models.fingerprint import FingerprintContribution
 from app.services.config_service import get_config
+from app.services.zstd_varint_codec import encode_zstd_varint, fingerprint_sha256
 
 CONTRIBUTION_LOG_PATH = Path("~/.engram/cache/contribution_log.jsonl").expanduser()
 
@@ -91,21 +94,24 @@ class ContributionUploader:
 
         try:
             fp = ChromaprintResult.from_blob(contrib.chromaprint_blob)
+            fingerprint_bytes = encode_zstd_varint(fp.hashes)
+            sha256_bytes = fingerprint_sha256(fp.hashes)
             payload = {
+                "wire_format_version": 1,
                 "pseudonym": contrib.pseudonym,
                 "tmdb_id": contrib.tmdb_id,
                 "season": contrib.season,
                 "episode": contrib.episode,
+                "fingerprint_b64": base64.b64encode(fingerprint_bytes).decode("ascii"),
+                "fingerprint_sha256_b64": base64.b64encode(sha256_bytes).decode("ascii"),
+                "disc_content_hash_b64": (
+                    base64.b64encode(contrib.disc_content_hash).decode("ascii")
+                    if contrib.disc_content_hash
+                    else None
+                ),
                 "match_confidence": contrib.match_confidence,
                 "match_source": contrib.match_source,
-                "disc_content_hash": (
-                    contrib.disc_content_hash.hex() if contrib.disc_content_hash else None
-                ),
-                "chromaprint": {
-                    "v": 1,
-                    "duration": fp.duration_seconds,
-                    "hashes": fp.hashes,
-                },
+                "client_version": __version__,
             }
         except Exception as e:
             logger.error(f"Failed to deserialize chromaprint blob for contrib {contrib.id}: {e}")

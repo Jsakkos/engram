@@ -407,6 +407,93 @@ def test_append_audit_log_writes_correct_fields(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_uploader_posts_wire_format_v1(setup_db, tmp_path, monkeypatch):
+    """_upload_one POSTs the v1 wire format: fingerprint_b64 (zstd-varint), sha256, version."""
+    import base64
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    import app as app_mod
+    from app.database import async_session
+    from app.services.zstd_varint_codec import decode_zstd_varint
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=_make_valid_blob(),
+            tmdb_id=1399,
+            season=2,
+            episode=5,
+            match_confidence=0.88,
+            match_source="engram_asr",
+            pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            disc_content_hash=b"\x01\x02\x03\x04",
+        )
+        session.add(row)
+        await session.commit()
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+
+    captured_payload: dict = {}
+
+    async def fake_post(url, **kwargs):
+        captured_payload.update(kwargs.get("json", {}))
+        return mock_resp
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=fake_post)
+        MockClient.return_value = mock_client
+
+        monkeypatch.setattr(
+            uploader_mod,
+            "get_config",
+            AsyncMock(
+                return_value=MagicMock(
+                    fingerprint_server_url="https://fp.example.com",
+                    contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                )
+            ),
+        )
+        uploader = ContributionUploader()
+        await uploader._process_batch()
+
+    # The payload must have exactly these keys
+    expected_keys = {
+        "wire_format_version",
+        "pseudonym",
+        "tmdb_id",
+        "season",
+        "episode",
+        "fingerprint_b64",
+        "fingerprint_sha256_b64",
+        "disc_content_hash_b64",
+        "match_confidence",
+        "match_source",
+        "client_version",
+    }
+    assert set(captured_payload.keys()) == expected_keys, (
+        f"Payload keys mismatch. Got: {set(captured_payload.keys())}"
+    )
+
+    # wire_format_version must be 1
+    assert captured_payload["wire_format_version"] == 1
+
+    # fingerprint_b64 decodes → zstd-varint → [1, 2, 3]
+    fp_bytes = base64.b64decode(captured_payload["fingerprint_b64"])
+    assert decode_zstd_varint(fp_bytes) == [1, 2, 3]
+
+    # disc_content_hash_b64 decodes to the raw bytes (not hex)
+    assert base64.b64decode(captured_payload["disc_content_hash_b64"]) == b"\x01\x02\x03\x04"
+
+    # client_version matches the running app version
+    assert captured_payload["client_version"] == app_mod.__version__
+
+
+@pytest.mark.asyncio
 async def test_uploader_increments_attempts_on_5xx(setup_db, monkeypatch):
     """A 5xx response exhausts retries and marks upload_status='failed'."""
     from unittest.mock import AsyncMock, MagicMock, patch
