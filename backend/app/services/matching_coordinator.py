@@ -718,6 +718,51 @@ class MatchingCoordinator:
                             exc_info=True,
                         )
 
+                    # Phase 1: enqueue contribution if extraction produced a fingerprint
+                    if title.chromaprint_blob and title.matched_episode:
+                        try:
+                            import re as _re
+
+                            from app.services.config_service import get_config as _get_config
+                            from app.services.contribution_queue import ContributionQueue
+
+                            _cfg = await _get_config()
+                            if _cfg.contribution_pseudonym:
+                                # Parse "S01E07" → (season, episode)
+                                _m = _re.match(r"S(\d{1,2})E(\d{1,3})", title.matched_episode or "")
+                                season_num = int(_m.group(1)) if _m else None
+                                episode_num = int(_m.group(2)) if _m else None
+                                disc_hash = None
+                                if getattr(job, "content_hash", None):
+                                    try:
+                                        disc_hash = bytes.fromhex(job.content_hash)
+                                    except (TypeError, ValueError):
+                                        disc_hash = None
+                                tmdb_id_val = 0
+                                if getattr(job, "tmdb_id", None):
+                                    try:
+                                        tmdb_id_val = int(job.tmdb_id)
+                                    except (TypeError, ValueError):
+                                        tmdb_id_val = 0
+                                await ContributionQueue().enqueue(
+                                    session=session,
+                                    title_id=title.id,
+                                    chromaprint_blob=title.chromaprint_blob,
+                                    tmdb_id=tmdb_id_val,
+                                    season=season_num,
+                                    episode=episode_num,
+                                    match_confidence=float(title.match_confidence or 0.0),
+                                    match_source="engram",
+                                    disc_content_hash=disc_hash,
+                                    pseudonym=_cfg.contribution_pseudonym,
+                                    contributions_enabled=_cfg.enable_fingerprint_contributions,
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to enqueue contribution for title {title.id}: {e}",
+                                exc_info=True,
+                            )
+
                 if result.match_details:
                     try:
                         title.match_details = json.dumps(result.match_details)

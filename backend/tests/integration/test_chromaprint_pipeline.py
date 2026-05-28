@@ -194,6 +194,122 @@ async def test_chromaprint_extracted_after_match(async_session_ctx, tmp_path, mo
 
 
 @pytest.mark.asyncio
+async def test_contribution_enqueued_on_match(async_session_ctx, tmp_path, monkeypatch):
+    """A successful match enqueues a FingerprintContribution row.
+
+    Uses the same direct-coordinator pattern as test_chromaprint_extracted_after_match
+    because the simulation endpoint bypasses _match_single_file_inner.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.api.websocket import manager as ws_manager
+    from app.core.curator import MatchResult
+    from app.matcher.chromaprint_extractor import ChromaprintExtractor, ChromaprintResult
+    from app.models import DiscJob, TitleState
+    from app.models.disc_job import ContentType, DiscTitle, JobState
+    from app.services.contribution_pseudonym import generate_pseudonym
+    from app.services.event_broadcaster import EventBroadcaster
+    from app.services.job_state_machine import JobStateMachine
+    from app.services.matching_coordinator import MatchingCoordinator
+
+    # Seed a job + title in the DB
+    fake_file = tmp_path / "title_01.mkv"
+    fake_file.write_text("fake")
+
+    async with async_session() as session:
+        job = DiscJob(
+            drive_id="E:",
+            volume_label="ARRESTED_DEVELOPMENT_S1D1",
+            state=JobState.MATCHING,
+            content_type=ContentType.TV,
+            detected_title="Arrested Development",
+            detected_season=1,
+            tmdb_id=79744,
+        )
+        session.add(job)
+        await session.flush()
+
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=1,
+            duration_seconds=1800,
+            file_size_bytes=1_000_000,
+            state=TitleState.MATCHING,
+            file_path=str(fake_file),
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(job)
+        await session.refresh(title)
+        job_id, title_id = job.id, title.id
+
+    # Ensure app_config has a valid pseudonym so the enqueue block fires
+    from sqlmodel import select
+
+    from app.models.app_config import AppConfig
+    from app.services.contribution_pseudonym import validate_pseudonym
+
+    async with async_session() as session:
+        result = await session.execute(select(AppConfig))
+        cfg = result.first()
+        if cfg:
+            cfg = cfg[0]
+            if not validate_pseudonym(cfg.contribution_pseudonym):
+                cfg.contribution_pseudonym = generate_pseudonym()
+                session.add(cfg)
+                await session.commit()
+
+    # Fake chromaprint result
+    fake_fp = ChromaprintResult(hashes=[1], duration_seconds=10.0, fpcalc_version="test")
+
+    async def fake_extract(self, media_path: str) -> ChromaprintResult:
+        return fake_fp
+
+    # Fake match result (confident, no review needed)
+    stub_result = MatchResult(
+        file_path=fake_file,
+        episode_code="S01E07",
+        episode_title="In God We Trust",
+        confidence=0.92,
+        needs_review=False,
+        match_details={"score": 0.92, "vote_count": 5, "runner_ups": []},
+    )
+
+    mock_broadcaster = MagicMock(spec=EventBroadcaster)
+    mock_broadcaster.broadcast_job_state_changed = AsyncMock()
+    mock_state_machine = MagicMock(spec=JobStateMachine)
+
+    coordinator = MatchingCoordinator(mock_broadcaster, mock_state_machine)
+    coordinator.set_callbacks(check_job_completion=AsyncMock(), note_activity=None)
+    coordinator.init_semaphore(concurrency=1)
+    coordinator._episode_runtimes[job_id] = []
+
+    with (
+        patch(
+            "app.services.matching_coordinator.episode_curator.match_single_file",
+            new=AsyncMock(return_value=stub_result),
+        ),
+        patch.object(ChromaprintExtractor, "extract", fake_extract),
+        patch.object(coordinator, "_wait_for_file_ready", new=AsyncMock(return_value=True)),
+        patch.object(ws_manager, "broadcast_title_update", new=AsyncMock()),
+    ):
+        await coordinator.match_single_file(job_id, title_id, fake_file)
+
+    # Assert a FingerprintContribution row was enqueued
+    from app.models.fingerprint import FingerprintContribution
+
+    async with async_session() as session:
+        result = await session.execute(select(FingerprintContribution))
+        contributions = result.scalars().all()
+
+    assert len(contributions) >= 1, "Expected at least one queued contribution"
+    c = contributions[0]
+    assert c.chromaprint_blob is not None
+    assert c.pseudonym  # non-empty
+    assert c.match_source  # non-empty
+
+
+@pytest.mark.asyncio
 async def test_matching_succeeds_when_fpcalc_missing(client, async_session_ctx, monkeypatch):
     """If fpcalc isn't configured and auto-detect fails, matching still completes without a fingerprint."""
     from app.api import validation as v
