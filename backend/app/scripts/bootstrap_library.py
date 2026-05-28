@@ -73,14 +73,20 @@ async def _default_search(show: str, content_type: str) -> int | None:
     fetch_show_id / fetch_movie_id return a *string* TMDB ID (e.g. "12345") or
     None; we cast to int before returning.
     """
-    if content_type == "tv":
-        from app.matcher.tmdb_client import fetch_show_id
+    try:
+        if content_type == "tv":
+            from app.matcher.tmdb_client import fetch_show_id
 
-        raw = await asyncio.to_thread(fetch_show_id, show)
-    else:
-        from app.matcher.tmdb_client import fetch_movie_id
+            raw = await asyncio.to_thread(fetch_show_id, show)
+        else:
+            from app.matcher.tmdb_client import fetch_movie_id
 
-        raw = await asyncio.to_thread(fetch_movie_id, show)
+            raw = await asyncio.to_thread(fetch_movie_id, show)
+    except Exception as e:
+        # Network errors, bad TMDB token, etc. — treat as a miss so the bootstrap
+        # loop continues with the next file instead of aborting the whole run.
+        logger.warning(f"TMDB lookup for {show!r} failed: {e}")
+        return None
 
     if raw is None:
         return None
