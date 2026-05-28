@@ -220,6 +220,41 @@ class TestFinalizeDiscJob:
 
 
 @pytest.mark.unit
+class TestApplyReviewDecisionMovie:
+    """Test the post-rip movie review path in apply_review."""
+
+    async def test_organized_fields_set_on_movie_review_success(self, tmp_path, monkeypatch):
+        """title.organized_from and organized_to must be populated after a successful movie review."""
+        import app.core.organizer as org
+
+        source = tmp_path / "INCEPTION_2010_t00.mkv"
+        source.write_bytes(b"x" * 1024)
+        dest = tmp_path / "movies" / "Inception (2010)" / "Inception (2010).mkv"
+
+        monkeypatch.setattr(
+            org.movie_organizer,
+            "organize",
+            Mock(return_value={"success": True, "main_file": dest}),
+        )
+
+        job_id = await _seed_job(
+            [(0, None, str(source), TitleState.REVIEW)],
+            staging=str(tmp_path),
+            content_type=ContentType.MOVIE,
+            state=JobState.REVIEW_NEEDED,
+        )
+        _, titles = await _load(job_id)
+        title_id = titles[0].id
+
+        await _make_coord().apply_review(job_id, title_id)
+
+        _, titles = await _load(job_id)
+        t = titles[0]
+        assert t.organized_from == source.name
+        assert t.organized_to == str(dest)
+
+
+@pytest.mark.unit
 class TestCheckJobCompletion:
     async def test_active_title_returns_without_finalizing(self, tmp_path):
         job_id = await _seed_job([(0, "S01E01", None, TitleState.RIPPING)], staging=str(tmp_path))
