@@ -1263,11 +1263,17 @@ async def delete_job(
 async def list_fingerprint_contributions(
     session: AsyncSession = Depends(get_session),
     limit: int = Query(200, ge=1, le=1000),
+    include_log: bool = Query(False),
 ) -> dict:
     """Return locally-queued fingerprint contributions (Phase 1 audit log).
 
     Excludes the chromaprint blob body — only summarizes byte size — so the response
     stays manageable. Phase 2 adds filtering by upload status.
+
+    When ``include_log=true``, the response also carries an ``audit_log`` key: the
+    tail (last 200 entries) of the append-only JSONL upload log the uploader writes
+    on each successful contribution — what makes "exactly what left my machine"
+    auditable from the dashboard.
 
     Localhost-only: the response includes recent ripping activity (TMDB IDs,
     season/episode, timestamps), which is the user's viewing history. The
@@ -1316,7 +1322,30 @@ async def list_fingerprint_contributions(
         }
         for r in rows
     ]
-    return {"count": len(items), "items": items}
+    payload: dict = {"count": len(items), "items": items}
+
+    if include_log:
+        # Tail the append-only JSONL upload log written by ContributionUploader.
+        # Missing file or a malformed line must never 500 this read-only endpoint.
+        from app.services.contribution_uploader import CONTRIBUTION_LOG_PATH
+
+        audit: list[dict] = []
+        try:
+            if CONTRIBUTION_LOG_PATH.exists():
+                lines = CONTRIBUTION_LOG_PATH.read_text(encoding="utf-8").splitlines()
+                for line in lines[-200:]:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        audit.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            logger.warning("Failed to read contribution audit log", exc_info=True)
+        payload["audit_log"] = audit
+
+    return payload
 
 
 @router.delete("/fingerprint/contributions/{contrib_id}", dependencies=[Depends(require_localhost)])

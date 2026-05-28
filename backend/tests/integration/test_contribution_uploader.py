@@ -711,3 +711,32 @@ async def test_uploader_uploads_when_all_gates_pass(setup_db, tmp_path, monkeypa
     async with async_session() as session:
         refreshed = await session.get(FingerprintContribution, contrib_id)
     assert refreshed.upload_status == "success"
+
+
+@pytest.mark.asyncio
+async def test_contributions_endpoint_includes_audit_log(setup_db, client, tmp_path, monkeypatch):
+    """?include_log=true tails the JSONL upload log into an audit_log key."""
+    from app.api.routes import require_localhost
+    from app.main import app
+
+    log_path = tmp_path / "contrib.jsonl"
+    log_path.write_text(
+        json.dumps({"ts": "2026-05-28T00:00:00+00:00", "contrib_id": 1, "tmdb_id": 99}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", log_path)
+
+    app.dependency_overrides[require_localhost] = lambda: None
+    try:
+        # Without the flag, no audit_log key is present.
+        resp_plain = await client.get("/api/fingerprint/contributions")
+        assert resp_plain.status_code == 200
+        assert "audit_log" not in resp_plain.json()
+
+        resp = await client.get("/api/fingerprint/contributions?include_log=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "audit_log" in data
+        assert any(e.get("tmdb_id") == 99 for e in data["audit_log"])
+    finally:
+        app.dependency_overrides.pop(require_localhost, None)
