@@ -151,3 +151,7 @@ class AppConfig(SQLModel, table=True):
         default=True, sa_column_kwargs={"server_default": text("1")}
     )
     fingerprint_server_url: str | None = Field(default=None)
+    fingerprint_disclosure_accepted: bool = Field(
+        default=False, sa_column_kwargs={"server_default": text("0")}
+    )
+    fingerprint_disclosure_accepted_at: datetime | None = Field(default=None)

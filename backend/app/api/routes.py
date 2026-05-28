@@ -297,6 +297,8 @@ class ConfigResponse(BaseModel):
     enable_fingerprint_contributions: bool
     # Chromaprint Phase 2
     fingerprint_server_url: str | None = None
+    fingerprint_disclosure_accepted: bool = False
+    fingerprint_disclosure_accepted_at: datetime | None = None
 
 
 class ConfigUpdate(BaseModel):
@@ -369,6 +371,7 @@ class ConfigUpdate(BaseModel):
     enable_fingerprint_contributions: bool | None = None
     # Chromaprint Phase 2
     fingerprint_server_url: str | None = None
+    fingerprint_disclosure_accepted: bool | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1051,6 +1054,8 @@ async def get_config() -> ConfigResponse:
         enable_fingerprint_contributions=config.enable_fingerprint_contributions,
         # Chromaprint Phase 2
         fingerprint_server_url=config.fingerprint_server_url,
+        fingerprint_disclosure_accepted=config.fingerprint_disclosure_accepted,
+        fingerprint_disclosure_accepted_at=config.fingerprint_disclosure_accepted_at,
     )
 
 
@@ -1139,6 +1144,12 @@ async def update_config(config: ConfigUpdate) -> dict:
                 status_code=400,
                 detail="extras_policy must be 'keep', 'skip', or 'ask'",
             )
+
+    # Stamp the disclosure-acceptance time server-side when the user accepts.
+    if update_data.get("fingerprint_disclosure_accepted") is True:
+        from datetime import UTC, datetime
+
+        update_data["fingerprint_disclosure_accepted_at"] = datetime.now(UTC)
 
     if update_data:
         await update_db_config(**update_data)
