@@ -150,3 +150,4 @@ class AppConfig(SQLModel, table=True):
     enable_fingerprint_contributions: bool = Field(
         default=True, sa_column_kwargs={"server_default": text("1")}
     )
+    fingerprint_server_url: str | None = Field(default=None)

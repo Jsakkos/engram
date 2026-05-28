@@ -295,6 +295,8 @@ class ConfigResponse(BaseModel):
     # Chromaprint fingerprinting (Phase 1)
     fpcalc_path: str
     enable_fingerprint_contributions: bool
+    # Chromaprint Phase 2
+    fingerprint_server_url: str | None = None
 
 
 class ConfigUpdate(BaseModel):
@@ -365,6 +367,8 @@ class ConfigUpdate(BaseModel):
     # Chromaprint fingerprinting (Phase 1)
     fpcalc_path: str | None = None
     enable_fingerprint_contributions: bool | None = None
+    # Chromaprint Phase 2
+    fingerprint_server_url: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1045,6 +1049,8 @@ async def get_config() -> ConfigResponse:
         # Chromaprint fingerprinting (Phase 1)
         fpcalc_path=config.fpcalc_path or "",
         enable_fingerprint_contributions=config.enable_fingerprint_contributions,
+        # Chromaprint Phase 2
+        fingerprint_server_url=config.fingerprint_server_url,
     )
 
 
@@ -1092,8 +1098,8 @@ async def update_config(config: ConfigUpdate) -> dict:
     from app.services.config_service import update_config as update_db_config
 
     # Build kwargs from non-None fields
-    # Allow None through for import_watch_path so users can clear the field
-    _nullable_fields = {"import_watch_path"}
+    # Allow None through for fields that can be cleared to null
+    _nullable_fields = {"import_watch_path", "fingerprint_server_url"}
     update_data = {
         k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
     }
@@ -1290,6 +1296,72 @@ async def list_fingerprint_contributions(
         for r in rows
     ]
     return {"count": len(items), "items": items}
+
+
+@router.delete("/fingerprint/contributions/{contrib_id}", dependencies=[Depends(require_localhost)])
+async def forget_fingerprint_contribution(
+    contrib_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Delete a locally-queued fingerprint contribution (forget).
+
+    Returns 400 if the contribution was already uploaded — the data already
+    exists on the server and cannot be recalled from here.
+    """
+    from app.models.fingerprint import FingerprintContribution
+
+    contrib = await session.get(FingerprintContribution, contrib_id)
+    if contrib is None:
+        raise HTTPException(status_code=404, detail="Contribution not found")
+    if contrib.upload_status == "success":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an already-uploaded contribution; the data is already on the server.",
+        )
+    await session.delete(contrib)
+    await session.commit()
+    return {"status": "deleted", "contrib_id": contrib_id}
+
+
+@router.post(
+    "/fingerprint/contributions/rotate-pseudonym", dependencies=[Depends(require_localhost)]
+)
+async def rotate_contribution_pseudonym(
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Generate a fresh pseudonym and re-tag all pending contributions.
+
+    Already-uploaded rows retain their old pseudonym (server already has them
+    under that identity). Pending rows get the new pseudonym so future uploads
+    are unlinkable to past ones.
+    """
+    from app.models.app_config import AppConfig
+    from app.models.fingerprint import FingerprintContribution
+    from app.services.contribution_pseudonym import generate_pseudonym
+
+    new_pseudonym = generate_pseudonym()
+
+    cfg = (await session.execute(select(AppConfig).limit(1))).scalar_one_or_none()
+    if cfg is not None:
+        cfg.contribution_pseudonym = new_pseudonym
+        session.add(cfg)
+
+    pending = (
+        (
+            await session.execute(
+                select(FingerprintContribution).where(
+                    FingerprintContribution.upload_status.is_(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for row in pending:
+        row.pseudonym = new_pseudonym
+
+    await session.commit()
+    return {"pseudonym": new_pseudonym, "pending_retagged": len(pending)}
 
 
 # --- Simulation Endpoints (debug mode only) ---
