@@ -345,3 +345,33 @@ async def test_matching_succeeds_when_fpcalc_missing(client, async_session_ctx, 
             break
     else:
         pytest.fail("Job never advanced past initial state with fpcalc absent")
+
+
+@pytest.mark.asyncio
+async def test_get_fingerprint_contributions(client):
+    """GET /api/fingerprint/contributions returns the local queue, redacted of blobs by default."""
+    from app.models.fingerprint import FingerprintContribution
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            title_id=None,
+            chromaprint_blob=b"\x00" * 1000,
+            tmdb_id=1399,
+            season=1,
+            episode=1,
+            match_confidence=0.95,
+            match_source="bootstrap",
+            pseudonym="22222222-2222-4222-8222-222222222222",
+        )
+        session.add(row)
+        await session.commit()
+
+    response = await client.get("/api/fingerprint/contributions")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] >= 1
+    item = next(i for i in data["items"] if i["tmdb_id"] == 1399)
+    assert item["match_source"] == "bootstrap"
+    # Blob should be summarized (size) not returned wholesale
+    assert "chromaprint_blob" not in item
+    assert item["blob_size_bytes"] == 1000

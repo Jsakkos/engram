@@ -1200,6 +1200,43 @@ async def delete_job(
     return {"status": "cleared", "job_id": job.id}
 
 
+@router.get("/fingerprint/contributions")
+async def list_fingerprint_contributions(
+    session: AsyncSession = Depends(get_session),
+    limit: int = 200,
+) -> dict:
+    """Return locally-queued fingerprint contributions (Phase 1 audit log).
+
+    Excludes the chromaprint blob body — only summarizes byte size — so the response
+    stays manageable. Phase 2 adds filtering by upload status.
+    """
+    from app.models.fingerprint import FingerprintContribution
+
+    result = await session.execute(
+        select(FingerprintContribution)
+        .order_by(FingerprintContribution.queued_at.desc())
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+    items = [
+        {
+            "id": r.id,
+            "queued_at": r.queued_at.isoformat() if r.queued_at else None,
+            "title_id": r.title_id,
+            "tmdb_id": r.tmdb_id,
+            "season": r.season,
+            "episode": r.episode,
+            "match_confidence": r.match_confidence,
+            "match_source": r.match_source,
+            "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
+            "upload_attempts": r.upload_attempts,
+            "blob_size_bytes": len(r.chromaprint_blob) if r.chromaprint_blob else 0,
+        }
+        for r in rows
+    ]
+    return {"count": len(items), "items": items}
+
+
 # --- Simulation Endpoints (debug mode only) ---
 
 
