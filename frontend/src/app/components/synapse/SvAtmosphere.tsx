@@ -86,6 +86,10 @@ export function SvAtmosphere({
     minHeight: "100vh",
     display: "flex",
     flexDirection: "column",
+    // Prevents atmospheric mix-blend-mode layers from compositing through to
+    // this content wrapper in Safari. Without explicit isolation, Safari can
+    // bleed the grain/scanline blend effects into the content stacking context.
+    isolation: "isolate",
   };
 
   return (
