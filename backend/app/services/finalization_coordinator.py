@@ -513,7 +513,7 @@ class FinalizationCoordinator:
 
     async def finalize_disc_job(self, job_id: int):
         """Run conflict resolution with cascading reassignment and organize matches."""
-        from app.core.organizer import organize_tv_episode, tv_organizer
+        from app.core.organizer import organize_tv_episode, organize_tv_extras, tv_organizer
 
         logger.info(f"Running conflict resolution for Job {job_id}")
 
@@ -560,6 +560,14 @@ class FinalizationCoordinator:
                 candidates = {}
                 for t in titles:
                     if t.state == TitleState.MATCHED and t.matched_episode:
+                        # Extras carry the synthetic "extra" code, not a real
+                        # episode slot — multiple extras coexist on one disc and
+                        # never collide. Skip them here so two extras aren't
+                        # mistaken for an episode conflict (which would bounce one
+                        # to review); they organize into the season's Extras/
+                        # folder in the loop below.
+                        if t.matched_episode == "extra":
+                            continue
                         # Normalize so padded/unpadded variants of the same episode
                         # ("S1E3" vs "S01E03") group together — otherwise a real
                         # collision is missed and both files organize to one path.
@@ -692,6 +700,7 @@ class FinalizationCoordinator:
                 return
 
             # Organize all MATCHED winners
+            extra_index = 1
             for t in titles:
                 if t.state != TitleState.MATCHED or not t.matched_episode:
                     continue
@@ -706,7 +715,23 @@ class FinalizationCoordinator:
                 logger.info(f"Organizing Title {t.id} ({source_file.name}) -> {t.matched_episode}")
 
                 _lib_path = _library_path_for_job(job, "tv")
-                if _lib_path:
+                if t.matched_episode == "extra":
+                    # Mirror the review path (_finalize_tv_if_resolved): extras go
+                    # to the season's Extras/ folder with "Extra tNN" naming, NOT
+                    # through organize_tv_episode (which rejects the synthetic
+                    # "extra" code as an invalid episode format).
+                    org_result = await asyncio.to_thread(
+                        organize_tv_extras,
+                        source_file,
+                        job.detected_title or job.volume_label,
+                        job.detected_season or 1,
+                        library_path=_lib_path,
+                        disc_number=job.disc_number or 1,
+                        extra_index=extra_index,
+                        title_index=t.title_index,
+                    )
+                    extra_index += 1
+                elif _lib_path:
                     org_result = await asyncio.to_thread(
                         organize_tv_episode,
                         source_file,
@@ -728,7 +753,7 @@ class FinalizationCoordinator:
                     t.organized_to = (
                         str(org_result.get("final_path")) if org_result.get("final_path") else None
                     )
-                    t.is_extra = False
+                    t.is_extra = t.matched_episode == "extra"
                 else:
                     t.state = TitleState.REVIEW
                     logger.error(f"Organize failed for Title {t.id}: {org_result['error']}")

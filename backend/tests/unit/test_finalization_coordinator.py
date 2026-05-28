@@ -218,6 +218,75 @@ class TestFinalizeDiscJob:
         assert titles[0].state == TitleState.REVIEW
         assert job.state == JobState.REVIEW_NEEDED
 
+    async def test_extra_title_routes_to_extras_folder(self, tmp_path, monkeypatch):
+        """A MATCHED title tagged ``matched_episode == "extra"`` must land in the
+        season's Extras/ folder (via organize_tv_extras) with is_extra=True — the
+        same handling as the review path, not the regular-episode path.
+
+        Mirrors test_review_batch.py::test_batch_review_organizes_extras_without_collision
+        by redirecting the TV library to a tmp dir through get_config_sync.
+        """
+        from app.models import AppConfig
+
+        tv_lib = tmp_path / "TV"
+        tv_lib.mkdir()
+        # destination_mode defaults to "library", so _library_path_for_job returns
+        # None and organize_tv_extras falls back to get_config_sync().library_tv_path.
+        fake_config = AppConfig(library_tv_path=str(tv_lib))
+        monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: fake_config)
+
+        f0 = tmp_path / "show_t03.mkv"
+        f0.write_text("")
+        job_id = await _seed_job(
+            [(3, "extra", str(f0), TitleState.MATCHED)],
+            staging=str(tmp_path),
+        )
+
+        await _make_coord().finalize_disc_job(job_id)
+
+        job, titles = await _load(job_id)
+        assert titles[3].state == TitleState.COMPLETED
+        assert titles[3].is_extra is True
+        extras_dir = tv_lib / "Some Show" / "Season 01" / "Extras"
+        organized = list(extras_dir.glob("*.mkv"))
+        assert len(organized) == 1, f"expected the extra under Extras/, got {organized}"
+        assert job.state == JobState.COMPLETED
+
+    async def test_multiple_extras_organize_without_false_conflict(self, tmp_path, monkeypatch):
+        """Several ``"extra"``-tagged MATCHED titles share the synthetic "extra"
+        code but are NOT an episode collision: each must organize to a distinct
+        Extras/ file and none may be bounced to review by conflict resolution.
+        """
+        from app.models import AppConfig
+
+        tv_lib = tmp_path / "TV"
+        tv_lib.mkdir()
+        fake_config = AppConfig(library_tv_path=str(tv_lib))
+        monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: fake_config)
+
+        f0 = tmp_path / "show_t03.mkv"
+        f1 = tmp_path / "show_t04.mkv"
+        f0.write_text("")
+        f1.write_text("")
+        job_id = await _seed_job(
+            [
+                (3, "extra", str(f0), TitleState.MATCHED),
+                (4, "extra", str(f1), TitleState.MATCHED),
+            ],
+            staging=str(tmp_path),
+        )
+
+        await _make_coord().finalize_disc_job(job_id)
+
+        job, titles = await _load(job_id)
+        assert all(t.state == TitleState.COMPLETED for t in titles.values())
+        assert all(t.is_extra is True for t in titles.values())
+        extras_dir = tv_lib / "Some Show" / "Season 01" / "Extras"
+        organized = sorted(p.name for p in extras_dir.glob("*.mkv"))
+        assert len(organized) == 2, f"expected 2 distinct extras, got {organized}"
+        assert len(set(organized)) == 2
+        assert job.state == JobState.COMPLETED
+
 
 @pytest.mark.unit
 class TestCheckJobCompletion:
