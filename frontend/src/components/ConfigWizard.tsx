@@ -69,6 +69,10 @@ interface ConfigData {
     namingMovieFormat: string;
     discdbEnabled: boolean;
     enableFingerprintContributions: boolean;
+    fingerprintServerUrl: string;
+    contributionPseudonym: string;
+    fingerprintDisclosureAccepted: boolean;
+    fingerprintDisclosureAcceptedAt: string | null;
     aiIdentificationEnabled: boolean;
     aiEpisodeMatchingEnabled: boolean;
     aiProvider: string;
@@ -133,6 +137,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingMovieFormat: '{title} ({year})',
         discdbEnabled: true,
         enableFingerprintContributions: true,
+        fingerprintServerUrl: '',
+        contributionPseudonym: '',
+        fingerprintDisclosureAccepted: false,
+        fingerprintDisclosureAcceptedAt: null,
         aiIdentificationEnabled: false,
         aiEpisodeMatchingEnabled: false,
         aiProvider: 'anthropic',
@@ -218,6 +226,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
                     discdbEnabled: data.discdb_enabled ?? true,
                     enableFingerprintContributions: data.enable_fingerprint_contributions ?? true,
+                    fingerprintServerUrl: data.fingerprint_server_url || '',
+                    contributionPseudonym: data.contribution_pseudonym || '',
+                    fingerprintDisclosureAccepted: data.fingerprint_disclosure_accepted ?? false,
+                    fingerprintDisclosureAcceptedAt: data.fingerprint_disclosure_accepted_at || null,
                     aiIdentificationEnabled: data.ai_identification_enabled ?? false,
                     aiEpisodeMatchingEnabled: data.ai_episode_matching_enabled ?? false,
                     aiProvider: data.ai_provider || 'anthropic',
@@ -325,6 +337,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_movie_format: config.namingMovieFormat,
                     discdb_enabled: config.discdbEnabled,
                     enable_fingerprint_contributions: config.enableFingerprintContributions,
+                    fingerprint_server_url: config.fingerprintServerUrl || null,
                     ai_identification_enabled: config.aiIdentificationEnabled,
                     ai_episode_matching_enabled: config.aiEpisodeMatchingEnabled,
                     ai_provider: config.aiProvider,
@@ -788,6 +801,74 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 </span>
                             </label>
                         </div>
+
+                        {config.enableFingerprintContributions && (
+                            <>
+                                <div className="form-group">
+                                    <label htmlFor="fingerprintServerUrl">Fingerprint network server URL</label>
+                                    <input
+                                        id="fingerprintServerUrl"
+                                        type="text"
+                                        placeholder="https://engram-fp-prod.jonathansakkos.workers.dev"
+                                        value={config.fingerprintServerUrl}
+                                        onChange={(e) => handleInputChange('fingerprintServerUrl', e.target.value)}
+                                    />
+                                    <span className="form-hint">
+                                        Base URL of the fingerprint network (no trailing path). Leave blank to keep
+                                        contributions queued locally without uploading.
+                                    </span>
+                                </div>
+
+                                <div className="form-group">
+                                    <span className="form-hint">
+                                        Your anonymous contribution ID:{' '}
+                                        <code>{config.contributionPseudonym || '(generated on first run)'}</code>
+                                        {config.fingerprintDisclosureAccepted ? (
+                                            <>
+                                                {' '}· Disclosure accepted
+                                                {config.fingerprintDisclosureAcceptedAt
+                                                    ? ` on ${new Date(config.fingerprintDisclosureAcceptedAt).toLocaleString()}`
+                                                    : ''}
+                                            </>
+                                        ) : (
+                                            <> · Disclosure not yet accepted</>
+                                        )}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="btn-secondary"
+                                        style={{ marginTop: 8 }}
+                                        onClick={async () => {
+                                            if (!window.confirm(
+                                                'This deletes your raw contributions on the fingerprint server, clears the local queue, and generates a new anonymous ID. Already-promoted consensus data cannot be recalled. Continue?'
+                                            )) return;
+                                            try {
+                                                const r = await fetch('/api/fingerprint/forget', { method: 'POST' });
+                                                if (!r.ok) {
+                                                    const detail = await r.text();
+                                                    window.alert(`Forget failed: ${r.status} ${detail}`);
+                                                    return;
+                                                }
+                                                const d = await r.json();
+                                                window.alert(
+                                                    `Done. Server deleted ${d.server_rows_deleted} row(s), local queue cleared (${d.local_rows_deleted}). New anonymous ID: ${d.new_pseudonym}`
+                                                );
+                                                setConfig((prev) => ({
+                                                    ...prev,
+                                                    contributionPseudonym: d.new_pseudonym,
+                                                    fingerprintDisclosureAccepted: false,
+                                                    fingerprintDisclosureAcceptedAt: null,
+                                                }));
+                                            } catch (err) {
+                                                window.alert(`Forget failed: ${err}`);
+                                            }
+                                        }}
+                                    >
+                                        Forget me on the fingerprint server
+                                    </button>
+                                </div>
+                            </>
+                        )}
 
                         <div className="form-group checkbox-group">
                             <label className="checkbox-label">
