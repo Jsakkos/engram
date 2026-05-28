@@ -290,6 +290,37 @@ async def test_forget_endpoint_rejects_uploaded_contribution(setup_db, client):
 
 
 @pytest.mark.asyncio
+async def test_forget_endpoint_rejects_in_flight_contribution(setup_db, client):
+    """Cannot delete a row with upload_attempts > 0 (may be in-flight)."""
+    from app.api.routes import require_localhost
+    from app.database import async_session
+    from app.main import app
+
+    app.dependency_overrides[require_localhost] = lambda: None
+    try:
+        async with async_session() as session:
+            row = FingerprintContribution(
+                chromaprint_blob=b"\x05",
+                tmdb_id=77,
+                season=1,
+                episode=1,
+                match_confidence=0.7,
+                match_source="engram_asr",
+                pseudonym="hhhhhhhh-hhhh-4hhh-8hhh-hhhhhhhhhhhh",
+                upload_attempts=1,  # attempted at least once → treat as in-flight
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            contrib_id = row.id
+
+        resp = await client.delete(f"/api/fingerprint/contributions/{contrib_id}")
+        assert resp.status_code == 409
+    finally:
+        app.dependency_overrides.pop(require_localhost, None)
+
+
+@pytest.mark.asyncio
 async def test_rotate_pseudonym_resets_pending_rows(setup_db, client):
     """POST rotate-pseudonym updates pending rows and app_config; leaves uploaded rows."""
     from app.api.routes import require_localhost

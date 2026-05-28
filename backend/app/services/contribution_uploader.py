@@ -49,8 +49,8 @@ class ContributionUploader:
     async def _upload_loop(self) -> None:
         while True:
             try:
-                await asyncio.sleep(self.poll_interval)
                 await self._process_batch()
+                await asyncio.sleep(self.poll_interval)
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -63,15 +63,22 @@ class ContributionUploader:
             logger.debug("fingerprint_server_url not configured; skipping upload batch")
             return
 
+        # Collect IDs in a short-lived session so the connection is released
+        # before any per-row exponential backoff sleep.
         async with async_session() as session:
             stmt = (
-                select(FingerprintContribution)
+                select(FingerprintContribution.id)
                 .where(FingerprintContribution.upload_status.is_(None))
                 .where(FingerprintContribution.upload_attempts < _MAX_ATTEMPTS)
                 .limit(_BATCH_SIZE)
             )
-            rows = (await session.execute(stmt)).scalars().all()
-            for row in rows:
+            row_ids = (await session.execute(stmt)).scalars().all()
+
+        for row_id in row_ids:
+            async with async_session() as session:
+                row = await session.get(FingerprintContribution, row_id)
+                if row is None:
+                    continue  # deleted between the ID query and now
                 await self._upload_one(row, session, server_url=cfg.fingerprint_server_url)
 
     async def _upload_one(
@@ -107,7 +114,9 @@ class ContributionUploader:
             await session.commit()
             return
 
-        for attempt in range(_MAX_ATTEMPTS):
+        # Honour the lifetime attempt cap: prior failures consumed some budget.
+        remaining = _MAX_ATTEMPTS - contrib.upload_attempts
+        for attempt in range(remaining):
             try:
                 async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:
                     resp = await client.post(
@@ -147,7 +156,7 @@ class ContributionUploader:
                 await session.commit()
                 logger.warning(f"Contrib {contrib.id}: network error, attempt {attempt + 1}: {e}")
 
-            if attempt < _MAX_ATTEMPTS - 1:
+            if attempt < remaining - 1:
                 await asyncio.sleep(2**attempt)
 
         # Exhausted retries
