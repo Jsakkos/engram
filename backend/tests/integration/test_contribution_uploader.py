@@ -629,6 +629,7 @@ async def test_uploader_prompts_when_disclosure_not_accepted(setup_db, monkeypat
                 fingerprint_server_url="https://fp.example.com",
                 enable_fingerprint_contributions=True,
                 fingerprint_disclosure_accepted=False,
+                contribution_pseudonym="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
             )
         ),
     )
@@ -651,7 +652,9 @@ async def test_uploader_prompts_when_disclosure_not_accepted(setup_db, monkeypat
 
         mock_client.post.assert_not_called()
 
-    mock_broadcast.assert_called_once_with(1)
+    mock_broadcast.assert_called_once_with(
+        1, "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "https://fp.example.com"
+    )
 
     async with async_session() as session:
         refreshed = await session.get(FingerprintContribution, contrib_id)

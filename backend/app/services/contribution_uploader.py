@@ -97,7 +97,9 @@ class ContributionUploader:
                 "%d fingerprint contribution(s) queued but disclosure not accepted; prompting user",
                 len(row_ids),
             )
-            await self._notify_disclosure_required(len(row_ids))
+            await self._notify_disclosure_required(
+                len(row_ids), cfg.contribution_pseudonym, cfg.fingerprint_server_url
+            )
             return
 
         for row_id in row_ids:
@@ -107,14 +109,22 @@ class ContributionUploader:
                     continue  # deleted between the ID query and now
                 await self._upload_one(row, session, server_url=cfg.fingerprint_server_url)
 
-    async def _notify_disclosure_required(self, pending_count: int) -> None:
-        """Broadcast the JIT disclosure event (best-effort; never raises)."""
+    async def _notify_disclosure_required(
+        self, pending_count: int, pseudonym: str | None, server_url: str | None
+    ) -> None:
+        """Broadcast the JIT disclosure event (best-effort; never raises).
+
+        Carries the per-install pseudonym + server URL so the modal can show the
+        user exactly which identity and endpoint a contribution would use. These
+        ride the per-install WS event rather than the LAN-readable /api/config
+        endpoint to keep the contribution identifier off a wider surface.
+        """
         try:
             from app.api.websocket import manager as ws_manager
             from app.services.event_broadcaster import EventBroadcaster
 
             await EventBroadcaster(ws_manager).broadcast_fingerprint_disclosure_required(
-                pending_count
+                pending_count, pseudonym or "", server_url or ""
             )
         except Exception:
             logger.warning("Failed to broadcast fingerprint disclosure event", exc_info=True)

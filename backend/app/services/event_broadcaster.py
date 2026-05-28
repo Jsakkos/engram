@@ -163,12 +163,17 @@ class EventBroadcaster:
 
     # --- Fingerprint Privacy Events ---
 
-    async def broadcast_fingerprint_disclosure_required(self, pending_count: int) -> None:
+    async def broadcast_fingerprint_disclosure_required(
+        self, pending_count: int, pseudonym: str, server_url: str
+    ) -> None:
         """Tell the dashboard to show the JIT fingerprint-disclosure modal.
 
         Fired by the ContributionUploader when fingerprint contributions are
         queued but the user has not yet accepted the privacy disclosure. The
         modal blocks until the user accepts (uploads proceed) or opts out.
+
+        Carries the per-install ``pseudonym`` and ``server_url`` so the modal can
+        show the user exactly which identity and endpoint would be used.
 
         Flat envelope (matches the frontend's `message.type` switch), not a
         nested `data` object.
@@ -177,6 +182,8 @@ class EventBroadcaster:
             {
                 "type": "fingerprint_disclosure_required",
                 "pending_count": pending_count,
+                "pseudonym": pseudonym,
+                "server_url": server_url,
             }
         )
 
