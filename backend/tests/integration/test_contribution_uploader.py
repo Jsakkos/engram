@@ -12,7 +12,9 @@ from app.database import async_session, init_db
 from app.main import app
 from app.models.app_config import AppConfig
 from app.models.fingerprint import FingerprintContribution
-from app.services.contribution_uploader import _MAX_ATTEMPTS, ContributionUploader
+
+ContributionUploader = uploader_mod.ContributionUploader
+_MAX_ATTEMPTS = uploader_mod._MAX_ATTEMPTS
 
 
 def _make_valid_blob() -> bytes:
