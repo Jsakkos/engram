@@ -379,6 +379,20 @@ class ReviewRequest(BaseModel):
     edition: str | None = None  # e.g., "Extended", "Theatrical"
 
 
+class ReviewDecision(BaseModel):
+    """A single title's review decision within a batch."""
+
+    title_id: int
+    episode_code: str | None = None  # e.g., "S01E01", "extra", "skip"
+    edition: str | None = None  # e.g., "Extended", "Theatrical"
+
+
+class ReviewBatchRequest(BaseModel):
+    """Request model for submitting multiple review decisions at once."""
+
+    decisions: list[ReviewDecision]
+
+
 def _history_job_dict(j: DiscJob) -> dict:
     """Serialize a job into the HistoryJobResponse dict shape."""
     return {
@@ -805,6 +819,27 @@ async def submit_review(
         job.id, review.title_id, episode_code=review.episode_code, edition=review.edition
     )
     return {"status": "reviewed", "job_id": job.id}
+
+
+@router.post("/jobs/{job_id}/review/batch")
+async def submit_review_batch(
+    review: ReviewBatchRequest,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Submit several review decisions for a job in one atomic request.
+
+    Backs the review-tab multiselect bulk actions (mark many titles as extra,
+    discard, etc.). Decisions are applied together and the job is finalized once,
+    avoiding the FILE_EXISTS collisions that repeated single-title saves can hit.
+    """
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(status_code=400, detail="Job is not awaiting review")
+
+    from app.services.job_manager import job_manager
+
+    decisions = [d.model_dump() for d in review.decisions]
+    await job_manager.apply_review_batch(job.id, decisions)
+    return {"status": "reviewed", "job_id": job.id, "count": len(decisions)}
 
 
 class SetNameRequest(BaseModel):

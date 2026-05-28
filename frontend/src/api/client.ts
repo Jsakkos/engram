@@ -112,3 +112,26 @@ export async function reassignEpisode(
     },
   );
 }
+
+/** One title's review decision in a {@link submitReviewBatch} call. */
+export interface ReviewDecisionPayload {
+  title_id: number;
+  episode_code?: string | null; // e.g. "S01E01", "extra", "skip"
+  edition?: string | null;
+}
+
+/**
+ * Submit several review decisions for a job in one atomic request. The backend
+ * applies them all and finalizes once, which keeps bulk "mark as extra" from
+ * colliding on FILE_EXISTS the way repeated single-title saves can.
+ */
+export async function submitReviewBatch(
+  jobId: number,
+  decisions: ReviewDecisionPayload[],
+): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/review/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decisions }),
+  });
+}

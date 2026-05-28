@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Save, Package } from 'lucide-react';
@@ -13,7 +13,7 @@ import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, no
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
-import { runLLMMatch, reassignEpisode } from '../api/client';
+import { runLLMMatch, reassignEpisode, submitReviewBatch } from '../api/client';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
@@ -172,6 +172,11 @@ function ReviewQueue() {
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
     const [rematchNotice, setRematchNotice] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
+
+    // Bulk multiselect — ids checked for bulk actions (independent of the
+    // single inspected title). `lastBulkClickRef` anchors shift-click ranges.
+    const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<number>>(new Set());
+    const lastBulkClickRef = useRef<number | null>(null);
 
     const { roster, error: rosterError, episodeName } = useSeasonRoster(jobId);
 
@@ -387,23 +392,21 @@ function ReviewQueue() {
         }
     };
 
-    // POST every pending episode selection to the review endpoint.
-    // Throws on the first failure so callers can abort their follow-up step.
+    // Commit every pending episode selection in one atomic batch request.
+    // Throws on failure so callers can abort their follow-up step. A single
+    // finalize pass keeps many extras from colliding on FILE_EXISTS.
     const submitPendingSelections = async () => {
-        for (const [titleId, episodeCode] of Object.entries(selectedEpisodes)) {
-            const response = await fetch(`/api/jobs/${jobId}/review`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title_id: parseInt(titleId),
-                    episode_code: episodeCode,
-                }),
-            });
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Failed to save title ${titleId}: ${text}`);
-            }
-        }
+        if (!jobId) return;
+        const decisions = Object.entries(selectedEpisodes).map(([titleId, episodeCode]) => {
+            const id = parseInt(titleId);
+            return {
+                title_id: id,
+                episode_code: episodeCode,
+                ...(selectedEditions[id] ? { edition: selectedEditions[id] } : {}),
+            };
+        });
+        if (decisions.length === 0) return;
+        await submitReviewBatch(parseInt(jobId), decisions);
     };
 
     const handleSaveAll = async () => {
@@ -545,6 +548,84 @@ function ReviewQueue() {
         activeTitles.find((t) => t.id === selectedTitleId) ?? activeTitles[0] ?? null;
 
     const candidates = selectedTitle ? buildCandidates(selectedTitle, episodeName) : [];
+
+    // --- Bulk multiselect helpers ---
+    const bulkCount = bulkSelectedIds.size;
+    const allActiveSelected =
+        activeTitles.length > 0 && activeTitles.every((t) => bulkSelectedIds.has(t.id));
+
+    const clearBulkSelection = () => {
+        setBulkSelectedIds(new Set());
+        lastBulkClickRef.current = null;
+    };
+
+    // Toggle one row; shift-click selects the contiguous range from the last
+    // clicked row (matching common list-selection UIs).
+    const handleBulkToggle = (titleId: number, shiftKey: boolean) => {
+        const ids = activeTitles.map((t) => t.id);
+        if (shiftKey && lastBulkClickRef.current !== null) {
+            const a = ids.indexOf(lastBulkClickRef.current);
+            const b = ids.indexOf(titleId);
+            if (a !== -1 && b !== -1) {
+                const [lo, hi] = a < b ? [a, b] : [b, a];
+                setBulkSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    for (const id of ids.slice(lo, hi + 1)) next.add(id);
+                    return next;
+                });
+                lastBulkClickRef.current = titleId;
+                return;
+            }
+        }
+        setBulkSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(titleId)) next.delete(titleId);
+            else next.add(titleId);
+            return next;
+        });
+        lastBulkClickRef.current = titleId;
+    };
+
+    const toggleSelectAll = () => {
+        if (allActiveSelected) clearBulkSelection();
+        else setBulkSelectedIds(new Set(activeTitles.map((t) => t.id)));
+    };
+
+    // Stage one decision for every checked row, reusing the single-title path
+    // so coverage/collision indicators update live, then clear the selection.
+    const applyBulkAction = (action: TitleAction) => {
+        bulkSelectedIds.forEach((id) => handleTitleAction(id, action));
+        clearBulkSelection();
+    };
+
+    // Re-match only the checked titles, looping the existing per-title endpoint
+    // and refreshing once at the end.
+    const handleBulkRematch = async () => {
+        const ids = Array.from(bulkSelectedIds);
+        if (ids.length === 0) return;
+        setIsRematching(true);
+        setError(null);
+        try {
+            for (const id of ids) {
+                const response = await fetch(`/api/jobs/${jobId}/titles/${id}/rematch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source_preference: 'engram', deep: false }),
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(`Failed to re-match title ${id}: ${text}`);
+                }
+            }
+            clearBulkSelection();
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('Failed to bulk re-match:', err);
+            setError(err instanceof Error ? err.message : 'Failed to re-match selected');
+        } finally {
+            setIsRematching(false);
+        }
+    };
 
     // Suggest the disc's remaining gap for the selected title when it is
     // unassigned or its current pick collides with another title. Memoized so
@@ -823,9 +904,76 @@ function ReviewQueue() {
                 >
                     {/* Left: title list */}
                     <div>
-                        <div style={{ marginBottom: 12 }}>
-                            <SvLabel>Titles [{activeTitles.length}] — select one to inspect</SvLabel>
+                        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <input
+                                type="checkbox"
+                                checked={allActiveSelected}
+                                ref={(el) => {
+                                    if (el) el.indeterminate = bulkCount > 0 && !allActiveSelected;
+                                }}
+                                onChange={toggleSelectAll}
+                                disabled={activeTitles.length === 0}
+                                style={{ width: 15, height: 15, accentColor: sv.cyan, cursor: 'pointer' }}
+                                aria-label="Select all titles"
+                                title="Select all titles"
+                            />
+                            <SvLabel>Titles [{activeTitles.length}] — check rows for bulk actions</SvLabel>
                         </div>
+
+                        {/* Inline bulk-action bar — appears above the list while a
+                            selection is active. Staged actions update coverage live;
+                            commit with the header Save. */}
+                        {bulkCount > 0 && (
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: 8,
+                                    padding: '10px 12px',
+                                    marginBottom: 10,
+                                    border: `1px solid ${sv.lineHi}`,
+                                    background: 'rgba(94,234,212,0.06)',
+                                    boxShadow: `0 0 18px ${sv.cyan}1a`,
+                                }}
+                            >
+                                <span
+                                    style={{
+                                        fontFamily: sv.mono,
+                                        fontSize: 11,
+                                        letterSpacing: '0.1em',
+                                        textTransform: 'uppercase',
+                                        color: sv.cyanHi,
+                                    }}
+                                >
+                                    {bulkCount} selected
+                                </span>
+                                <span style={{ width: 1, height: 18, background: sv.line }} />
+                                <SvActionButton tone="cyan" size="sm" onClick={() => applyBulkAction('extra')} title="Mark all selected as extras">
+                                    Mark as Extra
+                                </SvActionButton>
+                                <SvActionButton tone="red" size="sm" onClick={() => applyBulkAction('discard')} title="Discard all selected">
+                                    Discard
+                                </SvActionButton>
+                                <SvActionButton tone="neutral" size="sm" onClick={() => applyBulkAction('skip')} title="Clear decisions — leave selected unresolved">
+                                    Skip
+                                </SvActionButton>
+                                <SvActionButton
+                                    tone="magenta"
+                                    size="sm"
+                                    onClick={handleBulkRematch}
+                                    disabled={isRematching}
+                                    title="Re-run matching for selected titles"
+                                >
+                                    {isRematching ? 'Re-matching…' : 'Re-Match'}
+                                </SvActionButton>
+                                <span style={{ width: 1, height: 18, background: sv.line }} />
+                                <SvActionButton tone="neutral" size="sm" onClick={clearBulkSelection} title="Clear selection">
+                                    Clear
+                                </SvActionButton>
+                            </div>
+                        )}
+
                         <TitleList
                             titles={activeTitles}
                             selectedTitleId={selectedTitle?.id ?? null}
@@ -833,6 +981,8 @@ function ReviewQueue() {
                             collisions={collisions}
                             episodeName={episodeName}
                             onSelect={setSelectedTitleId}
+                            selectedIds={bulkSelectedIds}
+                            onToggleSelect={handleBulkToggle}
                         />
 
                         {completedTitles.length > 0 && (
