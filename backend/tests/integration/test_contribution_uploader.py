@@ -137,6 +137,8 @@ async def test_uploader_posts_pending_contributions(setup_db, tmp_path, monkeypa
                 return_value=MagicMock(
                     fingerprint_server_url="https://fp.example.com",
                     contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    enable_fingerprint_contributions=True,
+                    fingerprint_disclosure_accepted=True,
                 )
             ),
         )
@@ -194,6 +196,8 @@ async def test_uploader_marks_failed_on_4xx(setup_db, monkeypatch):
                 return_value=MagicMock(
                     fingerprint_server_url="https://fp.example.com",
                     contribution_pseudonym="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                    enable_fingerprint_contributions=True,
+                    fingerprint_disclosure_accepted=True,
                 )
             ),
         )
@@ -455,6 +459,8 @@ async def test_uploader_posts_wire_format_v1(setup_db, tmp_path, monkeypatch):
                 return_value=MagicMock(
                     fingerprint_server_url="https://fp.example.com",
                     contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    enable_fingerprint_contributions=True,
+                    fingerprint_disclosure_accepted=True,
                 )
             ),
         )
@@ -530,6 +536,8 @@ async def test_uploader_increments_attempts_on_5xx(setup_db, monkeypatch):
                 return_value=MagicMock(
                     fingerprint_server_url="https://fp.example.com",
                     contribution_pseudonym="gggggggg-gggg-4ggg-8ggg-gggggggggggg",
+                    enable_fingerprint_contributions=True,
+                    fingerprint_disclosure_accepted=True,
                 )
             ),
         )
@@ -542,3 +550,164 @@ async def test_uploader_increments_attempts_on_5xx(setup_db, monkeypatch):
     # After _MAX_ATTEMPTS transient failures the row is permanently failed
     assert refreshed.upload_status == "failed"
     assert refreshed.upload_attempts == _MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_uploader_skips_when_opted_out(setup_db, monkeypatch):
+    """If enable_fingerprint_contributions is False, _process_batch is a no-op."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=b"\xde\xad",
+            tmdb_id=1399,
+            season=1,
+            episode=1,
+            match_confidence=0.9,
+            match_source="engram_asr",
+            pseudonym="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        contrib_id = row.id
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                enable_fingerprint_contributions=False,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock()
+        MockClient.return_value = mock_client
+
+        uploader = ContributionUploader()
+        await uploader._process_batch()
+
+        mock_client.post.assert_not_called()
+
+    async with async_session() as session:
+        refreshed = await session.get(FingerprintContribution, contrib_id)
+    assert refreshed.upload_status is None
+
+
+@pytest.mark.asyncio
+async def test_uploader_prompts_when_disclosure_not_accepted(setup_db, monkeypatch):
+    """When disclosure is not accepted, fires WS event and uploads nothing."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=b"\xde\xad",
+            tmdb_id=1399,
+            season=1,
+            episode=1,
+            match_confidence=0.9,
+            match_source="engram_asr",
+            pseudonym="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        contrib_id = row.id
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=False,
+            )
+        ),
+    )
+
+    with (
+        patch("httpx.AsyncClient") as MockClient,
+        patch(
+            "app.services.event_broadcaster.EventBroadcaster.broadcast_fingerprint_disclosure_required",
+            new_callable=AsyncMock,
+        ) as mock_broadcast,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock()
+        MockClient.return_value = mock_client
+
+        uploader = ContributionUploader()
+        await uploader._process_batch()
+
+        mock_client.post.assert_not_called()
+
+    mock_broadcast.assert_called_once_with(1)
+
+    async with async_session() as session:
+        refreshed = await session.get(FingerprintContribution, contrib_id)
+    assert refreshed.upload_status is None
+
+
+@pytest.mark.asyncio
+async def test_uploader_uploads_when_all_gates_pass(setup_db, tmp_path, monkeypatch):
+    """When all three privacy gates pass, _process_batch uploads and marks success."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=_make_valid_blob(),
+            tmdb_id=1399,
+            season=1,
+            episode=7,
+            match_confidence=0.95,
+            match_source="engram_asr",
+            pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        contrib_id = row.id
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        MockClient.return_value = mock_client
+
+        uploader = ContributionUploader()
+        await uploader._process_batch()
+
+        mock_client.post.assert_called_once()
+
+    async with async_session() as session:
+        refreshed = await session.get(FingerprintContribution, contrib_id)
+    assert refreshed.upload_status == "success"

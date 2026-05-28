@@ -60,10 +60,21 @@ class ContributionUploader:
                 logger.exception("ContributionUploader loop error — will retry next interval")
 
     async def _process_batch(self) -> None:
-        """Fetch up to _BATCH_SIZE pending rows and upload each one."""
+        """Fetch up to _BATCH_SIZE pending rows and upload each one.
+
+        Pre-flight privacy gate — nothing leaves the machine unless ALL hold:
+          1. a server URL is configured,
+          2. the user has not opted out (enable_fingerprint_contributions),
+          3. the user has accepted the disclosure (fingerprint_disclosure_accepted).
+        If data is queued but consent is missing, fire the JIT disclosure event
+        so the dashboard can prompt — and upload nothing.
+        """
         cfg = await get_config()
         if not cfg.fingerprint_server_url:
             logger.debug("fingerprint_server_url not configured; skipping upload batch")
+            return
+        if not cfg.enable_fingerprint_contributions:
+            logger.debug("fingerprint contributions disabled by user; skipping upload batch")
             return
 
         # Collect IDs in a short-lived session so the connection is released
@@ -77,12 +88,36 @@ class ContributionUploader:
             )
             row_ids = (await session.execute(stmt)).scalars().all()
 
+        if not row_ids:
+            return
+
+        if not cfg.fingerprint_disclosure_accepted:
+            # Data is queued but the user hasn't consented yet. Prompt; don't upload.
+            logger.info(
+                "%d fingerprint contribution(s) queued but disclosure not accepted; prompting user",
+                len(row_ids),
+            )
+            await self._notify_disclosure_required(len(row_ids))
+            return
+
         for row_id in row_ids:
             async with async_session() as session:
                 row = await session.get(FingerprintContribution, row_id)
                 if row is None:
                     continue  # deleted between the ID query and now
                 await self._upload_one(row, session, server_url=cfg.fingerprint_server_url)
+
+    async def _notify_disclosure_required(self, pending_count: int) -> None:
+        """Broadcast the JIT disclosure event (best-effort; never raises)."""
+        try:
+            from app.api.websocket import manager as ws_manager
+            from app.services.event_broadcaster import EventBroadcaster
+
+            await EventBroadcaster(ws_manager).broadcast_fingerprint_disclosure_required(
+                pending_count
+            )
+        except Exception:
+            logger.warning("Failed to broadcast fingerprint disclosure event", exc_info=True)
 
     async def _upload_one(
         self,
