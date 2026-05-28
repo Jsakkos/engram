@@ -67,6 +67,7 @@ class DetectToolsResponse(BaseModel):
 
     makemkv: ToolDetectionResult
     ffmpeg: ToolDetectionResult
+    fpcalc: ToolDetectionResult
     platform: str
 
 
@@ -312,14 +313,15 @@ def detect_ffmpeg() -> ToolDetectionResult:
 
 @router.get("/detect-tools", response_model=DetectToolsResponse)
 async def detect_tools() -> DetectToolsResponse:
-    """Auto-detect MakeMKV and FFmpeg installations."""
+    """Auto-detect MakeMKV, FFmpeg, and fpcalc installations."""
     # Detection shells out to the tools (blocking, multi-second on slow/busy
     # drives), so run it off the event loop to avoid stalling other requests.
-    makemkv, ffmpeg = await asyncio.gather(
+    makemkv, ffmpeg, fpcalc = await asyncio.gather(
         asyncio.to_thread(detect_makemkv),
         asyncio.to_thread(detect_ffmpeg),
+        asyncio.to_thread(detect_fpcalc),
     )
-    return DetectToolsResponse(makemkv=makemkv, ffmpeg=ffmpeg, platform=sys.platform)
+    return DetectToolsResponse(makemkv=makemkv, ffmpeg=ffmpeg, fpcalc=fpcalc, platform=sys.platform)
 
 
 @router.post("/validate/makemkv", response_model=ValidationResponse)
@@ -379,6 +381,15 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
         elif error == "Command timeout (10s)":
             error = "FFmpeg command timeout (10s)"
         return ValidationResponse(valid=False, error=error)
+    return ValidationResponse(valid=True, version=result.version, path=result.path)
+
+
+@router.post("/validate/fpcalc", response_model=ValidationResponse)
+async def validate_fpcalc(request: ValidationRequest) -> ValidationResponse:
+    """Validate a user-supplied fpcalc binary path."""
+    result = await asyncio.to_thread(_validate_fpcalc_binary, request.path)
+    if not result.found:
+        return ValidationResponse(valid=False, error=result.error, path=result.path)
     return ValidationResponse(valid=True, version=result.version, path=result.path)
 
 
