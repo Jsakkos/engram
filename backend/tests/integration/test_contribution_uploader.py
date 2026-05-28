@@ -717,6 +717,92 @@ async def test_uploader_uploads_when_all_gates_pass(setup_db, tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_server_forget_calls_remote_rotates_and_resets(setup_db, client):
+    """POST /api/fingerprint/forget calls the remote server, wipes pending rows,
+    rotates pseudonym, and resets disclosure consent."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.api.routes import require_localhost
+    from app.database import async_session
+    from app.main import app
+    from app.services.config_service import update_config as update_db_config
+
+    old_pseudonym = "11111111-1111-4111-8111-111111111111"
+    await update_db_config(
+        contribution_pseudonym=old_pseudonym,
+        fingerprint_server_url="https://fp.example.com",
+        fingerprint_disclosure_accepted=True,
+    )
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=b"\x01",
+            tmdb_id=99,
+            season=1,
+            episode=1,
+            match_confidence=0.8,
+            match_source="engram_asr",
+            pseudonym=old_pseudonym,
+        )
+        session.add(row)
+        await session.commit()
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = MagicMock(return_value={"rows_deleted": 5, "canonical_unaffected": True})
+
+    app.dependency_overrides[require_localhost] = lambda: None
+    try:
+        with patch("httpx.AsyncClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            MockClient.return_value = mock_client
+
+            resp = await client.post("/api/fingerprint/forget")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["server_rows_deleted"] == 5
+        assert data["old_pseudonym"] == old_pseudonym
+        assert data["new_pseudonym"] != old_pseudonym
+        assert data["local_rows_deleted"] >= 1
+
+        # GET /api/config must reflect the new pseudonym and reset consent
+        config_resp = await client.get("/api/config")
+        assert config_resp.status_code == 200
+        config_data = config_resp.json()
+        assert config_data["fingerprint_disclosure_accepted"] is False
+        assert config_data["contribution_pseudonym"] == data["new_pseudonym"]
+    finally:
+        app.dependency_overrides.pop(require_localhost, None)
+
+
+@pytest.mark.asyncio
+async def test_server_forget_400_when_no_pseudonym(setup_db, client):
+    """POST /api/fingerprint/forget returns 400 when no pseudonym is configured."""
+    from sqlalchemy import text
+
+    from app.api.routes import require_localhost
+    from app.database import async_session
+    from app.main import app
+
+    # Explicitly null out the pseudonym via raw SQL to ensure it's empty
+    await init_db()
+    async with async_session() as session:
+        await session.execute(text("UPDATE app_config SET contribution_pseudonym = NULL"))
+        await session.commit()
+
+    app.dependency_overrides[require_localhost] = lambda: None
+    try:
+        resp = await client.post("/api/fingerprint/forget")
+        assert resp.status_code == 400
+    finally:
+        app.dependency_overrides.pop(require_localhost, None)
+
+
+@pytest.mark.asyncio
 async def test_contributions_endpoint_includes_audit_log(setup_db, client, tmp_path, monkeypatch):
     """?include_log=true tails the JSONL upload log into an audit_log key."""
     from app.api.routes import require_localhost

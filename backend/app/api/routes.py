@@ -299,6 +299,7 @@ class ConfigResponse(BaseModel):
     fingerprint_server_url: str | None = None
     fingerprint_disclosure_accepted: bool = False
     fingerprint_disclosure_accepted_at: datetime | None = None
+    contribution_pseudonym: str | None = None
 
 
 class ConfigUpdate(BaseModel):
@@ -1056,6 +1057,7 @@ async def get_config() -> ConfigResponse:
         fingerprint_server_url=config.fingerprint_server_url,
         fingerprint_disclosure_accepted=config.fingerprint_disclosure_accepted,
         fingerprint_disclosure_accepted_at=config.fingerprint_disclosure_accepted_at,
+        contribution_pseudonym=config.contribution_pseudonym,
     )
 
 
@@ -1419,6 +1421,67 @@ async def rotate_contribution_pseudonym(
 
     await session.commit()
     return {"pseudonym": new_pseudonym, "pending_retagged": len(pending)}
+
+
+@router.post("/fingerprint/forget", dependencies=[Depends(require_localhost)])
+async def forget_fingerprint_on_server(
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Server-side 'forget me': delete this install's raw contributions on the
+    fingerprint network, wipe the local un-uploaded queue, and rotate to a fresh
+    pseudonym + reset disclosure consent so future contributions are unlinkable
+    to the old identity.
+
+    Already-promoted canonical fingerprints cannot be recalled (the server
+    reports canonical_unaffected) — only this pseudonym's raw rows are deleted.
+    """
+    import httpx
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.fingerprint import FingerprintContribution
+    from app.services.config_service import get_config
+    from app.services.config_service import update_config as update_db_config
+    from app.services.contribution_pseudonym import generate_pseudonym
+
+    cfg = await get_config()
+    old_pseudonym = cfg.contribution_pseudonym or ""
+    if not old_pseudonym:
+        raise HTTPException(status_code=400, detail="No pseudonym to forget")
+
+    server_rows_deleted = 0
+    if cfg.fingerprint_server_url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post(
+                    f"{cfg.fingerprint_server_url.rstrip('/')}/v1/forget",
+                    json={"pseudonym": old_pseudonym},
+                )
+                r.raise_for_status()
+                server_rows_deleted = int(r.json().get("rows_deleted", 0))
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=503, detail=f"Could not reach fingerprint server: {e}"
+            ) from e
+
+    result = await session.execute(
+        sa_delete(FingerprintContribution).where(FingerprintContribution.uploaded_at.is_(None))
+    )
+    local_rows_deleted = result.rowcount or 0
+    await session.commit()
+
+    new_pseudonym = generate_pseudonym()
+    await update_db_config(
+        contribution_pseudonym=new_pseudonym,
+        fingerprint_disclosure_accepted=False,
+        fingerprint_disclosure_accepted_at=None,
+    )
+
+    return {
+        "old_pseudonym": old_pseudonym,
+        "new_pseudonym": new_pseudonym,
+        "local_rows_deleted": local_rows_deleted,
+        "server_rows_deleted": server_rows_deleted,
+    }
 
 
 # --- Simulation Endpoints (debug mode only) ---
