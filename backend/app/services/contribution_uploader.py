@@ -43,7 +43,7 @@ class ContributionUploader:
             try:
                 await self._task
             except asyncio.CancelledError:
-                pass
+                pass  # Expected — we just cancelled the task ourselves.
         logger.info("ContributionUploader stopped")
 
     async def _upload_loop(self) -> None:

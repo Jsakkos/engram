@@ -7,6 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+import app.services.contribution_uploader as uploader_mod
 from app.database import async_session, init_db
 from app.main import app
 from app.models.app_config import AppConfig
@@ -98,7 +99,6 @@ async def test_uploader_posts_pending_contributions(setup_db, tmp_path, monkeypa
     """Successful POST marks row upload_status='success' and writes audit log."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    import app.services.contribution_uploader as uploader_mod
     from app.database import async_session
 
     monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
@@ -127,8 +127,6 @@ async def test_uploader_posts_pending_contributions(setup_db, tmp_path, monkeypa
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(return_value=mock_resp)
         MockClient.return_value = mock_client
-
-        import app.services.contribution_uploader as uploader_mod
 
         monkeypatch.setattr(
             uploader_mod,
@@ -161,7 +159,6 @@ async def test_uploader_marks_failed_on_4xx(setup_db, monkeypatch):
     """A 4xx response permanently marks the row upload_status='failed'."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    import app.services.contribution_uploader as uploader_mod
     from app.database import async_session
 
     async with async_session() as session:
@@ -350,8 +347,6 @@ def test_append_audit_log_writes_correct_fields(tmp_path, monkeypatch):
     """_append_audit_log writes a JSON line with expected fields; pseudonym_prefix is 8 chars."""
     from datetime import UTC, datetime
 
-    import app.services.contribution_uploader as uploader_mod
-
     log_path = tmp_path / "contrib.jsonl"
     monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", log_path)
 
@@ -383,7 +378,6 @@ async def test_uploader_increments_attempts_on_5xx(setup_db, monkeypatch):
     """A 5xx response exhausts retries and marks upload_status='failed'."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    import app.services.contribution_uploader as uploader_mod
     from app.database import async_session
 
     async with async_session() as session:
