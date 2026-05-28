@@ -121,6 +121,12 @@ async def lifespan(app: FastAPI):
     await job_manager.start()
     logger.info("Job manager started")
 
+    # Start the fingerprint contribution uploader (Phase 2).
+    from app.services.contribution_uploader import ContributionUploader
+
+    app.state.contribution_uploader = ContributionUploader()
+    await app.state.contribution_uploader.start()
+
     # Download/refresh the precomputed subtitle-vector cache in the background.
     # Fire-and-forget: a slow or failed download must never block startup, and
     # subtitle scraping remains the fallback until the cache lands.
@@ -139,6 +145,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Engram Backend...")
+    uploader = getattr(app.state, "contribution_uploader", None)
+    if uploader is not None:
+        await uploader.stop()
     cache_task = getattr(app.state, "precomputed_cache_task", None)
     if cache_task and not cache_task.done():
         cache_task.cancel()

@@ -12,7 +12,8 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
 import { Plus } from "lucide-react";
 import { SvAtmosphere, SvPanel, SvLabel, SvTopBar, SvStatusBar, sv } from "../app/components/synapse";
-import { FEATURES } from "../config/constants";
+import { buildNavItems } from "../app/navigation";
+import { historyDetailPath } from "../config/routes";
 import { formatDateOnly } from "../utils/formatting";
 
 interface HistoryJob {
@@ -99,13 +100,9 @@ export default function LibraryPage() {
     return { total: completed.length, ...byType };
   }, [completed]);
 
-  const navItems = [
-    { label: "DASHBOARD", to: "/" },
-    { label: "REVIEW", to: "/review" },
-    { label: "LIBRARY", to: "/library" },
-    { label: "HISTORY", to: "/history" },
-    { label: "CONTRIBUTE", to: "/contribute", show: FEATURES.DISCDB },
-  ];
+  // Library has no live job feed, so it can't compute a review deep-link; the
+  // REVIEW tab falls back to the dashboard (never a bare /review).
+  const navItems = buildNavItems();
 
   return (
     <SvAtmosphere>
@@ -180,7 +177,7 @@ export default function LibraryPage() {
           data-testid="sv-library-grid"
         >
           {filtered.map((job, i) => (
-            <PosterCard key={job.id} job={job} index={i} onClick={() => navigate(`/history/${job.id}`)} />
+            <PosterCard key={job.id} job={job} index={i} onClick={() => navigate(historyDetailPath(job.id))} />
           ))}
           <AddCard />
         </div>

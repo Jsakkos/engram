@@ -46,6 +46,7 @@ export function SvPageHeader({
         borderBottom: `1px solid ${sv.lineMid}`,
         background: "rgba(10, 14, 24, 0.78)",
         backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
         boxShadow: `0 0 24px ${sv.cyan}1a`,
     };
 

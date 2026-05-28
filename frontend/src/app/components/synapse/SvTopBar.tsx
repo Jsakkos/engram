@@ -50,6 +50,7 @@ export function SvTopBar({
     borderBottom: `1px solid ${sv.line}`,
     background: "linear-gradient(180deg, rgba(18,24,39,0.7), transparent)",
     backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
     position: "sticky",
     top: 0,
     zIndex: 20,

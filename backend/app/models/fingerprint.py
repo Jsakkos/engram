@@ -42,6 +42,8 @@ class FingerprintContribution(SQLModel, table=True):
 
     pseudonym: str
 
-    # Set when Phase 2 uploader runs
+    # Phase 2 uploader state
     uploaded_at: datetime | None = None
     upload_attempts: int = Field(default=0)
+    upload_status: str | None = Field(default=None)  # None=pending, "success", "failed"
+    upload_error_msg: str | None = Field(default=None)  # last error text for UI

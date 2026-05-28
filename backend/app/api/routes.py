@@ -295,6 +295,11 @@ class ConfigResponse(BaseModel):
     # Chromaprint fingerprinting (Phase 1)
     fpcalc_path: str
     enable_fingerprint_contributions: bool
+    # Chromaprint Phase 2
+    fingerprint_server_url: str | None = None
+    fingerprint_disclosure_accepted: bool = False
+    fingerprint_disclosure_accepted_at: datetime | None = None
+    contribution_pseudonym: str | None = None
 
 
 class ConfigUpdate(BaseModel):
@@ -365,6 +370,9 @@ class ConfigUpdate(BaseModel):
     # Chromaprint fingerprinting (Phase 1)
     fpcalc_path: str | None = None
     enable_fingerprint_contributions: bool | None = None
+    # Chromaprint Phase 2
+    fingerprint_server_url: str | None = None
+    fingerprint_disclosure_accepted: bool | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1045,6 +1053,11 @@ async def get_config() -> ConfigResponse:
         # Chromaprint fingerprinting (Phase 1)
         fpcalc_path=config.fpcalc_path or "",
         enable_fingerprint_contributions=config.enable_fingerprint_contributions,
+        # Chromaprint Phase 2
+        fingerprint_server_url=config.fingerprint_server_url,
+        fingerprint_disclosure_accepted=config.fingerprint_disclosure_accepted,
+        fingerprint_disclosure_accepted_at=config.fingerprint_disclosure_accepted_at,
+        contribution_pseudonym=config.contribution_pseudonym,
     )
 
 
@@ -1092,11 +1105,25 @@ async def update_config(config: ConfigUpdate) -> dict:
     from app.services.config_service import update_config as update_db_config
 
     # Build kwargs from non-None fields
-    # Allow None through for import_watch_path so users can clear the field
-    _nullable_fields = {"import_watch_path"}
+    # Allow None through for fields that can be cleared to null
+    # NOTE: fingerprint_disclosure_accepted_at is intentionally absent — it is
+    # not a ConfigUpdate field, so it never arrives via model_dump(). It's
+    # managed server-side in the disclosure block below and cleared through
+    # config_service.update_config's own _nullable_fields.
+    _nullable_fields = {"import_watch_path", "fingerprint_server_url"}
     update_data = {
         k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
     }
+
+    # Validate fingerprint_server_url against SSRF before persisting
+    if update_data.get("fingerprint_server_url"):
+        from app.core.security import is_safe_remote_url
+
+        if not is_safe_remote_url(update_data["fingerprint_server_url"]):
+            raise HTTPException(
+                status_code=422,
+                detail="fingerprint_server_url must be an http/https URL pointing to a non-internal host",
+            )
 
     # Validate naming format strings before persisting
     from app.core.organizer import (
@@ -1123,6 +1150,14 @@ async def update_config(config: ConfigUpdate) -> dict:
                 status_code=400,
                 detail="extras_policy must be 'keep', 'skip', or 'ask'",
             )
+
+    # Keep the disclosure-acceptance timestamp consistent with the flag,
+    # server-side: stamp it on accept, clear it on explicit revoke.
+    if "fingerprint_disclosure_accepted" in update_data:
+        if update_data["fingerprint_disclosure_accepted"] is True:
+            update_data["fingerprint_disclosure_accepted_at"] = datetime.now(UTC)
+        else:
+            update_data["fingerprint_disclosure_accepted_at"] = None
 
     if update_data:
         await update_db_config(**update_data)
@@ -1236,11 +1271,17 @@ async def delete_job(
 async def list_fingerprint_contributions(
     session: AsyncSession = Depends(get_session),
     limit: int = Query(200, ge=1, le=1000),
+    include_log: bool = Query(False),
 ) -> dict:
     """Return locally-queued fingerprint contributions (Phase 1 audit log).
 
     Excludes the chromaprint blob body — only summarizes byte size — so the response
     stays manageable. Phase 2 adds filtering by upload status.
+
+    When ``include_log=true``, the response also carries an ``audit_log`` key: the
+    tail (last 200 entries) of the append-only JSONL upload log the uploader writes
+    on each successful contribution — what makes "exactly what left my machine"
+    auditable from the dashboard.
 
     Localhost-only: the response includes recent ripping activity (TMDB IDs,
     season/episode, timestamps), which is the user's viewing history. The
@@ -1267,6 +1308,8 @@ async def list_fingerprint_contributions(
             fc.match_source,
             fc.uploaded_at,
             fc.upload_attempts,
+            fc.upload_status,
+            fc.upload_error_msg,
             func.length(fc.chromaprint_blob).label("blob_size_bytes"),
         )
         .order_by(fc.queued_at.desc())
@@ -1285,11 +1328,181 @@ async def list_fingerprint_contributions(
             "match_source": r.match_source,
             "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
             "upload_attempts": r.upload_attempts,
+            "upload_status": r.upload_status,
+            "upload_error_msg": r.upload_error_msg,
             "blob_size_bytes": r.blob_size_bytes or 0,
         }
         for r in rows
     ]
-    return {"count": len(items), "items": items}
+    payload: dict = {"count": len(items), "items": items}
+
+    if include_log:
+        # Tail the append-only JSONL upload log written by ContributionUploader.
+        # Missing file or a malformed line must never 500 this read-only endpoint.
+        from app.services.contribution_uploader import CONTRIBUTION_LOG_PATH
+
+        audit: list[dict] = []
+        try:
+            if CONTRIBUTION_LOG_PATH.exists():
+                lines = CONTRIBUTION_LOG_PATH.read_text(encoding="utf-8").splitlines()
+                for line in lines[-200:]:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        audit.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            logger.warning("Failed to read contribution audit log", exc_info=True)
+        payload["audit_log"] = audit
+
+    return payload
+
+
+@router.delete("/fingerprint/contributions/{contrib_id}", dependencies=[Depends(require_localhost)])
+async def forget_fingerprint_contribution(
+    contrib_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Delete a locally-queued fingerprint contribution (forget).
+
+    Returns 400 if the contribution was already uploaded — the data already
+    exists on the server and cannot be recalled from here.
+    """
+    from app.models.fingerprint import FingerprintContribution
+
+    contrib = await session.get(FingerprintContribution, contrib_id)
+    if contrib is None:
+        raise HTTPException(status_code=404, detail="Contribution not found")
+    if contrib.upload_status == "success":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an already-uploaded contribution; the data is already on the server.",
+        )
+    if contrib.upload_status is None and contrib.upload_attempts > 0:
+        # upload_attempts > 0 means the background uploader has already tried
+        # this row at least once and may be holding it in an active HTTP call.
+        # Deleting now would cause a silent no-op UPDATE on a ghost row.
+        raise HTTPException(
+            status_code=409,
+            detail="Contribution may be in-flight (upload already attempted). Try again after the next poll cycle or wait for it to succeed or fail.",
+        )
+    await session.delete(contrib)
+    await session.commit()
+    return {"status": "deleted", "contrib_id": contrib_id}
+
+
+@router.post(
+    "/fingerprint/contributions/rotate-pseudonym", dependencies=[Depends(require_localhost)]
+)
+async def rotate_contribution_pseudonym(
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Generate a fresh pseudonym and re-tag all pending contributions.
+
+    Already-uploaded rows retain their old pseudonym (server already has them
+    under that identity). Pending rows get the new pseudonym so future uploads
+    are unlinkable to past ones.
+    """
+    from app.models.fingerprint import FingerprintContribution
+    from app.services.config_service import update_config as update_db_config
+    from app.services.contribution_pseudonym import generate_pseudonym
+
+    new_pseudonym = generate_pseudonym()
+
+    # update_db_config auto-creates the app_config row when absent, so the
+    # pseudonym is always persisted even on a fresh database.
+    await update_db_config(contribution_pseudonym=new_pseudonym)
+
+    pending = (
+        (
+            await session.execute(
+                select(FingerprintContribution).where(
+                    FingerprintContribution.upload_status.is_(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for row in pending:
+        row.pseudonym = new_pseudonym
+
+    await session.commit()
+    return {"pseudonym": new_pseudonym, "pending_retagged": len(pending)}
+
+
+@router.post("/fingerprint/forget", dependencies=[Depends(require_localhost)])
+async def forget_fingerprint_on_server(
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Server-side 'forget me': delete this install's raw contributions on the
+    fingerprint network, wipe the local un-uploaded queue, and rotate to a fresh
+    pseudonym + reset disclosure consent so future contributions are unlinkable
+    to the old identity.
+
+    Already-promoted canonical fingerprints cannot be recalled (the server
+    reports canonical_unaffected) — only this pseudonym's raw rows are deleted.
+    """
+    import httpx
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.fingerprint import FingerprintContribution
+    from app.services.config_service import get_config
+    from app.services.config_service import update_config as update_db_config
+    from app.services.contribution_pseudonym import generate_pseudonym
+
+    cfg = await get_config()
+    old_pseudonym = cfg.contribution_pseudonym or ""
+    if not old_pseudonym:
+        raise HTTPException(status_code=400, detail="No pseudonym to forget")
+
+    # NULL/blank stored URL resolves to the default network base origin, so a
+    # forget always reaches the same server the uploader contributes to.
+    from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
+
+    server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
+    server_rows_deleted = 0
+    if server_url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post(
+                    f"{server_url.rstrip('/')}/v1/forget",
+                    json={"pseudonym": old_pseudonym},
+                )
+                r.raise_for_status()
+                server_rows_deleted = int(r.json().get("rows_deleted", 0))
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=503, detail=f"Could not reach fingerprint server: {e}"
+            ) from e
+
+    # Rotate identity + revoke consent FIRST, then wipe the local queue. If the
+    # local delete failed after a config update, the worst case is leftover
+    # un-uploaded rows under the old pseudonym — harmless, since consent is now
+    # revoked so nothing uploads. The reverse order would risk the old pseudonym
+    # surviving with consent intact and re-contributing the identity we just
+    # asked the server to forget.
+    new_pseudonym = generate_pseudonym()
+    await update_db_config(
+        contribution_pseudonym=new_pseudonym,
+        fingerprint_disclosure_accepted=False,
+        fingerprint_disclosure_accepted_at=None,
+    )
+
+    result = await session.execute(
+        sa_delete(FingerprintContribution).where(FingerprintContribution.uploaded_at.is_(None))
+    )
+    local_rows_deleted = result.rowcount or 0
+    await session.commit()
+
+    return {
+        "old_pseudonym": old_pseudonym,
+        "new_pseudonym": new_pseudonym,
+        "local_rows_deleted": local_rows_deleted,
+        "server_rows_deleted": server_rows_deleted,
+    }
 
 
 # --- Simulation Endpoints (debug mode only) ---
@@ -1454,6 +1667,60 @@ async def simulate_insert_disc_from_staging(
 
     job_id = await job_manager.simulate_disc_insert_realistic(params)
     return {"status": "simulated", "job_id": job_id, "titles_count": len(titles)}
+
+
+# --- Debug test-support endpoints (require DEBUG + localhost) ---
+
+
+@router.post(
+    "/debug/uploader/drain",
+    dependencies=[Depends(require_localhost), Depends(require_debug)],
+)
+async def debug_drain_uploader(request: Request) -> dict:
+    """Force one uploader drain tick (DEBUG only).
+
+    The uploader normally ticks on a long poll interval; tests call this to
+    trigger a drain immediately. Returns {"ok": true}.
+    """
+    uploader = getattr(request.app.state, "contribution_uploader", None)
+    if uploader is None:
+        raise HTTPException(status_code=503, detail="uploader not running")
+    await uploader._process_batch()
+    return {"ok": True}
+
+
+@router.post(
+    "/debug/fingerprint/seed",
+    dependencies=[Depends(require_localhost), Depends(require_debug)],
+)
+async def debug_seed_fingerprint(session: AsyncSession = Depends(get_session)) -> dict:
+    """Seed one fake pending FingerprintContribution (DEBUG only).
+
+    Tags it with the current pseudonym so the upload/forget flow treats it as a
+    real local contribution. Lets E2E tests deterministically trigger the JIT
+    disclosure modal without depending on the rip+match+chromaprint pipeline.
+    """
+    from app.matcher.chromaprint_extractor import ChromaprintResult
+    from app.models.fingerprint import FingerprintContribution
+    from app.services.config_service import get_config
+
+    cfg = await get_config()
+    blob = ChromaprintResult(
+        hashes=[1, 2, 3, 4, 5], duration_seconds=42.0, fpcalc_version="debug-seed"
+    ).to_blob()
+    row = FingerprintContribution(
+        chromaprint_blob=blob,
+        tmdb_id=1399,
+        season=1,
+        episode=1,
+        match_confidence=0.95,
+        match_source="engram_asr",
+        pseudonym=cfg.contribution_pseudonym or "00000000-0000-4000-8000-000000000000",
+    )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return {"ok": True, "contribution_id": row.id}
 
 
 class StagingImportRequest(BaseModel):

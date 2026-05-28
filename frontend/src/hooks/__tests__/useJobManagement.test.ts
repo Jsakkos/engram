@@ -8,6 +8,7 @@ import type {
   TitlesDiscovered,
   SubtitleEvent,
   WebSocketMessage,
+  FingerprintDisclosureRequiredMessage,
 } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -385,5 +386,90 @@ describe("useJobManagement hook integration", () => {
 
     // Sanity: the listener was registered so WS messages would be handled.
     expect(typeof capturedListener).toBe("function");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fingerprint_disclosure_required WS event — surfaces disclosure state.
+// ---------------------------------------------------------------------------
+
+describe("fingerprint_disclosure_required WS handling", () => {
+  beforeEach(() => {
+    toastErrorMock.mockClear();
+    capturedOnOpen = undefined;
+    capturedListener = undefined;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("surfaces disclosure when the WS event fires", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.endsWith("/api/jobs")) return Promise.resolve(okJson([]));
+      if (urlStr.includes("/titles")) return Promise.resolve(okJson([]));
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useJobManagement(false));
+
+    // Wait for the initial fetch to complete and listener to be registered.
+    await waitFor(() => {
+      expect(typeof capturedListener).toBe("function");
+    });
+
+    expect(result.current.disclosure).toBeNull();
+
+    const msg: FingerprintDisclosureRequiredMessage = {
+      type: "fingerprint_disclosure_required",
+      pending_count: 2,
+      pseudonym: "p-123",
+      server_url: "https://fp.example.com/v1",
+    };
+
+    act(() => {
+      capturedListener!(msg as WebSocketMessage);
+    });
+
+    expect(result.current.disclosure?.pending_count).toBe(2);
+    expect(result.current.disclosure?.pseudonym).toBe("p-123");
+    expect(result.current.disclosure?.server_url).toBe("https://fp.example.com/v1");
+  });
+
+  it("clears disclosure when clearDisclosure is called", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.endsWith("/api/jobs")) return Promise.resolve(okJson([]));
+      if (urlStr.includes("/titles")) return Promise.resolve(okJson([]));
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await waitFor(() => {
+      expect(typeof capturedListener).toBe("function");
+    });
+
+    const msg: FingerprintDisclosureRequiredMessage = {
+      type: "fingerprint_disclosure_required",
+      pending_count: 3,
+      pseudonym: "p-456",
+      server_url: "https://fp.example.com/v1",
+    };
+
+    act(() => {
+      capturedListener!(msg as WebSocketMessage);
+    });
+
+    expect(result.current.disclosure).not.toBeNull();
+
+    act(() => {
+      result.current.clearDisclosure();
+    });
+
+    expect(result.current.disclosure).toBeNull();
   });
 });

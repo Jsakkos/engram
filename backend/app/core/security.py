@@ -94,6 +94,45 @@ def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> 
     return name in {allowed.lower() for allowed in allowed_basenames}
 
 
+_DISALLOWED_HOSTNAMES: frozenset[str] = frozenset(
+    {"localhost", "metadata.google.internal", "169.254.169.254", "::1"}
+)
+
+
+def is_safe_remote_url(url: str) -> bool:
+    """Return True if ``url`` is safe to use as a user-configured remote endpoint.
+
+    Guards SSRF: rejects non-http(s) schemes, missing or IP-literal hosts
+    (including all private/loopback/link-local ranges and cloud metadata IPs),
+    and a small list of well-known internal hostnames.
+    """
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+
+    if not host:
+        return False
+
+    if host in _DISALLOWED_HOSTNAMES:
+        return False
+
+    # Reject all IP-literal hosts — legitimate remote servers use DNS names.
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_loopback or addr.is_link_local or addr.is_private or addr.is_reserved:
+            return False
+        return False  # reject even public IPs — servers should have hostnames
+    except ValueError:
+        pass  # Not an IP literal; falls through.
+
+    return True
+
+
 def sanitize_log_value(value: object) -> str:
     """Strip line breaks and control characters from a value before logging.
 
