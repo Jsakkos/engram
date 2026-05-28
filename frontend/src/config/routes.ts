@@ -11,6 +11,7 @@
  * links pointing at undefined routes.
  */
 import { matchPath } from "react-router-dom";
+import { FEATURES } from "./constants";
 
 /** Route path patterns — mirror these exactly in the `<Routes>` table. */
 export const ROUTES = {
@@ -24,14 +25,29 @@ export const ROUTES = {
   REVIEW_DETAIL: "/review/:jobId",
 } as const;
 
-/** Every mounted route pattern. Drives `routeExists()` validation. */
-export const ROUTE_PATTERNS: readonly string[] = Object.values(ROUTES);
+/**
+ * Every *mounted* route pattern. Drives `routeExists()` validation. The
+ * `/contribute` route is mounted only when `FEATURES.DISCDB` is on, so it is
+ * included conditionally — mirroring the gate on its `<Route>` in App.tsx —
+ * to keep `routeExists()` honest about what actually resolves.
+ */
+export const ROUTE_PATTERNS: readonly string[] = [
+  ROUTES.HOME,
+  ROUTES.HISTORY,
+  ROUTES.HISTORY_DETAIL,
+  ROUTES.LIBRARY,
+  ROUTES.REVIEW,
+  ROUTES.REVIEW_DETAIL,
+  ...(FEATURES.DISCDB ? [ROUTES.CONTRIBUTE] : []),
+];
 
-/** Concrete path to a job's review page. */
-export const reviewPath = (jobId: number | string): string => `/review/${jobId}`;
+/** Concrete path to a job's review page — derived from the route pattern. */
+export const reviewPath = (jobId: number | string): string =>
+  ROUTES.REVIEW_DETAIL.replace(":jobId", String(jobId));
 
-/** Concrete path to a job's history detail page. */
-export const historyDetailPath = (jobId: number | string): string => `/history/${jobId}`;
+/** Concrete path to a job's history detail page — derived from the route pattern. */
+export const historyDetailPath = (jobId: number | string): string =>
+  ROUTES.HISTORY_DETAIL.replace(":jobId", String(jobId));
 
 /**
  * True when `pathname` resolves to a mounted route. Uses React Router's own

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { FEATURES } from "../../config/constants";
 
 // MainDashboard pulls its job feed from a WebSocket-backed hook and its disc
 // list from useDiscFilters. Mock both so the dashboard renders deterministically
@@ -61,14 +62,18 @@ afterEach(() => {
 describe("App routing — every page mounts (no blank/black screen)", () => {
   // Each route must render the SvAtmosphere wrapper. A route that renders null
   // (the /review black-screen bug) would leave the container empty and this
-  // would throw.
-  it.each([
+  // would throw. /contribute is gated behind FEATURES.DISCDB (off by default),
+  // so it's only covered when that flag is enabled.
+  const routeCases: Array<[string, string]> = [
     ["/", "dashboard"],
     ["/library", "library"],
     ["/history", "history"],
     ["/review/7", "review detail"],
     ["/review", "bare review → redirects to dashboard"],
-  ])("renders content at %s (%s)", async (path) => {
+  ];
+  if (FEATURES.DISCDB) routeCases.push(["/contribute", "contribute"]);
+
+  it.each(routeCases)("renders content at %s (%s)", async (path) => {
     renderAt(path);
     expect(await screen.findByTestId("sv-atmosphere")).toBeDefined();
   });
