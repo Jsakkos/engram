@@ -25,6 +25,13 @@ async def client():
         yield ac
 
 
+@pytest.fixture
+async def async_session_ctx():
+    """Yield an open async database session."""
+    async with async_session() as session:
+        yield session
+
+
 @pytest.mark.asyncio
 async def test_detect_tools_includes_fpcalc(client):
     """GET /api/detect-tools surfaces fpcalc alongside makemkv and ffmpeg."""
@@ -56,3 +63,36 @@ async def test_validate_fpcalc_rejects_disallowed_basename(client):
     assert response.status_code == 200
     data = response.json()
     assert data["valid"] is False
+
+
+@pytest.mark.asyncio
+async def test_pseudonym_generated_on_first_startup(async_session_ctx):
+    """The pseudonym bootstrap ensures app_config always has a valid UUIDv4 pseudonym.
+
+    Simulates the startup flow: get_config() guarantees the row exists, then the
+    bootstrap generates a pseudonym when the field is empty.
+    """
+    from sqlmodel import select
+
+    from app.models.app_config import AppConfig
+    from app.services.config_service import get_config
+    from app.services.contribution_pseudonym import generate_pseudonym, validate_pseudonym
+
+    # Ensure the app_config row exists (mirrors get_config() call in lifespan).
+    await get_config()
+
+    # Run the bootstrap — same logic as the lifespan block.
+    result = await async_session_ctx.execute(select(AppConfig))
+    cfg = result.scalar_one_or_none()
+    assert cfg is not None, "app_config row should exist after get_config()"
+
+    if not validate_pseudonym(cfg.contribution_pseudonym):
+        cfg.contribution_pseudonym = generate_pseudonym()
+        async_session_ctx.add(cfg)
+        await async_session_ctx.commit()
+
+    # Verify the pseudonym is now valid.
+    await async_session_ctx.refresh(cfg)
+    assert validate_pseudonym(cfg.contribution_pseudonym), (
+        f"contribution_pseudonym should be a UUIDv4, got {cfg.contribution_pseudonym!r}"
+    )

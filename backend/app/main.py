@@ -46,6 +46,23 @@ async def lifespan(app: FastAPI):
 
     config = await get_config()
 
+    # Ensure the contribution pseudonym exists (Phase 1: fingerprint contributions).
+    # Must run after get_config() which guarantees the app_config row exists.
+    from sqlmodel import select as _select
+
+    from app.database import async_session as _async_session
+    from app.models.app_config import AppConfig as _AppConfig
+    from app.services.contribution_pseudonym import generate_pseudonym, validate_pseudonym
+
+    async with _async_session() as _session:
+        _result = await _session.execute(_select(_AppConfig))
+        _cfg = _result.scalar_one_or_none()
+        if _cfg is not None and not validate_pseudonym(_cfg.contribution_pseudonym):
+            _cfg.contribution_pseudonym = generate_pseudonym()
+            _session.add(_cfg)
+            await _session.commit()
+            logger.info(f"Generated contribution pseudonym: {_cfg.contribution_pseudonym}")
+
     # Reconcile a stored MakeMKV key into MakeMKV's settings.conf on boot so
     # makemkvcon is registered even if the key was entered before this bridge
     # existed (idempotent — skips the write when already in sync).
