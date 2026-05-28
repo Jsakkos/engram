@@ -914,19 +914,24 @@ class FinalizationCoordinator:
                             title.state = TitleState.COMPLETED
                             title.organized_from = source_file.name
                             title.organized_to = str(org_result["main_file"])
+                            session.add(title)
+                            _org_from = title.organized_from
+                            _org_to = title.organized_to
+                            _out = title.output_filename
+                            _state = title.state.value
+                            await ws_manager.broadcast_title_update(
+                                job_id,
+                                title.id,
+                                _state,
+                                organized_from=_org_from,
+                                organized_to=_org_to,
+                                output_filename=_out,
+                            )
                             job.progress_percent = 100.0
                             job.error_message = None
                             job.final_path = str(org_result["main_file"])
                             await self._state_machine.transition_to_completed(job, session)
                             logger.info(f"Organized movie: {org_result['main_file']}")
-                            await ws_manager.broadcast_title_update(
-                                job_id,
-                                title.id,
-                                title.state.value,
-                                organized_from=title.organized_from,
-                                organized_to=title.organized_to,
-                                output_filename=title.output_filename,
-                            )
                         elif org_result.get("error_code") == "FILE_EXISTS":
                             title.state = TitleState.REVIEW
                             title.match_details = _merge_match_details(

@@ -224,7 +224,7 @@ class TestApplyReviewDecisionMovie:
     """Test the post-rip movie review path in apply_review."""
 
     async def test_organized_fields_set_on_movie_review_success(self, tmp_path, monkeypatch):
-        """title.organized_from and organized_to must be populated after a successful movie review."""
+        """title.organized_from/organized_to are persisted and broadcast after a movie review."""
         import app.core.organizer as org
 
         source = tmp_path / "INCEPTION_2010_t00.mkv"
@@ -246,12 +246,24 @@ class TestApplyReviewDecisionMovie:
         _, titles = await _load(job_id)
         title_id = titles[0].id
 
+        broadcast_spy = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_title_update", broadcast_spy)
+
         await _make_coord().apply_review(job_id, title_id)
 
         _, titles = await _load(job_id)
         t = titles[0]
         assert t.organized_from == source.name
         assert t.organized_to == str(dest)
+
+        broadcast_spy.assert_called_once_with(
+            job_id,
+            title_id,
+            TitleState.COMPLETED.value,
+            organized_from=source.name,
+            organized_to=str(dest),
+            output_filename=str(source),
+        )
 
 
 @pytest.mark.unit
