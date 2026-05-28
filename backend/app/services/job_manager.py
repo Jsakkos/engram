@@ -1613,6 +1613,8 @@ class JobManager:
                         job.final_path = str(organize_result["main_file"])
                         job.progress_percent = 100.0
 
+                        extras_mapping = organize_result.get("extras_mapping", {})
+
                         titles_result = await session.execute(
                             select(DiscTitle).where(DiscTitle.job_id == job_id)
                         )
@@ -1623,7 +1625,14 @@ class JobManager:
                             ):
                                 t.state = TitleState.COMPLETED
                                 t.organized_from = t.output_filename
-                                t.organized_to = str(organize_result.get("main_file", ""))
+                                output_basename = (
+                                    Path(t.output_filename).name if t.output_filename else None
+                                )
+                                if output_basename and output_basename in extras_mapping:
+                                    t.organized_to = str(extras_mapping[output_basename])
+                                    t.is_extra = True
+                                else:
+                                    t.organized_to = str(organize_result.get("main_file") or "")
                                 session.add(t)
                                 await ws_manager.broadcast_title_update(
                                     job_id,
