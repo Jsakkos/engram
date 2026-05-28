@@ -141,6 +141,63 @@ class TestTVExtrasOrganizationPaths:
         assert "Disc 3" in str(result["final_path"])
         assert "Season 01" in str(result["final_path"])
 
+
+@pytest.mark.pipeline
+class TestMovieExtrasMapping:
+    """Verify organize_movie returns correct source→destination mapping for extras."""
+
+    def test_extras_mapping_populated(self, tmp_path):
+        """Main + 2 extras: extras_mapping keys are source basenames, values are Extras/ paths."""
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        # Make main file larger so find_main_movie_file picks it
+        (staging / "t00.mkv").write_bytes(b"x" * 4096)
+        (staging / "t01.mkv").write_bytes(b"x" * 512)
+        (staging / "t02.mkv").write_bytes(b"x" * 512)
+
+        library = tmp_path / "movies"
+        result = organize_movie(staging, "Apocalypse Now", year=1979, library_path=library)
+
+        assert result["success"], result.get("error")
+        assert result["main_source"] == "t00.mkv"
+        assert set(result["extras_mapping"].keys()) == {"t01.mkv", "t02.mkv"}
+        for dest_path in result["extras_mapping"].values():
+            assert "Extras" in str(dest_path)
+            assert dest_path.suffix == ".mkv"
+
+    def test_no_extras_mapping_empty(self, tmp_path):
+        """Single-file disc: extras_mapping is empty, main_source is set."""
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        (staging / "t00.mkv").write_bytes(b"x" * 1024)
+
+        library = tmp_path / "movies"
+        result = organize_movie(staging, "Inception", year=2010, library_path=library)
+
+        assert result["success"]
+        assert result["main_source"] == "t00.mkv"
+        assert result["extras_mapping"] == {}
+
+    def test_extras_mapped_to_sequential_names(self, tmp_path):
+        """Extras destinations are named Extra 1.mkv, Extra 2.mkv in order."""
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        (staging / "t00.mkv").write_bytes(b"x" * 4096)
+        (staging / "t01.mkv").write_bytes(b"x" * 256)
+        (staging / "t02.mkv").write_bytes(b"x" * 256)
+
+        library = tmp_path / "movies"
+        result = organize_movie(staging, "The Godfather", year=1972, library_path=library)
+
+        assert result["success"]
+        dest_names = {dest.name for dest in result["extras_mapping"].values()}
+        assert dest_names == {"Extra 1.mkv", "Extra 2.mkv"}
+
+
+@pytest.mark.pipeline
+class TestTVExtrasOrganizationPaths2:
+    """Additional TV extras organization path tests."""
+
     def test_arrested_dev_extras_path(self, tmp_path):
         library = tmp_path / "tv"
         source = tmp_path / "staging" / "bonus.mkv"

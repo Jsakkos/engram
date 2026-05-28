@@ -218,7 +218,9 @@ def organize_movie(
         return {
             "success": False,
             "main_file": None,
+            "main_source": None,
             "extras": [],
+            "extras_mapping": {},
             "error": "Library path not configured. Please set Movies Library path in Settings.",
         }
 
@@ -231,7 +233,9 @@ def organize_movie(
         return {
             "success": False,
             "main_file": None,
+            "main_source": None,
             "extras": [],
+            "extras_mapping": {},
             "error": f"Cannot create library directory {library_path}: {e}",
         }
 
@@ -247,7 +251,9 @@ def organize_movie(
             return {
                 "success": False,
                 "main_file": None,
+                "main_source": None,
                 "extras": [],
+                "extras_mapping": {},
                 "error": "No MKV files found in staging directory",
             }
 
@@ -270,13 +276,14 @@ def organize_movie(
     # Check if destination exists and handle conflict
     dest_file, early = resolve_conflict(dest_file, conflict_resolution)
     if early:
-        return {**early, "main_file": None, "extras": []}
+        return {**early, "main_file": None, "main_source": None, "extras": [], "extras_mapping": {}}
 
     try:
         # Move main movie
         shutil.move(str(main_file), str(dest_file))
 
         moved_extras = []
+        extras_mapping: dict[str, Path] = {}
 
         # Move extras if requested
         if move_extras:
@@ -291,6 +298,7 @@ def organize_movie(
                     logger.info(f"Moving extra: {extra.name} -> {extra_dest}")
                     shutil.move(str(extra), str(extra_dest))
                     moved_extras.append(extra_dest)
+                    extras_mapping[extra.name] = extra_dest
 
         # Clean up empty staging directory
         try:
@@ -301,11 +309,25 @@ def organize_movie(
         except Exception as e:
             logger.warning(f"Could not clean staging dir: {e}")
 
-        return {"success": True, "main_file": dest_file, "extras": moved_extras, "error": None}
+        return {
+            "success": True,
+            "main_file": dest_file,
+            "main_source": main_file.name,
+            "extras": moved_extras,
+            "extras_mapping": extras_mapping,
+            "error": None,
+        }
 
     except Exception as e:
         logger.exception("Error organizing movie")
-        return {"success": False, "main_file": None, "extras": [], "error": str(e)}
+        return {
+            "success": False,
+            "main_file": None,
+            "main_source": None,
+            "extras": [],
+            "extras_mapping": {},
+            "error": str(e),
+        }
 
 
 def sanitize_filename(name: str) -> str:
