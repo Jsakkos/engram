@@ -1203,7 +1203,7 @@ async def delete_job(
 @router.get("/fingerprint/contributions")
 async def list_fingerprint_contributions(
     session: AsyncSession = Depends(get_session),
-    limit: int = 200,
+    limit: int = Query(200, ge=1, le=1000),
 ) -> dict:
     """Return locally-queued fingerprint contributions (Phase 1 audit log).
 
