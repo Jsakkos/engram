@@ -815,9 +815,13 @@ async def submit_review(
 
     from app.services.job_manager import job_manager
 
-    await job_manager.apply_review(
-        job.id, review.title_id, episode_code=review.episode_code, edition=review.edition
-    )
+    try:
+        await job_manager.apply_review(
+            job.id, review.title_id, episode_code=review.episode_code, edition=review.edition
+        )
+    except ValueError as e:
+        # e.g. an unknown title_id — a client error, not a server fault.
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return {"status": "reviewed", "job_id": job.id}
 
 
@@ -838,7 +842,11 @@ async def submit_review_batch(
     from app.services.job_manager import job_manager
 
     decisions = [d.model_dump() for d in review.decisions]
-    await job_manager.apply_review_batch(job.id, decisions)
+    try:
+        await job_manager.apply_review_batch(job.id, decisions)
+    except ValueError as e:
+        # e.g. an unknown title_id in one of the decisions — a client error.
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return {"status": "reviewed", "job_id": job.id, "count": len(decisions)}
 
 

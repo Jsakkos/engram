@@ -218,3 +218,22 @@ async def test_apply_review_batch_rejects_non_review_state():
         await job_manager.apply_review_batch(
             job.id, [{"title_id": titles[0].id, "episode_code": "extra"}]
         )
+
+
+@pytest.mark.asyncio
+async def test_batch_review_unknown_title_returns_422(client):
+    """A decision referencing a title that isn't on this job is a client error
+    (422), not a 500 — one bad title_id in the batch shouldn't crash the request."""
+    job, titles = await _make_tv_review_job(2)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/review/batch",
+        json={
+            "decisions": [
+                {"title_id": titles[0].id, "episode_code": "extra"},
+                {"title_id": 999999, "episode_code": "extra"},
+            ]
+        },
+    )
+
+    assert resp.status_code == 422
