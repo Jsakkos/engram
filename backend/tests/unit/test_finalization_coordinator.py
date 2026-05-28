@@ -287,6 +287,41 @@ class TestFinalizeDiscJob:
         assert len(set(organized)) == 2
         assert job.state == JobState.COMPLETED
 
+    async def test_extra_organize_failure_keeps_is_extra(self, tmp_path, monkeypatch):
+        """When organize_tv_extras fails (e.g. destination already exists), the
+        extra is sent to REVIEW but must keep is_extra=True so the episode
+        re-match loop skips it. _is_rematchable_review guards on is_extra; leaving
+        it False would feed the extra into audio re-match — wasted passes that
+        can't yield a valid episode code for an extra.
+        """
+        from app.models import AppConfig
+        from app.services.finalization_coordinator import _is_rematchable_review
+
+        tv_lib = tmp_path / "TV"
+        tv_lib.mkdir()
+        fake_config = AppConfig(library_tv_path=str(tv_lib))
+        monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: fake_config)
+
+        # Pre-create the exact destination so organize_tv_extras returns FILE_EXISTS.
+        dest_dir = tv_lib / "Some Show" / "Season 01" / "Extras"
+        dest_dir.mkdir(parents=True)
+        (dest_dir / "Some Show Disc 1 Extra t03.mkv").write_text("existing")
+
+        f0 = tmp_path / "show_t03.mkv"
+        f0.write_text("")
+        job_id = await _seed_job(
+            [(3, "extra", str(f0), TitleState.MATCHED)],
+            staging=str(tmp_path),
+        )
+
+        await _make_coord().finalize_disc_job(job_id)
+
+        job, titles = await _load(job_id)
+        assert titles[3].state == TitleState.REVIEW
+        assert titles[3].is_extra is True
+        assert _is_rematchable_review(titles[3]) is False
+        assert job.state == JobState.REVIEW_NEEDED
+
 
 @pytest.mark.unit
 class TestCheckJobCompletion:

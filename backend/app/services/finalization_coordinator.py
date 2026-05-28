@@ -730,7 +730,6 @@ class FinalizationCoordinator:
                         extra_index=extra_index,
                         title_index=t.title_index,
                     )
-                    extra_index += 1
                 elif _lib_path:
                     org_result = await asyncio.to_thread(
                         organize_tv_episode,
@@ -747,13 +746,21 @@ class FinalizationCoordinator:
                         t.matched_episode,
                     )
 
+                # Classification is independent of the file move: a failed extra
+                # still IS an extra and must keep is_extra=True so the episode
+                # re-match loop (_is_rematchable_review) skips it on the way to
+                # REVIEW. Set it before the success branch, not inside it.
+                t.is_extra = t.matched_episode == "extra"
+
                 if org_result["success"]:
                     t.state = TitleState.COMPLETED
                     t.organized_from = source_file.name
                     t.organized_to = (
                         str(org_result.get("final_path")) if org_result.get("final_path") else None
                     )
-                    t.is_extra = t.matched_episode == "extra"
+                    # Advance the extras slot only on a confirmed write.
+                    if t.matched_episode == "extra":
+                        extra_index += 1
                 else:
                     t.state = TitleState.REVIEW
                     logger.error(f"Organize failed for Title {t.id}: {org_result['error']}")
