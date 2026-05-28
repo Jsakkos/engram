@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import UTC
 from pathlib import Path
 
 from sqlmodel import select
@@ -679,6 +680,37 @@ class MatchingCoordinator:
                         f"episode={result.episode_code}, confidence={result.confidence:.2f}, "
                         f"elapsed={elapsed:.1f}s"
                     )
+
+                    # Phase 1: extract chromaprint fingerprint (best-effort; failure does not block match)
+                    try:
+                        from datetime import datetime
+
+                        from app.matcher.chromaprint_extractor import ChromaprintExtractor
+                        from app.services.config_service import get_config
+
+                        cfg = await get_config()
+                        fpcalc_path = cfg.fpcalc_path
+                        if not fpcalc_path:
+                            from app.api.validation import detect_fpcalc
+
+                            detected = detect_fpcalc()
+                            fpcalc_path = detected.path if detected.found else None
+
+                        if fpcalc_path:
+                            extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path)
+                            fp_result = await extractor.extract(str(file_path))
+                            title.chromaprint_blob = fp_result.to_blob()
+                            title.chromaprint_extracted_at = datetime.now(UTC)
+                        else:
+                            logger.debug(
+                                f"fpcalc not configured; skipping chromaprint extraction for title {title.id}"
+                            )
+                    except Exception as e:
+                        # Graceful degradation: matching already succeeded; log and continue
+                        logger.warning(
+                            f"Chromaprint extraction failed for title {title.id}: {e}",
+                            exc_info=True,
+                        )
 
                 if result.match_details:
                     try:
