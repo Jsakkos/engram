@@ -143,3 +143,10 @@ class AppConfig(SQLModel, table=True):
     # Auto-update preferences
     skipped_update_version: str | None = None  # e.g. "0.8.2" — user dismissed this version
     last_update_check: datetime | None = None  # informational timestamp
+
+    # Chromaprint / fingerprint contributions
+    fpcalc_path: str | None = Field(default=None)
+    contribution_pseudonym: str | None = Field(default=None)
+    enable_fingerprint_contributions: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )

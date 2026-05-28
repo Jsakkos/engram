@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import UTC
 from pathlib import Path
 
 from sqlmodel import select
@@ -29,6 +30,44 @@ logger = logging.getLogger(__name__)
 # and require more matched chunks before accepting (vs the default 2).
 STRICT_SCAN_POINTS = 25
 STRICT_MIN_VOTES = 4
+
+# Module-level cache for fpcalc detection results.
+# `detect_fpcalc()` is deterministic within a process (the binary doesn't appear
+# or disappear mid-run), but each invocation runs up to 6 subprocess probes with
+# 10s timeouts each. Without caching, a 22-title disc with semaphore=3 would
+# trigger up to 66 parallel probe storms. `None` means "no path detected".
+# Sentinel value `_UNSET` distinguishes "haven't tried yet" from "tried and got None".
+_UNSET: object = object()
+_fpcalc_path_cache: str | None | object = _UNSET
+
+
+async def _resolve_fpcalc_path(cfg_path: str | None) -> str | None:
+    """Return the fpcalc binary path, preferring explicit config over auto-detect.
+
+    Auto-detect results are cached at module level so a multi-title rip doesn't
+    re-run the (blocking, multi-subprocess) probe for every title.
+    """
+    if cfg_path:
+        return cfg_path
+    global _fpcalc_path_cache
+    if _fpcalc_path_cache is not _UNSET:
+        return _fpcalc_path_cache  # type: ignore[return-value]
+    from app.api.validation import detect_fpcalc
+
+    detected = await asyncio.to_thread(detect_fpcalc)
+    _fpcalc_path_cache = detected.path if detected.found else None
+    return _fpcalc_path_cache  # type: ignore[return-value]
+
+
+# Maps DiscTitle.match_source (the internal label, e.g. "engram", "discdb",
+# "ai_llm") onto FingerprintContribution.match_source, which is constrained to
+# the documented set 'engram_asr' | 'engram_discdb' | 'bootstrap' | 'user_review'.
+_MATCH_SOURCE_TO_CONTRIB: dict[str, str] = {
+    "engram": "engram_asr",
+    "discdb": "engram_discdb",
+    "ai_llm": "engram_asr",
+    "user": "user_review",
+}
 
 
 class MatchingCoordinator:
@@ -679,6 +718,93 @@ class MatchingCoordinator:
                         f"episode={result.episode_code}, confidence={result.confidence:.2f}, "
                         f"elapsed={elapsed:.1f}s"
                     )
+
+                    # Phase 1: extract chromaprint fingerprint (best-effort; failure does not block match)
+                    try:
+                        from datetime import datetime
+
+                        from app.matcher.chromaprint_extractor import ChromaprintExtractor
+                        from app.services.config_service import get_config
+
+                        cfg = await get_config()
+                        fpcalc_path = await _resolve_fpcalc_path(cfg.fpcalc_path)
+                        if fpcalc_path:
+                            extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path)
+                            fp_result = await extractor.extract(str(file_path))
+                            title.chromaprint_blob = fp_result.to_blob()
+                            title.chromaprint_extracted_at = datetime.now(UTC)
+                        else:
+                            logger.debug(
+                                f"fpcalc not configured; skipping chromaprint extraction for title {title.id}"
+                            )
+                    except Exception as e:
+                        # Graceful degradation: matching already succeeded; log and continue
+                        logger.warning(
+                            f"Chromaprint extraction failed for title {title.id}: {e}",
+                            exc_info=True,
+                        )
+
+                    # Phase 1: enqueue contribution if extraction produced a fingerprint
+                    if title.chromaprint_blob and title.matched_episode:
+                        try:
+                            import re as _re
+
+                            from app.services.config_service import get_config as _get_config
+                            from app.services.contribution_queue import ContributionQueue
+
+                            _cfg = await _get_config()
+                            if _cfg.contribution_pseudonym:
+                                # Parse "S01E07" → (season, episode)
+                                _m = _re.match(r"S(\d{1,2})E(\d{1,3})", title.matched_episode or "")
+                                season_num = int(_m.group(1)) if _m else None
+                                episode_num = int(_m.group(2)) if _m else None
+                                disc_hash = None
+                                if getattr(job, "content_hash", None):
+                                    try:
+                                        disc_hash = bytes.fromhex(job.content_hash)
+                                    except (TypeError, ValueError):
+                                        disc_hash = None
+                                tmdb_id_val = 0
+                                if getattr(job, "tmdb_id", None):
+                                    try:
+                                        tmdb_id_val = int(job.tmdb_id)
+                                    except (TypeError, ValueError):
+                                        tmdb_id_val = 0
+                                if tmdb_id_val == 0:
+                                    # Skip enqueue rather than poison Phase 2 with
+                                    # un-attributable contributions. The chromaprint
+                                    # is still stored on DiscTitle for diagnostic use.
+                                    logger.debug(
+                                        f"Skipping contribution for title {title.id}: "
+                                        "no usable tmdb_id on parent job"
+                                    )
+                                else:
+                                    # Map DiscTitle.match_source onto FingerprintContribution's
+                                    # documented value set (engram_asr / engram_discdb /
+                                    # bootstrap / user_review). The raw "engram" value used
+                                    # internally for ASR matches is not a documented
+                                    # contribution source.
+                                    _contrib_source = _MATCH_SOURCE_TO_CONTRIB.get(
+                                        title.match_source or "", "engram_asr"
+                                    )
+                                    await ContributionQueue().enqueue(
+                                        session=session,
+                                        title_id=title.id,
+                                        chromaprint_blob=title.chromaprint_blob,
+                                        tmdb_id=tmdb_id_val,
+                                        season=season_num,
+                                        episode=episode_num,
+                                        match_confidence=float(title.match_confidence or 0.0),
+                                        match_source=_contrib_source,
+                                        disc_content_hash=disc_hash,
+                                        pseudonym=_cfg.contribution_pseudonym,
+                                        contributions_enabled=_cfg.enable_fingerprint_contributions,
+                                    )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to enqueue contribution for title {title.id}: {e}",
+                                exc_info=True,
+                            )
 
                 if result.match_details:
                     try:

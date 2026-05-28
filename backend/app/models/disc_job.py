@@ -168,6 +168,11 @@ class DiscTitle(SQLModel, table=True):
 
     # Match source tracking
     match_source: str | None = Field(default=None)  # "discdb", "engram", "user", "ai_llm"
+
+    # Chromaprint fingerprint (Phase 1 — extraction + storage only; no identification yet)
+    chromaprint_blob: bytes | None = Field(default=None)
+    chromaprint_extracted_at: datetime | None = Field(default=None)
+
     discdb_match_details: str | None = Field(default=None)  # DiscDB match preserved separately
     discdb_flagged: bool = Field(default=False)  # User flagged DiscDB data as incorrect
     discdb_flag_reason: str | None = Field(default=None)  # Reason for flag

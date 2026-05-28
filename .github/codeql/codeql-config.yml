@@ -1,0 +1,13 @@
+name: Engram CodeQL config
+
+# Why exclude `backend/migrations/versions/**`:
+#
+# Alembic version files are framework-generated stubs whose module-level
+# globals (`revision`, `down_revision`, `branch_labels`, `depends_on`) are
+# consumed by Alembic's filesystem-based migration loader via name-based
+# introspection. A static analyzer can't see that usage and reports them as
+# unused. The files contain only DDL — no application logic — so excluding
+# them from analysis entirely is a strictly safer policy than enumerating
+# query filters and discovering the next false positive after the fact.
+paths-ignore:
+  - "backend/migrations/versions/**"

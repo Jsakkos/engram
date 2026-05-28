@@ -60,6 +60,29 @@ def require_debug() -> None:
         raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
+# Loopback addresses that count as "the user is querying their own machine".
+# Used by endpoints that surface privacy-sensitive data (e.g. ripping history)
+# so they remain reachable from the dashboard but not from LAN peers when
+# `allow_lan_access` binds 0.0.0.0. Tests should override the dependency via
+# `app.dependency_overrides[require_localhost] = lambda: None` rather than
+# widening this set with test-framework implementation details.
+_LOCALHOST_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def require_localhost(request: Request) -> None:
+    """FastAPI dependency: 403 unless the request came from the host machine.
+
+    Allowed: real loopback (`127.0.0.1`, `::1`) and the literal `localhost`.
+    Everything else — including LAN peers when `allow_lan_access=True` opens
+    the bind to all interfaces — is rejected.
+    """
+    client = request.client.host if request.client else None
+    if client not in _LOCALHOST_CLIENTS:
+        raise HTTPException(
+            status_code=403, detail="This endpoint is only reachable from the host machine"
+        )
+
+
 # Request/Response Models
 class JobResponse(BaseModel):
     """Response model for a disc job."""
@@ -269,6 +292,9 @@ class ConfigResponse(BaseModel):
     allow_lan_access: bool
     # Onboarding
     setup_complete: bool
+    # Chromaprint fingerprinting (Phase 1)
+    fpcalc_path: str
+    enable_fingerprint_contributions: bool
 
 
 class ConfigUpdate(BaseModel):
@@ -336,6 +362,9 @@ class ConfigUpdate(BaseModel):
     allow_lan_access: bool | None = None
     # Onboarding
     setup_complete: bool | None = None
+    # Chromaprint fingerprinting (Phase 1)
+    fpcalc_path: str | None = None
+    enable_fingerprint_contributions: bool | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1013,6 +1042,9 @@ async def get_config() -> ConfigResponse:
         allow_lan_access=config.allow_lan_access,
         # Onboarding
         setup_complete=config.setup_complete,
+        # Chromaprint fingerprinting (Phase 1)
+        fpcalc_path=config.fpcalc_path or "",
+        enable_fingerprint_contributions=config.enable_fingerprint_contributions,
     )
 
 
@@ -1198,6 +1230,66 @@ async def delete_job(
     await session.commit()
 
     return {"status": "cleared", "job_id": job.id}
+
+
+@router.get("/fingerprint/contributions", dependencies=[Depends(require_localhost)])
+async def list_fingerprint_contributions(
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(200, ge=1, le=1000),
+) -> dict:
+    """Return locally-queued fingerprint contributions (Phase 1 audit log).
+
+    Excludes the chromaprint blob body — only summarizes byte size — so the response
+    stays manageable. Phase 2 adds filtering by upload status.
+
+    Localhost-only: the response includes recent ripping activity (TMDB IDs,
+    season/episode, timestamps), which is the user's viewing history. The
+    `require_localhost` guard rejects LAN peers even when `allow_lan_access`
+    has opened the bind address.
+    """
+    from sqlalchemy import func
+
+    from app.models.fingerprint import FingerprintContribution
+
+    # Select metadata columns plus the blob *length* (not the blob itself) so we
+    # don't pull tens of megabytes of fingerprint data through SQLite just to
+    # report a size summary.
+    fc = FingerprintContribution
+    result = await session.execute(
+        select(
+            fc.id,
+            fc.queued_at,
+            fc.title_id,
+            fc.tmdb_id,
+            fc.season,
+            fc.episode,
+            fc.match_confidence,
+            fc.match_source,
+            fc.uploaded_at,
+            fc.upload_attempts,
+            func.length(fc.chromaprint_blob).label("blob_size_bytes"),
+        )
+        .order_by(fc.queued_at.desc())
+        .limit(limit)
+    )
+    rows = result.all()
+    items = [
+        {
+            "id": r.id,
+            "queued_at": r.queued_at.isoformat() if r.queued_at else None,
+            "title_id": r.title_id,
+            "tmdb_id": r.tmdb_id,
+            "season": r.season,
+            "episode": r.episode,
+            "match_confidence": r.match_confidence,
+            "match_source": r.match_source,
+            "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
+            "upload_attempts": r.upload_attempts,
+            "blob_size_bytes": r.blob_size_bytes or 0,
+        }
+        for r in rows
+    ]
+    return {"count": len(items), "items": items}
 
 
 # --- Simulation Endpoints (debug mode only) ---

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ _MAKEMKV_EXE_NAMES = (
     "com.makemkv.MakeMKV",
 )
 _FFMPEG_EXE_NAMES = ("ffmpeg", "ffmpeg.exe")
+_FPCALC_EXE_NAMES = ("fpcalc", "fpcalc.exe")
 
 
 class ValidationRequest(BaseModel):
@@ -66,6 +68,7 @@ class DetectToolsResponse(BaseModel):
 
     makemkv: ToolDetectionResult
     ffmpeg: ToolDetectionResult
+    fpcalc: ToolDetectionResult
     platform: str
 
 
@@ -205,6 +208,74 @@ def _validate_ffmpeg_binary(path_str: str) -> ToolDetectionResult:
         return ToolDetectionResult(found=False, error=f"Execution failed: {e}")
 
 
+def _validate_fpcalc_binary(path_str: str) -> ToolDetectionResult:
+    """Validate a chromaprint fpcalc binary and extract version info."""
+    try:
+        result = subprocess.run(
+            [path_str, "-version"],
+            capture_output=True,
+            timeout=10,
+            text=True,
+        )
+        if result.returncode != 0:
+            return ToolDetectionResult(
+                found=False,
+                path=path_str,
+                error=f"Non-zero exit code {result.returncode}",
+            )
+        version_line = (result.stdout or "").split("\n")[0] or "unknown"
+        return ToolDetectionResult(found=True, path=path_str, version=version_line)
+    except subprocess.TimeoutExpired:
+        return ToolDetectionResult(found=False, path=path_str, error="Timed out")
+    except Exception as e:
+        return ToolDetectionResult(found=False, path=path_str, error=str(e))
+
+
+FPCALC_COMMON_PATHS = [
+    # Windows
+    r"C:\Program Files\Chromaprint\fpcalc.exe",
+    r"C:\Program Files (x86)\Chromaprint\fpcalc.exe",
+    # macOS (homebrew)
+    "/opt/homebrew/bin/fpcalc",
+    "/usr/local/bin/fpcalc",
+    # Linux
+    "/usr/bin/fpcalc",
+]
+
+# Developers can point auto-detect at a local-tree spike binary (or any other
+# off-PATH install) by setting ENGRAM_FPCALC_PATH. Shipping the spike binary
+# directly in `FPCALC_COMMON_PATHS` would leak an internal repo layout to all
+# users' subprocess audit trails and add a useless probe in production.
+_DEV_FPCALC_ENV = "ENGRAM_FPCALC_PATH"
+
+
+def detect_fpcalc() -> ToolDetectionResult:
+    """Auto-detect a usable fpcalc binary.
+
+    Order: explicit `ENGRAM_FPCALC_PATH` env var, then PATH, then common
+    platform locations. Returns the first result that validates successfully.
+    """
+    candidates: list[str] = []
+    env_override = os.environ.get(_DEV_FPCALC_ENV)
+    if env_override:
+        candidates.append(env_override)
+    via_path = shutil.which("fpcalc")
+    if via_path:
+        candidates.append(via_path)
+    candidates.extend(FPCALC_COMMON_PATHS)
+
+    for candidate in candidates:
+        result = _validate_fpcalc_binary(candidate)
+        if result.found:
+            return result
+
+    return ToolDetectionResult(
+        found=False,
+        path=None,
+        error="fpcalc not found in PATH or common locations",
+    )
+
+
 def detect_makemkv() -> ToolDetectionResult:
     """Auto-detect MakeMKV by searching PATH then common install locations."""
     # 1. Check system PATH
@@ -250,14 +321,15 @@ def detect_ffmpeg() -> ToolDetectionResult:
 
 @router.get("/detect-tools", response_model=DetectToolsResponse)
 async def detect_tools() -> DetectToolsResponse:
-    """Auto-detect MakeMKV and FFmpeg installations."""
+    """Auto-detect MakeMKV, FFmpeg, and fpcalc installations."""
     # Detection shells out to the tools (blocking, multi-second on slow/busy
     # drives), so run it off the event loop to avoid stalling other requests.
-    makemkv, ffmpeg = await asyncio.gather(
+    makemkv, ffmpeg, fpcalc = await asyncio.gather(
         asyncio.to_thread(detect_makemkv),
         asyncio.to_thread(detect_ffmpeg),
+        asyncio.to_thread(detect_fpcalc),
     )
-    return DetectToolsResponse(makemkv=makemkv, ffmpeg=ffmpeg, platform=sys.platform)
+    return DetectToolsResponse(makemkv=makemkv, ffmpeg=ffmpeg, fpcalc=fpcalc, platform=sys.platform)
 
 
 @router.post("/validate/makemkv", response_model=ValidationResponse)
@@ -317,6 +389,22 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
         elif error == "Command timeout (10s)":
             error = "FFmpeg command timeout (10s)"
         return ValidationResponse(valid=False, error=error)
+    return ValidationResponse(valid=True, version=result.version, path=result.path)
+
+
+@router.post("/validate/fpcalc", response_model=ValidationResponse)
+async def validate_fpcalc(request: ValidationRequest) -> ValidationResponse:
+    """Validate a user-supplied fpcalc binary path."""
+    fpcalc_cmd = Path(request.path)
+    # Constrain to known fpcalc executables before filesystem/subprocess use.
+    if not executable_basename_allowed(str(fpcalc_cmd), _FPCALC_EXE_NAMES):
+        return ValidationResponse(valid=False, error="Path does not point to an fpcalc executable")
+    if not fpcalc_cmd.exists():
+        return ValidationResponse(valid=False, error="File not found at specified path")
+
+    result = await asyncio.to_thread(_validate_fpcalc_binary, request.path)
+    if not result.found:
+        return ValidationResponse(valid=False, error=result.error, path=result.path)
     return ValidationResponse(valid=True, version=result.version, path=result.path)
 
 
