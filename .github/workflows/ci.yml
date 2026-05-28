@@ -416,12 +416,12 @@ jobs:
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ steps.playwright-version.outputs.version }}-chromium
+          key: playwright-${{ steps.playwright-version.outputs.version }}-chromium-firefox-webkit
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium
+        run: npx playwright install chromium firefox webkit
       - name: Install Playwright system deps
-        run: npx playwright install-deps chromium
+        run: npx playwright install-deps chromium firefox webkit
       - name: Run E2E tests
         run: npx playwright test
         env:
