@@ -18,6 +18,7 @@ from sqlmodel import select
 
 from app import __version__
 from app.database import async_session
+from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 from app.models.fingerprint import FingerprintContribution
 from app.services.config_service import get_config
 from app.services.zstd_varint_codec import encode_zstd_varint, fingerprint_sha256
@@ -62,20 +63,20 @@ class ContributionUploader:
     async def _process_batch(self) -> None:
         """Fetch up to _BATCH_SIZE pending rows and upload each one.
 
-        Pre-flight privacy gate — nothing leaves the machine unless ALL hold:
-          1. a server URL is configured,
-          2. the user has not opted out (enable_fingerprint_contributions),
-          3. the user has accepted the disclosure (fingerprint_disclosure_accepted).
-        If data is queued but consent is missing, fire the JIT disclosure event
-        so the dashboard can prompt — and upload nothing.
+        Pre-flight privacy gate — nothing leaves the machine unless BOTH hold:
+          1. the user has not opted out (enable_fingerprint_contributions),
+          2. the user has accepted the disclosure (fingerprint_disclosure_accepted).
+        The server URL falls back to DEFAULT_FINGERPRINT_SERVER_URL when unset, so
+        existing installs (NULL column) still engage. If data is queued but
+        consent is missing, fire the JIT disclosure event — and upload nothing.
         """
         cfg = await get_config()
-        if not cfg.fingerprint_server_url:
-            logger.debug("fingerprint_server_url not configured; skipping upload batch")
-            return
         if not cfg.enable_fingerprint_contributions:
             logger.debug("fingerprint contributions disabled by user; skipping upload batch")
             return
+
+        # NULL/blank stored URL means "use the default network base origin".
+        server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
 
         # Collect IDs in a short-lived session so the connection is released
         # before any per-row exponential backoff sleep.
@@ -98,7 +99,7 @@ class ContributionUploader:
                 len(row_ids),
             )
             await self._notify_disclosure_required(
-                len(row_ids), cfg.contribution_pseudonym, cfg.fingerprint_server_url
+                len(row_ids), cfg.contribution_pseudonym, server_url
             )
             return
 
@@ -107,7 +108,7 @@ class ContributionUploader:
                 row = await session.get(FingerprintContribution, row_id)
                 if row is None:
                     continue  # deleted between the ID query and now
-                await self._upload_one(row, session, server_url=cfg.fingerprint_server_url)
+                await self._upload_one(row, session, server_url=server_url)
 
     async def _notify_disclosure_required(
         self, pending_count: int, pseudonym: str | None, server_url: str | None

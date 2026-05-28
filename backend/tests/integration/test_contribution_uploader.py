@@ -74,15 +74,17 @@ def test_app_config_has_fingerprint_server_url():
 
 
 @pytest.mark.asyncio
-async def test_uploader_skips_when_no_server_url(setup_db, monkeypatch):
-    """If fingerprint_server_url is explicitly unset, _process_batch is a no-op."""
+async def test_uploader_falls_back_to_default_url_when_unset(setup_db, monkeypatch):
+    """A NULL stored URL resolves to DEFAULT_FINGERPRINT_SERVER_URL (existing
+    installs whose column predates this feature still upload)."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.database import async_session
+    from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 
     async with async_session() as session:
         row = FingerprintContribution(
-            chromaprint_blob=b"\xde\xad",
+            chromaprint_blob=_make_valid_blob(),
             tmdb_id=1399,
             season=1,
             episode=1,
@@ -93,25 +95,33 @@ async def test_uploader_skips_when_no_server_url(setup_db, monkeypatch):
         session.add(row)
         await session.commit()
 
-    # Force the no-URL path regardless of the model default.
+    # Stored URL is None — the uploader must fall back to the default base.
     monkeypatch.setattr(
         uploader_mod,
         "get_config",
         AsyncMock(
             return_value=MagicMock(
                 fingerprint_server_url=None,
+                contribution_pseudonym="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                 enable_fingerprint_contributions=True,
                 fingerprint_disclosure_accepted=True,
             )
         ),
     )
 
-    uploader = ContributionUploader()
-    post_mock = AsyncMock()
-    with patch("httpx.AsyncClient.post", post_mock):
-        await uploader._process_batch()
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        MockClient.return_value = mock_client
+        await ContributionUploader()._process_batch()
 
-    post_mock.assert_not_called()
+    mock_client.post.assert_called_once()
+    posted_url = mock_client.post.call_args[0][0]
+    assert posted_url == f"{DEFAULT_FINGERPRINT_SERVER_URL}/v1/contribute"
 
 
 @pytest.mark.asyncio

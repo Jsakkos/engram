@@ -594,19 +594,30 @@ function MainDashboard() {
             pseudonym={disclosure.pseudonym}
             serverUrl={disclosure.server_url}
             onAccept={async () => {
-              await fetch('/api/config', {
+              // Only dismiss once the choice is actually persisted — fetch does
+              // not throw on non-2xx, so a swallowed failure here would silently
+              // start (or fail to authorize) uploads.
+              const resp = await fetch('/api/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fingerprint_disclosure_accepted: true }),
               });
+              if (!resp.ok) {
+                toast.error('Could not save your choice — please try again.');
+                return;
+              }
               clearDisclosure();
             }}
             onDecline={async () => {
-              await fetch('/api/config', {
+              const resp = await fetch('/api/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enable_fingerprint_contributions: false }),
               });
+              if (!resp.ok) {
+                toast.error('Could not save your choice — please try again.');
+                return;
+              }
               clearDisclosure();
             }}
           />

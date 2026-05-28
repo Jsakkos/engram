@@ -1106,7 +1106,11 @@ async def update_config(config: ConfigUpdate) -> dict:
 
     # Build kwargs from non-None fields
     # Allow None through for fields that can be cleared to null
-    _nullable_fields = {"import_watch_path", "fingerprint_server_url"}
+    _nullable_fields = {
+        "import_watch_path",
+        "fingerprint_server_url",
+        "fingerprint_disclosure_accepted_at",
+    }
     update_data = {
         k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
     }
@@ -1147,11 +1151,15 @@ async def update_config(config: ConfigUpdate) -> dict:
                 detail="extras_policy must be 'keep', 'skip', or 'ask'",
             )
 
-    # Stamp the disclosure-acceptance time server-side when the user accepts.
-    if update_data.get("fingerprint_disclosure_accepted") is True:
-        from datetime import UTC, datetime
+    # Keep the disclosure-acceptance timestamp consistent with the flag,
+    # server-side: stamp it on accept, clear it on explicit revoke.
+    if "fingerprint_disclosure_accepted" in update_data:
+        if update_data["fingerprint_disclosure_accepted"] is True:
+            from datetime import UTC, datetime
 
-        update_data["fingerprint_disclosure_accepted_at"] = datetime.now(UTC)
+            update_data["fingerprint_disclosure_accepted_at"] = datetime.now(UTC)
+        else:
+            update_data["fingerprint_disclosure_accepted_at"] = None
 
     if update_data:
         await update_db_config(**update_data)
@@ -1302,6 +1310,8 @@ async def list_fingerprint_contributions(
             fc.match_source,
             fc.uploaded_at,
             fc.upload_attempts,
+            fc.upload_status,
+            fc.upload_error_msg,
             func.length(fc.chromaprint_blob).label("blob_size_bytes"),
         )
         .order_by(fc.queued_at.desc())
@@ -1320,6 +1330,8 @@ async def list_fingerprint_contributions(
             "match_source": r.match_source,
             "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
             "upload_attempts": r.upload_attempts,
+            "upload_status": r.upload_status,
+            "upload_error_msg": r.upload_error_msg,
             "blob_size_bytes": r.blob_size_bytes or 0,
         }
         for r in rows
@@ -1448,12 +1460,17 @@ async def forget_fingerprint_on_server(
     if not old_pseudonym:
         raise HTTPException(status_code=400, detail="No pseudonym to forget")
 
+    # NULL/blank stored URL resolves to the default network base origin, so a
+    # forget always reaches the same server the uploader contributes to.
+    from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
+
+    server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
     server_rows_deleted = 0
-    if cfg.fingerprint_server_url:
+    if server_url:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.post(
-                    f"{cfg.fingerprint_server_url.rstrip('/')}/v1/forget",
+                    f"{server_url.rstrip('/')}/v1/forget",
                     json={"pseudonym": old_pseudonym},
                 )
                 r.raise_for_status()
