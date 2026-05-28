@@ -29,10 +29,25 @@ export default defineConfig({
         // query + Framer useReducedMotion + SvRipAnimation canvas hook).
         reducedMotion: 'reduce',
     },
+    // Firefox and WebKit run the functional suite to catch cross-browser CSS
+    // bugs (e.g. the Safari mix-blend-mode / backdrop-filter issues that black
+    // out the review page in WebKit but render fine in Chromium). They skip the
+    // pixel-diff visual-regression specs, whose baselines are chromium-on-Linux
+    // only, and the screenshot-workflow capture utility (artifacts, not asserts).
     projects: [
         {
             name: 'chromium',
             use: { ...devices['Desktop Chrome'] },
+        },
+        {
+            name: 'firefox',
+            use: { ...devices['Desktop Firefox'] },
+            testIgnore: [/visual-regression\.spec\.ts/, /screenshot-workflow\.spec\.ts/],
+        },
+        {
+            name: 'webkit',
+            use: { ...devices['Desktop Safari'] },
+            testIgnore: [/visual-regression\.spec\.ts/, /screenshot-workflow\.spec\.ts/],
         },
     ],
     webServer: [

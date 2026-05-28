@@ -45,20 +45,26 @@ test.describe('Review Flow - Engram UI', () => {
         await expect(page.locator(SELECTORS.discSubtitle).first()).toBeVisible();
     });
 
-    test.skip('navigate to review page (requires review state)', async ({ page }) => {
-        // Note: This test requires the backend to actually put a job into review_needed state,
-        // which may not happen with simulation. Marked as skip for now.
-
+    test('review page renders visibly (cross-browser)', async ({ page }) => {
+        // Loading /review/<id> does NOT require a review_needed state — the
+        // ReviewQueue renders for any job. This runs on every configured
+        // browser (Chromium, Firefox, WebKit) so a route that renders nothing
+        // (the routing black-screen bug) or content composited to black by a
+        // WebKit-only CSS issue (mix-blend-mode / backdrop-filter) is caught.
         const { job_id } = await simulateInsertDisc({
             ...AMBIGUOUS_DISC,
             simulate_ripping: false,
         });
 
-        // Manual navigation test - if review button exists
         await page.goto(`/review/${job_id}`);
 
-        // Should load review page (even if no matches yet)
-        await expect(page.locator('h1, h2')).toContainText(/review/i, { timeout: 5000 });
+        // The atmosphere wrapper must be present AND visible — a null route
+        // would leave the page blank and fail here.
+        await expect(page.locator(SELECTORS.appContainer)).toBeVisible({ timeout: 10000 });
+
+        // Real page chrome must paint: the sticky page header (rendered by both
+        // the TV and movie review branches).
+        await expect(page.locator('[data-testid="sv-page-header"]')).toBeVisible({ timeout: 10000 });
     });
 
     test('review page shows candidates when disc needs review', async ({ page }) => {
