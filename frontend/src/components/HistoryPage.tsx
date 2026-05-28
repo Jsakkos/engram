@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { IcoMovie, IcoTv, IcoError, IcoDisc } from "../app/components/icons";
 import { FEATURES } from "../config/constants";
+import { ROUTES, historyDetailPath } from "../config/routes";
 import { SvActionButton, SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
 import BugReportModal from "./BugReportModal";
 import {
@@ -1031,16 +1032,16 @@ export default function HistoryPage() {
   const handleRowClick = (jobId: number) => {
     if (jobId === selectedJobId) {
       setSelectedJobId(null);
-      navigate("/history", { replace: true });
+      navigate(ROUTES.HISTORY, { replace: true });
     } else {
       setSelectedJobId(jobId);
-      navigate(`/history/${jobId}`, { replace: true });
+      navigate(historyDetailPath(jobId), { replace: true });
     }
   };
 
   const handleCloseDetail = useCallback(() => {
     setSelectedJobId(null);
-    navigate("/history", { replace: true });
+    navigate(ROUTES.HISTORY, { replace: true });
   }, [navigate]);
 
   const openBugReport = useCallback((jobId?: number) => {

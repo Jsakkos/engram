@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Trash2, LayoutGrid, List, Info, X } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
@@ -12,10 +12,13 @@ import NamePromptModal from "../components/NamePromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
 import BugReportModal from "../components/BugReportModal";
 import UpdateModal from "../components/UpdateModal";
+import { FingerprintDisclosureModal } from "../components/FingerprintDisclosureModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
 import LibraryPage from "../components/LibraryPage";
 import { FEATURES } from "../config/constants";
+import { ROUTES, reviewPath } from "../config/routes";
+import { buildNavItems } from "./navigation";
 import type { Job } from "../types";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -115,7 +118,7 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
   const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -167,15 +170,12 @@ function MainDashboard() {
     setNamePromptJob(needsName ?? null);
   }, [jobs]);
 
-  const reviewCount = jobs.filter((j) => j.state === 'review_needed').length;
-
-  const navItems = [
-    { label: "DASHBOARD", to: "/" },
-    { label: "REVIEW", to: "/review", badge: reviewCount },
-    { label: "LIBRARY", to: "/library" },
-    { label: "HISTORY", to: "/history" },
-    { label: "CONTRIBUTE", to: "/contribute", badge: contributionPending, show: FEATURES.DISCDB },
-  ];
+  const reviewJobs = jobs.filter((j) => j.state === 'review_needed');
+  const navItems = buildNavItems({
+    firstReviewJobId: reviewJobs[0]?.id,
+    reviewCount: reviewJobs.length,
+    contributionPending,
+  });
 
   return (
     <SvAtmosphere ripActive={discsData.some((d) => d.state === "ripping")}>
@@ -523,7 +523,7 @@ function MainDashboard() {
           /* Compact view — sv-token row layout */
           <CompactList
             discs={filteredDiscs}
-            onReview={(id) => navigate(`/review/${id}`)}
+            onReview={(id) => navigate(reviewPath(id))}
             onCancel={(id) => cancelJob(id)}
           />
         ) : (
@@ -536,7 +536,7 @@ function MainDashboard() {
                   disc={disc}
                   onCancel={disc.state !== 'completed' && disc.state !== 'error' ? () => cancelJob(disc.id) : undefined}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
-                  onReview={disc.needsReview ? () => navigate(`/review/${disc.id}`) : undefined}
+                  onReview={disc.needsReview ? () => navigate(reviewPath(disc.id)) : undefined}
                   onReIdentify={disc.needsReview && disc.title ? () => {
                     const job = jobs.find(j => String(j.id) === disc.id);
                     if (job) setReIdentifyTarget(job);
@@ -582,6 +582,44 @@ function MainDashboard() {
               setReIdentifyTarget(null);
             }}
             onCancel={() => setReIdentifyTarget(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Fingerprint Disclosure Modal — JIT consent before any contribution upload */}
+      <AnimatePresence>
+        {disclosure && (
+          <FingerprintDisclosureModal
+            pendingCount={disclosure.pending_count}
+            pseudonym={disclosure.pseudonym}
+            serverUrl={disclosure.server_url}
+            onAccept={async () => {
+              // Only dismiss once the choice is actually persisted — fetch does
+              // not throw on non-2xx, so a swallowed failure here would silently
+              // start (or fail to authorize) uploads.
+              const resp = await fetch('/api/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fingerprint_disclosure_accepted: true }),
+              });
+              if (!resp.ok) {
+                toast.error('Could not save your choice — please try again.');
+                return;
+              }
+              clearDisclosure();
+            }}
+            onDecline={async () => {
+              const resp = await fetch('/api/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enable_fingerprint_contributions: false }),
+              });
+              if (!resp.ok) {
+                toast.error('Could not save your choice — please try again.');
+                return;
+              }
+              clearDisclosure();
+            }}
           />
         )}
       </AnimatePresence>
@@ -910,12 +948,13 @@ function CompactRowButton({
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<MainDashboard />} />
-      <Route path="/history" element={<HistoryPage />} />
-      <Route path="/history/:jobId" element={<HistoryPage />} />
-      <Route path="/library" element={<LibraryPage />} />
-      {FEATURES.DISCDB && <Route path="/contribute" element={<ContributePage />} />}
-      <Route path="/review/:jobId" element={<ReviewQueue />} />
+      <Route path={ROUTES.HOME} element={<MainDashboard />} />
+      <Route path={ROUTES.HISTORY} element={<HistoryPage />} />
+      <Route path={ROUTES.HISTORY_DETAIL} element={<HistoryPage />} />
+      <Route path={ROUTES.LIBRARY} element={<LibraryPage />} />
+      {FEATURES.DISCDB && <Route path={ROUTES.CONTRIBUTE} element={<ContributePage />} />}
+      <Route path={ROUTES.REVIEW} element={<Navigate to={ROUTES.HOME} replace />} />
+      <Route path={ROUTES.REVIEW_DETAIL} element={<ReviewQueue />} />
     </Routes>
   );
 }

@@ -9,6 +9,15 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlmodel import Field, SQLModel
 
+# Base origin of the fingerprint network — WITHOUT a /v1 suffix. The uploader
+# appends /v1/contribute and the forget endpoint appends /v1/forget, so a stored
+# /v1 here would double to /v1/v1/... and 404. Used as the effective default at
+# point-of-use (see ContributionUploader / forget endpoint) so EXISTING installs
+# — whose app_config row predates this column and stores NULL — still engage the
+# network. The opt-out toggle (enable_fingerprint_contributions), not a blank
+# URL, is the single source of truth for "do I contribute".
+DEFAULT_FINGERPRINT_SERVER_URL = "https://engram-fp-prod.jonathansakkos.workers.dev"
+
 
 class AppConfig(SQLModel, table=True):
     """User-configurable application settings stored in database."""
@@ -150,4 +159,13 @@ class AppConfig(SQLModel, table=True):
     enable_fingerprint_contributions: bool = Field(
         default=True, sa_column_kwargs={"server_default": text("1")}
     )
-    fingerprint_server_url: str | None = Field(default=None)
+    # Stored override for the fingerprint network base origin. NULL/blank means
+    # "use DEFAULT_FINGERPRINT_SERVER_URL" — the runtime resolves it at point of
+    # use, so existing rows that predate this column (stored NULL) still work.
+    # To stop contributing, untick enable_fingerprint_contributions; clearing
+    # this field does NOT disable uploads.
+    fingerprint_server_url: str | None = Field(default=DEFAULT_FINGERPRINT_SERVER_URL)
+    fingerprint_disclosure_accepted: bool = Field(
+        default=False, sa_column_kwargs={"server_default": text("0")}
+    )
+    fingerprint_disclosure_accepted_at: datetime | None = Field(default=None)

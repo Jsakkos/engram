@@ -22,6 +22,7 @@ def mock_ws_manager():
     ws.broadcast_title_update = AsyncMock()
     ws.broadcast_titles_discovered = AsyncMock()
     ws.broadcast_subtitle_event = AsyncMock()
+    ws.broadcast = AsyncMock()
     return ws
 
 
@@ -358,3 +359,23 @@ class TestAbstractionLayer:
         # All title events should use title_id, not track_id or file_id
         # This is enforced by the method signatures
         pass  # Verified by type checking and static analysis
+
+
+@pytest.mark.asyncio
+class TestFingerprintDisclosureEvents:
+    """Test the JIT fingerprint-disclosure WebSocket event."""
+
+    async def test_broadcast_fingerprint_disclosure_required(self, broadcaster, mock_ws_manager):
+        """Fires a flat fingerprint_disclosure_required message with identity fields."""
+        await broadcaster.broadcast_fingerprint_disclosure_required(
+            pending_count=3,
+            pseudonym="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            server_url="https://fp.example.com/v1",
+        )
+
+        mock_ws_manager.broadcast.assert_called_once()
+        sent = mock_ws_manager.broadcast.call_args[0][0]
+        assert sent["type"] == "fingerprint_disclosure_required"
+        assert sent["pending_count"] == 3
+        assert sent["pseudonym"] == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        assert sent["server_url"] == "https://fp.example.com/v1"

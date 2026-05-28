@@ -32,6 +32,7 @@ export function useJobManagement(devMode: boolean = false) {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [titlesMap, setTitlesMap] = useState<Record<number, DiscTitle[]>>({});
     const [updateStatus, setUpdateStatus] = useState<import('../../types').UpdateStatus | null>(null);
+    const [disclosure, setDisclosure] = useState<import('../../types').FingerprintDisclosureRequiredMessage | null>(null);
 
     // Use WebSocket URL that works with Vite proxy
     // When running on localhost:5173, connects to ws://localhost:5173/ws (proxied to backend)
@@ -369,6 +370,12 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
                 }
 
+                case 'fingerprint_disclosure_required': {
+                    const msg = message as import('../../types').FingerprintDisclosureRequiredMessage;
+                    setDisclosure(msg);
+                    break;
+                }
+
                 default:
                     break;
             }
@@ -387,5 +394,7 @@ export function useJobManagement(devMode: boolean = false) {
         clearCompleted,
         setJobName,
         reIdentifyJob,
+        disclosure,
+        clearDisclosure: () => setDisclosure(null),
     };
 }
