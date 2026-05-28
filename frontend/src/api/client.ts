@@ -112,3 +112,44 @@ export async function reassignEpisode(
     },
   );
 }
+
+/**
+ * Re-run matching for a single title. Used for both the single-title "re-match"
+ * action and the bulk re-match over a multiselect, so both go through the shared
+ * {@link apiFetchVoid} wrapper instead of raw fetch.
+ */
+export async function rematchTitle(
+  jobId: number,
+  titleId: number,
+  sourcePreference: string = 'engram',
+  deep: boolean = false,
+): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/rematch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_preference: sourcePreference, deep }),
+  });
+}
+
+/** One title's review decision in a {@link submitReviewBatch} call. */
+export interface ReviewDecisionPayload {
+  title_id: number;
+  episode_code?: string | null; // e.g. "S01E01", "extra", "skip"
+  edition?: string | null;
+}
+
+/**
+ * Submit several review decisions for a job in one atomic request. The backend
+ * applies them all and finalizes once, which keeps bulk "mark as extra" from
+ * colliding on FILE_EXISTS the way repeated single-title saves can.
+ */
+export async function submitReviewBatch(
+  jobId: number,
+  decisions: ReviewDecisionPayload[],
+): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/review/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decisions }),
+  });
+}

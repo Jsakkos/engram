@@ -33,6 +33,8 @@ export function TitleList({
     collisions,
     episodeName,
     onSelect,
+    selectedIds,
+    onToggleSelect,
 }: {
     titles: DiscTitle[];
     selectedTitleId: number | null;
@@ -40,6 +42,10 @@ export function TitleList({
     collisions: Set<string>;
     episodeName: (code: string) => string;
     onSelect: (titleId: number) => void;
+    /** Ids checked for bulk actions (independent of which row is inspected). */
+    selectedIds: Set<number>;
+    /** Toggle a row's bulk-selection. `shiftKey` extends a contiguous range. */
+    onToggleSelect: (titleId: number, shiftKey: boolean) => void;
 }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -50,10 +56,43 @@ export function TitleList({
                 const isActive = title.id === selectedTitleId;
                 const needsReview = !selection;
                 const accent = inConflict ? sv.red : needsReview ? sv.yellow : sv.line;
+                const checked = selectedIds.has(title.id);
 
                 return (
-                    <button
+                    <div
                         key={title.id}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'stretch',
+                            gap: 8,
+                            background: checked ? 'rgba(94,234,212,0.05)' : undefined,
+                        }}
+                    >
+                        {/* Bulk-select checkbox — a sibling of the row button so
+                            checking never opens the inspector. */}
+                        <label
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                paddingLeft: 4,
+                                paddingRight: 2,
+                                cursor: 'pointer',
+                            }}
+                            title="Select for bulk actions"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {}}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggleSelect(title.id, e.shiftKey);
+                                }}
+                                style={{ width: 15, height: 15, accentColor: sv.cyan, cursor: 'pointer' }}
+                                aria-label={`Select title ${title.title_index} for bulk actions`}
+                            />
+                        </label>
+                    <button
                         type="button"
                         onClick={() => onSelect(title.id)}
                         aria-pressed={isActive}
@@ -62,7 +101,8 @@ export function TitleList({
                             display: 'flex',
                             alignItems: 'center',
                             gap: 12,
-                            width: '100%',
+                            flex: 1,
+                            minWidth: 0,
                             textAlign: 'left',
                             padding: '12px 14px',
                             background: isActive ? 'rgba(94,234,212,0.06)' : sv.bg1,
@@ -107,6 +147,7 @@ export function TitleList({
                             </span>
                         </div>
                     </button>
+                    </div>
                 );
             })}
         </div>

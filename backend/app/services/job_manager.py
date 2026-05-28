@@ -924,6 +924,10 @@ class JobManager:
         """Apply a user's review decision for a title."""
         await self._finalization.apply_review(job_id, title_id, episode_code, edition)
 
+    async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
+        """Apply several review decisions for a job in one atomic pass."""
+        await self._finalization.apply_review_batch(job_id, decisions)
+
     async def reassign_episode(
         self,
         job_id: int,

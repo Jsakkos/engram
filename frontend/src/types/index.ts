@@ -172,13 +172,21 @@ export interface UpdateStatus {
     is_frozen: boolean;
 }
 
+export interface FingerprintDisclosureRequiredMessage {
+    type: 'fingerprint_disclosure_required';
+    pending_count: number;
+    pseudonym: string;
+    server_url: string;
+}
+
 export type WebSocketMessage =
     | DriveEvent
     | JobUpdate
     | TitleUpdate
     | SubtitleEvent
     | TitlesDiscovered
-    | UpdateStatusMessage;
+    | UpdateStatusMessage
+    | FingerprintDisclosureRequiredMessage;
 
 export interface Config {
     makemkv_path: string;

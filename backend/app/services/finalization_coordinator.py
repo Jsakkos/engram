@@ -818,13 +818,7 @@ class FinalizationCoordinator:
         """Apply a user's review decision for a title."""
         from datetime import UTC, datetime
 
-        from app.core.organizer import (
-            movie_organizer,
-            organize_movie,
-            organize_tv_episode,
-            organize_tv_extras,
-            tv_organizer,
-        )
+        from app.core.organizer import movie_organizer, organize_movie
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -835,28 +829,14 @@ class FinalizationCoordinator:
             if not title or title.job_id != job_id:
                 raise ValueError("Title not found for this job")
 
-            if episode_code:
-                title.matched_episode = episode_code
-                if episode_code == "extra":
-                    title.is_extra = True
+            self._apply_decision_fields(title, episode_code, edition)
+            session.add(title)
+            await session.commit()
 
-            if edition:
-                title.edition = edition
-
-            title.match_confidence = 1.0  # User-confirmed
-
-            # Discard: mark title as failed for both movie and TV
-            if episode_code == "skip":
-                title.state = TitleState.FAILED
-                session.add(title)
-                await session.commit()
-                # For movies, we're done. For TV, fall through to check
-                # if all titles are now resolved and trigger organizing.
-                if job.content_type == ContentType.MOVIE:
-                    return
-            else:
-                session.add(title)
-                await session.commit()
+            # Discard on a movie is terminal; for TV fall through to the
+            # all-resolved check that triggers organizing.
+            if episode_code == "skip" and job.content_type == ContentType.MOVIE:
+                return
 
             # Handle Movie Workflow
             if job.content_type == ContentType.MOVIE:
@@ -944,6 +924,21 @@ class FinalizationCoordinator:
 
                         if org_result["success"]:
                             title.state = TitleState.COMPLETED
+                            title.organized_from = source_file.name
+                            title.organized_to = str(org_result["main_file"])
+                            session.add(title)
+                            _org_from = title.organized_from
+                            _org_to = title.organized_to
+                            _out = title.output_filename
+                            _state = title.state.value
+                            await ws_manager.broadcast_title_update(
+                                job_id,
+                                title.id,
+                                _state,
+                                organized_from=_org_from,
+                                organized_to=_org_to,
+                                output_filename=_out,
+                            )
                             job.progress_percent = 100.0
                             job.error_message = None
                             job.final_path = str(org_result["main_file"])
@@ -978,133 +973,227 @@ class FinalizationCoordinator:
 
                 return
 
-            # Handle TV Workflow — check for unresolved titles
-            # Exclude already-completed and failed titles (they don't need review)
-            result = await session.execute(
-                select(DiscTitle).where(
-                    DiscTitle.job_id == job_id,
-                    DiscTitle.matched_episode.is_(None),
-                    DiscTitle.state.notin_([TitleState.COMPLETED, TitleState.FAILED]),
-                )
+            # TV: organize everything once all titles are resolved.
+            await self._finalize_tv_if_resolved(session, job)
+
+    @staticmethod
+    def _apply_decision_fields(
+        title: DiscTitle, episode_code: str | None, edition: str | None
+    ) -> None:
+        """Apply a single review decision to a title's fields (no commit).
+
+        Shared by the single-title ``apply_review`` and the batch path so both
+        record decisions identically. Does not organize or change job state.
+        """
+        if episode_code:
+            title.matched_episode = episode_code
+            if episode_code == "extra":
+                title.is_extra = True
+
+        if edition:
+            title.edition = edition
+
+        title.match_confidence = 1.0  # User-confirmed
+
+        # Discard: mark title as failed for both movie and TV.
+        if episode_code == "skip":
+            title.state = TitleState.FAILED
+
+    async def _finalize_tv_if_resolved(self, session, job) -> None:
+        """Organize a TV job's resolved titles in one pass once none are unresolved.
+
+        Runs a single organization sweep with one monotonic ``extra_index``, so
+        marking many extras at once names them uniquely (``Extra tNN``) instead
+        of colliding on FILE_EXISTS across repeated single-title finalizes.
+        """
+        from app.core.organizer import (
+            organize_tv_episode,
+            organize_tv_extras,
+            tv_organizer,
+        )
+
+        job_id = job.id
+
+        # Check for unresolved titles, excluding already-completed and failed
+        # titles (they don't need review).
+        result = await session.execute(
+            select(DiscTitle).where(
+                DiscTitle.job_id == job_id,
+                DiscTitle.matched_episode.is_(None),
+                DiscTitle.state.notin_([TitleState.COMPLETED, TitleState.FAILED]),
             )
-            unresolved = result.scalars().all()
+        )
+        unresolved = result.scalars().all()
 
-            if not unresolved:
-                job.state = JobState.ORGANIZING
-                session.add(job)
-                await session.commit()
-                await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
+        if unresolved:
+            await session.commit()
+            return
 
-                all_titles_result = await session.execute(
-                    select(DiscTitle).where(
-                        DiscTitle.job_id == job_id,
-                        DiscTitle.matched_episode.isnot(None),
-                    )
-                )
-                resolved_titles = all_titles_result.scalars().all()
+        job.state = JobState.ORGANIZING
+        session.add(job)
+        await session.commit()
+        await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
 
-                success_count = 0
-                conflict_count = 0
+        all_titles_result = await session.execute(
+            select(DiscTitle).where(
+                DiscTitle.job_id == job_id,
+                DiscTitle.matched_episode.isnot(None),
+            )
+        )
+        resolved_titles = all_titles_result.scalars().all()
 
-                extra_index = 1
-                for disc_title in resolved_titles:
-                    if disc_title.output_filename and disc_title.matched_episode != "skip":
-                        # Skip already-organized titles
-                        if disc_title.state == TitleState.COMPLETED and disc_title.organized_to:
-                            success_count += 1
-                            continue
+        success_count = 0
+        conflict_count = 0
 
-                        source_file = Path(disc_title.output_filename)
-                        if source_file.exists():
-                            _lib_path = _library_path_for_job(job, "tv")
-                            if disc_title.matched_episode == "extra":
-                                org_result = await asyncio.to_thread(
-                                    organize_tv_extras,
-                                    source_file,
-                                    job.detected_title or job.volume_label,
-                                    job.detected_season or 1,
-                                    library_path=_lib_path,
-                                    disc_number=job.disc_number or 1,
-                                    extra_index=extra_index,
-                                    title_index=disc_title.title_index,
-                                )
-                                extra_index += 1
-                            else:
-                                if _lib_path:
-                                    org_result = await asyncio.to_thread(
-                                        organize_tv_episode,
-                                        source_file,
-                                        job.detected_title or job.volume_label,
-                                        disc_title.matched_episode,
-                                        _lib_path,
-                                    )
-                                else:
-                                    org_result = await asyncio.to_thread(
-                                        tv_organizer.organize,
-                                        source_file,
-                                        job.detected_title or job.volume_label,
-                                        disc_title.matched_episode,
-                                    )
-                            if org_result["success"]:
-                                success_count += 1
-                                disc_title.organized_from = source_file.name
-                                disc_title.organized_to = (
-                                    str(org_result.get("final_path"))
-                                    if org_result.get("final_path")
-                                    else None
-                                )
-                                disc_title.is_extra = disc_title.matched_episode == "extra"
-                                disc_title.state = TitleState.COMPLETED
-                                logger.info(f"Organized: {org_result['final_path']}")
-                            elif org_result.get("error_code") == "FILE_EXISTS":
-                                conflict_count += 1
-                                disc_title.state = TitleState.REVIEW
-                                disc_title.match_details = _merge_match_details(
-                                    disc_title.match_details,
-                                    {
-                                        "error": "file_exists",
-                                        "message": str(org_result["error"]),
-                                    },
-                                )
-                                logger.warning(
-                                    f"Organization conflict for TV: {org_result['error']}"
-                                )
-                            else:
-                                logger.error(f"Failed to organize: {org_result['error']}")
+        extra_index = 1
+        for disc_title in resolved_titles:
+            if disc_title.output_filename and disc_title.matched_episode != "skip":
+                # Skip already-organized titles
+                if disc_title.state == TitleState.COMPLETED and disc_title.organized_to:
+                    success_count += 1
+                    continue
 
-                            session.add(disc_title)
-                            await session.commit()
-                            await ws_manager.broadcast_title_update(
-                                job_id,
-                                disc_title.id,
-                                disc_title.state.value,
-                                matched_episode=disc_title.matched_episode,
-                                match_confidence=disc_title.match_confidence,
-                                organized_from=disc_title.organized_from,
-                                organized_to=disc_title.organized_to,
-                                output_filename=disc_title.output_filename,
-                                is_extra=disc_title.is_extra,
-                                match_details=disc_title.match_details,
+                source_file = Path(disc_title.output_filename)
+                if source_file.exists():
+                    _lib_path = _library_path_for_job(job, "tv")
+                    if disc_title.matched_episode == "extra":
+                        org_result = await asyncio.to_thread(
+                            organize_tv_extras,
+                            source_file,
+                            job.detected_title or job.volume_label,
+                            job.detected_season or 1,
+                            library_path=_lib_path,
+                            disc_number=job.disc_number or 1,
+                            extra_index=extra_index,
+                            title_index=disc_title.title_index,
+                        )
+                        extra_index += 1
+                    else:
+                        if _lib_path:
+                            org_result = await asyncio.to_thread(
+                                organize_tv_episode,
+                                source_file,
+                                job.detected_title or job.volume_label,
+                                disc_title.matched_episode,
+                                _lib_path,
                             )
                         else:
-                            logger.warning(f"Source file not found: {source_file}")
+                            org_result = await asyncio.to_thread(
+                                tv_organizer.organize,
+                                source_file,
+                                job.detected_title or job.volume_label,
+                                disc_title.matched_episode,
+                            )
+                    if org_result["success"]:
+                        success_count += 1
+                        disc_title.organized_from = source_file.name
+                        disc_title.organized_to = (
+                            str(org_result.get("final_path"))
+                            if org_result.get("final_path")
+                            else None
+                        )
+                        disc_title.is_extra = disc_title.matched_episode == "extra"
+                        disc_title.state = TitleState.COMPLETED
+                        logger.info(f"Organized: {org_result['final_path']}")
+                    elif org_result.get("error_code") == "FILE_EXISTS":
+                        conflict_count += 1
+                        disc_title.state = TitleState.REVIEW
+                        disc_title.match_details = _merge_match_details(
+                            disc_title.match_details,
+                            {
+                                "error": "file_exists",
+                                "message": str(org_result["error"]),
+                            },
+                        )
+                        logger.warning(f"Organization conflict for TV: {org_result['error']}")
+                    else:
+                        logger.error(f"Failed to organize: {org_result['error']}")
 
-                if conflict_count > 0:
-                    await self._state_machine.transition_to_review(
-                        job,
-                        session,
-                        reason=f"{conflict_count} files already exist in library",
+                    session.add(disc_title)
+                    await session.commit()
+                    await ws_manager.broadcast_title_update(
+                        job_id,
+                        disc_title.id,
+                        disc_title.state.value,
+                        matched_episode=disc_title.matched_episode,
+                        match_confidence=disc_title.match_confidence,
+                        organized_from=disc_title.organized_from,
+                        organized_to=disc_title.organized_to,
+                        output_filename=disc_title.output_filename,
+                        is_extra=disc_title.is_extra,
+                        match_details=disc_title.match_details,
                     )
-                elif success_count > 0:
-                    await self._complete_tv_job(session, job)
                 else:
-                    await self._state_machine.transition_to_failed(
-                        job,
-                        session,
-                        error_message="Failed to organize files",
+                    logger.warning(f"Source file not found: {source_file}")
+
+        if conflict_count > 0:
+            await self._state_machine.transition_to_review(
+                job,
+                session,
+                reason=f"{conflict_count} files already exist in library",
+            )
+        elif success_count > 0:
+            await self._complete_tv_job(session, job)
+        else:
+            await self._state_machine.transition_to_failed(
+                job,
+                session,
+                error_message="Failed to organize files",
+            )
+
+    async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
+        """Apply several review decisions for a job in one atomic pass.
+
+        ``decisions`` is a list of ``{"title_id", "episode_code", "edition"}``
+        dicts. For TV, every decision is recorded first, then the job is
+        finalized once — so bulk "mark as extra" organizes without FILE_EXISTS
+        collisions. Movies stay single-title: each decision runs the proven
+        ``apply_review`` path.
+        """
+        # An empty batch is a no-op — never let it sweep an already-resolved
+        # disc into finalization.
+        if not decisions:
+            return
+
+        # Re-verify state inside our own session: the HTTP route's check is a
+        # stale snapshot by the time we run, and a concurrent save could have
+        # moved the job out of review.
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError("Job not found")
+            if job.state != JobState.REVIEW_NEEDED:
+                raise ValueError("Job is not awaiting review")
+
+            if job.content_type != ContentType.MOVIE:
+                # TV: record every decision and finalize once, all in this
+                # single session.
+                for decision in decisions:
+                    title = await session.get(DiscTitle, decision["title_id"])
+                    if not title or title.job_id != job_id:
+                        raise ValueError(f"Title {decision['title_id']} not found for this job")
+                    self._apply_decision_fields(
+                        title, decision.get("episode_code"), decision.get("edition")
                     )
-            else:
+                    session.add(title)
                 await session.commit()
+                await self._finalize_tv_if_resolved(session, job)
+                return
+
+        # Movies are single-title selection: apply via the proven single-title
+        # path, stopping once the job leaves review — the first accepted version
+        # finalizes the job, so later decisions would run on a non-review job.
+        for decision in decisions:
+            async with async_session() as session:
+                current = await session.get(DiscJob, job_id)
+                if not current or current.state != JobState.REVIEW_NEEDED:
+                    break
+            await self.apply_review(
+                job_id,
+                decision["title_id"],
+                episode_code=decision.get("episode_code"),
+                edition=decision.get("edition"),
+            )
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job without waiting for unresolved ones."""
