@@ -292,6 +292,9 @@ class ConfigResponse(BaseModel):
     allow_lan_access: bool
     # Onboarding
     setup_complete: bool
+    # Chromaprint fingerprinting (Phase 1)
+    fpcalc_path: str
+    enable_fingerprint_contributions: bool
 
 
 class ConfigUpdate(BaseModel):
@@ -359,6 +362,9 @@ class ConfigUpdate(BaseModel):
     allow_lan_access: bool | None = None
     # Onboarding
     setup_complete: bool | None = None
+    # Chromaprint fingerprinting (Phase 1)
+    fpcalc_path: str | None = None
+    enable_fingerprint_contributions: bool | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1036,6 +1042,9 @@ async def get_config() -> ConfigResponse:
         allow_lan_access=config.allow_lan_access,
         # Onboarding
         setup_complete=config.setup_complete,
+        # Chromaprint fingerprinting (Phase 1)
+        fpcalc_path=config.fpcalc_path or "",
+        enable_fingerprint_contributions=config.enable_fingerprint_contributions,
     )
 
 

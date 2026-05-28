@@ -405,6 +405,29 @@ async def test_get_fingerprint_contributions(client):
     assert item["blob_size_bytes"] == 1000
 
 
+@pytest.mark.asyncio
+async def test_config_endpoint_round_trips_fingerprint_toggle(client):
+    """PUT then GET /api/config preserves enable_fingerprint_contributions.
+
+    Regression: the frontend toggle's persistence relies on this round-trip; an
+    earlier version of the PR landed the model field without wiring it through
+    ConfigResponse + ConfigUpdate, so the frontend's PUT was silently ignored.
+    """
+    # GET should expose the field with its default (opt-out default = True)
+    initial = await client.get("/api/config")
+    assert initial.status_code == 200
+    assert initial.json()["enable_fingerprint_contributions"] is True
+
+    # PUT False, then GET back False
+    put_resp = await client.put("/api/config", json={"enable_fingerprint_contributions": False})
+    assert put_resp.status_code == 200
+    after = await client.get("/api/config")
+    assert after.json()["enable_fingerprint_contributions"] is False
+
+    # Restore default so other tests aren't affected by ordering
+    await client.put("/api/config", json={"enable_fingerprint_contributions": True})
+
+
 def test_require_localhost_rejects_lan_clients():
     """The localhost-only guard 403s any non-loopback client."""
     from unittest.mock import MagicMock
