@@ -40,8 +40,10 @@ class ChromaprintResult:
     @classmethod
     def from_blob(cls, blob: bytes) -> ChromaprintResult:
         payload = json.loads(gzip.decompress(blob).decode("utf-8"))
-        if payload.get("v") != 1:
-            raise ValueError(f"Unknown chromaprint blob version: {payload.get('v')}")
+        if "v" not in payload:
+            raise ValueError("Chromaprint blob is missing version field")
+        if payload["v"] != 1:
+            raise ValueError(f"Unknown chromaprint blob version: {payload['v']}")
         return cls(
             hashes=list(payload["hashes"]),
             duration_seconds=float(payload["duration"]),
@@ -122,5 +124,6 @@ class ChromaprintExtractor:
             proc = await asyncio.to_thread(_run)
             self._version_cache = (proc.stdout or "").splitlines()[0] if proc.stdout else ""
         except Exception:
+            logger.warning("fpcalc -version failed; fpcalc_version will be empty", exc_info=True)
             self._version_cache = ""
         return self._version_cache
