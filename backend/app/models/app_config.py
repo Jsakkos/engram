@@ -150,7 +150,14 @@ class AppConfig(SQLModel, table=True):
     enable_fingerprint_contributions: bool = Field(
         default=True, sa_column_kwargs={"server_default": text("1")}
     )
-    fingerprint_server_url: str | None = Field(default=None)
+    # Base origin of the fingerprint network — WITHOUT a /v1 suffix. The
+    # uploader appends /v1/contribute and the forget endpoint appends
+    # /v1/forget, so a stored /v1 here would double to /v1/v1/... and 404.
+    # Defaulting this (rather than None) is what lets the JIT disclosure flow
+    # engage on a fresh install — nothing uploads until the user accepts.
+    fingerprint_server_url: str | None = Field(
+        default="https://engram-fp-prod.jonathansakkos.workers.dev"
+    )
     fingerprint_disclosure_accepted: bool = Field(
         default=False, sa_column_kwargs={"server_default": text("0")}
     )

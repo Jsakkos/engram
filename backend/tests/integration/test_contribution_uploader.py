@@ -62,16 +62,21 @@ def test_fingerprint_contribution_has_upload_status_fields():
 
 
 def test_app_config_has_fingerprint_server_url():
-    """AppConfig exposes fingerprint_server_url (None by default)."""
+    """AppConfig defaults fingerprint_server_url to the network base origin.
+
+    The default must be the BASE (no /v1 suffix) — the uploader appends
+    /v1/contribute, so a /v1 here would double to /v1/v1/... and 404.
+    """
     cfg = AppConfig()
     assert hasattr(cfg, "fingerprint_server_url")
-    assert cfg.fingerprint_server_url is None
+    assert cfg.fingerprint_server_url == "https://engram-fp-prod.jonathansakkos.workers.dev"
+    assert not cfg.fingerprint_server_url.endswith("/v1")
 
 
 @pytest.mark.asyncio
-async def test_uploader_skips_when_no_server_url(setup_db):
-    """If fingerprint_server_url is not set, _process_batch is a no-op."""
-    from unittest.mock import AsyncMock, patch
+async def test_uploader_skips_when_no_server_url(setup_db, monkeypatch):
+    """If fingerprint_server_url is explicitly unset, _process_batch is a no-op."""
+    from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.database import async_session
 
@@ -87,6 +92,19 @@ async def test_uploader_skips_when_no_server_url(setup_db):
         )
         session.add(row)
         await session.commit()
+
+    # Force the no-URL path regardless of the model default.
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url=None,
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
 
     uploader = ContributionUploader()
     post_mock = AsyncMock()
