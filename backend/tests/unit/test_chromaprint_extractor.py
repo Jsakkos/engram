@@ -1,5 +1,6 @@
 """Tests for chromaprint extraction and storage."""
 
+from app.matcher.chromaprint_extractor import ChromaprintExtractor, ChromaprintResult
 from app.models.app_config import AppConfig
 from app.models.disc_job import DiscTitle
 
@@ -36,3 +37,30 @@ def test_enable_fingerprint_contributions_has_sql_server_default_true():
         "so frozen-build users default to opt-in"
     )
     assert "1" in str(column.server_default.arg)
+
+
+def test_chromaprint_result_serializes_to_bytes():
+    """ChromaprintResult.to_blob() returns deterministic compressed bytes."""
+    r = ChromaprintResult(
+        hashes=[1, 2, 3, 4, 5],
+        duration_seconds=42.0,
+        fpcalc_version="fpcalc version 1.5.1",
+    )
+    blob = r.to_blob()
+    assert isinstance(blob, bytes)
+    assert len(blob) > 0
+    assert r.to_blob() == blob  # deterministic
+
+
+def test_chromaprint_result_roundtrip():
+    """to_blob / from_blob is lossless on the hash stream and duration."""
+    r = ChromaprintResult(hashes=[100, 200, 300], duration_seconds=12.5, fpcalc_version="test")
+    restored = ChromaprintResult.from_blob(r.to_blob())
+    assert restored.hashes == [100, 200, 300]
+    assert restored.duration_seconds == 12.5
+
+
+def test_extractor_construction():
+    """ChromaprintExtractor takes an fpcalc_path."""
+    ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc")
+    assert ex.fpcalc_path == "/fake/fpcalc"
