@@ -113,6 +113,24 @@ export async function reassignEpisode(
   );
 }
 
+/**
+ * Re-run matching for a single title. Used for both the single-title "re-match"
+ * action and the bulk re-match over a multiselect, so both go through the shared
+ * {@link apiFetchVoid} wrapper instead of raw fetch.
+ */
+export async function rematchTitle(
+  jobId: number,
+  titleId: number,
+  sourcePreference: string = 'engram',
+  deep: boolean = false,
+): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/rematch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_preference: sourcePreference, deep }),
+  });
+}
+
 /** One title's review decision in a {@link submitReviewBatch} call. */
 export interface ReviewDecisionPayload {
   title_id: number;

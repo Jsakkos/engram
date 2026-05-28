@@ -164,3 +164,57 @@ async def test_batch_review_organizes_extras_without_collision(client, tmp_path,
             reloaded = await session.get(DiscTitle, t.id)
             assert reloaded.is_extra is True
             assert reloaded.state == TitleState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_batch_review_empty_decisions_rejected(client):
+    """An empty decisions list is rejected at the API boundary (422)."""
+    job, _ = await _make_tv_review_job(2)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/review/batch",
+        json={"decisions": []},
+    )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_apply_review_batch_empty_does_not_finalize():
+    """An empty batch must not finalize the job, even if all titles are already
+    resolved — guards against a no-op call sweeping the disc into ORGANIZING."""
+    from app.services.job_manager import job_manager
+
+    job, titles = await _make_tv_review_job(2)
+    # Mark every title resolved so a stray finalize WOULD organize the job.
+    async with async_session() as session:
+        for t in titles:
+            reloaded = await session.get(DiscTitle, t.id)
+            reloaded.matched_episode = "S01E0" + str(t.title_index + 1)
+            session.add(reloaded)
+        await session.commit()
+
+    await job_manager.apply_review_batch(job.id, [])
+
+    async with async_session() as session:
+        reloaded_job = await session.get(DiscJob, job.id)
+        assert reloaded_job.state == JobState.REVIEW_NEEDED
+
+
+@pytest.mark.asyncio
+async def test_apply_review_batch_rejects_non_review_state():
+    """The coordinator re-verifies job state inside its own session, so a job
+    that left review between the HTTP check and execution is not mutated."""
+    from app.services.job_manager import job_manager
+
+    job, titles = await _make_tv_review_job(2)
+    async with async_session() as session:
+        reloaded = await session.get(DiscJob, job.id)
+        reloaded.state = JobState.COMPLETED
+        session.add(reloaded)
+        await session.commit()
+
+    with pytest.raises(ValueError):
+        await job_manager.apply_review_batch(
+            job.id, [{"title_id": titles[0].id, "episode_code": "extra"}]
+        )

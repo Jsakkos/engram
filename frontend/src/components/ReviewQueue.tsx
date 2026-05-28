@@ -13,7 +13,7 @@ import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, no
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
-import { runLLMMatch, reassignEpisode, submitReviewBatch } from '../api/client';
+import { runLLMMatch, reassignEpisode, submitReviewBatch, rematchTitle } from '../api/client';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
@@ -277,18 +277,11 @@ function ReviewQueue() {
         sourcePreference: string = 'engram',
         deep: boolean = false,
     ) => {
+        if (!jobId) return;
         setIsRematching(true);
         setError(null);
         try {
-            const response = await fetch(`/api/jobs/${jobId}/titles/${titleId}/rematch`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source_preference: sourcePreference, deep }),
-            });
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Failed to re-match title: ${text}`);
-            }
+            await rematchTitle(parseInt(jobId), titleId, sourcePreference, deep);
             await fetchJobDetails();
         } catch (err) {
             console.error('Failed to re-match:', err);
@@ -601,21 +594,14 @@ function ReviewQueue() {
     // Re-match only the checked titles, looping the existing per-title endpoint
     // and refreshing once at the end.
     const handleBulkRematch = async () => {
+        if (!jobId) return;
         const ids = Array.from(bulkSelectedIds);
         if (ids.length === 0) return;
         setIsRematching(true);
         setError(null);
         try {
             for (const id of ids) {
-                const response = await fetch(`/api/jobs/${jobId}/titles/${id}/rematch`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source_preference: 'engram', deep: false }),
-                });
-                if (!response.ok) {
-                    const text = await response.text();
-                    throw new Error(`Failed to re-match title ${id}: ${text}`);
-                }
+                await rematchTitle(parseInt(jobId), id, 'engram', false);
             }
             clearBulkSelection();
             await fetchJobDetails();

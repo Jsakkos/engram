@@ -1103,38 +1103,50 @@ class FinalizationCoordinator:
         collisions. Movies stay single-title: each decision runs the proven
         ``apply_review`` path.
         """
-        async with async_session() as session:
-            job = await session.get(DiscJob, job_id)
-            if not job:
-                raise ValueError("Job not found")
-            content_type = job.content_type
-
-        if content_type == ContentType.MOVIE:
-            for decision in decisions:
-                await self.apply_review(
-                    job_id,
-                    decision["title_id"],
-                    episode_code=decision.get("episode_code"),
-                    edition=decision.get("edition"),
-                )
+        # An empty batch is a no-op — never let it sweep an already-resolved
+        # disc into finalization.
+        if not decisions:
             return
 
+        # Re-verify state inside our own session: the HTTP route's check is a
+        # stale snapshot by the time we run, and a concurrent save could have
+        # moved the job out of review.
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job:
                 raise ValueError("Job not found")
+            if job.state != JobState.REVIEW_NEEDED:
+                raise ValueError("Job is not awaiting review")
 
-            for decision in decisions:
-                title = await session.get(DiscTitle, decision["title_id"])
-                if not title or title.job_id != job_id:
-                    raise ValueError(f"Title {decision['title_id']} not found for this job")
-                self._apply_decision_fields(
-                    title, decision.get("episode_code"), decision.get("edition")
-                )
-                session.add(title)
-            await session.commit()
+            if job.content_type != ContentType.MOVIE:
+                # TV: record every decision and finalize once, all in this
+                # single session.
+                for decision in decisions:
+                    title = await session.get(DiscTitle, decision["title_id"])
+                    if not title or title.job_id != job_id:
+                        raise ValueError(f"Title {decision['title_id']} not found for this job")
+                    self._apply_decision_fields(
+                        title, decision.get("episode_code"), decision.get("edition")
+                    )
+                    session.add(title)
+                await session.commit()
+                await self._finalize_tv_if_resolved(session, job)
+                return
 
-            await self._finalize_tv_if_resolved(session, job)
+        # Movies are single-title selection: apply via the proven single-title
+        # path, stopping once the job leaves review — the first accepted version
+        # finalizes the job, so later decisions would run on a non-review job.
+        for decision in decisions:
+            async with async_session() as session:
+                current = await session.get(DiscJob, job_id)
+                if not current or current.state != JobState.REVIEW_NEEDED:
+                    break
+            await self.apply_review(
+                job_id,
+                decision["title_id"],
+                episode_code=decision.get("episode_code"),
+                edition=decision.get("edition"),
+            )
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job without waiting for unresolved ones."""

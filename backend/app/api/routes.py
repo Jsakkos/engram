@@ -17,7 +17,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -390,7 +390,7 @@ class ReviewDecision(BaseModel):
 class ReviewBatchRequest(BaseModel):
     """Request model for submitting multiple review decisions at once."""
 
-    decisions: list[ReviewDecision]
+    decisions: list[ReviewDecision] = Field(..., min_length=1)
 
 
 def _history_job_dict(j: DiscJob) -> dict:
