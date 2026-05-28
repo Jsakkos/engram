@@ -12,6 +12,7 @@ import NamePromptModal from "../components/NamePromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
 import BugReportModal from "../components/BugReportModal";
 import UpdateModal from "../components/UpdateModal";
+import { FingerprintDisclosureModal } from "../components/FingerprintDisclosureModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
 import LibraryPage from "../components/LibraryPage";
@@ -117,7 +118,7 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
   const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -581,6 +582,33 @@ function MainDashboard() {
               setReIdentifyTarget(null);
             }}
             onCancel={() => setReIdentifyTarget(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Fingerprint Disclosure Modal — JIT consent before any contribution upload */}
+      <AnimatePresence>
+        {disclosure && (
+          <FingerprintDisclosureModal
+            pendingCount={disclosure.pending_count}
+            pseudonym={disclosure.pseudonym}
+            serverUrl={disclosure.server_url}
+            onAccept={async () => {
+              await fetch('/api/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fingerprint_disclosure_accepted: true }),
+              });
+              clearDisclosure();
+            }}
+            onDecline={async () => {
+              await fetch('/api/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enable_fingerprint_contributions: false }),
+              });
+              clearDisclosure();
+            }}
           />
         )}
       </AnimatePresence>
