@@ -691,9 +691,15 @@ class MatchingCoordinator:
                         cfg = await get_config()
                         fpcalc_path = cfg.fpcalc_path
                         if not fpcalc_path:
+                            import asyncio as _asyncio
+
                             from app.api.validation import detect_fpcalc
 
-                            detected = detect_fpcalc()
+                            # detect_fpcalc() runs blocking subprocess.run probes for each
+                            # candidate path. Offload to a worker thread so we never stall
+                            # the matching coordinator's event loop (worst case ~60s if
+                            # multiple candidates time out).
+                            detected = await _asyncio.to_thread(detect_fpcalc)
                             fpcalc_path = detected.path if detected.found else None
 
                         if fpcalc_path:
