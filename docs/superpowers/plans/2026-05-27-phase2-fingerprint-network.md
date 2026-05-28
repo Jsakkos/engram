@@ -2359,7 +2359,7 @@ In `backend/app/models/fingerprint.py`, after the existing `upload_attempts` fie
 In `backend/app/models/app_config.py`, near the other fingerprint fields, add:
 
 ```python
-    fingerprint_server_url: str = Field(default="https://fp.engram.example/v1")
+    fingerprint_server_url: str = Field(default="https://engram-fp-prod.jonathansakkos.workers.dev/v1")
     fingerprint_disclosure_accepted: bool = Field(default=False)
     fingerprint_disclosure_accepted_at: datetime | None = Field(default=None)
 ```
@@ -2401,7 +2401,7 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("next_attempt_at", sa.DateTime(), nullable=True))
         batch_op.add_column(sa.Column("upload_error", sa.String(), nullable=True))
     with op.batch_alter_table("app_config", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("fingerprint_server_url", sa.String(), nullable=False, server_default="https://fp.engram.example/v1"))
+        batch_op.add_column(sa.Column("fingerprint_server_url", sa.String(), nullable=False, server_default="https://engram-fp-prod.jonathansakkos.workers.dev/v1"))
         batch_op.add_column(sa.Column("fingerprint_disclosure_accepted", sa.Boolean(), nullable=False, server_default=sa.text("0")))
         batch_op.add_column(sa.Column("fingerprint_disclosure_accepted_at", sa.DateTime(), nullable=True))
 
@@ -3926,4 +3926,4 @@ git commit -m "test(integration): Phase 2 full lifecycle — queue, upload, forg
 - [ ] PackBuilderWorker dry-run: with a CANONICAL episode in DB, run cron, verify R2 object exists.
 - [ ] `overlap_observation` table has ≥ 100 rows from your dogfooding so threshold tuning has data.
 - [ ] Grafana / observability dashboard live.
-- [ ] Custom domain configured for the server; `AppConfig.fingerprint_server_url` default updated.
+- [x] Server deployed (workers.dev URL — no custom domain in Phase 2 per 2026-05-28 decision); `AppConfig.fingerprint_server_url` default updated to `https://engram-fp-prod.jonathansakkos.workers.dev/v1`.
