@@ -13,6 +13,15 @@ const E2E_DATABASE_URL = `sqlite+aiosqlite:///${E2E_DB_PATH}`;
 const E2E_BACKEND_URL = `http://localhost:${E2E_BACKEND_PORT}`;
 const E2E_VITE_URL = `http://localhost:${E2E_VITE_PORT}`;
 
+// Specs the Firefox + WebKit projects run — the CSS/UI-correctness suite.
+// These assert rendering (branding, atmosphere, styling, colors, empty states,
+// and the /review page), which is where cross-browser bugs actually surface.
+const CROSS_BROWSER_SPECS = [
+    /basic-ui-verification\.spec\.ts/,
+    /visual-verification\.spec\.ts/,
+    /review-flow\.spec\.ts/,
+];
+
 export default defineConfig({
     globalSetup: './e2e/global-setup.ts',
     testDir: './e2e',
@@ -29,11 +38,15 @@ export default defineConfig({
         // query + Framer useReducedMotion + SvRipAnimation canvas hook).
         reducedMotion: 'reduce',
     },
-    // Firefox and WebKit run the functional suite to catch cross-browser CSS
-    // bugs (e.g. the Safari mix-blend-mode / backdrop-filter issues that black
-    // out the review page in WebKit but render fine in Chromium). They skip the
-    // pixel-diff visual-regression specs, whose baselines are chromium-on-Linux
-    // only, and the screenshot-workflow capture utility (artifacts, not asserts).
+    // Chromium runs the full suite. Firefox + WebKit exist to catch
+    // cross-browser *rendering* bugs (the Safari mix-blend-mode / backdrop-filter
+    // blackout that motivated them), so they run only the CSS/UI-correctness
+    // specs — including review-flow, which renders the /review page that was the
+    // original bug. The simulation-heavy disc-flow specs exercise
+    // browser-independent backend orchestration (state machines, name-prompt
+    // round-trips, multi-drive) and are timing-fragile against the shared
+    // single-worker E2E backend, so running them on three engines adds flakiness
+    // without CSS-detection value — they stay Chromium-only.
     projects: [
         {
             name: 'chromium',
@@ -42,12 +55,12 @@ export default defineConfig({
         {
             name: 'firefox',
             use: { ...devices['Desktop Firefox'] },
-            testIgnore: [/visual-regression\.spec\.ts/, /screenshot-workflow\.spec\.ts/],
+            testMatch: CROSS_BROWSER_SPECS,
         },
         {
             name: 'webkit',
             use: { ...devices['Desktop Safari'] },
-            testIgnore: [/visual-regression\.spec\.ts/, /screenshot-workflow\.spec\.ts/],
+            testMatch: CROSS_BROWSER_SPECS,
         },
     ],
     webServer: [
