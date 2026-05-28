@@ -1648,6 +1648,60 @@ async def simulate_insert_disc_from_staging(
     return {"status": "simulated", "job_id": job_id, "titles_count": len(titles)}
 
 
+# --- Debug test-support endpoints (require DEBUG + localhost) ---
+
+
+@router.post(
+    "/debug/uploader/drain",
+    dependencies=[Depends(require_localhost), Depends(require_debug)],
+)
+async def debug_drain_uploader(request: Request) -> dict:
+    """Force one uploader drain tick (DEBUG only).
+
+    The uploader normally ticks on a long poll interval; tests call this to
+    trigger a drain immediately. Returns {"ok": true}.
+    """
+    uploader = getattr(request.app.state, "contribution_uploader", None)
+    if uploader is None:
+        raise HTTPException(status_code=503, detail="uploader not running")
+    await uploader._process_batch()
+    return {"ok": True}
+
+
+@router.post(
+    "/debug/fingerprint/seed",
+    dependencies=[Depends(require_localhost), Depends(require_debug)],
+)
+async def debug_seed_fingerprint(session: AsyncSession = Depends(get_session)) -> dict:
+    """Seed one fake pending FingerprintContribution (DEBUG only).
+
+    Tags it with the current pseudonym so the upload/forget flow treats it as a
+    real local contribution. Lets E2E tests deterministically trigger the JIT
+    disclosure modal without depending on the rip+match+chromaprint pipeline.
+    """
+    from app.matcher.chromaprint_extractor import ChromaprintResult
+    from app.models.fingerprint import FingerprintContribution
+    from app.services.config_service import get_config
+
+    cfg = await get_config()
+    blob = ChromaprintResult(
+        hashes=[1, 2, 3, 4, 5], duration_seconds=42.0, fpcalc_version="debug-seed"
+    ).to_blob()
+    row = FingerprintContribution(
+        chromaprint_blob=blob,
+        tmdb_id=1399,
+        season=1,
+        episode=1,
+        match_confidence=0.95,
+        match_source="engram_asr",
+        pseudonym=cfg.contribution_pseudonym or "00000000-0000-4000-8000-000000000000",
+    )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return {"ok": True, "contribution_id": row.id}
+
+
 class StagingImportRequest(BaseModel):
     """Request model for importing pre-ripped MKV files from a staging directory."""
 
