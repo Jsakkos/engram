@@ -814,8 +814,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                         onChange={(e) => handleInputChange('fingerprintServerUrl', e.target.value)}
                                     />
                                     <span className="form-hint">
-                                        Base URL of the fingerprint network (no trailing path). Leave blank to keep
-                                        contributions queued locally without uploading.
+                                        Base URL of the fingerprint network (no trailing path). Leave blank to use the
+                                        default network. To stop contributing entirely, untick the toggle above.
                                     </span>
                                 </div>
 

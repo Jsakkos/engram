@@ -160,7 +160,9 @@ class ContributionUploader:
                 "client_version": __version__,
             }
         except Exception as e:
-            logger.error(f"Failed to deserialize chromaprint blob for contrib {contrib.id}: {e}")
+            logger.error(
+                f"Failed to encode chromaprint for contrib {contrib.id}: {e}", exc_info=True
+            )
             contrib.upload_status = "failed"
             contrib.upload_error_msg = f"Blob deserialization error: {e}"
             await session.commit()

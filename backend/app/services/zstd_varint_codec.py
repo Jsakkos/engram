@@ -16,6 +16,10 @@ import hashlib
 
 import zstandard as zstd
 
+# Module-level singletons. zstandard's compressor/decompressor objects are NOT
+# documented as thread-safe; this is fine for the current asyncio-only callers
+# (the uploader runs on a single event loop). Do not share these across OS
+# threads — construct per-thread instances if that ever becomes necessary.
 _COMPRESSOR = zstd.ZstdCompressor(level=11)
 _DECOMPRESSOR = zstd.ZstdDecompressor()
 

@@ -35,6 +35,19 @@ async function resetDisclosure(
     });
 }
 
+// Tests share one backend DB and run serially (workers: 1). The "Decline" test
+// leaves enable_fingerprint_contributions=false; restore a clean baseline after
+// each test so later specs (e.g. fingerprint-toggle, which asserts the toggle is
+// checked by default) don't inherit the disabled/declined state.
+test.afterEach(async ({ request }) => {
+    await request.put(`${API}/api/config`, {
+        data: {
+            enable_fingerprint_contributions: true,
+            fingerprint_disclosure_accepted: true,
+        },
+    });
+});
+
 test("first queued contribution triggers the disclosure modal; Accept dismisses it", async ({
     page,
 }) => {

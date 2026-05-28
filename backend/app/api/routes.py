@@ -1106,11 +1106,11 @@ async def update_config(config: ConfigUpdate) -> dict:
 
     # Build kwargs from non-None fields
     # Allow None through for fields that can be cleared to null
-    _nullable_fields = {
-        "import_watch_path",
-        "fingerprint_server_url",
-        "fingerprint_disclosure_accepted_at",
-    }
+    # NOTE: fingerprint_disclosure_accepted_at is intentionally absent — it is
+    # not a ConfigUpdate field, so it never arrives via model_dump(). It's
+    # managed server-side in the disclosure block below and cleared through
+    # config_service.update_config's own _nullable_fields.
+    _nullable_fields = {"import_watch_path", "fingerprint_server_url"}
     update_data = {
         k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
     }
@@ -1155,8 +1155,6 @@ async def update_config(config: ConfigUpdate) -> dict:
     # server-side: stamp it on accept, clear it on explicit revoke.
     if "fingerprint_disclosure_accepted" in update_data:
         if update_data["fingerprint_disclosure_accepted"] is True:
-            from datetime import UTC, datetime
-
             update_data["fingerprint_disclosure_accepted_at"] = datetime.now(UTC)
         else:
             update_data["fingerprint_disclosure_accepted_at"] = None
@@ -1480,18 +1478,24 @@ async def forget_fingerprint_on_server(
                 status_code=503, detail=f"Could not reach fingerprint server: {e}"
             ) from e
 
-    result = await session.execute(
-        sa_delete(FingerprintContribution).where(FingerprintContribution.uploaded_at.is_(None))
-    )
-    local_rows_deleted = result.rowcount or 0
-    await session.commit()
-
+    # Rotate identity + revoke consent FIRST, then wipe the local queue. If the
+    # local delete failed after a config update, the worst case is leftover
+    # un-uploaded rows under the old pseudonym — harmless, since consent is now
+    # revoked so nothing uploads. The reverse order would risk the old pseudonym
+    # surviving with consent intact and re-contributing the identity we just
+    # asked the server to forget.
     new_pseudonym = generate_pseudonym()
     await update_db_config(
         contribution_pseudonym=new_pseudonym,
         fingerprint_disclosure_accepted=False,
         fingerprint_disclosure_accepted_at=None,
     )
+
+    result = await session.execute(
+        sa_delete(FingerprintContribution).where(FingerprintContribution.uploaded_at.is_(None))
+    )
+    local_rows_deleted = result.rowcount or 0
+    await session.commit()
 
     return {
         "old_pseudonym": old_pseudonym,
