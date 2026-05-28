@@ -716,10 +716,10 @@ class FinalizationCoordinator:
 
                 _lib_path = _library_path_for_job(job, "tv")
                 if t.matched_episode == "extra":
-                    # Mirror the review path (_finalize_tv_if_resolved): extras go
-                    # to the season's Extras/ folder with "Extra tNN" naming, NOT
-                    # through organize_tv_episode (which rejects the synthetic
-                    # "extra" code as an invalid episode format).
+                    # Mirror the review path (apply_review / process_matched_titles):
+                    # extras go to the season's Extras/ folder with "Extra tNN"
+                    # naming, NOT through organize_tv_episode (which rejects the
+                    # synthetic "extra" code as an invalid episode format).
                     org_result = await asyncio.to_thread(
                         organize_tv_extras,
                         source_file,
