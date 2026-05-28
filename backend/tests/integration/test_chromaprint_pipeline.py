@@ -174,10 +174,21 @@ async def test_chromaprint_extracted_after_match(async_session_ctx, tmp_path, mo
     coordinator.init_semaphore(concurrency=1)
     coordinator._episode_runtimes[job_id] = []
 
+    async def fake_resolve_fpcalc(_cfg_path):
+        # Bypass the real detect_fpcalc() — CI Linux has no fpcalc binary,
+        # which would short-circuit the extraction path before our extract()
+        # mock could fire. Return any non-empty string; the ChromaprintExtractor
+        # patch makes the real path irrelevant.
+        return "/fake/fpcalc"
+
     with (
         patch(
             "app.services.matching_coordinator.episode_curator.match_single_file",
             new=AsyncMock(return_value=stub_result),
+        ),
+        patch(
+            "app.services.matching_coordinator._resolve_fpcalc_path",
+            new=fake_resolve_fpcalc,
         ),
         patch.object(ChromaprintExtractor, "extract", fake_extract),
         patch.object(coordinator, "_wait_for_file_ready", new=AsyncMock(return_value=True)),
@@ -286,10 +297,17 @@ async def test_contribution_enqueued_on_match(async_session_ctx, tmp_path, monke
     coordinator.init_semaphore(concurrency=1)
     coordinator._episode_runtimes[job_id] = []
 
+    async def fake_resolve_fpcalc(_cfg_path):
+        return "/fake/fpcalc"
+
     with (
         patch(
             "app.services.matching_coordinator.episode_curator.match_single_file",
             new=AsyncMock(return_value=stub_result),
+        ),
+        patch(
+            "app.services.matching_coordinator._resolve_fpcalc_path",
+            new=fake_resolve_fpcalc,
         ),
         patch.object(ChromaprintExtractor, "extract", fake_extract),
         patch.object(coordinator, "_wait_for_file_ready", new=AsyncMock(return_value=True)),
@@ -352,6 +370,8 @@ async def test_matching_succeeds_when_fpcalc_missing(client, async_session_ctx, 
 @pytest.mark.asyncio
 async def test_get_fingerprint_contributions(client):
     """GET /api/fingerprint/contributions returns the local queue, redacted of blobs by default."""
+    from app.api.routes import require_localhost
+    from app.main import app
     from app.models.fingerprint import FingerprintContribution
 
     async with async_session() as session:
@@ -368,7 +388,13 @@ async def test_get_fingerprint_contributions(client):
         session.add(row)
         await session.commit()
 
-    response = await client.get("/api/fingerprint/contributions")
+    # The endpoint requires localhost. The Starlette test client's host
+    # ("testclient") is not a real loopback identity; override the guard for tests.
+    app.dependency_overrides[require_localhost] = lambda: None
+    try:
+        response = await client.get("/api/fingerprint/contributions")
+    finally:
+        app.dependency_overrides.pop(require_localhost, None)
     assert response.status_code == 200
     data = response.json()
     assert data["count"] >= 1

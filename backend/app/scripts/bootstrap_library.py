@@ -95,7 +95,7 @@ async def _default_search(show: str, content_type: str) -> int | None:
     except Exception as e:
         # Network errors, bad TMDB token, etc. — treat as a miss so the bootstrap
         # loop continues with the next file instead of aborting the whole run.
-        logger.warning(f"TMDB lookup for {show!r} failed: {e}")
+        logger.warning(f"TMDB lookup for {show!r} failed: {e}", exc_info=True)
         return None
 
     if raw is None:
@@ -164,7 +164,7 @@ async def bootstrap_directory(
                 fp = await extractor.extract(str(path))
                 counters["extracted"] += 1
             except Exception as e:
-                logger.error(f"fpcalc failed on {path}: {e}")
+                logger.error(f"fpcalc failed on {path}: {e}", exc_info=True)
                 counters["errors"] += 1
                 continue
 

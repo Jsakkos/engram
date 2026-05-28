@@ -31,6 +31,44 @@ logger = logging.getLogger(__name__)
 STRICT_SCAN_POINTS = 25
 STRICT_MIN_VOTES = 4
 
+# Module-level cache for fpcalc detection results.
+# `detect_fpcalc()` is deterministic within a process (the binary doesn't appear
+# or disappear mid-run), but each invocation runs up to 6 subprocess probes with
+# 10s timeouts each. Without caching, a 22-title disc with semaphore=3 would
+# trigger up to 66 parallel probe storms. `None` means "no path detected".
+# Sentinel value `_UNSET` distinguishes "haven't tried yet" from "tried and got None".
+_UNSET: object = object()
+_fpcalc_path_cache: str | None | object = _UNSET
+
+
+async def _resolve_fpcalc_path(cfg_path: str | None) -> str | None:
+    """Return the fpcalc binary path, preferring explicit config over auto-detect.
+
+    Auto-detect results are cached at module level so a multi-title rip doesn't
+    re-run the (blocking, multi-subprocess) probe for every title.
+    """
+    if cfg_path:
+        return cfg_path
+    global _fpcalc_path_cache
+    if _fpcalc_path_cache is not _UNSET:
+        return _fpcalc_path_cache  # type: ignore[return-value]
+    from app.api.validation import detect_fpcalc
+
+    detected = await asyncio.to_thread(detect_fpcalc)
+    _fpcalc_path_cache = detected.path if detected.found else None
+    return _fpcalc_path_cache  # type: ignore[return-value]
+
+
+# Maps DiscTitle.match_source (the internal label, e.g. "engram", "discdb",
+# "ai_llm") onto FingerprintContribution.match_source, which is constrained to
+# the documented set 'engram_asr' | 'engram_discdb' | 'bootstrap' | 'user_review'.
+_MATCH_SOURCE_TO_CONTRIB: dict[str, str] = {
+    "engram": "engram_asr",
+    "discdb": "engram_discdb",
+    "ai_llm": "engram_asr",
+    "user": "user_review",
+}
+
 
 class MatchingCoordinator:
     """Coordinates episode matching: subtitle download, audio fingerprinting, DiscDB assignment."""
@@ -689,19 +727,7 @@ class MatchingCoordinator:
                         from app.services.config_service import get_config
 
                         cfg = await get_config()
-                        fpcalc_path = cfg.fpcalc_path
-                        if not fpcalc_path:
-                            import asyncio as _asyncio
-
-                            from app.api.validation import detect_fpcalc
-
-                            # detect_fpcalc() runs blocking subprocess.run probes for each
-                            # candidate path. Offload to a worker thread so we never stall
-                            # the matching coordinator's event loop (worst case ~60s if
-                            # multiple candidates time out).
-                            detected = await _asyncio.to_thread(detect_fpcalc)
-                            fpcalc_path = detected.path if detected.found else None
-
+                        fpcalc_path = await _resolve_fpcalc_path(cfg.fpcalc_path)
                         if fpcalc_path:
                             extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path)
                             fp_result = await extractor.extract(str(file_path))
@@ -753,6 +779,14 @@ class MatchingCoordinator:
                                         "no usable tmdb_id on parent job"
                                     )
                                 else:
+                                    # Map DiscTitle.match_source onto FingerprintContribution's
+                                    # documented value set (engram_asr / engram_discdb /
+                                    # bootstrap / user_review). The raw "engram" value used
+                                    # internally for ASR matches is not a documented
+                                    # contribution source.
+                                    _contrib_source = _MATCH_SOURCE_TO_CONTRIB.get(
+                                        title.match_source or "", "engram_asr"
+                                    )
                                     await ContributionQueue().enqueue(
                                         session=session,
                                         title_id=title.id,
@@ -761,7 +795,7 @@ class MatchingCoordinator:
                                         season=season_num,
                                         episode=episode_num,
                                         match_confidence=float(title.match_confidence or 0.0),
-                                        match_source="engram",
+                                        match_source=_contrib_source,
                                         disc_content_hash=disc_hash,
                                         pseudonym=_cfg.contribution_pseudonym,
                                         contributions_enabled=_cfg.enable_fingerprint_contributions,

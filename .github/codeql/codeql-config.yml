@@ -1,0 +1,12 @@
+name: Engram CodeQL config
+
+# Why: Alembic migration files declare module-level globals (`revision`,
+# `down_revision`, `branch_labels`, `depends_on`) that look unused to a static
+# analyzer but are consumed by Alembic's filesystem-based migration loader via
+# name-based introspection. Excluding the migration tree from the unused-global
+# query keeps the genuine alerts elsewhere actionable.
+query-filters:
+  - exclude:
+      id: py/unused-global-variable
+      paths:
+        - "backend/migrations/versions/**"

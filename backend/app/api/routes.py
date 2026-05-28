@@ -63,17 +63,18 @@ def require_debug() -> None:
 # Loopback addresses that count as "the user is querying their own machine".
 # Used by endpoints that surface privacy-sensitive data (e.g. ripping history)
 # so they remain reachable from the dashboard but not from LAN peers when
-# `allow_lan_access` binds 0.0.0.0.
-_LOCALHOST_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+# `allow_lan_access` binds 0.0.0.0. Tests should override the dependency via
+# `app.dependency_overrides[require_localhost] = lambda: None` rather than
+# widening this set with test-framework implementation details.
+_LOCALHOST_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
 
 def require_localhost(request: Request) -> None:
     """FastAPI dependency: 403 unless the request came from the host machine.
 
-    Allowed: real loopback (`127.0.0.1`, `::1`), the literal `localhost`, and
-    `testclient` (the FastAPI/Starlette test client host). Everything else —
-    including LAN peers when `allow_lan_access=True` opens the bind to all
-    interfaces — is rejected.
+    Allowed: real loopback (`127.0.0.1`, `::1`) and the literal `localhost`.
+    Everything else — including LAN peers when `allow_lan_access=True` opens
+    the bind to all interfaces — is rejected.
     """
     client = request.client.host if request.client else None
     if client not in _LOCALHOST_CLIENTS:

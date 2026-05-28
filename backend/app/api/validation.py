@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -239,19 +240,26 @@ FPCALC_COMMON_PATHS = [
     "/usr/local/bin/fpcalc",
     # Linux
     "/usr/bin/fpcalc",
-    # Dev convenience: the worktree spike binary
-    str(Path(__file__).resolve().parents[3] / "spikes" / "chromaprint" / "bin" / "fpcalc.exe"),
 ]
+
+# Developers can point auto-detect at a local-tree spike binary (or any other
+# off-PATH install) by setting ENGRAM_FPCALC_PATH. Shipping the spike binary
+# directly in `FPCALC_COMMON_PATHS` would leak an internal repo layout to all
+# users' subprocess audit trails and add a useless probe in production.
+_DEV_FPCALC_ENV = "ENGRAM_FPCALC_PATH"
 
 
 def detect_fpcalc() -> ToolDetectionResult:
     """Auto-detect a usable fpcalc binary.
 
-    Order: PATH first, then common platform locations, then the dev spike binary.
-    Returns the first result that validates successfully.
+    Order: explicit `ENGRAM_FPCALC_PATH` env var, then PATH, then common
+    platform locations. Returns the first result that validates successfully.
     """
-    via_path = shutil.which("fpcalc")
     candidates: list[str] = []
+    env_override = os.environ.get(_DEV_FPCALC_ENV)
+    if env_override:
+        candidates.append(env_override)
+    via_path = shutil.which("fpcalc")
     if via_path:
         candidates.append(via_path)
     candidates.extend(FPCALC_COMMON_PATHS)

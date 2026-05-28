@@ -15,10 +15,6 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-# Module-level dedupe flag: log the first fpcalc-version failure, then suppress.
-# See `_cached_version` for the dedupe rationale.
-_version_failure_logged = False
-
 
 @dataclass
 class ChromaprintResult:
@@ -57,6 +53,13 @@ class ChromaprintResult:
 
 class ChromaprintExtractor:
     """Subprocess-based chromaprint fingerprint extractor."""
+
+    # Class-level dedupe flag for fpcalc -version failures. Each extractor
+    # instance is short-lived (one per title in the matching pipeline), so a
+    # misconfigured fpcalc binary would otherwise log on every extraction.
+    # Tracking on the class — not the instance — gives us once-per-process
+    # logging without resorting to `global`.
+    _version_failure_logged: bool = False
 
     def __init__(self, fpcalc_path: str, timeout_seconds: float = 120.0) -> None:
         self.fpcalc_path = fpcalc_path
@@ -128,18 +131,15 @@ class ChromaprintExtractor:
             proc = await asyncio.to_thread(_run)
             self._version_cache = (proc.stdout or "").splitlines()[0] if proc.stdout else ""
         except Exception:
-            # Each ChromaprintExtractor instance is short-lived (one per title
-            # in the matching pipeline), so a misconfigured fpcalc binary would
-            # otherwise log on every extraction. Dedupe at module level so the
-            # operator sees a single diagnostic, not one per ripped title.
-            global _version_failure_logged
-            if not _version_failure_logged:
+            # Dedupe failure logging at the class level so a misconfigured
+            # fpcalc binary doesn't spam logs once per ripped title.
+            if not ChromaprintExtractor._version_failure_logged:
                 logger.error(
                     f"fpcalc -version failed at {self.fpcalc_path!r}; "
                     "fpcalc_version will be empty on stored fingerprints. "
                     "Subsequent failures suppressed.",
                     exc_info=True,
                 )
-                _version_failure_logged = True
+                ChromaprintExtractor._version_failure_logged = True
             self._version_cache = ""
         return self._version_cache

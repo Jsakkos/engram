@@ -55,8 +55,11 @@ async def lifespan(app: FastAPI):
     from app.services.contribution_pseudonym import generate_pseudonym, validate_pseudonym
 
     async with _async_session() as _session:
-        _result = await _session.execute(_select(_AppConfig))
-        _cfg = _result.scalar_one_or_none()
+        # Mirror get_config()'s `.limit(1)` guard so a corrupt/test-polluted DB
+        # with multiple app_config rows doesn't raise MultipleResultsFound
+        # during lifespan startup and block the server from coming up.
+        _result = await _session.execute(_select(_AppConfig).limit(1))
+        _cfg = _result.scalars().first()
         if _cfg is not None and not validate_pseudonym(_cfg.contribution_pseudonym):
             _cfg.contribution_pseudonym = generate_pseudonym()
             _session.add(_cfg)
