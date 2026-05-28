@@ -68,6 +68,7 @@ interface ConfigData {
     namingEpisodeFormat: string;
     namingMovieFormat: string;
     discdbEnabled: boolean;
+    enableFingerprintContributions: boolean;
     aiIdentificationEnabled: boolean;
     aiEpisodeMatchingEnabled: boolean;
     aiProvider: string;
@@ -131,6 +132,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
         discdbEnabled: true,
+        enableFingerprintContributions: true,
         aiIdentificationEnabled: false,
         aiEpisodeMatchingEnabled: false,
         aiProvider: 'anthropic',
@@ -215,6 +217,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
                     discdbEnabled: data.discdb_enabled ?? true,
+                    enableFingerprintContributions: data.enable_fingerprint_contributions ?? true,
                     aiIdentificationEnabled: data.ai_identification_enabled ?? false,
                     aiEpisodeMatchingEnabled: data.ai_episode_matching_enabled ?? false,
                     aiProvider: data.ai_provider || 'anthropic',
@@ -321,6 +324,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
                     discdb_enabled: config.discdbEnabled,
+                    enable_fingerprint_contributions: config.enableFingerprintContributions,
                     ai_identification_enabled: config.aiIdentificationEnabled,
                     ai_episode_matching_enabled: config.aiEpisodeMatchingEnabled,
                     ai_provider: config.aiProvider,
@@ -765,6 +769,25 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 </label>
                             </div>
                         )}
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.enableFingerprintContributions}
+                                    onChange={(e) => handleInputChange('enableFingerprintContributions', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Contribute audio fingerprints</strong>
+                                    <span className="checkbox-hint">
+                                        Engram extracts a perceptual audio fingerprint from each ripped title and queues it
+                                        locally. Future versions will share these fingerprints with a community catalog so
+                                        everyone&apos;s rips identify faster. No filenames, paths, or personally identifying
+                                        information are sent. Disable to skip extraction entirely.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
 
                         <div className="form-group checkbox-group">
                             <label className="checkbox-label">
