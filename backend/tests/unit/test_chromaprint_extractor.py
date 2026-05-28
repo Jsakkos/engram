@@ -1,5 +1,9 @@
 """Tests for chromaprint extraction and storage."""
 
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from app.matcher.chromaprint_extractor import ChromaprintExtractor, ChromaprintResult
 from app.models.app_config import AppConfig
 from app.models.disc_job import DiscTitle
@@ -64,3 +68,58 @@ def test_extractor_construction():
     """ChromaprintExtractor takes an fpcalc_path."""
     ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc")
     assert ex.fpcalc_path == "/fake/fpcalc"
+
+
+@pytest.mark.asyncio
+async def test_extract_parses_fpcalc_output():
+    """extract() parses DURATION and FINGERPRINT from fpcalc -raw output."""
+    # We mock asyncio.to_thread so the subprocess never runs.
+    fake_output = "DURATION=1304\nFINGERPRINT=112114628,250527685,250521542\n"
+    mock_completed = MagicMock()
+    mock_completed.returncode = 0
+    mock_completed.stdout = fake_output
+    mock_completed.stderr = ""
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return mock_completed
+
+    with patch("asyncio.to_thread", side_effect=fake_to_thread):
+        ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc")
+        result = await ex.extract("/fake/movie.mkv")
+
+    assert result.duration_seconds == 1304.0
+    assert result.hashes == [112114628, 250527685, 250521542]
+
+
+@pytest.mark.asyncio
+async def test_extract_raises_on_fpcalc_failure():
+    """A non-zero fpcalc exit raises a clean RuntimeError, not subprocess noise."""
+    mock_completed = MagicMock()
+    mock_completed.returncode = 1
+    mock_completed.stdout = ""
+    mock_completed.stderr = "fpcalc: ERROR: cannot decode audio"
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return mock_completed
+
+    with patch("asyncio.to_thread", side_effect=fake_to_thread):
+        ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc")
+        with pytest.raises(RuntimeError, match="fpcalc"):
+            await ex.extract("/fake/no-audio.mkv")
+
+
+@pytest.mark.asyncio
+async def test_extract_raises_when_no_fingerprint_line():
+    """fpcalc returned 0 but no FINGERPRINT line — should fail loudly."""
+    mock_completed = MagicMock()
+    mock_completed.returncode = 0
+    mock_completed.stdout = "DURATION=10\n"
+    mock_completed.stderr = ""
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return mock_completed
+
+    with patch("asyncio.to_thread", side_effect=fake_to_thread):
+        ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc")
+        with pytest.raises(RuntimeError, match="FINGERPRINT"):
+            await ex.extract("/fake/silent.mkv")

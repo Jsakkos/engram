@@ -7,9 +7,13 @@ windowed querying lives in Phase 3.
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import json
+import subprocess
 from dataclasses import dataclass
+
+from loguru import logger
 
 
 @dataclass
@@ -48,8 +52,75 @@ class ChromaprintResult:
 class ChromaprintExtractor:
     """Subprocess-based chromaprint fingerprint extractor."""
 
-    def __init__(self, fpcalc_path: str) -> None:
+    def __init__(self, fpcalc_path: str, timeout_seconds: float = 120.0) -> None:
         self.fpcalc_path = fpcalc_path
+        self.timeout_seconds = timeout_seconds
+        self._version_cache: str | None = None
 
     async def extract(self, media_path: str) -> ChromaprintResult:
-        raise NotImplementedError("extract() lands in Task C2")
+        """Extract the full chromaprint hash stream from a media file.
+
+        Returns a `ChromaprintResult` on success. Raises `RuntimeError` on any
+        fpcalc-side failure — the caller decides whether the matching pipeline
+        should continue without a fingerprint.
+        """
+
+        def _run() -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [self.fpcalc_path, "-raw", "-length", "99999", media_path],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+
+        try:
+            proc = await asyncio.to_thread(_run)
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(
+                f"fpcalc timed out after {self.timeout_seconds}s on {media_path}"
+            ) from e
+
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"fpcalc exited {proc.returncode} on {media_path}: {proc.stderr.strip()}"
+            )
+
+        duration: float | None = None
+        hashes: list[int] = []
+        for line in proc.stdout.splitlines():
+            if line.startswith("DURATION="):
+                duration = float(line.removeprefix("DURATION="))
+            elif line.startswith("FINGERPRINT="):
+                hashes = [int(x) for x in line.removeprefix("FINGERPRINT=").split(",") if x]
+
+        if not hashes:
+            raise RuntimeError(f"fpcalc produced no FINGERPRINT line for {media_path}")
+        if duration is None:
+            duration = 0.0
+
+        version_line = await self._cached_version()
+        logger.info(
+            f"chromaprint extracted: {len(hashes)} hashes, {duration:.1f}s from {media_path}"
+        )
+        return ChromaprintResult(
+            hashes=hashes, duration_seconds=duration, fpcalc_version=version_line
+        )
+
+    async def _cached_version(self) -> str:
+        if self._version_cache is not None:
+            return self._version_cache
+
+        def _run() -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [self.fpcalc_path, "-version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+        try:
+            proc = await asyncio.to_thread(_run)
+            self._version_cache = (proc.stdout or "").splitlines()[0] if proc.stdout else ""
+        except Exception:
+            self._version_cache = ""
+        return self._version_cache
