@@ -22,7 +22,12 @@ def upgrade() -> None:
     op.create_table(
         "fingerprint_contributions",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("queued_at", sa.DateTime(), nullable=False),
+        sa.Column(
+            "queued_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("(datetime('now'))"),
+        ),
         sa.Column(
             "title_id", sa.Integer(), sa.ForeignKey("disc_titles.id"), nullable=True, index=True
         ),

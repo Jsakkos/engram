@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
+from sqlalchemy import text
 from sqlmodel import Field, SQLModel
 
 
@@ -18,7 +19,10 @@ class FingerprintContribution(SQLModel, table=True):
     __tablename__ = "fingerprint_contributions"
 
     id: int | None = Field(default=None, primary_key=True)
-    queued_at: datetime = Field(default_factory=datetime.utcnow)
+    queued_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column_kwargs={"server_default": text("(datetime('now'))")},
+    )
 
     # Nullable so bootstrap rows (no DiscTitle row) can also be queued.
     title_id: int | None = Field(default=None, foreign_key="disc_titles.id", index=True)

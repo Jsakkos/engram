@@ -744,19 +744,28 @@ class MatchingCoordinator:
                                         tmdb_id_val = int(job.tmdb_id)
                                     except (TypeError, ValueError):
                                         tmdb_id_val = 0
-                                await ContributionQueue().enqueue(
-                                    session=session,
-                                    title_id=title.id,
-                                    chromaprint_blob=title.chromaprint_blob,
-                                    tmdb_id=tmdb_id_val,
-                                    season=season_num,
-                                    episode=episode_num,
-                                    match_confidence=float(title.match_confidence or 0.0),
-                                    match_source="engram",
-                                    disc_content_hash=disc_hash,
-                                    pseudonym=_cfg.contribution_pseudonym,
-                                    contributions_enabled=_cfg.enable_fingerprint_contributions,
-                                )
+                                if tmdb_id_val == 0:
+                                    # Skip enqueue rather than poison Phase 2 with
+                                    # un-attributable contributions. The chromaprint
+                                    # is still stored on DiscTitle for diagnostic use.
+                                    logger.debug(
+                                        f"Skipping contribution for title {title.id}: "
+                                        "no usable tmdb_id on parent job"
+                                    )
+                                else:
+                                    await ContributionQueue().enqueue(
+                                        session=session,
+                                        title_id=title.id,
+                                        chromaprint_blob=title.chromaprint_blob,
+                                        tmdb_id=tmdb_id_val,
+                                        season=season_num,
+                                        episode=episode_num,
+                                        match_confidence=float(title.match_confidence or 0.0),
+                                        match_source="engram",
+                                        disc_content_hash=disc_hash,
+                                        pseudonym=_cfg.contribution_pseudonym,
+                                        contributions_enabled=_cfg.enable_fingerprint_contributions,
+                                    )
                         except Exception as e:
                             logger.warning(
                                 f"Failed to enqueue contribution for title {title.id}: {e}",
