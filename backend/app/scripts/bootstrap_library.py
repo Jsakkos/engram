@@ -3,8 +3,13 @@
 Walks a directory of MKVs labeled `Show - SnnEnn.mkv`, fingerprints each one,
 and enqueues a FingerprintContribution row tagged `match_source="bootstrap"`.
 
+Phase 1 scope: **TV shows only.** Pointing this at a movies directory will
+produce TMDB misses for every file (since lookups go through TMDB *TV* search)
+and end with `queued=0, skipped=N`. Movie-bootstrap support lives in a future
+phase alongside the broader movie identification flow.
+
 Usage:
-  uv run python -m app.scripts.bootstrap_library /path/to/library [--dry-run]
+  uv run python -m app.scripts.bootstrap_library /path/to/tv-library [--dry-run]
 """
 
 from __future__ import annotations
@@ -21,6 +26,11 @@ EP_REGEX = re.compile(
     r"(?P<show>.+?)\s*-\s*S(?P<season>\d{1,2})E(?P<ep>\d{1,3})\s*\.\w+$",
     re.IGNORECASE,
 )
+
+# Commit accumulated contributions in batches so a mid-run extractor failure
+# (e.g. a corrupt MKV partway through a 5000-file library) doesn't discard
+# the contributions already collected.
+BOOTSTRAP_BATCH_SIZE = 200
 
 SearchFn = Callable[[str, str], Awaitable[int | None]]
 
@@ -178,6 +188,10 @@ async def bootstrap_directory(
                 contributions_enabled=cfg.enable_fingerprint_contributions,
             )
             counters["queued"] += 1
+            # Commit in batches so an extractor failure on file #N doesn't
+            # lose the first N-1 already-queued contributions.
+            if counters["queued"] % BOOTSTRAP_BATCH_SIZE == 0:
+                await session.commit()
         if not dry_run:
             await session.commit()
 
