@@ -33,3 +33,21 @@ def test_validate_fpcalc_binary_missing_file(tmp_path):
     result = _validate_fpcalc_binary(str(bogus))
     assert result.found is False
     assert result.path == str(bogus)
+
+
+def test_detect_fpcalc_uses_path_search(monkeypatch):
+    """detect_fpcalc consults shutil.which before falling back to common paths."""
+    from app.api import validation as v
+
+    def fake_which(name):
+        return "/usr/local/bin/fpcalc" if name == "fpcalc" else None
+
+    monkeypatch.setattr(v.shutil, "which", fake_which)
+    monkeypatch.setattr(
+        v,
+        "_validate_fpcalc_binary",
+        lambda p: v.ToolDetectionResult(found=True, path=p, version="fpcalc version 1.5.1"),
+    )
+    result = v.detect_fpcalc()
+    assert result.found is True
+    assert result.path == "/usr/local/bin/fpcalc"

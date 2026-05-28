@@ -229,6 +229,44 @@ def _validate_fpcalc_binary(path_str: str) -> ToolDetectionResult:
         return ToolDetectionResult(found=False, path=path_str, error=str(e))
 
 
+FPCALC_COMMON_PATHS = [
+    # Windows
+    r"C:\Program Files\Chromaprint\fpcalc.exe",
+    r"C:\Program Files (x86)\Chromaprint\fpcalc.exe",
+    # macOS (homebrew)
+    "/opt/homebrew/bin/fpcalc",
+    "/usr/local/bin/fpcalc",
+    # Linux
+    "/usr/bin/fpcalc",
+    # Dev convenience: the worktree spike binary
+    str(Path(__file__).resolve().parents[3] / "spikes" / "chromaprint" / "bin" / "fpcalc.exe"),
+]
+
+
+def detect_fpcalc() -> ToolDetectionResult:
+    """Auto-detect a usable fpcalc binary.
+
+    Order: PATH first, then common platform locations, then the dev spike binary.
+    Returns the first result that validates successfully.
+    """
+    via_path = shutil.which("fpcalc")
+    candidates: list[str] = []
+    if via_path:
+        candidates.append(via_path)
+    candidates.extend(FPCALC_COMMON_PATHS)
+
+    for candidate in candidates:
+        result = _validate_fpcalc_binary(candidate)
+        if result.found:
+            return result
+
+    return ToolDetectionResult(
+        found=False,
+        path=None,
+        error="fpcalc not found in PATH or common locations",
+    )
+
+
 def detect_makemkv() -> ToolDetectionResult:
     """Auto-detect MakeMKV by searching PATH then common install locations."""
     # 1. Check system PATH
