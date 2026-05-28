@@ -33,6 +33,7 @@ dependencies = [
     "rich>=13.7.0",
     "librosa>=0.10.1",
     "soundfile>=0.12.1",
+    "zstandard>=0.25.0",
 ]
 
 [project.optional-dependencies]
