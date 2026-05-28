@@ -1210,14 +1210,32 @@ async def list_fingerprint_contributions(
     Excludes the chromaprint blob body — only summarizes byte size — so the response
     stays manageable. Phase 2 adds filtering by upload status.
     """
+    from sqlalchemy import func
+
     from app.models.fingerprint import FingerprintContribution
 
+    # Select metadata columns plus the blob *length* (not the blob itself) so we
+    # don't pull tens of megabytes of fingerprint data through SQLite just to
+    # report a size summary.
+    fc = FingerprintContribution
     result = await session.execute(
-        select(FingerprintContribution)
-        .order_by(FingerprintContribution.queued_at.desc())
+        select(
+            fc.id,
+            fc.queued_at,
+            fc.title_id,
+            fc.tmdb_id,
+            fc.season,
+            fc.episode,
+            fc.match_confidence,
+            fc.match_source,
+            fc.uploaded_at,
+            fc.upload_attempts,
+            func.length(fc.chromaprint_blob).label("blob_size_bytes"),
+        )
+        .order_by(fc.queued_at.desc())
         .limit(limit)
     )
-    rows = result.scalars().all()
+    rows = result.all()
     items = [
         {
             "id": r.id,
@@ -1230,7 +1248,7 @@ async def list_fingerprint_contributions(
             "match_source": r.match_source,
             "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
             "upload_attempts": r.upload_attempts,
-            "blob_size_bytes": len(r.chromaprint_blob) if r.chromaprint_blob else 0,
+            "blob_size_bytes": r.blob_size_bytes or 0,
         }
         for r in rows
     ]
