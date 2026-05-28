@@ -141,6 +141,24 @@ class TestTVExtrasOrganizationPaths:
         assert "Disc 3" in str(result["final_path"])
         assert "Season 01" in str(result["final_path"])
 
+    def test_arrested_dev_extras_path(self, tmp_path):
+        library = tmp_path / "tv"
+        source = tmp_path / "staging" / "bonus.mkv"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"x" * 1024)
+
+        result = organize_tv_extras(
+            source,
+            "Arrested Development",
+            season=1,
+            library_path=library,
+            disc_number=1,
+            extra_index=1,
+        )
+        assert result["success"]
+        assert "Extras" in str(result["final_path"])
+        assert "Disc 1" in str(result["final_path"])
+
 
 @pytest.mark.pipeline
 class TestMovieExtrasMapping:
@@ -159,14 +177,13 @@ class TestMovieExtrasMapping:
         result = organize_movie(staging, "Apocalypse Now", year=1979, library_path=library)
 
         assert result["success"], result.get("error")
-        assert result["main_source"] == "t00.mkv"
         assert set(result["extras_mapping"].keys()) == {"t01.mkv", "t02.mkv"}
         for dest_path in result["extras_mapping"].values():
             assert "Extras" in str(dest_path)
             assert dest_path.suffix == ".mkv"
 
     def test_no_extras_mapping_empty(self, tmp_path):
-        """Single-file disc: extras_mapping is empty, main_source is set."""
+        """Single-file disc: extras_mapping is empty on a single-file disc."""
         staging = tmp_path / "staging"
         staging.mkdir()
         (staging / "t00.mkv").write_bytes(b"x" * 1024)
@@ -175,7 +192,6 @@ class TestMovieExtrasMapping:
         result = organize_movie(staging, "Inception", year=2010, library_path=library)
 
         assert result["success"]
-        assert result["main_source"] == "t00.mkv"
         assert result["extras_mapping"] == {}
 
     def test_extras_mapped_to_sequential_names(self, tmp_path):
@@ -192,26 +208,3 @@ class TestMovieExtrasMapping:
         assert result["success"]
         dest_names = {dest.name for dest in result["extras_mapping"].values()}
         assert dest_names == {"Extra 1.mkv", "Extra 2.mkv"}
-
-
-@pytest.mark.pipeline
-class TestTVExtrasOrganizationPaths2:
-    """Additional TV extras organization path tests."""
-
-    def test_arrested_dev_extras_path(self, tmp_path):
-        library = tmp_path / "tv"
-        source = tmp_path / "staging" / "bonus.mkv"
-        source.parent.mkdir(parents=True)
-        source.write_bytes(b"x" * 1024)
-
-        result = organize_tv_extras(
-            source,
-            "Arrested Development",
-            season=1,
-            library_path=library,
-            disc_number=1,
-            extra_index=1,
-        )
-        assert result["success"]
-        assert "Extras" in str(result["final_path"])
-        assert "Disc 1" in str(result["final_path"])

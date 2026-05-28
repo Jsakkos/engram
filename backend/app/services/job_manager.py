@@ -1632,7 +1632,7 @@ class JobManager:
                                     t.organized_to = str(extras_mapping[output_basename])
                                     t.is_extra = True
                                 else:
-                                    t.organized_to = str(organize_result.get("main_file", ""))
+                                    t.organized_to = str(organize_result.get("main_file") or "")
                                 session.add(t)
                                 await ws_manager.broadcast_title_update(
                                     job_id,

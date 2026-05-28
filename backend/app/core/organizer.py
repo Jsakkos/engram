@@ -205,7 +205,7 @@ def organize_movie(
         conflict_resolution: How to handle file conflicts: "ask", "overwrite", "rename", "skip"
 
     Returns:
-        dict with 'success', 'main_file', 'extras', 'error' keys
+        dict with 'success', 'main_file', 'extras', 'extras_mapping', 'error' keys
     """
     # Imported function-locally to avoid a circular import with config_service.
     from app.services.config_service import get_config_sync
@@ -218,7 +218,6 @@ def organize_movie(
         return {
             "success": False,
             "main_file": None,
-            "main_source": None,
             "extras": [],
             "extras_mapping": {},
             "error": "Library path not configured. Please set Movies Library path in Settings.",
@@ -233,7 +232,6 @@ def organize_movie(
         return {
             "success": False,
             "main_file": None,
-            "main_source": None,
             "extras": [],
             "extras_mapping": {},
             "error": f"Cannot create library directory {library_path}: {e}",
@@ -251,7 +249,6 @@ def organize_movie(
             return {
                 "success": False,
                 "main_file": None,
-                "main_source": None,
                 "extras": [],
                 "extras_mapping": {},
                 "error": "No MKV files found in staging directory",
@@ -276,7 +273,7 @@ def organize_movie(
     # Check if destination exists and handle conflict
     dest_file, early = resolve_conflict(dest_file, conflict_resolution)
     if early:
-        return {**early, "main_file": None, "main_source": None, "extras": [], "extras_mapping": {}}
+        return {**early, "main_file": None, "extras": [], "extras_mapping": {}}
 
     try:
         # Move main movie
@@ -312,7 +309,6 @@ def organize_movie(
         return {
             "success": True,
             "main_file": dest_file,
-            "main_source": main_file.name,
             "extras": moved_extras,
             "extras_mapping": extras_mapping,
             "error": None,
@@ -323,7 +319,6 @@ def organize_movie(
         return {
             "success": False,
             "main_file": None,
-            "main_source": None,
             "extras": [],
             "extras_mapping": {},
             "error": str(e),
