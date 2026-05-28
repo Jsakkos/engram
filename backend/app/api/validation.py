@@ -226,7 +226,7 @@ def _validate_fpcalc_binary(path_str: str) -> ToolDetectionResult:
         return ToolDetectionResult(found=True, path=path_str, version=version_line)
     except subprocess.TimeoutExpired:
         return ToolDetectionResult(found=False, path=path_str, error="Timed out")
-    except OSError as e:
+    except Exception as e:
         return ToolDetectionResult(found=False, path=path_str, error=str(e))
 
 
@@ -387,6 +387,13 @@ async def validate_ffmpeg(request: ValidationRequest) -> ValidationResponse:
 @router.post("/validate/fpcalc", response_model=ValidationResponse)
 async def validate_fpcalc(request: ValidationRequest) -> ValidationResponse:
     """Validate a user-supplied fpcalc binary path."""
+    fpcalc_cmd = Path(request.path)
+    # Constrain to known fpcalc executables before filesystem/subprocess use.
+    if not executable_basename_allowed(str(fpcalc_cmd), _FPCALC_EXE_NAMES):
+        return ValidationResponse(valid=False, error="Path does not point to an fpcalc executable")
+    if not fpcalc_cmd.exists():
+        return ValidationResponse(valid=False, error="File not found at specified path")
+
     result = await asyncio.to_thread(_validate_fpcalc_binary, request.path)
     if not result.found:
         return ValidationResponse(valid=False, error=result.error, path=result.path)

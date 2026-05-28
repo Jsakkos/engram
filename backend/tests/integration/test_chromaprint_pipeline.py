@@ -44,3 +44,15 @@ async def test_validate_fpcalc_endpoint_rejects_missing(client):
     assert response.status_code == 200
     data = response.json()
     assert data["valid"] is False
+
+
+@pytest.mark.asyncio
+async def test_validate_fpcalc_rejects_disallowed_basename(client):
+    """The validate endpoint refuses paths whose basename is not in the fpcalc whitelist."""
+    response = await client.post(
+        "/api/validate/fpcalc",
+        json={"path": "/usr/bin/whoami"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["valid"] is False
