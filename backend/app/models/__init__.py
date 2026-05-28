@@ -2,5 +2,14 @@
 
 from app.models.app_config import AppConfig
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
+from app.models.fingerprint import FingerprintContribution
 
-__all__ = ["DiscJob", "DiscTitle", "JobState", "TitleState", "ContentType", "AppConfig"]
+__all__ = [
+    "DiscJob",
+    "DiscTitle",
+    "JobState",
+    "TitleState",
+    "ContentType",
+    "AppConfig",
+    "FingerprintContribution",
+]
