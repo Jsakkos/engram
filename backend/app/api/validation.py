@@ -29,6 +29,7 @@ _MAKEMKV_EXE_NAMES = (
     "com.makemkv.MakeMKV",
 )
 _FFMPEG_EXE_NAMES = ("ffmpeg", "ffmpeg.exe")
+_FPCALC_EXE_NAMES = ("fpcalc", "fpcalc.exe")
 
 
 class ValidationRequest(BaseModel):
@@ -203,6 +204,29 @@ def _validate_ffmpeg_binary(path_str: str) -> ToolDetectionResult:
         return ToolDetectionResult(found=False, path=path_str, error="Command timeout (10s)")
     except Exception as e:
         return ToolDetectionResult(found=False, error=f"Execution failed: {e}")
+
+
+def _validate_fpcalc_binary(path_str: str) -> ToolDetectionResult:
+    """Validate a chromaprint fpcalc binary and extract version info."""
+    try:
+        result = subprocess.run(
+            [path_str, "-version"],
+            capture_output=True,
+            timeout=10,
+            text=True,
+        )
+        if result.returncode != 0:
+            return ToolDetectionResult(
+                found=False,
+                path=path_str,
+                error=f"Non-zero exit code {result.returncode}",
+            )
+        version_line = (result.stdout or "").split("\n")[0] or "unknown"
+        return ToolDetectionResult(found=True, path=path_str, version=version_line)
+    except subprocess.TimeoutExpired:
+        return ToolDetectionResult(found=False, path=path_str, error="Timed out")
+    except OSError as e:
+        return ToolDetectionResult(found=False, path=path_str, error=str(e))
 
 
 def detect_makemkv() -> ToolDetectionResult:
