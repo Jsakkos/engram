@@ -60,6 +60,28 @@ def require_debug() -> None:
         raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
+# Loopback addresses that count as "the user is querying their own machine".
+# Used by endpoints that surface privacy-sensitive data (e.g. ripping history)
+# so they remain reachable from the dashboard but not from LAN peers when
+# `allow_lan_access` binds 0.0.0.0.
+_LOCALHOST_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+
+
+def require_localhost(request: Request) -> None:
+    """FastAPI dependency: 403 unless the request came from the host machine.
+
+    Allowed: real loopback (`127.0.0.1`, `::1`), the literal `localhost`, and
+    `testclient` (the FastAPI/Starlette test client host). Everything else —
+    including LAN peers when `allow_lan_access=True` opens the bind to all
+    interfaces — is rejected.
+    """
+    client = request.client.host if request.client else None
+    if client not in _LOCALHOST_CLIENTS:
+        raise HTTPException(
+            status_code=403, detail="This endpoint is only reachable from the host machine"
+        )
+
+
 # Request/Response Models
 class JobResponse(BaseModel):
     """Response model for a disc job."""
@@ -1200,7 +1222,7 @@ async def delete_job(
     return {"status": "cleared", "job_id": job.id}
 
 
-@router.get("/fingerprint/contributions")
+@router.get("/fingerprint/contributions", dependencies=[Depends(require_localhost)])
 async def list_fingerprint_contributions(
     session: AsyncSession = Depends(get_session),
     limit: int = Query(200, ge=1, le=1000),
@@ -1209,6 +1231,11 @@ async def list_fingerprint_contributions(
 
     Excludes the chromaprint blob body — only summarizes byte size — so the response
     stays manageable. Phase 2 adds filtering by upload status.
+
+    Localhost-only: the response includes recent ripping activity (TMDB IDs,
+    season/episode, timestamps), which is the user's viewing history. The
+    `require_localhost` guard rejects LAN peers even when `allow_lan_access`
+    has opened the bind address.
     """
     from sqlalchemy import func
 

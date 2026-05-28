@@ -82,8 +82,10 @@ async def test_pseudonym_generated_on_first_startup(async_session_ctx):
     await get_config()
 
     # Run the bootstrap — same logic as the lifespan block.
-    result = await async_session_ctx.execute(select(AppConfig))
-    cfg = result.scalar_one_or_none()
+    # Use .first() rather than .scalar_one_or_none() so the test tolerates
+    # other tests leaving stray app_config rows in the shared DB.
+    result = await async_session_ctx.execute(select(AppConfig).limit(1))
+    cfg = result.scalars().first()
     assert cfg is not None, "app_config row should exist after get_config()"
 
     if not validate_pseudonym(cfg.contribution_pseudonym):
@@ -375,3 +377,32 @@ async def test_get_fingerprint_contributions(client):
     # Blob should be summarized (size) not returned wholesale
     assert "chromaprint_blob" not in item
     assert item["blob_size_bytes"] == 1000
+
+
+def test_require_localhost_rejects_lan_clients():
+    """The localhost-only guard 403s any non-loopback client."""
+    from unittest.mock import MagicMock
+
+    from fastapi import HTTPException
+
+    from app.api.routes import require_localhost
+
+    # Real LAN client → rejected
+    request = MagicMock()
+    request.client.host = "192.168.1.100"
+    with pytest.raises(HTTPException) as exc:
+        require_localhost(request)
+    assert exc.value.status_code == 403
+
+    # IPv4 loopback → allowed
+    request.client.host = "127.0.0.1"
+    require_localhost(request)  # no raise
+
+    # IPv6 loopback → allowed
+    request.client.host = "::1"
+    require_localhost(request)  # no raise
+
+    # No client info → rejected (safer default)
+    request.client = None
+    with pytest.raises(HTTPException):
+        require_localhost(request)

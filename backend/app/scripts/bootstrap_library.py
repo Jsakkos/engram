@@ -188,9 +188,12 @@ async def bootstrap_directory(
                 contributions_enabled=cfg.enable_fingerprint_contributions,
             )
             counters["queued"] += 1
-            # Commit in batches so an extractor failure on file #N doesn't
-            # lose the first N-1 already-queued contributions.
-            if counters["queued"] % BOOTSTRAP_BATCH_SIZE == 0:
+            # Commit in batches so a mid-run extractor failure doesn't discard
+            # the contributions already queued. Trigger on `scanned` (every
+            # file walked, success or failure) rather than `queued` — that way
+            # a streak of failures right after a batch boundary doesn't push
+            # the next commit arbitrarily far into the future.
+            if counters["scanned"] % BOOTSTRAP_BATCH_SIZE == 0:
                 await session.commit()
         if not dry_run:
             await session.commit()

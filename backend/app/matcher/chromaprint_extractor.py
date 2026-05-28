@@ -15,6 +15,10 @@ from dataclasses import dataclass
 
 from loguru import logger
 
+# Module-level dedupe flag: log the first fpcalc-version failure, then suppress.
+# See `_cached_version` for the dedupe rationale.
+_version_failure_logged = False
+
 
 @dataclass
 class ChromaprintResult:
@@ -124,6 +128,18 @@ class ChromaprintExtractor:
             proc = await asyncio.to_thread(_run)
             self._version_cache = (proc.stdout or "").splitlines()[0] if proc.stdout else ""
         except Exception:
-            logger.warning("fpcalc -version failed; fpcalc_version will be empty", exc_info=True)
+            # Each ChromaprintExtractor instance is short-lived (one per title
+            # in the matching pipeline), so a misconfigured fpcalc binary would
+            # otherwise log on every extraction. Dedupe at module level so the
+            # operator sees a single diagnostic, not one per ripped title.
+            global _version_failure_logged
+            if not _version_failure_logged:
+                logger.error(
+                    f"fpcalc -version failed at {self.fpcalc_path!r}; "
+                    "fpcalc_version will be empty on stored fingerprints. "
+                    "Subsequent failures suppressed.",
+                    exc_info=True,
+                )
+                _version_failure_logged = True
             self._version_cache = ""
         return self._version_cache
