@@ -161,6 +161,25 @@ class EventBroadcaster:
         """Broadcast subtitle download failed."""
         await self._ws.broadcast_subtitle_event(job_id, "failed")
 
+    # --- Fingerprint Privacy Events ---
+
+    async def broadcast_fingerprint_disclosure_required(self, pending_count: int) -> None:
+        """Tell the dashboard to show the JIT fingerprint-disclosure modal.
+
+        Fired by the ContributionUploader when fingerprint contributions are
+        queued but the user has not yet accepted the privacy disclosure. The
+        modal blocks until the user accepts (uploads proceed) or opts out.
+
+        Flat envelope (matches the frontend's `message.type` switch), not a
+        nested `data` object.
+        """
+        await self._ws.broadcast(
+            {
+                "type": "fingerprint_disclosure_required",
+                "pending_count": pending_count,
+            }
+        )
+
     # --- Update Events ---
 
     async def broadcast_update_status(
