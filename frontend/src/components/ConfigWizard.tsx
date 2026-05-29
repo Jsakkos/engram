@@ -57,6 +57,7 @@ interface ConfigData {
     maxConcurrentMatches: number;
     ffmpegPath: string;
     conflictResolutionDefault: string;
+    episodeOrderingPreference: 'aired' | 'dvd';
     watchdogEnabled: boolean;
     timeoutIdentifyingSeconds: number;
     timeoutRippingSeconds: number;
@@ -125,6 +126,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         maxConcurrentMatches: 2,
         ffmpegPath: '',
         conflictResolutionDefault: 'ask',
+        episodeOrderingPreference: 'aired',
         watchdogEnabled: true,
         timeoutIdentifyingSeconds: 600,
         timeoutRippingSeconds: 1200,
@@ -215,6 +217,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     maxConcurrentMatches: data.max_concurrent_matches ?? 2,
                     ffmpegPath: data.ffmpeg_path || '',
                     conflictResolutionDefault: data.conflict_resolution_default || 'ask',
+                    episodeOrderingPreference: data.episode_ordering_preference || 'aired',
                     watchdogEnabled: data.watchdog_enabled ?? true,
                     timeoutIdentifyingSeconds: data.timeout_identifying_seconds ?? 600,
                     timeoutRippingSeconds: data.timeout_ripping_seconds ?? 1200,
@@ -326,6 +329,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     max_concurrent_matches: config.maxConcurrentMatches,
                     ffmpeg_path: config.ffmpegPath,
                     conflict_resolution_default: config.conflictResolutionDefault,
+                    episode_ordering_preference: config.episodeOrderingPreference,
                     watchdog_enabled: config.watchdogEnabled,
                     timeout_identifying_seconds: config.timeoutIdentifyingSeconds,
                     timeout_ripping_seconds: config.timeoutRippingSeconds,
@@ -1044,6 +1048,26 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             />
                             <span className="form-hint">
                                 What should Engram do when a file already exists in your library?
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="episodeOrdering">Episode Ordering</label>
+                            <EngramSelect
+                                id="episodeOrdering"
+                                value={config.episodeOrderingPreference}
+                                onValueChange={(v) => handleInputChange('episodeOrderingPreference', v)}
+                                options={[
+                                    { value: 'aired', label: 'Aired Order (Default)' },
+                                    { value: 'dvd', label: 'DVD Order' },
+                                ]}
+                            />
+                            <span className="form-hint">
+                                How TV episodes are numbered in filenames. DVD order uses the disc
+                                release's numbering (e.g. Firefly) when a show provides it, falling back
+                                to aired order otherwise. This only affects new rips' filenames — matching,
+                                history, and the fingerprint network always use canonical aired numbering.
+                                Individual shows can be overridden during review.
                             </span>
                         </div>
 
