@@ -138,7 +138,7 @@ export function Inspector({
                             disabled={isRematching}
                         >
                             <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
-                            <span style={{ marginLeft: 6 }}>{isRematching ? 'Re-matching…' : 'Deep re-match'}</span>
+                            {isRematching ? 'Re-matching…' : 'Deep re-match'}
                         </SvActionButton>
                     </div>
                 )}
@@ -383,7 +383,7 @@ export function Inspector({
                                 title="Toggle match source"
                                 ariaLabel="Toggle match source"
                             >
-                                <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
+                                <IcoRetry size={11} />
                             </SvActionButton>
                         )}
                     </div>
