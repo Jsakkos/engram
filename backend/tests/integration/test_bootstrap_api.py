@@ -23,12 +23,22 @@ from app.main import app
 
 @pytest.fixture(autouse=True)
 async def setup_db():
-    """Initialize DB and scrub bootstrap rows between tests."""
+    """Initialize DB and scrub bootstrap rows before AND after each test.
+
+    The post-test teardown matters here specifically: leftover
+    ``fingerprint_contributions`` rows are exactly what ``ContributionUploader``
+    drains, so a test row surviving in a real DB could be uploaded to the live
+    network. Clean both sides so no ``bootstrap`` rows ever outlive the suite.
+    """
     await init_db()
     async with async_session() as session:
         await session.execute(text("DELETE FROM fingerprint_contributions"))
         await session.execute(text("DELETE FROM disc_titles"))
         await session.execute(text("DELETE FROM disc_jobs"))
+        await session.commit()
+    yield
+    async with async_session() as session:
+        await session.execute(text("DELETE FROM fingerprint_contributions"))
         await session.commit()
 
 
