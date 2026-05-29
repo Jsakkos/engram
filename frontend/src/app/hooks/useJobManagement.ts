@@ -28,6 +28,25 @@ const STATE_PRIORITY: Record<string, number> = {
 // Title states that indicate a title has finished processing.
 const TERMINAL_TITLE_STATES = ['matched', 'completed', 'review', 'failed'];
 
+/**
+ * A WebSocket reconnect often follows a backend restart — notably after the
+ * auto-updater applies a new build. If the backend now reports a different
+ * version than the one THIS bundle was compiled from (`__APP_VERSION__`), the
+ * open tab is stale, so hard-reload to pull the new UI. `index.html` is served
+ * `no-cache`, so the reload fetches the new content-hashed bundles; the new
+ * bundle's `__APP_VERSION__` then matches, so this fires exactly once.
+ */
+async function reloadIfVersionChanged(): Promise<void> {
+    try {
+        const status = await apiFetch<{ current_version?: string }>('/api/updates/status');
+        if (status.current_version && status.current_version !== __APP_VERSION__) {
+            window.location.reload();
+        }
+    } catch {
+        // Transient blip during reconnect — skip; we re-check on the next reconnect.
+    }
+}
+
 export function useJobManagement(devMode: boolean = false) {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [titlesMap, setTitlesMap] = useState<Record<number, DiscTitle[]>>({});
@@ -136,6 +155,8 @@ export function useJobManagement(devMode: boolean = false) {
         if (import.meta.env.DEV) {
             console.log('🔌 WebSocket reconnected — resyncing jobs');
         }
+        // The reconnect may follow an update+restart — reload if the build changed.
+        void reloadIfVersionChanged();
         fetchRef.current?.();
     }, []);
 

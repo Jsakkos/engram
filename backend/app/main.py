@@ -223,8 +223,19 @@ if os.path.isdir(_static_dir):
     from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
+    # Vite content-hashes everything under /assets (e.g. index-AbC123.js), so the
+    # filename changes whenever the bytes change — they can be cached forever.
+    # The opposite of index.html below, which must never be cached (see serve_spa).
+    class _ImmutableStatic(StaticFiles):
+        def file_response(self, *args, **kwargs):
+            resp = super().file_response(*args, **kwargs)
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+
     # Mount static assets (JS, CSS, images)
-    app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
+    app.mount(
+        "/assets", _ImmutableStatic(directory=os.path.join(_static_dir, "assets")), name="assets"
+    )
 
     # Root-level static files emitted by the Vite build (favicon, SVGs, etc.).
     # Built once at server startup by listing the static dir — no manual
@@ -253,7 +264,11 @@ if os.path.isdir(_static_dir):
         # have been removed since; fall through to index.html, never a 500.
         if static_file is not None and os.path.isfile(static_file):
             return FileResponse(static_file)
-        return FileResponse(_INDEX_HTML)
+        # index.html keeps a stable name across builds, so without this header the
+        # browser heuristically caches it and keeps loading the OLD hashed bundles
+        # after an update. no-cache forces revalidation; FileResponse's ETag makes
+        # the revalidation a cheap 304 when unchanged.
+        return FileResponse(_INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
 else:
 

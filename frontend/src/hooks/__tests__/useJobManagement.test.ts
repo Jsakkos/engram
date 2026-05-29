@@ -387,6 +387,79 @@ describe("useJobManagement hook integration", () => {
     // Sanity: the listener was registered so WS messages would be handled.
     expect(typeof capturedListener).toBe("function");
   });
+
+  it("hard-reloads on reconnect when the backend reports a different version", async () => {
+    // Swap window.location for a stub that records reload() (jsdom's real
+    // reload is unimplemented). delete-then-assign is the jsdom-safe override.
+    const realLocation = window.location;
+    const reloadMock = vi.fn();
+    // @ts-expect-error — overriding the non-writable location for the test.
+    delete window.location;
+    // @ts-expect-error — install a minimal stub the hook can read + call.
+    window.location = { protocol: "http:", host: "localhost:5173", reload: reloadMock };
+
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.includes("/api/updates/status"))
+        return Promise.resolve(okJson({ current_version: `${__APP_VERSION__}-next` }));
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderHook(() => useJobManagement(false));
+
+    // First onOpen = initial connect (skipped); second = reconnect (version check).
+    act(() => {
+      capturedOnOpen?.();
+    });
+    await act(async () => {
+      capturedOnOpen?.();
+    });
+
+    await waitFor(() => {
+      expect(reloadMock).toHaveBeenCalled();
+    });
+
+    // @ts-expect-error — restore the real location for other tests.
+    window.location = realLocation;
+  });
+
+  it("does NOT reload on reconnect when the version matches", async () => {
+    const realLocation = window.location;
+    const reloadMock = vi.fn();
+    // @ts-expect-error — overriding the non-writable location for the test.
+    delete window.location;
+    // @ts-expect-error — install a minimal stub the hook can read + call.
+    window.location = { protocol: "http:", host: "localhost:5173", reload: reloadMock };
+
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.includes("/api/updates/status"))
+        return Promise.resolve(okJson({ current_version: __APP_VERSION__ }));
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderHook(() => useJobManagement(false));
+
+    act(() => {
+      capturedOnOpen?.();
+    });
+    await act(async () => {
+      capturedOnOpen?.();
+    });
+
+    // Wait until the status check has actually run, then assert no reload.
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/updates/status")),
+      ).toBe(true);
+    });
+    expect(reloadMock).not.toHaveBeenCalled();
+
+    // @ts-expect-error — restore the real location for other tests.
+    window.location = realLocation;
+  });
 });
 
 // ---------------------------------------------------------------------------
