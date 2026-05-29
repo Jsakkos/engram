@@ -514,6 +514,7 @@ class FinalizationCoordinator:
     async def finalize_disc_job(self, job_id: int):
         """Run conflict resolution with cascading reassignment and organize matches."""
         from app.core.organizer import organize_tv_episode, organize_tv_extras, tv_organizer
+        from app.services.episode_ordering_service import resolve_show_ordering
 
         logger.info(f"Running conflict resolution for Job {job_id}")
 
@@ -699,6 +700,11 @@ class FinalizationCoordinator:
                 )
                 return
 
+            # Resolve the show's output ordering once for this sweep (#200).
+            # Canonical (aired) for the common case; projected to the filename only.
+            ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
+            _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
+
             # Organize all MATCHED winners
             extra_index = 1
             for t in titles:
@@ -737,6 +743,9 @@ class FinalizationCoordinator:
                         job.detected_title or job.volume_label,
                         t.matched_episode,
                         _lib_path,
+                        tmdb_id=_tmdb_id_str,
+                        ordering=ordering,
+                        episode_group_id=ordering_group_id,
                     )
                 else:
                     org_result = await asyncio.to_thread(
@@ -744,6 +753,9 @@ class FinalizationCoordinator:
                         source_file,
                         job.detected_title,
                         t.matched_episode,
+                        tmdb_id=_tmdb_id_str,
+                        ordering=ordering,
+                        episode_group_id=ordering_group_id,
                     )
 
                 # Classification is independent of the file move: a failed extra
@@ -758,6 +770,11 @@ class FinalizationCoordinator:
                     t.organized_to = (
                         str(org_result.get("final_path")) if org_result.get("final_path") else None
                     )
+                    # Audit which output ordering was applied (#200) — episodes only;
+                    # matched_episode itself stays canonical. Extras bypass projection.
+                    if t.matched_episode != "extra" and ordering != "aired":
+                        t.episode_ordering = ordering
+                        t.episode_group_id = ordering_group_id
                     # Advance the extras slot only on a confirmed write.
                     if t.matched_episode == "extra":
                         extra_index += 1
@@ -1011,6 +1028,7 @@ class FinalizationCoordinator:
             organize_tv_extras,
             tv_organizer,
         )
+        from app.services.episode_ordering_service import resolve_show_ordering
 
         job_id = job.id
 
@@ -1041,6 +1059,10 @@ class FinalizationCoordinator:
             )
         )
         resolved_titles = all_titles_result.scalars().all()
+
+        # Resolve output ordering once for this sweep (#200); filename-only projection.
+        ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
+        _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
 
         success_count = 0
         conflict_count = 0
@@ -1076,6 +1098,9 @@ class FinalizationCoordinator:
                                 job.detected_title or job.volume_label,
                                 disc_title.matched_episode,
                                 _lib_path,
+                                tmdb_id=_tmdb_id_str,
+                                ordering=ordering,
+                                episode_group_id=ordering_group_id,
                             )
                         else:
                             org_result = await asyncio.to_thread(
@@ -1083,6 +1108,9 @@ class FinalizationCoordinator:
                                 source_file,
                                 job.detected_title or job.volume_label,
                                 disc_title.matched_episode,
+                                tmdb_id=_tmdb_id_str,
+                                ordering=ordering,
+                                episode_group_id=ordering_group_id,
                             )
                     if org_result["success"]:
                         success_count += 1
@@ -1093,6 +1121,9 @@ class FinalizationCoordinator:
                             else None
                         )
                         disc_title.is_extra = disc_title.matched_episode == "extra"
+                        if disc_title.matched_episode != "extra" and ordering != "aired":
+                            disc_title.episode_ordering = ordering
+                            disc_title.episode_group_id = ordering_group_id
                         disc_title.state = TitleState.COMPLETED
                         logger.info(f"Organized: {org_result['final_path']}")
                     elif org_result.get("error_code") == "FILE_EXISTS":
@@ -1198,6 +1229,7 @@ class FinalizationCoordinator:
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job without waiting for unresolved ones."""
         from app.core.organizer import organize_tv_episode, organize_tv_extras, tv_organizer
+        from app.services.episode_ordering_service import resolve_show_ordering
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -1213,6 +1245,10 @@ class FinalizationCoordinator:
                 )
             )
             matched_titles = result.scalars().all()
+
+            # Resolve output ordering once for this sweep (#200); filename-only projection.
+            ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
+            _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
 
             success_count = 0
             conflict_count = 0
@@ -1248,6 +1284,9 @@ class FinalizationCoordinator:
                             job.detected_title or job.volume_label,
                             disc_title.matched_episode,
                             _lib_path,
+                            tmdb_id=_tmdb_id_str,
+                            ordering=ordering,
+                            episode_group_id=ordering_group_id,
                         )
                     else:
                         org_result = await asyncio.to_thread(
@@ -1255,6 +1294,9 @@ class FinalizationCoordinator:
                             source_file,
                             job.detected_title or job.volume_label,
                             disc_title.matched_episode,
+                            tmdb_id=_tmdb_id_str,
+                            ordering=ordering,
+                            episode_group_id=ordering_group_id,
                         )
 
                 if org_result["success"]:
@@ -1264,6 +1306,9 @@ class FinalizationCoordinator:
                         str(org_result.get("final_path")) if org_result.get("final_path") else None
                     )
                     disc_title.is_extra = disc_title.matched_episode == "extra"
+                    if disc_title.matched_episode != "extra" and ordering != "aired":
+                        disc_title.episode_ordering = ordering
+                        disc_title.episode_group_id = ordering_group_id
                     disc_title.state = TitleState.COMPLETED
                     logger.info(f"Organized: {org_result['final_path']}")
                 elif org_result.get("error_code") == "FILE_EXISTS":

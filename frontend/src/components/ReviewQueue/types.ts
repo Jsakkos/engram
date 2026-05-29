@@ -43,6 +43,17 @@ export interface RosterEpisode {
     assigned_title_ids?: number[];
 }
 
+/** One selectable output ordering for a show (#200). */
+export interface OrderingOption {
+    ordering: string; // "aired" | "dvd" | "digital" | ...
+    label: string; // human label (e.g. "DVD Order")
+    tmdb_type: number;
+    /** Whether this ordering renumbers any episode matched on this disc. */
+    diverges: boolean;
+    /** Canonical "SxxExx" -> projected "SxxExx" for the season's episodes. */
+    projection: Record<string, string>;
+}
+
 /** Response shape of the season-roster endpoint. */
 export interface SeasonRoster {
     available: boolean;
@@ -50,6 +61,11 @@ export interface SeasonRoster {
     show_id: number | null;
     episodes: RosterEpisode[];
     reason: string | null;
+    /** Episode ordering (#200) — selector is only shown when ordering_diverges. */
+    ordering_available?: boolean;
+    ordering_diverges?: boolean;
+    current_ordering?: string;
+    ordering_options?: OrderingOption[];
 }
 
 export type { DiscTitle };

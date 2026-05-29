@@ -566,3 +566,122 @@ class TestFetchSeasonEpisodesOverview:
             eps = fetch_season_episodes("1234", 1, "fake-key")
 
         assert eps[0]["overview"] == ""
+
+
+@pytest.mark.unit
+class TestFetchEpisodeGroups:
+    """``fetch_episode_groups`` lists the alternative orderings (DVD, digital,
+    absolute, ...) TMDB has for a show. It backs the episode-ordering feature's
+    canonical->output projection. Caller supplies the key (matcher-layer
+    isolation, same as fetch_season_episodes/fetch_movie_runtime)."""
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_returns_results_list(self, mock_get):
+        payload = {
+            "results": [
+                {"id": "grp_dvd", "name": "DVD Order", "type": 3, "group_count": 1},
+                {"id": "grp_air", "name": "Aired Order", "type": 1, "group_count": 1},
+            ]
+        }
+        mock_get.return_value = Mock(status_code=200, json=lambda: payload, raise_for_status=Mock())
+        groups = tmdb_client.fetch_episode_groups("1437", "test_key")
+        assert [g["id"] for g in groups] == ["grp_dvd", "grp_air"]
+        assert "/tv/1437/episode_groups" in mock_get.call_args[0][0]
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_no_api_key_returns_empty(self, mock_get):
+        assert tmdb_client.fetch_episode_groups("1437", "") == []
+        assert mock_get.call_count == 0
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_api_error_returns_empty(self, mock_get):
+        err = Mock(status_code=500)
+        err.raise_for_status = Mock(side_effect=requests.exceptions.HTTPError("500"))
+        mock_get.return_value = err
+        assert tmdb_client.fetch_episode_groups("1437", "test_key") == []
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_missing_results_returns_empty(self, mock_get):
+        mock_get.return_value = Mock(status_code=200, json=lambda: {}, raise_for_status=Mock())
+        assert tmdb_client.fetch_episode_groups("1437", "test_key") == []
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_non_numeric_show_id_rejected_without_request(self, mock_get):
+        # SSRF guard: a non-numeric show id must never reach the request URL.
+        assert tmdb_client.fetch_episode_groups("../../evil", "test_key") == []
+        assert mock_get.call_count == 0
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_second_call_is_served_from_cache(self, mock_get):
+        payload = {"results": [{"id": "grp_dvd", "name": "DVD Order", "type": 3}]}
+        mock_get.return_value = Mock(status_code=200, json=lambda: payload, raise_for_status=Mock())
+        first = tmdb_client.fetch_episode_groups("1437", "test_key")
+        second = tmdb_client.fetch_episode_groups("1437", "test_key")
+        assert first == second
+        assert mock_get.call_count == 1
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_clear_caches_flushes_groups(self, mock_get):
+        payload = {"results": [{"id": "grp_dvd", "name": "DVD Order", "type": 3}]}
+        mock_get.return_value = Mock(status_code=200, json=lambda: payload, raise_for_status=Mock())
+        tmdb_client.fetch_episode_groups("1437", "test_key")
+        clear_caches()
+        tmdb_client.fetch_episode_groups("1437", "test_key")
+        assert mock_get.call_count == 2
+
+
+@pytest.mark.unit
+class TestFetchEpisodeGroup:
+    """``fetch_episode_group`` returns a single ordering's full mapping:
+    groups[] (each a 'season' with an order), each episode carrying its
+    canonical season_number/episode_number plus its position (order) in the
+    group. Returns None on failure so the projection falls back to canonical."""
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_returns_group_detail(self, mock_get):
+        detail = {
+            "id": "grp_dvd",
+            "name": "DVD Order",
+            "type": 3,
+            "groups": [
+                {
+                    "order": 0,
+                    "name": "Season 1",
+                    "episodes": [
+                        {"season_number": 1, "episode_number": 1, "order": 0},
+                        {"season_number": 1, "episode_number": 3, "order": 1},
+                    ],
+                }
+            ],
+        }
+        mock_get.return_value = Mock(status_code=200, json=lambda: detail, raise_for_status=Mock())
+        result = tmdb_client.fetch_episode_group("grp_dvd", "test_key")
+        assert result["id"] == "grp_dvd"
+        assert result["groups"][0]["episodes"][1]["episode_number"] == 3
+        assert "/tv/episode_group/grp_dvd" in mock_get.call_args[0][0]
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_no_api_key_returns_none(self, mock_get):
+        assert tmdb_client.fetch_episode_group("grp_dvd", "") is None
+        assert mock_get.call_count == 0
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_api_error_returns_none(self, mock_get):
+        err = Mock(status_code=404)
+        err.raise_for_status = Mock(side_effect=requests.exceptions.HTTPError("404"))
+        mock_get.return_value = err
+        assert tmdb_client.fetch_episode_group("missing", "test_key") is None
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_second_call_is_served_from_cache(self, mock_get):
+        detail = {"id": "grp_dvd", "groups": []}
+        mock_get.return_value = Mock(status_code=200, json=lambda: detail, raise_for_status=Mock())
+        tmdb_client.fetch_episode_group("grp_dvd", "test_key")
+        tmdb_client.fetch_episode_group("grp_dvd", "test_key")
+        assert mock_get.call_count == 1
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_path_injecting_group_id_rejected_without_request(self, mock_get):
+        # SSRF guard: a group id with path separators must never reach the URL.
+        assert tmdb_client.fetch_episode_group("../../tv/popular", "test_key") is None
+        assert mock_get.call_count == 0

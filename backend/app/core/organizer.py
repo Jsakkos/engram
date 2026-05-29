@@ -366,15 +366,27 @@ def organize_tv_episode(
     episode_code: str,
     library_path: Path | None = None,
     conflict_resolution: str = "ask",
+    *,
+    tmdb_id: str | None = None,
+    ordering: str = "aired",
+    episode_group_id: str | None = None,
 ) -> dict:
     """Organize a ripped TV episode into the library.
 
     Args:
         source_file: Path to the MKV file to move
         show_name: Name of the TV show (e.g., "The Office")
-        episode_code: Episode code (e.g., "S01E01")
+        episode_code: CANONICAL (TMDB aired-order) episode code (e.g., "S01E01").
+            Always the canonical identity — never a projected number.
         library_path: Override for library path (defaults to settings)
         conflict_resolution: How to handle file conflicts: "ask", "overwrite", "rename", "skip"
+        tmdb_id: Show's TMDB id; required to project a non-aired ordering.
+        ordering: Output ordering for the FILENAME only ("aired" = identity).
+            The canonical episode_code is unchanged; only the on-disk numbers
+            are projected, so matched_episode and the fingerprint key stay
+            canonical (#200).
+        episode_group_id: Resolved TMDB group id for ``ordering`` (unused here;
+            accepted so callers can pass the resolver's full result for audit).
 
     Returns:
         dict with 'success', 'final_path', 'error' keys
@@ -410,11 +422,22 @@ def organize_tv_episode(
     # Load naming format from config
     cfg = get_config_sync()
 
+    # Project the CANONICAL (aired) number to the chosen output ordering for the
+    # filename only (#200). This is the one and only projection seam: matched_episode
+    # in the DB and the fingerprint key stay canonical. Aired/no-tmdb_id is a no-op.
+    out_season, out_episode = season_num, episode_num
+    if ordering != "aired" and tmdb_id:
+        from app.core.episode_ordering import project_episode
+
+        out_season, out_episode = project_episode(
+            tmdb_id, ordering, season_num, episode_num, cfg.tmdb_api_key
+        )
+
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
-    season_folder = format_season_folder(cfg.naming_season_format, season_num)
+    season_folder = format_season_folder(cfg.naming_season_format, out_season)
     ep_stem = format_episode_filename(
-        cfg.naming_episode_format, clean_show, season_num, episode_num
+        cfg.naming_episode_format, clean_show, out_season, out_episode
     )
     filename = f"{ep_stem}.mkv"
 
@@ -528,9 +551,25 @@ class TVOrganizer:
         source_file: Path,
         show_name: str,
         episode_code: str,
+        *,
+        tmdb_id: str | None = None,
+        ordering: str = "aired",
+        episode_group_id: str | None = None,
     ) -> dict:
-        """Organize a TV episode from staging to library."""
-        return organize_tv_episode(source_file, show_name, episode_code)
+        """Organize a TV episode from staging to library.
+
+        Forwards the output-ordering controls to organize_tv_episode so the
+        library-mode path (no explicit library_path) also honors the chosen
+        ordering. episode_code stays canonical; only the filename is projected.
+        """
+        return organize_tv_episode(
+            source_file,
+            show_name,
+            episode_code,
+            tmdb_id=tmdb_id,
+            ordering=ordering,
+            episode_group_id=episode_group_id,
+        )
 
     def organize_batch(
         self,

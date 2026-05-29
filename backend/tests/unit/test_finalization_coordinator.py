@@ -59,6 +59,7 @@ async def _seed_job(
     content_type=ContentType.TV,
     state=JobState.MATCHING,
     match_details_by_idx=None,
+    tmdb_id=None,
 ) -> int:
     """Seed a job with the given (title_index, episode, output_filename, title_state) titles."""
     md = match_details_by_idx or {}
@@ -71,6 +72,7 @@ async def _seed_job(
             detected_title="Some Show",
             detected_season=1,
             staging_path=staging,
+            tmdb_id=tmdb_id,
         )
         session.add(job)
         await session.commit()
@@ -452,3 +454,89 @@ class TestCheckJobCompletion:
         # Escalation dispatched a re-match, so finalization is deferred.
         coord.finalize_disc_job.assert_not_called()
         assert coord._conflict_passes.get(job_id) == 25
+
+
+@pytest.mark.unit
+class TestEpisodeOrderingProjection:
+    """The #200 invariant: output ordering changes the FILENAME on disk only.
+    matched_episode (the canonical identity + fingerprint-network key source)
+    must stay in TMDB aired order through finalization."""
+
+    async def test_dvd_ordering_projects_file_but_keeps_matched_episode_canonical(
+        self, tmp_path, monkeypatch
+    ):
+        from app.models import AppConfig, ShowOrderingPreference
+
+        tv_lib = tmp_path / "TV"
+        tv_lib.mkdir()
+        # get_config_sync (sync DB) drives the organizer's library path + naming.
+        monkeypatch.setattr(
+            "app.services.config_service.get_config_sync",
+            lambda: AppConfig(library_tv_path=str(tv_lib), tmdb_api_key="k"),
+        )
+        # Stand in for the TMDB projection: canonical S01E11 ("Serenity") -> DVD S01E01.
+        monkeypatch.setattr(
+            "app.core.episode_ordering.project_episode",
+            lambda show_id, ordering, s, e, key: (1, 1) if (s, e) == (1, 11) else (s, e),
+        )
+
+        f0 = tmp_path / "show_t00.mkv"
+        f0.write_text("")
+        job_id = await _seed_job(
+            [(0, "S01E11", str(f0), TitleState.MATCHED)],
+            staging=str(tmp_path),
+            tmdb_id=1437,
+        )
+        # Pin the show to DVD ordering; group pre-resolved so no TMDB call fires.
+        async with _unit_session_factory() as session:
+            session.add(
+                ShowOrderingPreference(tmdb_id=1437, ordering="dvd", episode_group_id="grp_dvd")
+            )
+            await session.commit()
+
+        await _make_coord().finalize_disc_job(job_id)
+
+        _job, titles = await _load(job_id)
+        t = titles[0]
+        assert t.state == TitleState.COMPLETED
+        # INVARIANT: canonical identity is untouched (fingerprint key stays aired).
+        assert t.matched_episode == "S01E11"
+        # ...but the file on disk uses the DVD number.
+        assert (tv_lib / "Some Show" / "Season 01" / "Some Show - S01E01.mkv").exists()
+        assert t.organized_to.endswith("Some Show - S01E01.mkv")
+        # Audit records what was applied.
+        assert t.episode_ordering == "dvd"
+        assert t.episode_group_id == "grp_dvd"
+
+    async def test_aired_default_files_canonically_without_projecting(self, tmp_path, monkeypatch):
+        from unittest.mock import Mock
+
+        from app.models import AppConfig
+
+        tv_lib = tmp_path / "TV"
+        tv_lib.mkdir()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config_sync",
+            lambda: AppConfig(library_tv_path=str(tv_lib)),
+        )
+        proj = Mock()
+        monkeypatch.setattr("app.core.episode_ordering.project_episode", proj)
+
+        f0 = tmp_path / "show_t00.mkv"
+        f0.write_text("")
+        # tmdb_id set, but no per-show pref and global default is "aired".
+        job_id = await _seed_job(
+            [(0, "S01E11", str(f0), TitleState.MATCHED)],
+            staging=str(tmp_path),
+            tmdb_id=1437,
+        )
+
+        await _make_coord().finalize_disc_job(job_id)
+
+        _job, titles = await _load(job_id)
+        t = titles[0]
+        assert t.matched_episode == "S01E11"
+        assert (tv_lib / "Some Show" / "Season 01" / "Some Show - S01E11.mkv").exists()
+        assert t.episode_ordering is None
+        # aired is the identity path — the projection is never invoked.
+        assert proj.call_count == 0
