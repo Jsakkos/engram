@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
 import { EngramSelect } from './ui/EngramSelect';
+import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import './ConfigWizard.css';
 
 interface ConfigWizardProps {
@@ -165,6 +166,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
     const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean}>({makemkv: false, tmdb: false, opensubtitles: false});
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
+    const [showBootstrapFlow, setShowBootstrapFlow] = useState(false);
 
     const totalSteps = 4;
 
@@ -870,6 +872,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </>
                         )}
 
+                        {config.enableFingerprintContributions && (
+                            <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                                <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}
+                                    onClick={() => setShowBootstrapFlow(true)}
+                                >
+                                    Contribute from existing library&hellip;
+                                </button>
+                                <span className="form-hint" style={{ display: 'block', marginTop: '0.4rem' }}>
+                                    Seed the fingerprint network from your existing TV library (reads filenames only — no files are uploaded).
+                                </span>
+                            </div>
+                        )}
+
                         <div className="form-group checkbox-group">
                             <label className="checkbox-label">
                                 <input
@@ -1316,6 +1334,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     };
 
     return (
+        <>
         <div className="wizard-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
             <div className="wizard-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
@@ -1381,6 +1400,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 </div>
             </div>
         </div>
+
+        {showBootstrapFlow && (
+            <BootstrapLibraryFlow onClose={() => setShowBootstrapFlow(false)} />
+        )}
+    </>
     );
 }
 
