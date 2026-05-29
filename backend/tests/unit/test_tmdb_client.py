@@ -606,6 +606,12 @@ class TestFetchEpisodeGroups:
         assert tmdb_client.fetch_episode_groups("1437", "test_key") == []
 
     @patch("app.matcher.tmdb_client.requests.get")
+    def test_non_numeric_show_id_rejected_without_request(self, mock_get):
+        # SSRF guard: a non-numeric show id must never reach the request URL.
+        assert tmdb_client.fetch_episode_groups("../../evil", "test_key") == []
+        assert mock_get.call_count == 0
+
+    @patch("app.matcher.tmdb_client.requests.get")
     def test_second_call_is_served_from_cache(self, mock_get):
         payload = {"results": [{"id": "grp_dvd", "name": "DVD Order", "type": 3}]}
         mock_get.return_value = Mock(status_code=200, json=lambda: payload, raise_for_status=Mock())
@@ -673,3 +679,9 @@ class TestFetchEpisodeGroup:
         tmdb_client.fetch_episode_group("grp_dvd", "test_key")
         tmdb_client.fetch_episode_group("grp_dvd", "test_key")
         assert mock_get.call_count == 1
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_path_injecting_group_id_rejected_without_request(self, mock_get):
+        # SSRF guard: a group id with path separators must never reach the URL.
+        assert tmdb_client.fetch_episode_group("../../tv/popular", "test_key") is None
+        assert mock_get.call_count == 0

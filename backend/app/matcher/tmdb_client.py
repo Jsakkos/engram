@@ -783,12 +783,19 @@ def fetch_episode_groups(show_id: str, api_key: str) -> list[dict]:
         logger.warning("TMDB API key not configured")
         return []
 
-    persistent_key = f"episode_groups:{show_id}"
+    # A TMDB show id is numeric; reject anything else and interpolate the parsed
+    # int so a caller-supplied value can never inject into the request URL (SSRF).
+    if not str(show_id).isdigit():
+        logger.warning(f"Invalid TMDB show id for episode groups: {show_id!r}")
+        return []
+    show_id_int = int(show_id)
+
+    persistent_key = f"episode_groups:{show_id_int}"
     cached = tmdb_persistent_cache.get(persistent_key)
     if cached is not None:
         return cached
 
-    url = f"https://api.themoviedb.org/3/tv/{show_id}/episode_groups"
+    url = f"https://api.themoviedb.org/3/tv/{show_id_int}/episode_groups"
     data = _tmdb_get_json(url, api_key)
     if data is None:
         return []
@@ -810,6 +817,14 @@ def fetch_episode_group(group_id: str, api_key: str) -> dict | None:
     """
     if not api_key:
         logger.warning("TMDB API key not configured")
+        return None
+
+    # TMDB episode-group ids are hex tokens (ObjectId-style). Reject anything
+    # with other characters so a caller-supplied value can't inject path
+    # segments into the request URL (SSRF).
+    group_id = str(group_id)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", group_id):
+        logger.warning("Invalid TMDB episode-group id")
         return None
 
     persistent_key = f"episode_group:{group_id}"
