@@ -350,6 +350,122 @@ async def test_accept_partial_failure_does_not_abort_batch(client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_accept_is_idempotent_on_duplicate_submit(client, tmp_path):
+    """Re-submitting the same items does not insert duplicate bootstrap rows.
+
+    Guards the double-click / retried-batch race: a second accept of an already
+    queued (tmdb_id, season, episode) counts as queued but writes no new row.
+    """
+    from app.matcher.chromaprint_extractor import ChromaprintResult
+
+    fake_result = ChromaprintResult(
+        hashes=[1, 2, 3, 4],
+        duration_seconds=42.0,
+        fpcalc_version="fpcalc version 1.5.1",
+    )
+
+    items = [
+        {"file": str(tmp_path / "ep1.mkv"), "tmdb_id": 95396, "season": 1, "episode": 1},
+        {"file": str(tmp_path / "ep2.mkv"), "tmdb_id": 95396, "season": 1, "episode": 2},
+    ]
+
+    with (
+        patch("app.api.routes.asyncio.to_thread") as mock_to_thread,
+        patch("app.matcher.chromaprint_extractor.ChromaprintExtractor") as MockExtractor,
+    ):
+        from app.api.validation import ToolDetectionResult
+
+        mock_to_thread.return_value = ToolDetectionResult(found=True, path="/usr/bin/fpcalc")
+
+        mock_extractor_instance = MagicMock()
+        mock_extractor_instance.extract = AsyncMock(return_value=fake_result)
+        MockExtractor.return_value = mock_extractor_instance
+
+        from app.services.config_service import update_config as update_db_config
+
+        await update_db_config(
+            contribution_pseudonym="test-pseudonym-idempotent",
+            enable_fingerprint_contributions=True,
+            fpcalc_path=None,
+        )
+
+        first = await client.post("/api/fingerprint/bootstrap/accept", json={"items": items})
+        second = await client.post("/api/fingerprint/bootstrap/accept", json={"items": items})
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    # Both calls report the episodes as queued...
+    assert first.json()["queued"] == 2
+    assert second.json()["queued"] == 2
+    # ...but the second call inserts nothing new.
+    assert mock_extractor_instance.extract.await_count == 2
+
+    async with async_session() as session:
+        from sqlmodel import select as sqlmodel_select
+
+        from app.models.fingerprint import FingerprintContribution
+
+        rows = (
+            (
+                await session.execute(
+                    sqlmodel_select(FingerprintContribution).where(
+                        FingerprintContribution.match_source == "bootstrap"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 2  # no duplicates despite two submits
+
+
+@pytest.mark.asyncio
+async def test_scan_skips_symlink_escaping_root(client, tmp_path):
+    """A symlink inside the library pointing outside the root is not surfaced."""
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "Severance - S01E01.mkv").touch()
+
+    # A file living outside the scanned root.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "Secret - S09E09.mkv"
+    secret.touch()
+
+    # A symlink inside the library whose target escapes the root.
+    link = library / "Linked - S01E02.mkv"
+    try:
+        link.symlink_to(secret)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported in this environment")
+
+    with patch("app.api.routes.asyncio.to_thread") as mock_to_thread:
+
+        async def side_effect(fn, *args, **kwargs):
+            fn_name = getattr(fn, "__name__", "") or getattr(fn, "__qualname__", "")
+            if "fetch_show_id" in fn_name:
+                return "95396" if args and "Severance" in args[0] else None
+            if "fetch_show_details" in fn_name:
+                return {"name": "Severance", "first_air_date": "2022-02-18"}
+            return fn(*args, **kwargs)
+
+        mock_to_thread.side_effect = side_effect
+
+        resp = await client.post("/api/fingerprint/bootstrap/scan", json={"path": str(library)})
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    all_files = [e["file"] for s in data["shows"] for e in s["episodes"]] + [
+        u["file"] for u in data["unparseable"]
+    ]
+    # The escaping symlink (and its outside target) must not appear anywhere.
+    assert not any("Secret - S09E09" in f for f in all_files)
+    assert not any("Linked - S01E02" in f for f in all_files)
+    # The legitimate in-tree file is still surfaced.
+    assert any("Severance - S01E01" in f for f in all_files)
+
+
+@pytest.mark.asyncio
 async def test_accept_no_fpcalc_returns_400(client, tmp_path):
     """When fpcalc cannot be found, the endpoint returns 400 with a clear message."""
     items = [

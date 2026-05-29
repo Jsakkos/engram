@@ -1614,6 +1614,17 @@ class BootstrapAcceptRequest(BaseModel):
     items: list[BootstrapAcceptItem]
 
 
+class BootstrapAcceptResponse(BaseModel):
+    """Response body for /fingerprint/bootstrap/accept.
+
+    ``queued`` counts episodes confirmed in the local contribution queue —
+    including items already queued by a prior call (idempotent re-runs).
+    """
+
+    queued: int
+    failed: int
+
+
 @router.post(
     "/fingerprint/bootstrap/scan",
     dependencies=[Depends(require_localhost)],
@@ -1641,7 +1652,11 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
     from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
     from app.scripts.bootstrap_library import parse_episode_filename, walk_library
 
-    root = Path(req.path)
+    # Canonicalize the user-supplied root so the symlink-containment check
+    # below has a stable base. The endpoint is localhost-only and the path is
+    # the user's own library, but rglob/exists follow symlinks, so confine
+    # every hit to the resolved tree.
+    root = Path(req.path).resolve()
     if not root.exists() or not root.is_dir():
         raise HTTPException(
             status_code=400, detail=f"Path does not exist or is not a directory: {req.path}"
@@ -1653,6 +1668,13 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
     all_media: set[Path] = set()
     for ext in _MEDIA_EXTENSIONS:
         for p in root.rglob(f"*{ext}"):
+            # rglob follows symlinks; skip any hit whose real path escapes the
+            # scanned tree so a crafted symlink can't surface outside files.
+            try:
+                if not p.resolve().is_relative_to(root):
+                    continue
+            except (OSError, ValueError):
+                continue
             if "Extras" not in p.parts:
                 all_media.add(p)
 
@@ -1685,7 +1707,14 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
 
     async def _resolve_show(show_name: str) -> str | None:
         if show_name not in tmdb_id_cache:
-            raw = await asyncio.to_thread(fetch_show_id, show_name)
+            # fetch_show_id hits TMDB; a network timeout / 429 must not bubble
+            # up as an unhandled 500 — treat it as a miss (symmetric with
+            # _get_details below and the CLI's _default_search).
+            try:
+                raw = await asyncio.to_thread(fetch_show_id, show_name)
+            except Exception:
+                logger.warning(f"TMDB show lookup failed for {show_name!r}", exc_info=True)
+                raw = None
             tmdb_id_cache[show_name] = raw
         return tmdb_id_cache[show_name]
 
@@ -1697,6 +1726,7 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
             try:
                 details = await asyncio.to_thread(fetch_show_details, int(tmdb_id_str))
             except Exception:
+                logger.warning(f"TMDB details fetch failed for id {tmdb_id_str}", exc_info=True)
                 details = None
             tmdb_details_cache[tmdb_id_str] = details
         return tmdb_details_cache[tmdb_id_str]
@@ -1716,6 +1746,7 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
                 tmdb_id = int(raw_id)
                 resolved = True
             except (TypeError, ValueError):
+                # Non-numeric id from TMDB (shouldn't happen); leave unresolved.
                 pass
 
         if tmdb_id is not None:
@@ -1727,6 +1758,7 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
                     try:
                         tmdb_year = int(first_air[:4])
                     except ValueError:
+                        # Malformed first_air_date prefix; year stays None.
                         pass
 
         episode_items = [
@@ -1761,11 +1793,15 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
     )
 
 
-@router.post("/fingerprint/bootstrap/accept", dependencies=[Depends(require_localhost)])
+@router.post(
+    "/fingerprint/bootstrap/accept",
+    dependencies=[Depends(require_localhost)],
+    response_model=BootstrapAcceptResponse,
+)
 async def bootstrap_accept(
     req: BootstrapAcceptRequest,
     session: AsyncSession = Depends(get_session),
-) -> dict:
+) -> BootstrapAcceptResponse:
     """Fingerprint a confirmed set of library files and enqueue contributions.
 
     The UI calls this after the user reviews the scan results and confirms
@@ -1784,6 +1820,7 @@ async def bootstrap_accept(
     """
     from app.api.validation import detect_fpcalc
     from app.matcher.chromaprint_extractor import ChromaprintExtractor
+    from app.models.fingerprint import FingerprintContribution
     from app.services.config_service import get_config
     from app.services.contribution_queue import ContributionQueue
 
@@ -1808,10 +1845,39 @@ async def bootstrap_accept(
     queue = ContributionQueue()
     pseudonym = cfg.contribution_pseudonym or ""
 
+    # Idempotency guard: bootstrap is re-runnable and the UI submits in batches,
+    # so a double-click — or a batch retried after it actually succeeded
+    # server-side — must not insert the same episode twice (the uploader would
+    # then push duplicate rows to the network). Skip any (tmdb_id, season,
+    # episode) already present as a bootstrap row, plus duplicates within this
+    # request. Keyed off episode identity since the filename was ground truth.
+    EpisodeKey = tuple[int, int | None, int | None]
+    request_tmdb_ids = {item.tmdb_id for item in req.items}
+    existing_keys: set[EpisodeKey] = set()
+    if request_tmdb_ids:
+        existing_rows = await session.execute(
+            select(
+                FingerprintContribution.tmdb_id,
+                FingerprintContribution.season,
+                FingerprintContribution.episode,
+            ).where(
+                FingerprintContribution.match_source == "bootstrap",
+                FingerprintContribution.tmdb_id.in_(request_tmdb_ids),
+            )
+        )
+        existing_keys = {(r[0], r[1], r[2]) for r in existing_rows.all()}
+
     queued = 0
     failed = 0
+    seen: set[EpisodeKey] = set()
 
     for item in req.items:
+        key: EpisodeKey = (item.tmdb_id, item.season, item.episode)
+        if key in existing_keys or key in seen:
+            # Already queued by a prior call or earlier in this batch — count it
+            # as queued (the episode is in the queue) but don't duplicate it.
+            queued += 1
+            continue
         try:
             result = await extractor.extract(item.file)
             await queue.enqueue(
@@ -1827,6 +1893,7 @@ async def bootstrap_accept(
                 pseudonym=pseudonym,
                 contributions_enabled=cfg.enable_fingerprint_contributions,
             )
+            seen.add(key)
             queued += 1
         except Exception as exc:
             logger.warning(
@@ -1836,7 +1903,7 @@ async def bootstrap_accept(
             failed += 1
 
     await session.commit()
-    return {"queued": queued, "failed": failed}
+    return BootstrapAcceptResponse(queued=queued, failed=failed)
 
 
 # --- Simulation Endpoints (debug mode only) ---

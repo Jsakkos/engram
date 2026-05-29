@@ -11,7 +11,7 @@
  * review surface is per-SHOW TMDB resolution. No per-episode confidence UI.
  */
 
-import { useState, useCallback, useMemo, type CSSProperties } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect, type CSSProperties } from 'react';
 import { sv } from '../app/components/synapse/tokens';
 import { SvPanel } from '../app/components/synapse/SvPanel';
 import { SvCorners } from '../app/components/synapse/SvCorners';
@@ -413,10 +413,19 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
     const [finalResult, setFinalResult] = useState<AcceptResult | null>(null);
     const [fingerprintError, setFingerprintError] = useState<string | null>(null);
 
+    // Abort in-flight scan/accept fetches when the user navigates away (Back /
+    // Cancel) or the modal unmounts, so a late response can't write state onto
+    // an abandoned step or fire on an unmounted component.
+    const abortRef = useRef<AbortController | null>(null);
+    useEffect(() => () => abortRef.current?.abort(), []);
+
     // ─── Handlers ────────────────────────────────────────────────────────────
 
     const handleScan = useCallback(async () => {
         if (!path.trim()) return;
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
         setScanError(null);
         setStep('scanning');
 
@@ -425,6 +434,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: path.trim() }),
+                signal: controller.signal,
             });
             if (!res.ok) {
                 const body = await res.text().catch(() => '');
@@ -446,6 +456,8 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
             setShowStates(initial);
             setStep('review');
         } catch (err) {
+            // A user-triggered abort (Back/unmount) is not an error to surface.
+            if (err instanceof DOMException && err.name === 'AbortError') return;
             setScanError(err instanceof Error ? err.message : String(err));
             setStep('directory');
         }
@@ -491,6 +503,10 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
             return;
         }
 
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         setStep('fingerprint');
         setFingerprintError(null);
 
@@ -511,6 +527,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ items: batches[i] }),
+                    signal: controller.signal,
                 });
                 if (!res.ok) {
                     const body = await res.text().catch(() => '');
@@ -521,12 +538,15 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                 totalFailed += result.failed;
                 setBatchProgress({ done: i + 1, total: batches.length });
             } catch (err) {
+                // Aborted (modal closed / new run started) — stop without writing state.
+                if (err instanceof DOMException && err.name === 'AbortError') return;
                 setFingerprintError(err instanceof Error ? err.message : String(err));
                 setBatchProgress({ done: i + 1, total: batches.length });
                 // Continue remaining batches even on partial failure
             }
         }
 
+        if (controller.signal.aborted) return;
         setFinalResult({ queued: totalQueued, failed: totalFailed });
     }, [acceptItems]);
 

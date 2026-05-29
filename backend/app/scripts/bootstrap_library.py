@@ -44,8 +44,20 @@ def parse_episode_filename(name: str) -> tuple[str, int, int] | None:
 
 
 def walk_library(root: Path) -> Iterable[tuple[Path, tuple[str, int, int]]]:
-    """Yield (file_path, (show, season, episode)) for every labeled MKV under root, skipping Extras."""
+    """Yield (file_path, (show, season, episode)) for every labeled MKV under root, skipping Extras.
+
+    ``root`` is canonicalized so the symlink-containment check has a stable
+    base. ``rglob`` follows symlinks, so any hit whose real path escapes the
+    resolved tree is skipped — a crafted symlink inside the library can't pull
+    in files from outside it (path traversal).
+    """
+    root = root.resolve()
     for mkv in sorted(root.rglob("*.mkv")):
+        try:
+            if not mkv.resolve().is_relative_to(root):
+                continue
+        except (OSError, ValueError):
+            continue
         if "Extras" in mkv.parts:
             continue
         label = parse_episode_filename(mkv.name)
