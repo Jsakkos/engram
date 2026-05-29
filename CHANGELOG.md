@@ -4,6 +4,20 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-28
+
+### Added
+
+- **Audio fingerprint contribution network** — Engram now extracts a Chromaprint acoustic fingerprint from every confidently matched episode and (opt-out) contributes it to a shared fingerprint server so episode matching improves for everyone. Privacy-first by design: contributions are gated behind a one-time consent disclosure, identified only by a regenerable per-install pseudonym (no filenames, paths, or IP addresses are sent), and a **"Forget me"** action wipes both the remote record and the local queue. A localhost-only audit endpoint plus a `~/.engram/cache/contribution_log.jsonl` log show exactly what left the machine. Configure under Settings → Fingerprint; requires the `fpcalc` binary (auto-detected, with a validation endpoint). (#242, #244, #248)
+- **Bulk actions in the review queue** — select multiple review titles with checkboxes (with a select-all header and shift-click range selection) and apply one decision to all of them — **Mark as Extra · Discard · Skip · Re-Match** — then commit everything in a single Save. Built for box sets with dozens of unclassified extras that previously had to be cleared one click at a time. The batch commits in one organization pass, which also avoids the `FILE_EXISTS` collisions repeated single-title saves could hit. (#249)
+
+### Fixed
+
+- **`/review` page rendered as a solid black screen in Safari and Firefox** — two compounding causes: the REVIEW nav tab linked to a bare `/review` route that didn't exist (React Router rendered nothing, exposing the near-black body background), and Safari composited the page to black where `mix-blend-mode` atmosphere layers bled through their stacking context. The nav now deep-links to the first review job (with a `/review` → dashboard safety redirect), an `isolation: isolate` boundary contains the blend layers, and **Firefox + WebKit are now part of the Playwright matrix** to catch engine-specific regressions. (#247)
+- **Movie extras showed the main feature's filename in job history** — bonus features were organized correctly on disk, but the history detail panel displayed the main movie's path for every extra. `organize_movie()` now returns a source→destination mapping so each extra shows its real `Extras/Extra N.mkv` path. (#245)
+- **Movie review decisions didn't record the organized path** — after confirming a movie in the review queue, `organized_from`/`organized_to` were left unset on the title (the same class of bug as the extras path issue, but in the human-review path), so job history showed no destination. Both fields are now set and broadcast on a successful review organize. (#246)
+- **Auto-flow finalize could mis-handle TV "extra" titles** — the automatic (non-review) TV finalize path passed the synthetic `"extra"` episode code straight to the episode organizer (which rejects it) and always cleared the `is_extra` flag, diverging from the review path. It now routes extras into the season's `Extras/` folder and preserves the flag, closing a latent inconsistency. (#250)
+
 ## [0.9.1] - 2026-05-27
 
 ### Fixed
