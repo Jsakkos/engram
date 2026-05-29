@@ -227,9 +227,17 @@ if os.path.isdir(_static_dir):
     # filename changes whenever the bytes change — they can be cached forever.
     # The opposite of index.html below, which must never be cached (see serve_spa).
     class _ImmutableStatic(StaticFiles):
-        def file_response(self, *args, **kwargs):
-            resp = super().file_response(*args, **kwargs)
-            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        # Stamp the header by overriding get_response (the stable async entry
+        # point), NOT file_response: in Starlette 0.50.0 file_response is a *sync*
+        # method that get_response calls without await, so an `async def
+        # file_response` override would make get_response return an un-awaited
+        # coroutine and 500 every /assets request — while a `def file_response`
+        # override is correct only as long as it stays sync. Overriding the async
+        # get_response is robust regardless of file_response's sync/async-ness.
+        async def get_response(self, *args, **kwargs):
+            resp = await super().get_response(*args, **kwargs)
+            if resp.status_code == 200:
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             return resp
 
     # Mount static assets (JS, CSS, images)
