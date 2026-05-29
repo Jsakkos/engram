@@ -249,13 +249,11 @@ function KvRow({
   value,
   valueColor,
   alignTop,
-  truncate,
 }: {
   label: string;
   value: string;
   valueColor?: string;
   alignTop?: boolean;
-  truncate?: boolean;
 }) {
   return (
     <div
@@ -275,10 +273,7 @@ function KvRow({
           textAlign: "right",
           minWidth: 0,
           maxWidth: alignTop ? "60%" : undefined,
-          overflow: truncate ? "hidden" : undefined,
-          textOverflow: truncate ? "ellipsis" : undefined,
-          whiteSpace: truncate ? "nowrap" : undefined,
-          overflowWrap: truncate ? undefined : "anywhere",
+          overflowWrap: "anywhere",
         }}
       >
         {value}
