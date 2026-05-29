@@ -285,102 +285,108 @@ export function Inspector({
                 </div>
 
                 {/* manual override */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${sv.lineMid}` }}>
-                    <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Manual</span>
-                    <select
-                        value={selection && /^S\d+E\d+$/i.test(selection) ? selection : ''}
-                        onChange={(e) => e.target.value && onAssign(e.target.value)}
-                        aria-label={`Manual episode for title ${title.title_index}`}
-                        style={{
-                            flex: 1,
-                            background: sv.bg0,
-                            border: `1px solid ${sv.lineMid}`,
-                            color: sv.ink,
-                            fontFamily: sv.mono,
-                            fontSize: 12,
-                            padding: '7px 9px',
-                            outline: 'none',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        <option value="">Pick episode…</option>
-                        {episodes.length > 0
-                            ? episodes.map((ep) => (
-                                  <option key={ep.episode_code} value={ep.episode_code}>
-                                      {`E${String(ep.episode_number).padStart(2, '0')}`}
-                                      {ep.name ? ` — ${ep.name}` : ''}
-                                  </option>
-                              ))
-                            : generateEpisodeOptions(
-                                  job.detected_season || 1,
-                                  EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON,
-                              ).map((code) => (
-                                  <option key={code} value={code}>
-                                      {code}
-                                  </option>
-                              ))}
-                    </select>
-                    <SvActionButton
-                        tone={action === 'extra' ? 'cyan' : 'neutral'}
-                        size="sm"
-                        onClick={() => onAction('extra')}
-                        title="Keep as extra content"
-                    >
-                        Extra
-                    </SvActionButton>
-                    <SvActionButton
-                        tone={action === 'discard' ? 'red' : 'neutral'}
-                        size="sm"
-                        onClick={() => onAction('discard')}
-                        title="Discard this title"
-                        ariaLabel="Discard"
-                    >
-                        <Trash2 size={11} />
-                    </SvActionButton>
-                    <SvActionButton
-                        tone="neutral"
-                        size="sm"
-                        onClick={() => onAction('skip')}
-                        title="Skip for now"
-                        ariaLabel="Skip"
-                    >
-                        <SkipForward size={11} />
-                    </SvActionButton>
-                    {aiEpisodeMatchingEnabled && (
-                        <SvActionButton
-                            tone="cyan"
-                            size="sm"
-                            onClick={() => onTryLLMMatch(title.id)}
-                            title="Run AI episode matching"
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${sv.lineMid}` }}>
+                    {/* row 1: label + episode picker */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Manual</span>
+                        <select
+                            value={selection && /^S\d+E\d+$/i.test(selection) ? selection : ''}
+                            onChange={(e) => e.target.value && onAssign(e.target.value)}
+                            aria-label={`Manual episode for title ${title.title_index}`}
+                            style={{
+                                flex: 1,
+                                background: sv.bg0,
+                                border: `1px solid ${sv.lineMid}`,
+                                color: sv.ink,
+                                fontFamily: sv.mono,
+                                fontSize: 12,
+                                padding: '7px 9px',
+                                outline: 'none',
+                                cursor: 'pointer',
+                            }}
                         >
-                            Try AI match
+                            <option value="">Pick episode…</option>
+                            {episodes.length > 0
+                                ? episodes.map((ep) => (
+                                      <option key={ep.episode_code} value={ep.episode_code}>
+                                          {`E${String(ep.episode_number).padStart(2, '0')}`}
+                                          {ep.name ? ` — ${ep.name}` : ''}
+                                      </option>
+                                  ))
+                                : generateEpisodeOptions(
+                                      job.detected_season || 1,
+                                      EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON,
+                                  ).map((code) => (
+                                      <option key={code} value={code}>
+                                          {code}
+                                      </option>
+                                  ))}
+                        </select>
+                    </div>
+                    {/* row 2: action buttons */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                        <SvActionButton
+                            tone={action === 'extra' ? 'cyan' : 'neutral'}
+                            size="sm"
+                            onClick={() => onAction('extra')}
+                            title="Keep as extra content"
+                        >
+                            Extra
                         </SvActionButton>
-                    )}
-                    {/* Per-track deep re-match — re-run the matcher on just this title
-                        at strict depth/votes (distinct from the conflict banner, which
-                        re-matches every title claiming the contested episode). */}
-                    <SvActionButton
-                        tone="magenta"
-                        size="sm"
-                        onClick={() => onRematch(title.id, 'engram', true)}
-                        disabled={isRematching}
-                        title="Deep re-match this track (denser sampling + stricter votes)"
-                        ariaLabel="Deep re-match this track"
-                    >
-                        <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
-                        <span style={{ marginLeft: 6 }}>Re-match</span>
-                    </SvActionButton>
-                    {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
+                        <SvActionButton
+                            tone={action === 'discard' ? 'red' : 'neutral'}
+                            size="sm"
+                            onClick={() => onAction('discard')}
+                            title="Discard this title"
+                            ariaLabel="Discard"
+                        >
+                            <Trash2 size={11} />
+                        </SvActionButton>
+                        <SvActionButton
+                            tone="neutral"
+                            size="sm"
+                            onClick={() => onAction('skip')}
+                            title="Skip for now"
+                            ariaLabel="Skip"
+                        >
+                            <SkipForward size={11} />
+                        </SvActionButton>
+                        {aiEpisodeMatchingEnabled && (
+                            <SvActionButton
+                                tone="cyan"
+                                size="sm"
+                                onClick={() => onTryLLMMatch(title.id)}
+                                title="Run AI episode matching"
+                            >
+                                Try AI match
+                            </SvActionButton>
+                        )}
+                        {/* Per-track deep re-match — re-run the matcher on just this title
+                            at strict depth/votes (distinct from the conflict banner, which
+                            re-matches every title claiming the contested episode). */}
                         <SvActionButton
                             tone="magenta"
                             size="sm"
-                            onClick={() => onRematch(title.id, title.match_source === 'discdb' ? 'engram' : 'discdb')}
-                            title="Toggle match source"
-                            ariaLabel="Toggle match source"
+                            onClick={() => onRematch(title.id, 'engram', true)}
+                            disabled={isRematching}
+                            title="Deep re-match this track (denser sampling + stricter votes)"
+                            ariaLabel="Deep re-match this track"
                         >
                             <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
+                            Re-match
                         </SvActionButton>
-                    )}
+                        {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
+                            <SvActionButton
+                                tone="magenta"
+                                size="sm"
+                                onClick={() => onRematch(title.id, title.match_source === 'discdb' ? 'engram' : 'discdb')}
+                                title="Toggle match source"
+                                ariaLabel="Toggle match source"
+                            >
+                                <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
+                            </SvActionButton>
+                        )}
+                    </div>
                 </div>
             </div>
         </SvPanel>
