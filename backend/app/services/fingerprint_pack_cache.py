@@ -8,9 +8,11 @@ df line). manifest.json carries per-show ETag + timestamps for 304 revalidation.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,6 +51,9 @@ class PackCache:
         )
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.ttl_seconds = ttl_seconds
+        # PackCache is a process-wide singleton shared across concurrent
+        # title-matching tasks; serialize manifest read-modify-write.
+        self._manifest_lock = asyncio.Lock()
 
     def path(self, tmdb_id: int) -> Path:
         return self.base_dir / f"{tmdb_id}.zstd"
@@ -67,6 +72,19 @@ class PackCache:
 
     def _write_manifest(self, m: dict) -> None:
         self._manifest_path().write_text(json.dumps(m, separators=(",", ":")))
+
+    async def _write_manifest_safe(self, tmdb_id: int, entry: dict) -> None:
+        """Atomically merge one show's entry into the manifest.
+
+        The lock spans the full read-merge-write (not just the write): PackCache
+        is a process-wide singleton, so two concurrent ``ensure()`` calls for
+        different tmdb_ids would otherwise read the same manifest snapshot and
+        the second write would clobber the first's entry.
+        """
+        async with self._manifest_lock:
+            m = self.manifest()
+            m[str(tmdb_id)] = entry
+            self._write_manifest(m)
 
     def has(self, tmdb_id: int) -> bool:
         if not self.path(tmdb_id).exists():
@@ -120,15 +138,17 @@ class PackCache:
 
         if resp.status_code == 304:
             entry["downloaded_at"] = time.time()
-            m = self.manifest()
-            m[str(tmdb_id)] = entry
-            self._write_manifest(m)
+            await self._write_manifest_safe(tmdb_id, entry)
             return True
         if resp.status_code == 200:
-            self.path(tmdb_id).write_bytes(resp.content)
-            m = self.manifest()
-            m[str(tmdb_id)] = {"etag": resp.headers.get("ETag"), "downloaded_at": time.time()}
-            self._write_manifest(m)
+            # Write-then-rename so a crash mid-write can't leave a truncated
+            # .zstd that has no manifest entry and that load() fails on forever.
+            tmp = self.path(tmdb_id).with_suffix(".tmp")
+            tmp.write_bytes(resp.content)
+            os.replace(tmp, self.path(tmdb_id))
+            await self._write_manifest_safe(
+                tmdb_id, {"etag": resp.headers.get("ETag"), "downloaded_at": time.time()}
+            )
             return True
         if resp.status_code == 404:
             return False

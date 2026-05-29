@@ -252,3 +252,98 @@ async def test_identify_episode_chromaprint_min_vote_count(tmp_path):
         min_vote_count=2,
     )
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_remote_backend_reuses_and_closes_client(monkeypatch):
+    """RemoteIdentifyBackend lazily creates ONE httpx client and reuses it across
+    windows, then releases it on aclose() (idempotently)."""
+
+    async def fake_get(self, url, params=None):
+        class R:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"candidates": []}
+
+        return R()
+
+    monkeypatch.setattr("httpx.AsyncClient.get", fake_get)
+
+    backend = RemoteIdentifyBackend("https://server")
+    assert backend._client is None  # not created until first use
+
+    await backend.classify_window([1, 2, 3])
+    first = backend._client
+    assert first is not None
+    await backend.classify_window([4, 5, 6])
+    assert backend._client is first  # same client reused, not recreated per window
+    assert first.is_closed is False
+
+    await backend.aclose()
+    assert first.is_closed is True
+    assert backend._client is None
+    await backend.aclose()  # idempotent — no error when already closed
+
+
+@pytest.mark.asyncio
+async def test_identify_episode_chromaprint_closes_remote_client(monkeypatch, tmp_path):
+    """A scan that uses the remote backend creates a client and closes it via the
+    finally block, so no connection is leaked across titles."""
+    from app.matcher.chromaprint_matcher import identify_episode_chromaprint
+
+    async def fake_get(self, url, params=None):
+        class R:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"candidates": []}
+
+        return R()
+
+    monkeypatch.setattr("httpx.AsyncClient.get", fake_get)
+
+    class FakeMatcher:
+        chunk_duration = 30
+        skip_initial_duration = 90
+
+        def extract_audio_chunk(self, mkv, start, duration=None):
+            return tmp_path / f"chunk_{start}.wav"
+
+    class FakeExtractor:
+        async def extract(self, wav_path):
+            from app.matcher.chromaprint_extractor import ChromaprintResult
+
+            return ChromaprintResult(hashes=[1, 2, 3], duration_seconds=30.0, fpcalc_version="t")
+
+    # pack_cache=None -> select_backend resolves to the remote backend.
+    cm = ChromaprintMatcher(tmdb_id=42, server_url="https://s", pack_cache=None)
+
+    closed = {}
+    orig_aclose = cm._remote.aclose
+
+    async def spy_aclose():
+        # Record that a live client existed at close time.
+        closed["had_client"] = cm._remote._client is not None
+        await orig_aclose()
+
+    cm._remote.aclose = spy_aclose
+
+    result = await identify_episode_chromaprint(
+        matcher=FakeMatcher(),
+        video_file=str(tmp_path / "v.mkv"),
+        season_number=1,
+        chromaprint_matcher=cm,
+        extractor=FakeExtractor(),
+        video_duration=1800.0,
+        num_points=3,
+    )
+    assert result is None  # remote returned no candidates
+    assert closed["had_client"] is True  # a client was created during the scan
+    assert cm._remote._client is None  # and released by the finally block

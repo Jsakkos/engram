@@ -10,6 +10,7 @@ EpisodeMatcher windowed-voting machinery — appended in a later task.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from dataclasses import dataclass
 from typing import Protocol
@@ -43,7 +44,8 @@ class WindowCandidate:
 class ChromaprintMatcherBackend(Protocol):
     async def classify_window(
         self, query_hashes: list[int], *, top_k: int = 5
-    ) -> list[WindowCandidate]: ...
+    ) -> list[WindowCandidate]:
+        """Classify one window's chromaprint into ranked episode candidates."""
 
 
 class LocalPackBackend:
@@ -81,10 +83,27 @@ class LocalPackBackend:
 
 
 class RemoteIdentifyBackend:
-    """Query GET /v1/identify for a window."""
+    """Query GET /v1/identify for a window.
+
+    Holds one lazily-created httpx client for the lifetime of a title scan so the
+    ~10 per-window requests reuse a single connection pool instead of standing up
+    (and tearing down) a TCP/TLS session each call. Callers must invoke
+    :meth:`aclose` when the scan finishes (see ``identify_episode_chromaprint``).
+    """
 
     def __init__(self, server_url: str) -> None:
         self.server_url = server_url.rstrip("/")
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=15.0)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def classify_window(
         self, query_hashes: list[int], *, top_k: int = 5
@@ -92,12 +111,10 @@ class RemoteIdentifyBackend:
         blob = encode_zstd_varint(query_hashes)
         fp = base64.urlsafe_b64encode(blob).decode().rstrip("=")
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(
-                    f"{self.server_url}/v1/identify", params={"fp": fp, "k": top_k}
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            client = self._get_client()
+            resp = await client.get(f"{self.server_url}/v1/identify", params={"fp": fp, "k": top_k})
+            resp.raise_for_status()
+            data = resp.json()
         except (httpx.HTTPError, ValueError) as e:
             logger.info(f"Remote identify failed: {e}")
             return []
@@ -136,6 +153,10 @@ class ChromaprintMatcher:
         self._remote = RemoteIdentifyBackend(server_url)
 
     def select_backend(self) -> ChromaprintMatcherBackend:
+        # Cache the resolved local backend: select_backend runs once per window
+        # (~10x per scan) and pack_cache.load() decompresses the whole pack each call.
+        if self._local is not None:
+            return self._local
         if self.pack_cache is not None and self.pack_cache.has(self.tmdb_id):
             pack = self.pack_cache.load(self.tmdb_id)
             if pack is not None:
@@ -151,6 +172,10 @@ class ChromaprintMatcher:
         if not cands and isinstance(backend, LocalPackBackend) and self.allow_remote_fallthrough:
             return await self._remote.classify_window(query_hashes, top_k=top_k)
         return cands
+
+    async def aclose(self) -> None:
+        """Release the remote backend's shared HTTP client after a scan."""
+        await self._remote.aclose()
 
 
 def _scan_points(
@@ -190,77 +215,85 @@ async def identify_episode_chromaprint(
     chunk_len = matcher.chunk_duration
 
     points = _scan_points(video_duration, num_points, matcher.skip_initial_duration, chunk_len)
-    for start in points:
-        try:
-            wav = matcher.extract_audio_chunk(video_file, start, chunk_len)
-            fp = await extractor.extract(str(wav))
-        except Exception as e:  # noqa: BLE001 — best-effort per window
-            logger.debug(f"chromaprint window {start:.0f}s skipped: {e}")
-            continue
-        cands = await chromaprint_matcher.classify_window(fp.hashes, top_k=3)
-        cands = [c for c in cands if c.season == season_number]
-        if not cands:
-            continue
-        best = cands[0]
-        if best.combined_score < per_window_floor:
-            continue
-        key = f"S{best.season:02d}E{best.episode:02d}"
-        if key not in coverages:
-            coverages[key] = MatchCoverage(key, video_duration, video_duration)
-            tiers[key] = best.tier
-            sig_acc[key] = {"overlap": 0.0, "temporal": 0.0, "rarity": 0.0, "n": 0.0}
-        coverages[key].add_match(start, chunk_len, best.combined_score)
-        acc = sig_acc[key]
-        acc["overlap"] += best.hash_overlap_pct
-        acc["temporal"] += best.temporal_coherence
-        acc["rarity"] += best.rarity_weighted_score
-        acc["n"] += 1
+    try:
+        for start in points:
+            try:
+                # extract_audio_chunk shells out to ffmpeg (blocking); offload it so
+                # the per-window loop doesn't stall the event loop.
+                wav = await asyncio.to_thread(
+                    matcher.extract_audio_chunk, video_file, start, chunk_len
+                )
+                fp = await extractor.extract(str(wav))
+            except Exception as e:  # noqa: BLE001 — best-effort per window
+                logger.debug(f"chromaprint window {start:.0f}s skipped: {e}")
+                continue
+            cands = await chromaprint_matcher.classify_window(fp.hashes, top_k=3)
+            cands = [c for c in cands if c.season == season_number]
+            if not cands:
+                continue
+            best = cands[0]
+            if best.combined_score < per_window_floor:
+                continue
+            key = f"S{best.season:02d}E{best.episode:02d}"
+            if key not in coverages:
+                coverages[key] = MatchCoverage(key, video_duration, video_duration)
+                tiers[key] = best.tier
+                sig_acc[key] = {"overlap": 0.0, "temporal": 0.0, "rarity": 0.0, "n": 0.0}
+            coverages[key].add_match(start, chunk_len, best.combined_score)
+            acc = sig_acc[key]
+            acc["overlap"] += best.hash_overlap_pct
+            acc["temporal"] += best.temporal_coherence
+            acc["rarity"] += best.rarity_weighted_score
+            acc["n"] += 1
 
-    if not coverages:
-        return None
+        if not coverages:
+            return None
 
-    results_summary = sorted(
-        (
-            {
-                "episode_name": k,
-                "episode": k,  # _attach_calibrated_confidence reads this key
-                "score": c.ranked_voting_score,
-                "vote_count": len(c.matched_chunks),
-            }
-            for k, c in coverages.items()
-        ),
-        key=lambda r: r["score"],
-        reverse=True,
-    )
-    winner = results_summary[0]
-    win_key = winner["episode_name"]
-    if winner["vote_count"] < min_vote_count:
-        return None
+        results_summary = sorted(
+            (
+                {
+                    "episode_name": k,
+                    "episode": k,  # _attach_calibrated_confidence reads this key
+                    "score": c.ranked_voting_score,
+                    "vote_count": len(c.matched_chunks),
+                }
+                for k, c in coverages.items()
+            ),
+            key=lambda r: r["score"],
+            reverse=True,
+        )
+        winner = results_summary[0]
+        win_key = winner["episode_name"]
+        if winner["vote_count"] < min_vote_count:
+            return None
 
-    acc = sig_acc[win_key]
-    n = max(1.0, acc["n"])
-    chromaprint_signal = {
-        "hash_overlap": acc["overlap"] / n,
-        "temporal_coherence": acc["temporal"] / n,
-        "rarity_weighted_score": acc["rarity"] / n,
-    }
+        acc = sig_acc[win_key]
+        n = max(1.0, acc["n"])
+        chromaprint_signal = {
+            "hash_overlap": acc["overlap"] / n,
+            "temporal_coherence": acc["temporal"] / n,
+            "rarity_weighted_score": acc["rarity"] / n,
+        }
 
-    season = int(win_key[1:3])
-    episode = int(win_key[4:6])
-    best_match = {
-        "season": season,
-        "episode": episode,
-        "score": winner["score"],
-        "match_details": {
-            "match_source": "chromaprint",
-            "target_votes": len(points),
-            "vote_count": winner["vote_count"],
-            "chromaprint_signal": chromaprint_signal,
-            "candidate_scores": {r["episode_name"]: r["score"] for r in results_summary},
-        },
-    }
-    _attach_calibrated_confidence(
-        best_match, results_summary, video_duration, chunk_len, chromaprint_signal
-    )
-    best_match["tier"] = tiers[win_key]
-    return best_match
+        season = int(win_key[1:3])
+        episode = int(win_key[4:6])
+        best_match = {
+            "season": season,
+            "episode": episode,
+            "score": winner["score"],
+            "match_details": {
+                "match_source": "chromaprint",
+                "target_votes": len(points),
+                "vote_count": winner["vote_count"],
+                "chromaprint_signal": chromaprint_signal,
+                "candidate_scores": {r["episode_name"]: r["score"] for r in results_summary},
+            },
+        }
+        _attach_calibrated_confidence(
+            best_match, results_summary, video_duration, chunk_len, chromaprint_signal
+        )
+        best_match["tier"] = tiers[win_key]
+        return best_match
+    finally:
+        # Release the shared remote HTTP client (no-op for local-pack-only scans).
+        await chromaprint_matcher.aclose()

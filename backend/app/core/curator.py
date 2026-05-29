@@ -206,14 +206,15 @@ class EpisodeCurator:
             return self._fallback_result(file_path)
 
         # Phase 3 cascade: chromaprint first (no-op when the flag is off → identical to legacy ASR path).
+        # The guard above already guarantees `season` is truthy, so only `series_name` needs checking.
         cp = None
-        if series_name and season:
+        if series_name:
             try:
                 cp = await self._chromaprint_prepass(
                     file_path=file_path, series_name=series_name, season=season
                 )
             except Exception as e:  # noqa: BLE001 — never block matching
-                logger.warning(f"chromaprint prepass failed: {e}")
+                logger.warning(f"chromaprint prepass failed: {e}", exc_info=True)
 
         if cp and cp.get("episode") is not None:
             cp_conf = cp.get("confidence", 0.0)
