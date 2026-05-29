@@ -177,3 +177,9 @@ class DiscTitle(SQLModel, table=True):
     discdb_flagged: bool = Field(default=False)  # User flagged DiscDB data as incorrect
     discdb_flag_reason: str | None = Field(default=None)  # Reason for flag
     extra_description: str | None = Field(default=None)  # User annotation for extras
+
+    # Episode-ordering audit (#200) — records which OUTPUT ordering was applied
+    # when this title was organized, for history/auditability. matched_episode
+    # stays CANONICAL (aired order); these only describe the filename projection.
+    episode_ordering: str | None = Field(default=None)  # e.g. "dvd"; None = aired/default
+    episode_group_id: str | None = Field(default=None)  # TMDB group id used, if any

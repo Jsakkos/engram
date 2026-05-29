@@ -39,6 +39,11 @@ TTL_SHOW_DETAILS = 7 * 86400
 TTL_SEASON = 7 * 86400
 TTL_DISCOVER = 86400
 TTL_MOVIE = 90 * 86400  # a released movie's runtime is effectively immutable
+# Episode-group definitions (alternative orderings: DVD, digital, absolute, ...)
+# change rarely once curated — far less than per-season episode counts — so a
+# long TTL keeps the canonical->output projection off the network on re-rips.
+TTL_EPISODE_GROUPS = 30 * 86400
+TTL_EPISODE_GROUP = 30 * 86400
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tmdb_cache (

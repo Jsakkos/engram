@@ -763,6 +763,68 @@ def fetch_season_episodes(show_id: str, season_number: int, api_key: str) -> lis
     ]
 
 
+def fetch_episode_groups(show_id: str, api_key: str) -> list[dict]:
+    """List the episode groups (alternative orderings) TMDB has for a show.
+
+    Backs the episode-ordering feature: each result describes an ordering
+    (``type`` 1=aired, 2=absolute, 3=DVD, 4=digital, 5=story-arc, 6=production,
+    7=TV) that the projection layer can target. Caller supplies the TMDB key
+    (matcher-layer isolation, same as ``fetch_season_episodes`` /
+    ``fetch_movie_runtime``). Positive results are cached in the persistent
+    SQLite layer with a long TTL (group definitions are stable); failures are
+    not cached. Returns an empty list when the key is missing or the request
+    fails — callers treat that as "no alternative orderings", i.e. aired only.
+
+    No ``@retry_network_operation``: ``_tmdb_get_json`` swallows
+    ``RequestException`` and returns None, so nothing would propagate for the
+    retry wrapper to catch.
+    """
+    if not api_key:
+        logger.warning("TMDB API key not configured")
+        return []
+
+    persistent_key = f"episode_groups:{show_id}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return cached
+
+    url = f"https://api.themoviedb.org/3/tv/{show_id}/episode_groups"
+    data = _tmdb_get_json(url, api_key)
+    if data is None:
+        return []
+    results = data.get("results", [])
+    tmdb_persistent_cache.put(persistent_key, results, tmdb_persistent_cache.TTL_EPISODE_GROUPS)
+    return results
+
+
+def fetch_episode_group(group_id: str, api_key: str) -> dict | None:
+    """Fetch a single episode group's full ordering mapping.
+
+    Returns the group detail: ``groups[]`` (each a "season" with an ``order``),
+    and within each, ``episodes[]`` where every episode carries its **canonical**
+    ``season_number``/``episode_number`` (aired-order identity) plus an ``order``
+    giving its position within that group. The projection layer reads this to map
+    canonical -> output ordering. Caller supplies the key; positive results are
+    cached (long TTL); failures are not. Returns None when the key is missing or
+    the request fails so the projection falls back to canonical numbering.
+    """
+    if not api_key:
+        logger.warning("TMDB API key not configured")
+        return None
+
+    persistent_key = f"episode_group:{group_id}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return cached
+
+    url = f"https://api.themoviedb.org/3/tv/episode_group/{group_id}"
+    data = _tmdb_get_json(url, api_key)
+    if data is None:
+        return None
+    tmdb_persistent_cache.put(persistent_key, data, tmdb_persistent_cache.TTL_EPISODE_GROUP)
+    return data
+
+
 @retry_network_operation(max_retries=3, base_delay=1.0)
 def get_number_of_seasons(show_id: str) -> int:
     """

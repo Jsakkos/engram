@@ -110,6 +110,15 @@ class AppConfig(SQLModel, table=True):
     naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
     naming_movie_format: str = "{title} ({year})"
 
+    # Episode ordering (#200) — global default output ordering for TV libraries.
+    # "aired" keeps TMDB's canonical numbering (== the fingerprint-network key,
+    # == current behavior); per-show overrides live in show_ordering_preferences.
+    # server_default 'aired' so pre-existing rows upgrade to a no-op default
+    # rather than the _add_missing_columns String fallback of ''.
+    episode_ordering_preference: str = Field(
+        default="aired", sa_column_kwargs={"server_default": text("'aired'")}
+    )
+
     # AI-powered disc identification
     ai_identification_enabled: bool = False  # Enable AI-powered title resolution
     ai_provider: str = "anthropic"  # "anthropic" | "openai" | "openrouter"
