@@ -286,6 +286,7 @@ def calibrate_confidence(
     target_votes: int,
     processed_coverage: float,
     runner_up_votes: int = 0,
+    chromaprint_signal: dict | None = None,
 ) -> tuple[float, dict[str, float]]:
     """Translate raw match signals into a 0-1 reviewer-facing confidence.
 
@@ -379,6 +380,17 @@ def calibrate_confidence(
 
     confidence = max(base_confidence, ratio_confidence)
 
+    # Chromaprint path (Phase 3) — additive. Absent signal is a no-op; a present
+    # signal can only raise confidence (max), never lower an ASR-strong result.
+    cp_overlap = cp_temporal = cp_rarity = cp_confidence = 0.0
+    if chromaprint_signal:
+        cp_overlap = _clamp01(float(chromaprint_signal.get("hash_overlap", 0.0)))
+        cp_temporal = _clamp01(float(chromaprint_signal.get("temporal_coherence", 0.0)))
+        cp_rarity = _clamp01(float(chromaprint_signal.get("rarity_weighted_score", 0.0)))
+        cp_evidence = EVIDENCE_FLOOR + (1.0 - EVIDENCE_FLOOR) * cp_temporal
+        cp_confidence = _clamp01(cp_overlap * cp_evidence * (0.5 + 0.5 * cp_rarity))
+        confidence = max(confidence, cp_confidence)
+
     components = {
         "separation": separation,
         "vote_boost": vote_boost,
@@ -392,6 +404,10 @@ def calibrate_confidence(
         "vote_ratio": vote_ratio,
         "vote_ratio_score": vote_ratio_score,
         "ratio_confidence": ratio_confidence,
+        "hash_overlap": cp_overlap,
+        "temporal_coherence": cp_temporal,
+        "rarity_weighted_score": cp_rarity,
+        "cp_confidence": cp_confidence,
     }
     return confidence, components
 
@@ -401,6 +417,7 @@ def _attach_calibrated_confidence(
     results_summary: list[dict],
     video_duration: float,
     chunk_len: int = 30,
+    chromaprint_signal: dict | None = None,
 ) -> None:
     """Mutate ``best_match`` in place with calibrated confidence + leaderboard.
 
@@ -440,6 +457,7 @@ def _attach_calibrated_confidence(
         target_votes=target_votes,
         processed_coverage=processed_coverage,
         runner_up_votes=runner_up_votes,
+        chromaprint_signal=chromaprint_signal,
     )
 
     best_match["confidence"] = confidence
