@@ -88,3 +88,84 @@ def test_select_backend_remote_when_no_pack():
 
     m = ChromaprintMatcher(tmdb_id=42, server_url="https://s", pack_cache=FakeCache())
     assert isinstance(m.select_backend(), RemoteIdentifyBackend)
+
+
+@pytest.mark.asyncio
+async def test_identify_episode_chromaprint_votes_winner(monkeypatch, tmp_path):
+    """A matcher whose windows all classify to (1,1) yields a (1,1) result with chromaprint_signal."""
+    from app.matcher.chromaprint_matcher import identify_episode_chromaprint
+
+    class FakeMatcher:
+        chunk_duration = 30
+        skip_initial_duration = 90
+
+        def extract_audio_chunk(self, mkv, start, duration=None):
+            return tmp_path / f"chunk_{start}.wav"
+
+    class FakeExtractor:
+        async def extract(self, wav_path):
+            from app.matcher.chromaprint_extractor import ChromaprintResult
+
+            return ChromaprintResult(
+                hashes=list(range(100, 340)), duration_seconds=30.0, fpcalc_version="t"
+            )
+
+    cm = ChromaprintMatcher(
+        tmdb_id=42,
+        server_url="https://s",
+        pack_cache=type("C", (), {"has": lambda self, t: True, "load": lambda self, t: _pack()})(),
+    )
+
+    result = await identify_episode_chromaprint(
+        matcher=FakeMatcher(),
+        video_file=str(tmp_path / "v.mkv"),
+        season_number=1,
+        chromaprint_matcher=cm,
+        extractor=FakeExtractor(),
+        video_duration=1800.0,
+        num_points=6,
+    )
+    assert result is not None
+    assert result["season"] == 1 and result["episode"] == 1
+    assert result["match_details"]["match_source"] == "chromaprint"
+    assert "chromaprint_signal" in result["match_details"]
+    assert result["tier"] == "canonical"
+
+
+@pytest.mark.asyncio
+async def test_identify_episode_chromaprint_none_when_no_votes(monkeypatch, tmp_path):
+    """When every window classifies below the floor / to nothing, returns None."""
+    from app.matcher.chromaprint_matcher import identify_episode_chromaprint
+
+    class FakeMatcher:
+        chunk_duration = 30
+        skip_initial_duration = 90
+
+        def extract_audio_chunk(self, mkv, start, duration=None):
+            return tmp_path / f"chunk_{start}.wav"
+
+    class FakeExtractor:
+        async def extract(self, wav_path):
+            from app.matcher.chromaprint_extractor import ChromaprintResult
+
+            # hashes that match NO episode in the pack -> no candidates
+            return ChromaprintResult(
+                hashes=list(range(5_000_000, 5_000_240)), duration_seconds=30.0, fpcalc_version="t"
+            )
+
+    cm = ChromaprintMatcher(
+        tmdb_id=42,
+        server_url="https://s",
+        pack_cache=type("C", (), {"has": lambda self, t: True, "load": lambda self, t: _pack()})(),
+    )
+
+    result = await identify_episode_chromaprint(
+        matcher=FakeMatcher(),
+        video_file=str(tmp_path / "v.mkv"),
+        season_number=1,
+        chromaprint_matcher=cm,
+        extractor=FakeExtractor(),
+        video_duration=1800.0,
+        num_points=6,
+    )
+    assert result is None

@@ -151,3 +151,120 @@ class ChromaprintMatcher:
         if not cands and isinstance(backend, LocalPackBackend) and self.allow_remote_fallthrough:
             return await self._remote.classify_window(query_hashes, top_k=top_k)
         return cands
+
+
+def _scan_points(
+    video_duration: float, num_points: int, skip_initial: float, chunk_duration: int
+) -> list[float]:
+    """Evenly-spaced start times across the body of the file (mirrors identify_episode)."""
+    usable_start = min(skip_initial, max(0.0, video_duration - chunk_duration))
+    usable_end = max(usable_start, video_duration - chunk_duration)
+    if num_points <= 1 or usable_end <= usable_start:
+        return [usable_start]
+    step = (usable_end - usable_start) / (num_points - 1)
+    return [usable_start + i * step for i in range(num_points)]
+
+
+async def identify_episode_chromaprint(
+    *,
+    matcher,
+    video_file: str,
+    season_number: int,
+    chromaprint_matcher: ChromaprintMatcher,
+    extractor,
+    video_duration: float,
+    num_points: int = 10,
+    min_vote_count: int = 2,
+    per_window_floor: float = 0.30,
+):
+    """Chromaprint-first episode identification reusing EpisodeMatcher voting machinery.
+
+    Returns a dict shaped like EpisodeMatcher.identify_episode (season, episode,
+    confidence, score, tier, match_details, runner_ups), or None on no usable votes.
+    """
+    from app.matcher.episode_identification import MatchCoverage, _attach_calibrated_confidence
+
+    coverages: dict[str, MatchCoverage] = {}
+    tiers: dict[str, str] = {}
+    sig_acc: dict[str, dict[str, float]] = {}
+    chunk_len = matcher.chunk_duration
+
+    points = _scan_points(video_duration, num_points, matcher.skip_initial_duration, chunk_len)
+    for start in points:
+        try:
+            wav = matcher.extract_audio_chunk(video_file, start, chunk_len)
+            fp = await extractor.extract(str(wav))
+        except Exception as e:  # noqa: BLE001 — best-effort per window
+            logger.debug(f"chromaprint window {start:.0f}s skipped: {e}")
+            continue
+        cands = await chromaprint_matcher.classify_window(fp.hashes, top_k=3)
+        if not cands:
+            continue
+        best = cands[0]
+        if best.combined_score < per_window_floor:
+            continue
+        key = f"S{best.season:02d}E{best.episode:02d}"
+        if key not in coverages:
+            coverages[key] = MatchCoverage(key, video_duration, video_duration)
+            tiers[key] = best.tier
+            sig_acc[key] = {"overlap": 0.0, "temporal": 0.0, "rarity": 0.0, "n": 0.0}
+        coverages[key].add_match(start, chunk_len, best.combined_score)
+        acc = sig_acc[key]
+        acc["overlap"] += best.hash_overlap_pct
+        acc["temporal"] += best.temporal_coherence
+        acc["rarity"] += best.rarity_weighted_score
+        acc["n"] += 1
+
+    if not coverages:
+        return None
+
+    results_summary = sorted(
+        (
+            {
+                "episode_name": k,
+                "episode": k,  # _attach_calibrated_confidence reads this key
+                "score": c.ranked_voting_score,
+                "vote_count": len(c.matched_chunks),
+            }
+            for k, c in coverages.items()
+        ),
+        key=lambda r: r["score"],
+        reverse=True,
+    )
+    winner = results_summary[0]
+    win_key = winner["episode_name"]
+    if winner["vote_count"] < min_vote_count:
+        return None
+
+    acc = sig_acc[win_key]
+    n = max(1.0, acc["n"])
+    chromaprint_signal = {
+        "hash_overlap": acc["overlap"] / n,
+        "temporal_coherence": acc["temporal"] / n,
+        "rarity_weighted_score": acc["rarity"] / n,
+    }
+
+    season = int(win_key[1:3])
+    episode = int(win_key[4:6])
+    best_match = {
+        "season": season,
+        "episode": episode,
+        "score": winner["score"],
+        "match_details": {
+            "match_source": "chromaprint",
+            "target_votes": len(points),
+            "vote_count": winner["vote_count"],
+            "chromaprint_signal": chromaprint_signal,
+            "candidate_scores": {r["episode_name"]: r["score"] for r in results_summary},
+        },
+    }
+    _attach_calibrated_confidence(
+        best_match, results_summary, video_duration, chunk_len, chromaprint_signal
+    )
+    best_match["confidence"] = best_match.get("confidence", winner["score"])
+    best_match["tier"] = tiers[win_key]
+    best_match["runner_ups"] = [
+        {"episode_name": r["episode_name"], "score": r["score"], "vote_count": r["vote_count"]}
+        for r in results_summary[1:]
+    ]
+    return best_match
