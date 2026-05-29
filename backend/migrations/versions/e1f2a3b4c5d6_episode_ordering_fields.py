@@ -5,7 +5,7 @@ and the audit fields on disc_titles. Mirrors the database.py reconciler path
 used by frozen builds (which skip Alembic) — the two must stay in agreement.
 
 Revision ID: e1f2a3b4c5d6
-Revises: a1b2c3d4e5f6
+Revises: a863a06a3c34
 Create Date: 2026-05-28 13:00:00.000000
 
 """
@@ -17,7 +17,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "e1f2a3b4c5d6"
-down_revision: str | Sequence[str] | None = "a1b2c3d4e5f6"
+down_revision: str | Sequence[str] | None = "a863a06a3c34"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
