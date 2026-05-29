@@ -57,7 +57,7 @@ interface ConfigData {
     maxConcurrentMatches: number;
     ffmpegPath: string;
     conflictResolutionDefault: string;
-    episodeOrderingPreference: string;
+    episodeOrderingPreference: 'aired' | 'dvd';
     watchdogEnabled: boolean;
     timeoutIdentifyingSeconds: number;
     timeoutRippingSeconds: number;

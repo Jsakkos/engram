@@ -13,6 +13,9 @@ import { test, expect } from '@playwright/test';
  *   - Restores the aired default afterwards to leave global config clean.
  */
 
+// The E2E backend always runs on port 8001 (see playwright.config.ts).
+const API = 'http://localhost:8001';
+
 async function openSettingsPreferences(page: import('@playwright/test').Page) {
     await page.locator('[data-testid="sv-settings-btn"]').click();
     await expect(page.getByText('Preferences')).toBeVisible({ timeout: 5000 });
@@ -42,7 +45,16 @@ test.describe('Global episode ordering default', () => {
         await expect(page.locator('text=/LIVE/i')).toBeVisible({ timeout: 10000 });
     });
 
-    test('defaults to aired, persists DVD across reload, then restores aired', async ({ page }) => {
+    // Tests share one backend DB and run serially (workers: 1). Restore the aired
+    // default directly via the API after each test so a mid-test failure (which
+    // could leave "dvd" persisted) doesn't bleed into later specs.
+    test.afterEach(async ({ request }) => {
+        await request.put(`${API}/api/config`, {
+            data: { episode_ordering_preference: 'aired' },
+        });
+    });
+
+    test('defaults to aired and persists DVD across reload', async ({ page }) => {
         // --- Step 1: open settings and normalise to the aired default ---
         await openSettingsPreferences(page);
         const trigger = page.locator('#episodeOrdering');
@@ -63,10 +75,6 @@ test.describe('Global episode ordering default', () => {
         await expect(page.locator('text=/LIVE/i')).toBeVisible({ timeout: 10000 });
         await openSettingsPreferences(page);
         await expect(page.locator('#episodeOrdering')).toContainText('DVD Order');
-
-        // --- Cleanup: restore the aired default so other tests start clean ---
-        await selectEpisodeOrdering(page, /Aired Order/);
-        await expect(page.locator('#episodeOrdering')).toContainText('Aired Order');
-        await saveChanges(page);
+        // The aired default is restored by afterEach via the API.
     });
 });
