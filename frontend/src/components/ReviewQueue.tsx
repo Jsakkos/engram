@@ -11,9 +11,10 @@ import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader,
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
 import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
+import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
-import { runLLMMatch, reassignEpisode, submitReviewBatch, rematchTitle } from '../api/client';
+import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
@@ -178,7 +179,20 @@ function ReviewQueue() {
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<number>>(new Set());
     const lastBulkClickRef = useRef<number | null>(null);
 
-    const { roster, error: rosterError, episodeName } = useSeasonRoster(jobId);
+    const { roster, error: rosterError, episodeName, reload: reloadRoster } = useSeasonRoster(jobId);
+
+    // Persist a per-show ordering choice (#200), then refetch the roster so the
+    // projection/divergence reflect it. Ordering is a show property, so it is
+    // stored by tmdb_id rather than threaded through the review-batch decision.
+    const handleOrderingChange = async (ordering: string) => {
+        if (!roster?.show_id) return;
+        try {
+            await setShowOrdering(roster.show_id, ordering);
+            reloadRoster();
+        } catch (e) {
+            console.error('Failed to set show ordering', e);
+        }
+    };
 
     useEffect(() => {
         fetchJobDetails();
@@ -861,6 +875,20 @@ function ReviewQueue() {
                     </SvNotice>
                 )}
                 {rematchNotice && <SvNotice tone="warn">› {rematchNotice}</SvNotice>}
+
+                {/* Episode ordering (#200) — only when a divergent ordering exists. */}
+                {roster?.ordering_available && roster?.ordering_diverges && roster.ordering_options && (
+                    <div style={{ marginBottom: 24 }}>
+                        <div style={{ marginBottom: 12 }}>
+                            <SvLabel>Episode ordering — this show is numbered differently across releases</SvLabel>
+                        </div>
+                        <OrderingSelector
+                            options={roster.ordering_options}
+                            current={roster.current_ordering ?? 'aired'}
+                            onChange={handleOrderingChange}
+                        />
+                    </div>
+                )}
 
                 {/* Season roster */}
                 {roster?.available && rosterEpisodes.length > 0 && (

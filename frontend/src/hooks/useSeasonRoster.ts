@@ -12,6 +12,10 @@ export function useSeasonRoster(jobId: string | undefined) {
     const [roster, setRoster] = useState<SeasonRoster | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    // Bumped by reload() to re-run the fetch (e.g. after changing the show's
+    // output ordering, so projections/divergence refresh).
+    const [reloadKey, setReloadKey] = useState(0);
+    const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
     useEffect(() => {
         if (!jobId) return;
@@ -43,7 +47,7 @@ export function useSeasonRoster(jobId: string | undefined) {
         return () => {
             cancelled = true;
         };
-    }, [jobId]);
+    }, [jobId, reloadKey]);
 
     const episodeName = useCallback(
         (code: string): string =>
@@ -51,5 +55,5 @@ export function useSeasonRoster(jobId: string | undefined) {
         [roster],
     );
 
-    return { roster, loading, error, episodeName };
+    return { roster, loading, error, episodeName, reload };
 }

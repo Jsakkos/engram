@@ -114,6 +114,20 @@ export async function reassignEpisode(
 }
 
 /**
+ * Set a show's output ordering preference (#200), keyed by TMDB id. Ordering is
+ * a property of the show (not a one-off review decision), so it persists and
+ * applies to future organizes. The caller should refetch the season roster
+ * afterwards so projections/divergence reflect the new choice.
+ */
+export async function setShowOrdering(tmdbId: number, ordering: string): Promise<void> {
+  return apiFetchVoid(`/api/shows/${tmdbId}/ordering`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ordering }),
+  });
+}
+
+/**
  * Re-run matching for a single title. Used for both the single-title "re-match"
  * action and the bulk re-match over a multiselect, so both go through the shared
  * {@link apiFetchVoid} wrapper instead of raw fetch.
