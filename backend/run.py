@@ -43,13 +43,21 @@ def main() -> None:
         import webbrowser
 
         import uvicorn
+        from loguru import logger
 
+        from app import __version__
+        from app.config import is_frozen
         from app.core.network import ALL_INTERFACES, resolve_startup_host
         from app.main import app, settings
 
-        is_frozen = getattr(sys, "frozen", False)
+        frozen = is_frozen()
+        logger.info(
+            f"Starting engram {__version__} — is_frozen()={frozen} "
+            f"(sys.frozen={getattr(sys, 'frozen', False)!r}, "
+            f"_MEIPASS={'set' if hasattr(sys, '_MEIPASS') else 'unset'})"
+        )
         host = resolve_startup_host(settings.host)
-        port = _find_free_port(host, settings.port) if is_frozen else settings.port
+        port = _find_free_port(host, settings.port) if frozen else settings.port
 
         if port != settings.port:
             print(f"Port {settings.port} in use, using {port} instead")
@@ -58,7 +66,7 @@ def main() -> None:
         app.state.bound_host = host
         app.state.bound_port = port
 
-        if is_frozen:
+        if frozen:
             # Open browser after a short delay to let the server bind the port.
             # When bound to all interfaces, open localhost (http://0.0.0.0 is not
             # a valid client address); LAN clients use the address shown in the UI.
@@ -71,7 +79,7 @@ def main() -> None:
             host=host,
             port=port,
             # reload is incompatible with frozen PyInstaller bundles
-            reload=False if is_frozen else settings.debug,
+            reload=False if frozen else settings.debug,
             factory=False,
         )
     except KeyboardInterrupt:
@@ -83,7 +91,9 @@ def main() -> None:
         # (including module-level import errors) lands here so a frozen build
         # keeps the console open with a visible traceback instead of vanishing.
         traceback.print_exc()
-        if getattr(sys, "frozen", False):
+        # Inline the frozen check (not app.config.is_frozen) so the console still
+        # pauses even when the crash was app.config failing to import.
+        if getattr(sys, "frozen", False) or hasattr(sys, "_MEIPASS"):
             print(f"\nFatal error: {exc}")
             print("Check ~/.engram/engram.log for details")
             input("Press Enter to exit...")

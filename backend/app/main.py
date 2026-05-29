@@ -223,8 +223,27 @@ if os.path.isdir(_static_dir):
     from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
+    # Vite content-hashes everything under /assets (e.g. index-AbC123.js), so the
+    # filename changes whenever the bytes change — they can be cached forever.
+    # The opposite of index.html below, which must never be cached (see serve_spa).
+    class _ImmutableStatic(StaticFiles):
+        # Stamp the header by overriding get_response (the stable async entry
+        # point), NOT file_response: in Starlette 0.50.0 file_response is a *sync*
+        # method that get_response calls without await, so an `async def
+        # file_response` override would make get_response return an un-awaited
+        # coroutine and 500 every /assets request — while a `def file_response`
+        # override is correct only as long as it stays sync. Overriding the async
+        # get_response is robust regardless of file_response's sync/async-ness.
+        async def get_response(self, *args, **kwargs):
+            resp = await super().get_response(*args, **kwargs)
+            if resp.status_code == 200:
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+
     # Mount static assets (JS, CSS, images)
-    app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
+    app.mount(
+        "/assets", _ImmutableStatic(directory=os.path.join(_static_dir, "assets")), name="assets"
+    )
 
     # Root-level static files emitted by the Vite build (favicon, SVGs, etc.).
     # Built once at server startup by listing the static dir — no manual
@@ -253,7 +272,11 @@ if os.path.isdir(_static_dir):
         # have been removed since; fall through to index.html, never a 500.
         if static_file is not None and os.path.isfile(static_file):
             return FileResponse(static_file)
-        return FileResponse(_INDEX_HTML)
+        # index.html keeps a stable name across builds, so without this header the
+        # browser heuristically caches it and keeps loading the OLD hashed bundles
+        # after an update. no-cache forces revalidation; FileResponse's ETag makes
+        # the revalidation a cheap 304 when unchanged.
+        return FileResponse(_INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
 else:
 

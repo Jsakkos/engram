@@ -2366,6 +2366,7 @@ async def _collect_environment() -> dict:
     """
     from app import __version__
     from app.api.validation import detect_ffmpeg, detect_makemkv
+    from app.config import is_frozen
     from app.services.config_service import get_config
 
     config = await get_config()
@@ -2377,6 +2378,11 @@ async def _collect_environment() -> dict:
         "app_version": __version__,
         "python_version": sys.version.split()[0],
         "os": f"{platform.system()} {platform.release()}",
+        "runtime": {
+            "is_frozen": is_frozen(),
+            "sys_frozen": bool(getattr(sys, "frozen", False)),
+            "meipass": hasattr(sys, "_MEIPASS"),
+        },
         "makemkv_version": mk.version if mk.found else (mk.error or "not found"),
         "ffmpeg_version": ff.version if ff.found else (ff.error or "not found"),
         "config": {
@@ -2403,6 +2409,9 @@ def _build_markdown_summary(env: dict, job_summary: dict | None, recent_errors: 
         f"**Engram version**: {env['app_version']}",
         f"**OS**: {env['os']}",
         f"**Python**: {env['python_version']}",
+        f"**Build**: {'frozen' if env.get('runtime', {}).get('is_frozen') else 'dev'} "
+        f"(sys.frozen={env.get('runtime', {}).get('sys_frozen')}, "
+        f"_MEIPASS={env.get('runtime', {}).get('meipass')})",
         f"**MakeMKV**: {env['makemkv_version']}",
         f"**FFmpeg**: {env['ffmpeg_version']}",
         "",
