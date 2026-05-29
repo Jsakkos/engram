@@ -83,24 +83,26 @@ class PackCache:
             return None
         try:
             raw = _zstd_decompress(p.read_bytes())
-        except zstandard.ZstdError as e:
-            logger.warning(f"Corrupt pack for {tmdb_id}: {e}")
+            lines = raw.decode("utf-8").split("\n")
+            header = json.loads(lines[0])
+            pack = DecodedPack(
+                tmdb_id=int(header["tmdb_id"]), n_episodes=int(header.get("n_episodes", 0))
+            )
+            for line in lines[1:]:
+                if not line:
+                    continue
+                obj = json.loads(line)
+                if obj.get("kind") == "df":
+                    pack.df_map = {int(h): int(c) for h, c in obj.get("df", [])}
+                    continue
+                blob = base64.b64decode(obj["fingerprint_b64"])
+                pack.episodes[(int(obj["season"]), int(obj["episode"]))] = set(
+                    decode_zstd_varint(blob)
+                )
+            return pack
+        except (zstandard.ZstdError, ValueError, TypeError, KeyError, json.JSONDecodeError) as e:
+            logger.warning(f"Corrupt/unparseable pack for {tmdb_id}: {e}")
             return None
-        lines = raw.decode("utf-8").split("\n")
-        header = json.loads(lines[0])
-        pack = DecodedPack(
-            tmdb_id=int(header["tmdb_id"]), n_episodes=int(header.get("n_episodes", 0))
-        )
-        for line in lines[1:]:
-            if not line:
-                continue
-            obj = json.loads(line)
-            if obj.get("kind") == "df":
-                pack.df_map = {int(h): int(c) for h, c in obj.get("df", [])}
-                continue
-            blob = base64.b64decode(obj["fingerprint_b64"])
-            pack.episodes[(int(obj["season"]), int(obj["episode"]))] = set(decode_zstd_varint(blob))
-        return pack
 
     async def ensure(self, tmdb_id: int, server_url: str) -> bool:
         """Download/refresh the pack. Returns True if a usable pack is present afterward."""
@@ -130,5 +132,5 @@ class PackCache:
             return True
         if resp.status_code == 404:
             return False
-        logger.info(f"Pack fetch for {tmdb_id} returned {resp.status_code}")
+        logger.warning(f"Pack fetch for {tmdb_id} returned {resp.status_code}")
         return self.path(tmdb_id).exists()

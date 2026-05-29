@@ -70,3 +70,22 @@ async def test_ensure_writes_on_200_and_keeps_on_304(tmp_path, monkeypatch):
     assert cache.has(77)
     assert await cache.ensure(77, "https://server") is True
     assert calls["n"] == 2
+
+
+def test_has_false_when_ttl_expired(tmp_path):
+    import json as _json
+    import time as _time
+
+    cache = PackCache(base_dir=tmp_path, ttl_seconds=10)
+    cache.path(33).write_bytes(b"x")  # file present
+    # Manifest entry downloaded 1 hour ago -> older than ttl -> stale.
+    (tmp_path / "manifest.json").write_text(
+        _json.dumps({"33": {"etag": '"v"', "downloaded_at": _time.time() - 3600}})
+    )
+    assert cache.has(33) is False
+
+
+def test_load_returns_none_on_corrupt_file(tmp_path):
+    cache = PackCache(base_dir=tmp_path)
+    cache.path(44).write_bytes(b"not a zstd frame at all")
+    assert cache.load(44) is None
