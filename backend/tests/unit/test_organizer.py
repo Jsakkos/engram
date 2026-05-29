@@ -3,6 +3,10 @@
 Tests movie/TV naming conventions, conflict resolution, and filename sanitization.
 """
 
+from unittest.mock import patch
+
+import pytest
+
 from app.core.organizer import (
     clean_movie_name,
     organize_movie,
@@ -204,3 +208,92 @@ class TestTVOrganization:
 
         assert result["success"] is True
         assert result.get("skipped") is True
+
+
+@pytest.mark.unit
+class TestTVOrderingProjection:
+    """Output ordering (#200) is a filename-only projection applied at organize
+    time. The canonical episode_code arg is untouched; only the on-disk numbers
+    change. matched_episode in the DB stays canonical (verified at a higher
+    layer in the finalization invariant test)."""
+
+    def test_aired_default_uses_canonical_without_projecting(self, tmp_path):
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 16)
+        with patch("app.core.episode_ordering.project_episode") as proj:
+            result = organize_tv_episode(
+                source_file=source,
+                show_name="Firefly",
+                episode_code="S01E11",
+                library_path=tmp_path / "library",
+            )
+        assert result["success"] is True
+        assert result["final_path"].name == "Firefly - S01E11.mkv"
+        # aired is the identity case — the projection must not even be invoked.
+        assert proj.call_count == 0
+
+    def test_dvd_projects_episode_number(self, tmp_path):
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 16)
+        # Canonical S01E11 ("Serenity") -> DVD S01E01.
+        with patch("app.core.episode_ordering.project_episode", return_value=(1, 1)) as proj:
+            result = organize_tv_episode(
+                source_file=source,
+                show_name="Firefly",
+                episode_code="S01E11",
+                library_path=tmp_path / "library",
+                tmdb_id="1437",
+                ordering="dvd",
+            )
+        assert result["success"] is True
+        assert result["final_path"].name == "Firefly - S01E01.mkv"
+        proj.assert_called_once()
+        # called with the CANONICAL season/episode parsed from episode_code
+        args = proj.call_args[0]
+        assert args[1] == "dvd" and args[2] == 1 and args[3] == 11
+
+    def test_projection_can_change_season_folder(self, tmp_path):
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 16)
+        with patch("app.core.episode_ordering.project_episode", return_value=(2, 5)):
+            result = organize_tv_episode(
+                source_file=source,
+                show_name="Show",
+                episode_code="S01E03",
+                library_path=tmp_path / "library",
+                tmdb_id="42",
+                ordering="dvd",
+            )
+        dest = result["final_path"]
+        assert dest.name == "Show - S02E05.mkv"
+        assert "Season 02" in str(dest)
+
+    def test_no_tmdb_id_skips_projection(self, tmp_path):
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 16)
+        with patch("app.core.episode_ordering.project_episode") as proj:
+            result = organize_tv_episode(
+                source_file=source,
+                show_name="Firefly",
+                episode_code="S01E11",
+                library_path=tmp_path / "library",
+                tmdb_id=None,
+                ordering="dvd",
+            )
+        assert result["final_path"].name == "Firefly - S01E11.mkv"
+        assert proj.call_count == 0
+
+    def test_projection_identity_when_no_group(self, tmp_path):
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 16)
+        # project_episode returns the input unchanged when no DVD group exists.
+        with patch("app.core.episode_ordering.project_episode", return_value=(1, 11)):
+            result = organize_tv_episode(
+                source_file=source,
+                show_name="Firefly",
+                episode_code="S01E11",
+                library_path=tmp_path / "library",
+                tmdb_id="1437",
+                ordering="dvd",
+            )
+        assert result["final_path"].name == "Firefly - S01E11.mkv"

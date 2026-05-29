@@ -267,6 +267,8 @@ class ConfigResponse(BaseModel):
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
+    # Episode ordering (#200) — global default output ordering
+    episode_ordering_preference: str
     # AI identification
     ai_identification_enabled: bool
     ai_provider: str
@@ -342,6 +344,8 @@ class ConfigUpdate(BaseModel):
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
+    # Episode ordering (#200) — global default output ordering
+    episode_ordering_preference: str | None = None
     # AI identification
     ai_identification_enabled: bool | None = None
     ai_provider: str | None = None
@@ -580,6 +584,16 @@ class RosterEpisode(BaseModel):
     assigned_title_ids: list[int]
 
 
+class OrderingOption(BaseModel):
+    """One selectable output ordering for a show (#200)."""
+
+    ordering: str  # "aired" | "dvd" | "digital" | ...
+    label: str  # human label (TMDB group name, e.g. "DVD Order")
+    tmdb_type: int  # TMDB episode-group type enum
+    diverges: bool  # does this ordering renumber any matched episode on the disc
+    projection: dict[str, str] = {}  # canonical "SxxExx" -> projected "SxxExx"
+
+
 class SeasonRosterResponse(BaseModel):
     """Season episode list (code + name) plus per-episode coverage.
 
@@ -588,6 +602,10 @@ class SeasonRosterResponse(BaseModel):
     inside the disc's covered range — a gap to fill) and ``off`` (outside the
     range, i.e. on another disc). The frontend recomputes status live as the
     user edits unsaved selections.
+
+    The ``ordering_*`` fields (#200) drive the episode-ordering selector: it is
+    only surfaced when ``ordering_diverges`` is true (a real renumbering exists
+    for this disc), keeping the common single-ordering case silent.
     """
 
     available: bool
@@ -595,6 +613,11 @@ class SeasonRosterResponse(BaseModel):
     show_id: int | None = None
     episodes: list[RosterEpisode] = []
     reason: str | None = None
+    # Episode ordering (#200)
+    ordering_available: bool = False
+    ordering_diverges: bool = False
+    current_ordering: str = "aired"
+    ordering_options: list[OrderingOption] = []
 
 
 @router.get("/jobs/{job_id}/season-roster", response_model=SeasonRosterResponse)
@@ -665,11 +688,34 @@ async def get_season_roster(
         for ep in episodes_raw
     ]
 
+    # Episode-ordering options (#200): which orderings exist for this show and
+    # whether any renumbers an episode actually matched on this disc. Cached at
+    # the TMDB layer; off-thread so a cold fetch doesn't stall the event loop.
+    from app.core import episode_ordering
+    from app.services.episode_ordering_service import resolve_show_ordering
+
+    current_ordering, _ = await resolve_show_ordering(job.tmdb_id, session)
+    roster_pairs = [(season, ep["episode_number"]) for ep in episodes_raw]
+    matched_pairs = [(season, ep_num) for ep_num in present]
+    ordering_data = await asyncio.to_thread(
+        episode_ordering.build_ordering_options,
+        str(job.tmdb_id),
+        season,
+        roster_pairs,
+        matched_pairs,
+        config.tmdb_api_key,
+        current_ordering,
+    )
+
     return SeasonRosterResponse(
         available=True,
         season_number=season,
         show_id=job.tmdb_id,
         episodes=episodes,
+        ordering_available=ordering_data["available"],
+        ordering_diverges=ordering_data["diverges"],
+        current_ordering=ordering_data["current"],
+        ordering_options=[OrderingOption(**o) for o in ordering_data["options"]],
     )
 
 
@@ -1068,6 +1114,8 @@ async def get_config() -> ConfigResponse:
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,
+        # Episode ordering (#200)
+        episode_ordering_preference=config.episode_ordering_preference,
         # AI identification
         ai_identification_enabled=config.ai_identification_enabled,
         ai_provider=config.ai_provider,
@@ -1192,6 +1240,16 @@ async def update_config(config: ConfigUpdate) -> dict:
             raise HTTPException(
                 status_code=400,
                 detail="extras_policy must be 'keep', 'skip', or 'ask'",
+            )
+
+    # Validate episode_ordering_preference (#200) — reject absolute (deferred) and unknowns
+    if "episode_ordering_preference" in update_data:
+        from app.core.episode_ordering import ALLOWED_ORDERINGS
+
+        if update_data["episode_ordering_preference"] not in ALLOWED_ORDERINGS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"episode_ordering_preference must be one of {sorted(ALLOWED_ORDERINGS)}",
             )
 
     # Keep the disclosure-acceptance timestamp consistent with the flag,
@@ -3129,6 +3187,77 @@ async def reassign_episode(
         raise HTTPException(status_code=400, detail=str(e)) from None
 
     return {"status": "reassigned", "title_id": title_id}
+
+
+class ShowOrderingRequest(BaseModel):
+    """Set a show's output ordering preference (#200)."""
+
+    ordering: str  # one of episode_ordering.ALLOWED_ORDERINGS
+
+
+@router.get("/shows/{tmdb_id}/ordering")
+async def get_show_ordering(
+    tmdb_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Return a show's effective output ordering and whether it's an explicit override."""
+    from app.models.show_ordering import ShowOrderingPreference
+    from app.services.episode_ordering_service import resolve_show_ordering
+
+    pref = await session.get(ShowOrderingPreference, tmdb_id)
+    effective, group_id = await resolve_show_ordering(tmdb_id, session)
+    return {
+        "tmdb_id": tmdb_id,
+        "ordering": effective,
+        "episode_group_id": group_id,
+        "source": "show" if pref else "default",
+    }
+
+
+@router.put("/shows/{tmdb_id}/ordering")
+async def set_show_ordering(
+    tmdb_id: int,
+    request: ShowOrderingRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Set (upsert) a show's output ordering preference.
+
+    Divergence is a property of the show, so ordering is stored per show (by
+    tmdb_id) and applied to future organizes — not threaded through individual
+    review decisions. Resolves and caches the episode-group id eagerly.
+    """
+    from datetime import UTC, datetime
+
+    from app.core import episode_ordering
+    from app.models.show_ordering import ShowOrderingPreference
+    from app.services.config_service import get_config
+
+    if request.ordering not in episode_ordering.ALLOWED_ORDERINGS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"ordering must be one of {sorted(episode_ordering.ALLOWED_ORDERINGS)}",
+        )
+
+    group_id = None
+    if request.ordering != episode_ordering.ORDERING_AIRED:
+        config = await get_config()
+        group_id = await asyncio.to_thread(
+            episode_ordering.resolve_episode_group_id,
+            str(tmdb_id),
+            request.ordering,
+            config.tmdb_api_key,
+        )
+
+    pref = await session.get(ShowOrderingPreference, tmdb_id)
+    if pref is None:
+        pref = ShowOrderingPreference(tmdb_id=tmdb_id)
+        session.add(pref)
+    pref.ordering = request.ordering
+    pref.episode_group_id = group_id
+    pref.updated_at = datetime.now(UTC)
+    await session.commit()
+
+    return {"tmdb_id": tmdb_id, "ordering": request.ordering, "episode_group_id": group_id}
 
 
 async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> dict | None:

@@ -93,6 +93,17 @@ async def client():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_episode_groups(monkeypatch):
+    """Keep roster tests offline: the endpoint now also fetches episode groups
+    (#200). Default to "none" so the common single-ordering path is exercised
+    without a TMDB call; tests that want options patch this themselves."""
+    monkeypatch.setattr(
+        "app.core.episode_ordering.tmdb_client.fetch_episode_groups",
+        lambda show_id, api_key: [],
+    )
+
+
 @pytest.mark.unit
 class TestSeasonRoster:
     async def test_roster_returns_episode_names_and_coverage(self, client):
@@ -146,6 +157,59 @@ class TestSeasonRoster:
         assert data["available"] is False
         assert data["episodes"] == []
         assert data["reason"]
+
+    async def test_roster_without_groups_does_not_surface_ordering(self, client):
+        """The 90% case: a show with no episode groups -> selector stays hidden."""
+        await _seed_config()
+        job = await _seed_tv_job()
+        await _seed_title(job.id, 0, "S03E01")
+
+        with patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES):
+            response = await client.get(f"/api/jobs/{job.id}/season-roster")
+
+        data = response.json()
+        assert data["ordering_available"] is False
+        assert data["ordering_diverges"] is False
+        assert data["current_ordering"] == "aired"
+        assert [o["ordering"] for o in data["ordering_options"]] == ["aired"]
+
+    async def test_roster_surfaces_divergent_dvd_ordering(self, client, monkeypatch):
+        """A show with a divergent DVD group -> selector data is present."""
+        await _seed_config()
+        job = await _seed_tv_job()
+        # Episode 2 ("Game Changer") is the disc's matched episode; the fake DVD
+        # group renumbers canonical S03E02 -> S03E05, so the ordering diverges.
+        await _seed_title(job.id, 0, "S03E02")
+
+        monkeypatch.setattr(
+            "app.core.episode_ordering.tmdb_client.fetch_episode_groups",
+            lambda show_id, api_key: [{"id": "g_dvd", "name": "DVD Order", "type": 3}],
+        )
+        monkeypatch.setattr(
+            "app.core.episode_ordering.tmdb_client.fetch_episode_group",
+            lambda gid, api_key: {
+                "id": "g_dvd",
+                "type": 3,
+                "groups": [
+                    {
+                        "name": "Season 3",
+                        "order": 1,
+                        "episodes": [
+                            {"season_number": 3, "episode_number": 2, "order": 4},
+                        ],
+                    }
+                ],
+            },
+        )
+
+        with patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES):
+            response = await client.get(f"/api/jobs/{job.id}/season-roster")
+
+        data = response.json()
+        assert data["ordering_available"] is True
+        assert data["ordering_diverges"] is True
+        dvd = next(o for o in data["ordering_options"] if o["ordering"] == "dvd")
+        assert dvd["projection"]["S03E02"] == "S03E05"
 
 
 async def _title_id(job_id: int, index: int) -> int:
