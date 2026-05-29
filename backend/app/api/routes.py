@@ -1548,6 +1548,297 @@ async def forget_fingerprint_on_server(
     }
 
 
+# --- Bootstrap Library Endpoints ---
+# NOTE: The accept endpoint processes items synchronously. Very large libraries
+# should be chunked by the caller (e.g. 50–100 items per request). A future
+# enhancement could background the extraction work for very large batches.
+
+
+class BootstrapScanRequest(BaseModel):
+    """Request body for /fingerprint/bootstrap/scan."""
+
+    path: str
+
+
+class BootstrapEpisodeItem(BaseModel):
+    """A single parseable episode found during a library scan."""
+
+    file: str
+    season: int
+    episode: int
+
+
+class BootstrapShowResult(BaseModel):
+    """Per-show grouping returned by /fingerprint/bootstrap/scan."""
+
+    folder_name: str
+    tmdb_id: int | None
+    tmdb_name: str | None
+    tmdb_year: int | None
+    resolved: bool
+    episode_count: int
+    episodes: list[BootstrapEpisodeItem]
+
+
+class BootstrapUnparseableItem(BaseModel):
+    """A media file whose name could not be parsed as Show - SnnEnn."""
+
+    file: str
+
+
+class BootstrapScanSummary(BaseModel):
+    total_files: int
+    parsed: int
+    shows: int
+    unparseable: int
+
+
+class BootstrapScanResponse(BaseModel):
+    shows: list[BootstrapShowResult]
+    unparseable: list[BootstrapUnparseableItem]
+    summary: BootstrapScanSummary
+
+
+class BootstrapAcceptItem(BaseModel):
+    """One file + resolved metadata the user confirmed for fingerprinting."""
+
+    file: str
+    tmdb_id: int
+    season: int
+    episode: int
+
+
+class BootstrapAcceptRequest(BaseModel):
+    """Request body for /fingerprint/bootstrap/accept."""
+
+    items: list[BootstrapAcceptItem]
+
+
+@router.post(
+    "/fingerprint/bootstrap/scan",
+    dependencies=[Depends(require_localhost)],
+    response_model=BootstrapScanResponse,
+)
+async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
+    """Walk an existing TV library and group files by show for TMDB resolution.
+
+    The caller supplies the root directory of a TV library whose files are
+    already correctly labeled with the canonical ``Show - SnnEnn.ext`` naming
+    convention.  The endpoint:
+
+    1. Validates that the path exists and is a directory (400 otherwise).
+    2. Globs all ``.mkv``/``.mp4``/``.m2ts`` files under the path (excluding
+       ``Extras`` directories).
+    3. Uses ``walk_library`` + ``parse_episode_filename`` to distinguish
+       parseable episodes from unparseable files.
+    4. Groups parseable episodes by show name and tries ``fetch_show_id`` for
+       each unique show (TMDB lookups are cached within the request).
+    5. Returns a per-show breakdown so the UI can confirm auto-resolved shows
+       and offer a manual TMDB picker for the rest.
+
+    Localhost-only: the response includes the user's local library paths.
+    """
+    from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
+    from app.scripts.bootstrap_library import parse_episode_filename, walk_library
+
+    root = Path(req.path)
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(
+            status_code=400, detail=f"Path does not exist or is not a directory: {req.path}"
+        )
+
+    # --- Collect all media files, skipping Extras ---
+    _MEDIA_EXTENSIONS = {".mkv", ".mp4", ".m2ts"}
+
+    all_media: set[Path] = set()
+    for ext in _MEDIA_EXTENSIONS:
+        for p in root.rglob(f"*{ext}"):
+            if "Extras" not in p.parts:
+                all_media.add(p)
+
+    # --- Separate parseable from unparseable ---
+    # walk_library yields (path, (show, season, ep)) for parseable MKV files;
+    # any media file not returned by walk_library is unparseable.
+    parseable_paths: set[Path] = set()
+    # show_name -> list of (path, season, episode)
+    show_episodes: dict[str, list[tuple[Path, int, int]]] = {}
+
+    for file_path, (show, season, episode) in walk_library(root):
+        parseable_paths.add(file_path)
+        show_episodes.setdefault(show, []).append((file_path, season, episode))
+
+    # Non-MKV parseable files: check mp4/m2ts against parse_episode_filename
+    for p in all_media:
+        if p in parseable_paths:
+            continue
+        if p.suffix.lower() in (".mp4", ".m2ts"):
+            label = parse_episode_filename(p.name)
+            if label is not None:
+                show, season, episode = label
+                parseable_paths.add(p)
+                show_episodes.setdefault(show, []).append((p, season, episode))
+
+    unparseable_files = [p for p in all_media if p not in parseable_paths]
+
+    # --- TMDB resolution with per-request cache ---
+    tmdb_id_cache: dict[str, str | None] = {}
+
+    async def _resolve_show(show_name: str) -> str | None:
+        if show_name not in tmdb_id_cache:
+            raw = await asyncio.to_thread(fetch_show_id, show_name)
+            tmdb_id_cache[show_name] = raw
+        return tmdb_id_cache[show_name]
+
+    # Fetch details (name + year) for resolved shows; cache by id string.
+    tmdb_details_cache: dict[str, dict | None] = {}
+
+    async def _get_details(tmdb_id_str: str) -> dict | None:
+        if tmdb_id_str not in tmdb_details_cache:
+            try:
+                details = await asyncio.to_thread(fetch_show_details, int(tmdb_id_str))
+            except Exception:
+                details = None
+            tmdb_details_cache[tmdb_id_str] = details
+        return tmdb_details_cache[tmdb_id_str]
+
+    # --- Build per-show results ---
+    shows: list[BootstrapShowResult] = []
+    for show_name, episodes in sorted(show_episodes.items()):
+        raw_id = await _resolve_show(show_name)
+
+        tmdb_id: int | None = None
+        tmdb_name: str | None = None
+        tmdb_year: int | None = None
+        resolved = False
+
+        if raw_id is not None:
+            try:
+                tmdb_id = int(raw_id)
+                resolved = True
+            except (TypeError, ValueError):
+                pass
+
+        if tmdb_id is not None:
+            details = await _get_details(str(tmdb_id))
+            if details:
+                tmdb_name = details.get("name") or details.get("original_name")
+                first_air = details.get("first_air_date") or ""
+                if first_air and len(first_air) >= 4:
+                    try:
+                        tmdb_year = int(first_air[:4])
+                    except ValueError:
+                        pass
+
+        episode_items = [
+            BootstrapEpisodeItem(file=str(p), season=s, episode=e)
+            for p, s, e in sorted(episodes, key=lambda x: (x[1], x[2]))
+        ]
+
+        shows.append(
+            BootstrapShowResult(
+                folder_name=show_name,
+                tmdb_id=tmdb_id,
+                tmdb_name=tmdb_name,
+                tmdb_year=tmdb_year,
+                resolved=resolved,
+                episode_count=len(episode_items),
+                episodes=episode_items,
+            )
+        )
+
+    parsed_count = sum(len(eps) for eps in show_episodes.values())
+    total_files = parsed_count + len(unparseable_files)
+
+    return BootstrapScanResponse(
+        shows=shows,
+        unparseable=[BootstrapUnparseableItem(file=str(p)) for p in sorted(unparseable_files)],
+        summary=BootstrapScanSummary(
+            total_files=total_files,
+            parsed=parsed_count,
+            shows=len(shows),
+            unparseable=len(unparseable_files),
+        ),
+    )
+
+
+@router.post("/fingerprint/bootstrap/accept", dependencies=[Depends(require_localhost)])
+async def bootstrap_accept(
+    req: BootstrapAcceptRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Fingerprint a confirmed set of library files and enqueue contributions.
+
+    The UI calls this after the user reviews the scan results and confirms
+    (or manually corrects) each show's TMDB mapping.  For each item the
+    endpoint:
+
+    1. Extracts a chromaprint fingerprint via fpcalc (from ``cfg.fpcalc_path``
+       or ``detect_fpcalc()``).
+    2. Enqueues a ``FingerprintContribution`` row tagged ``match_source="bootstrap"``
+       and ``match_confidence=1.0`` (filename was ground truth).
+    3. Per-file extraction failures are counted and do NOT abort the batch.
+
+    Returns ``{"queued": N, "failed": M}``.
+
+    Localhost-only: processes local library files on behalf of the user.
+    """
+    from app.api.validation import detect_fpcalc
+    from app.matcher.chromaprint_extractor import ChromaprintExtractor
+    from app.services.config_service import get_config
+    from app.services.contribution_queue import ContributionQueue
+
+    cfg = await get_config()
+
+    # Resolve fpcalc path: prefer explicit config, fall back to auto-detection.
+    fpcalc_path = cfg.fpcalc_path
+    if not fpcalc_path:
+        detected = await asyncio.to_thread(detect_fpcalc)
+        fpcalc_path = detected.path if detected.found else None
+
+    if not fpcalc_path:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "fpcalc is not available. Install it (libchromaprint-tools / chromaprint) "
+                "and set its path in Engram settings, or ensure it is on PATH."
+            ),
+        )
+
+    extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path)
+    queue = ContributionQueue()
+    pseudonym = cfg.contribution_pseudonym or ""
+
+    queued = 0
+    failed = 0
+
+    for item in req.items:
+        try:
+            result = await extractor.extract(item.file)
+            await queue.enqueue(
+                session=session,
+                title_id=None,
+                chromaprint_blob=result.to_blob(),
+                tmdb_id=item.tmdb_id,
+                season=item.season,
+                episode=item.episode,
+                match_confidence=1.0,
+                match_source="bootstrap",
+                disc_content_hash=None,
+                pseudonym=pseudonym,
+                contributions_enabled=cfg.enable_fingerprint_contributions,
+            )
+            queued += 1
+        except Exception as exc:
+            logger.warning(
+                f"bootstrap_accept: fingerprint extraction failed for {item.file!r}: {exc}",
+                exc_info=True,
+            )
+            failed += 1
+
+    await session.commit()
+    return {"queued": queued, "failed": failed}
+
+
 # --- Simulation Endpoints (debug mode only) ---
 
 
