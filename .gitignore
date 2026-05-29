@@ -28,6 +28,9 @@ frontend/dist/
 # Bundled frontend served from backend (PyInstaller build output)
 backend/app/static/
 
+# Bundled fpcalc binary (fetched by scripts/fetch_fpcalc.py, never committed)
+backend/app/bin/
+
 # Subtitle-cache build outputs (local artifacts of build_subtitle_cache.py;
 # published via gh release upload, not committed).
 backend/engram-subtitle-cache.tar.gz

@@ -87,10 +87,27 @@ if os.path.isdir(static_dir):
 datas += collect_data_files("faster_whisper")
 datas += collect_data_files("ctranslate2")
 
+# Ship the third-party license notice (covers the bundled fpcalc) alongside the
+# binary it describes, satisfying Chromaprint's LGPL redistribution terms.
+_licenses = os.path.join("..", "THIRD_PARTY_LICENSES.md")
+if os.path.isfile(_licenses):
+    datas.append((_licenses, "."))
+
+# Bundle fpcalc (fetched by scripts/fetch_fpcalc.py before the build) so end
+# users get audio fingerprinting without installing Chromaprint themselves. It
+# lands at <bundle>/bin/fpcalc[.exe], which detect_fpcalc() resolves via
+# sys._MEIPASS. If absent (script not run), it simply isn't bundled and the app
+# falls back to auto-detecting a system/PATH fpcalc.
+binaries = []
+_fpcalc_name = "fpcalc.exe" if os.name == "nt" else "fpcalc"
+_fpcalc_path = os.path.join("app", "bin", _fpcalc_name)
+if os.path.isfile(_fpcalc_path):
+    binaries.append((_fpcalc_path, "bin"))
+
 a = Analysis(
     ["run.py"],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=all_hidden,
     hookspath=[],

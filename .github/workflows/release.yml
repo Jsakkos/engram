@@ -54,6 +54,10 @@ jobs:
         run: |
           uv sync --no-install-project
           uv pip install pyinstaller
+      - name: Fetch fpcalc (bundled audio fingerprinter)
+        working-directory: backend
+        run: uv run python scripts/fetch_fpcalc.py
+
       - name: Build executable
         working-directory: backend
         run: uv run pyinstaller engram.spec
@@ -87,6 +91,10 @@ jobs:
             $count = (Get-Process engram -ErrorAction SilentlyContinue | Measure-Object).Count
             Write-Host "engram process count: $count"
             if ($count -gt 2) { throw "too many engram processes ($count) - possible multiprocessing fork-bomb" }
+            # fpcalc must be bundled and detected — the whole point of shipping it.
+            $tools = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/detect-tools" -TimeoutSec 5
+            if (-not $tools.fpcalc.found) { throw "bundled fpcalc was not detected: $($tools.fpcalc.error)" }
+            Write-Host "fpcalc detected: $($tools.fpcalc.path)"
             Write-Host "smoke test passed"
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -136,6 +144,10 @@ jobs:
         run: |
           uv sync --no-install-project
           uv pip install pyinstaller
+      - name: Fetch fpcalc (bundled audio fingerprinter)
+        working-directory: backend
+        run: uv run python scripts/fetch_fpcalc.py
+
       - name: Build executable
         working-directory: backend
         run: uv run pyinstaller engram.spec
@@ -176,6 +188,14 @@ jobs:
           echo "engram process count: $count"
           if [ "$count" -gt 2 ]; then
             echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
+            exit 1
+          fi
+          # fpcalc must be bundled and detected — the whole point of shipping it.
+          fpcalc_found=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/detect-tools \
+            | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])")
+          echo "fpcalc detected: $fpcalc_found"
+          if [ "$fpcalc_found" != "True" ]; then
+            echo "bundled fpcalc was not detected"
             exit 1
           fi
           echo "smoke test passed"
@@ -228,6 +248,10 @@ jobs:
         run: |
           uv sync --no-install-project
           uv pip install pyinstaller
+      - name: Fetch fpcalc (bundled audio fingerprinter)
+        working-directory: backend
+        run: uv run python scripts/fetch_fpcalc.py
+
       - name: Build executable
         working-directory: backend
         run: uv run pyinstaller engram.spec
@@ -268,6 +292,14 @@ jobs:
           echo "engram process count: $count"
           if [ "$count" -gt 2 ]; then
             echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
+            exit 1
+          fi
+          # fpcalc must be bundled and detected — the whole point of shipping it.
+          fpcalc_found=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/detect-tools \
+            | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])")
+          echo "fpcalc detected: $fpcalc_found"
+          if [ "$fpcalc_found" != "True" ]; then
+            echo "bundled fpcalc was not detected"
             exit 1
           fi
           echo "smoke test passed"
