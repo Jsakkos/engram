@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bootstrap Library · Direction C · Grouped Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg0:#05070c;--bg1:#0a0e18;--bg2:#121827;--bg3:#1a2234;
+  --ink:#e6ecf5;--inkDim:#8893a8;--inkFaint:#4a5369;--inkGhost:#2a3147;
+  --cyan:#5eead4;--cyanHi:#9ff8e8;--cyanDim:#2dd4bf;
+  --magenta:#ff3d7f;--magentaHi:#ff7aa5;--magentaDim:#d63171;
+  --yellow:#fde047;--amber:#fcd34d;--green:#86efac;--greenDim:#4ade80;
+  --red:#ff5555;--purple:#a78bfa;
+  --line:rgba(94,234,212,.14);--lineMid:rgba(94,234,212,.24);--lineHi:rgba(94,234,212,.42);
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --display:"Chakra Petch",ui-sans-serif,sans-serif;
+}
+html,body{height:100%;width:2560px}
+body{
+  background:var(--bg0);color:var(--ink);font-family:var(--mono);font-size:13px;
+  line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;
+  background-image:
+    radial-gradient(circle,rgba(94,234,212,.15) 1px,transparent 1px),
+    repeating-linear-gradient(0deg,transparent,transparent 79px,rgba(94,234,212,.06) 79px,rgba(94,234,212,.06) 80px),
+    repeating-linear-gradient(90deg,transparent,transparent 79px,rgba(94,234,212,.06) 79px,rgba(94,234,212,.06) 80px);
+  background-size:20px 20px,100% 80px,80px 100%;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.013) 0 1px,transparent 1px 3px);
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(1600px 900px at 20% 0%,rgba(94,234,212,.06),transparent 60%),
+    radial-gradient(1000px 600px at 80% 100%,rgba(255,61,127,.05),transparent 60%);
+}
+
+/* ── Layout ── */
+.page{
+  position:relative;z-index:1;display:flex;flex-direction:column;
+  min-height:100vh;width:2560px;
+}
+
+/* ── Topbar ── */
+.topbar{
+  height:48px;background:rgba(5,7,12,.94);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 40px;gap:24px;flex-shrink:0;position:sticky;top:0;z-index:50;
+}
+.logo{
+  font-family:var(--display);font-size:15px;font-weight:700;letter-spacing:.22em;
+  color:var(--cyanHi);text-shadow:0 0 12px rgba(94,234,212,.45);text-transform:uppercase;
+}
+.topbar-sep{width:1px;height:20px;background:var(--line)}
+.nav-item{font-size:11px;letter-spacing:.16em;color:var(--inkDim);text-transform:uppercase;cursor:pointer}
+.nav-item.active{color:var(--cyan)}
+.topbar-grow{flex:1}
+.topbar-tag{
+  font-size:10px;letter-spacing:.18em;color:var(--magenta);text-transform:uppercase;
+  border:1px solid rgba(255,61,127,.3);padding:4px 10px;
+}
+
+/* ── Sticky top section ── */
+.sticky-top{
+  position:sticky;top:48px;z-index:40;
+  background:rgba(5,7,12,.95);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--lineMid);
+}
+
+/* ── Page header ── */
+.page-header{
+  padding:28px 40px 0;display:flex;align-items:flex-end;gap:32px;flex-wrap:wrap;
+}
+.page-title-group{flex:0 0 auto}
+.page-eyebrow{font-size:10px;letter-spacing:.22em;color:var(--magenta);text-transform:uppercase;margin-bottom:6px}
+.page-title{
+  font-family:var(--display);font-size:26px;font-weight:700;letter-spacing:.04em;
+  color:var(--cyanHi);text-shadow:0 0 18px rgba(94,234,212,.28);
+}
+
+/* ── Directory + scan strip (in sticky) ── */
+.dir-scan{
+  display:flex;align-items:center;gap:12px;padding:14px 40px;
+  border-top:1px solid var(--line);
+}
+.dir-label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkFaint);white-space:nowrap}
+.dir-input{
+  width:420px;background:var(--bg0);border:1px solid var(--lineMid);color:var(--ink);
+  font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;
+}
+.dir-input:focus{border-color:var(--cyan)}
+.btn{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  padding:9px 16px;border:1px solid var(--lineMid);color:var(--inkDim);cursor:pointer;
+  background:transparent;transition:.14s;white-space:nowrap;
+}
+.btn:hover{border-color:var(--lineHi);color:var(--ink)}
+.btn.primary{background:var(--cyan);color:var(--bg0);border-color:var(--cyan);font-weight:600;box-shadow:0 0 10px rgba(94,234,212,.3)}
+.btn.green-sm{border-color:rgba(134,239,172,.45);color:var(--green);font-size:9px;padding:7px 12px}
+.btn.sm{padding:6px 11px;font-size:9px}
+
+/* ── Overall progress bar ── */
+.overall-bar{
+  padding:10px 40px 14px;display:flex;align-items:center;gap:16px;
+}
+.prog-track{flex:1;height:6px;background:var(--inkGhost);position:relative}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--cyanDim),var(--cyan));position:absolute;left:0;top:0}
+.prog-fill.with-review{
+  background:linear-gradient(90deg,var(--green) 0%,var(--green) 57%,var(--yellow) 57%,var(--yellow) 70%,var(--inkGhost) 70%);
+  width:100% !important;
+}
+.prog-legend{display:flex;gap:14px}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.12em;color:var(--inkFaint)}
+.leg-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.leg-item .val{color:var(--ink);font-weight:600;margin-left:3px}
+
+/* ── Content layout: sidebar + main ── */
+.content-area{display:flex;gap:0;padding:28px 40px;align-items:flex-start}
+
+/* ── Left sidebar: show nav ── */
+.show-nav{
+  width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;
+  position:sticky;top:180px;max-height:calc(100vh - 220px);overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:rgba(94,234,212,.3) transparent;
+  margin-right:28px;
+}
+.show-nav::-webkit-scrollbar{width:3px}
+.show-nav::-webkit-scrollbar-thumb{background:rgba(94,234,212,.3)}
+.nav-show-item{
+  padding:10px 14px;border:1px solid var(--line);background:var(--bg1);
+  cursor:pointer;transition:.12s;display:flex;align-items:center;gap:10px;
+}
+.nav-show-item:hover{border-color:var(--lineMid);background:rgba(94,234,212,.04)}
+.nav-show-item.active{border-color:var(--lineHi);background:rgba(94,234,212,.07);border-left:2px solid var(--cyan)}
+.nav-show-name{font-size:11px;color:var(--ink);font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-show-ep-count{font-size:10px;color:var(--inkFaint);white-space:nowrap}
+.nav-prog{height:2px;background:var(--inkGhost);margin-top:4px;position:relative;flex:1}
+.nav-prog-fill{height:100%;position:absolute;left:0;top:0}
+.nav-prog-fill.full{background:var(--green)}
+.nav-prog-fill.partial{background:var(--yellow)}
+.nav-prog-fill.none{background:var(--inkFaint)}
+
+.nav-section-lbl{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--inkFaint);
+  padding:12px 14px 6px;
+}
+
+/* ── Main area: show cards ── */
+.show-cards{flex:1;display:flex;flex-direction:column;gap:24px;min-width:0}
+
+/* ── Show card ── */
+.show-card{
+  background:linear-gradient(180deg,var(--bg2),var(--bg1));
+  border:1px solid var(--line);position:relative;
+}
+.show-card::before,.show-card::after{
+  content:"";position:absolute;width:10px;height:10px;
+  border:1px solid var(--cyan);pointer-events:none;z-index:2;
+}
+.show-card::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.show-card::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.show-card.complete::before,.show-card.complete::after{border-color:var(--green)}
+.show-card.complete{border-color:rgba(134,239,172,.25)}
+
+/* Card header */
+.card-header{
+  display:flex;align-items:stretch;gap:0;border-bottom:1px solid var(--line);
+}
+.card-poster{
+  width:72px;flex-shrink:0;background:var(--bg3);position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;border-right:1px solid var(--line);
+}
+.poster-placeholder{
+  width:100%;height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:4px;background:linear-gradient(135deg,var(--bg3),var(--bg2));
+}
+.poster-icon{font-size:22px;opacity:.25}
+.poster-initials{
+  font-family:var(--display);font-size:10px;font-weight:700;letter-spacing:.12em;
+  color:var(--inkFaint);text-transform:uppercase;text-align:center;line-height:1.2;
+  padding:0 4px;
+}
+/* Fake poster color strip for visual variety */
+.show-card:nth-child(1) .card-poster{background:linear-gradient(180deg,#0d1a2a,#071019)}
+.show-card:nth-child(2) .card-poster{background:linear-gradient(180deg,#1a0d1a,#0f0710)}
+.show-card:nth-child(3) .card-poster{background:linear-gradient(180deg,#0d1a10,#071009)}
+.show-card:nth-child(4) .card-poster{background:linear-gradient(180deg,#1a1a0d,#0f0f07)}
+
+.card-meta{flex:1;padding:16px 20px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.card-show-name{
+  font-family:var(--display);font-size:16px;font-weight:600;letter-spacing:.06em;
+  color:var(--ink);
+}
+.card-show-sub{font-size:11px;color:var(--inkFaint);letter-spacing:.12em;margin-top:2px}
+
+/* Mini progress within header */
+.card-mini-prog{display:flex;align-items:center;gap:10px;margin-top:8px}
+.card-prog-track{flex:1;max-width:280px;height:3px;background:var(--inkGhost);position:relative}
+.card-prog-fill{height:100%;position:absolute;left:0;top:0}
+.card-prog-fill.green{background:var(--green)}
+.card-prog-fill.yellow{background:var(--yellow)}
+.card-prog-fill.zero{width:0}
+.card-prog-lbl{font-size:10px;color:var(--inkDim);white-space:nowrap}
+
+.card-header-actions{
+  padding:16px 20px;display:flex;flex-direction:column;align-items:flex-end;
+  justify-content:center;gap:8px;border-left:1px solid var(--line);min-width:220px;
+}
+
+/* Episode stats row */
+.ep-stats{display:flex;gap:12px}
+.ep-stat{display:flex;flex-direction:column;align-items:center;gap:1px}
+.ep-stat-val{font-size:18px;font-weight:700;font-family:var(--display);line-height:1;color:var(--ink)}
+.ep-stat-val.green{color:var(--green)}
+.ep-stat-val.yellow{color:var(--yellow)}
+.ep-stat-val.magenta{color:var(--magenta)}
+.ep-stat-lbl{font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--inkFaint)}
+
+/* Accept all button */
+.accept-all-btn{
+  font-family:var(--mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;
+  padding:7px 12px;border:1px solid rgba(134,239,172,.45);color:var(--green);
+  cursor:pointer;background:rgba(134,239,172,.05);transition:.14s;white-space:nowrap;
+}
+.accept-all-btn:hover{background:rgba(134,239,172,.12);border-color:var(--green)}
+.accept-all-btn.done{
+  border-color:var(--green);color:var(--green);background:rgba(134,239,172,.12);
+  pointer-events:none;
+}
+
+/* Toggle expand */
+.toggle-btn{
+  font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  padding:5px 10px;border:1px solid var(--line);color:var(--inkFaint);cursor:pointer;
+  background:transparent;transition:.12s;
+}
+.toggle-btn:hover{border-color:var(--lineMid);color:var(--inkDim)}
+
+/* ── Episode list (expanded) ── */
+.ep-list{border-top:1px solid var(--line)}
+.ep-col-header{
+  display:grid;
+  grid-template-columns:48px 1fr 180px 110px 90px 160px;
+  gap:0;padding:8px 16px;
+  background:rgba(94,234,212,.04);border-bottom:1px solid var(--line);
+}
+.col-lbl{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkFaint)}
+
+.ep-row{
+  display:grid;
+  grid-template-columns:48px 1fr 180px 110px 90px 160px;
+  gap:0;align-items:center;min-height:46px;border-bottom:1px solid var(--line);transition:background .1s;
+}
+.ep-row:last-child{border-bottom:0}
+.ep-row:hover{background:rgba(94,234,212,.03)}
+.ep-row.accepted{background:rgba(134,239,172,.03)}
+.ep-row.skipped{opacity:.38}
+.ep-row.flagged{background:rgba(253,224,71,.03)}
+
+.ep-cell{padding:7px 16px;display:flex;align-items:center;gap:8px;min-width:0}
+.ep-num{
+  font-size:10px;color:var(--inkFaint);font-family:var(--mono);
+  letter-spacing:.06em;text-align:center;
+}
+.ep-file{
+  font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ep-path{font-size:10px;color:var(--inkFaint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-code{font-size:12px;color:var(--cyan);font-weight:600;letter-spacing:.05em;font-family:var(--mono)}
+.ep-code.yellow{color:var(--yellow)}
+.ep-code.faint{color:var(--inkFaint)}
+
+.conf-cell{display:flex;align-items:center;gap:7px}
+.conf-track{width:50px;height:3px;background:var(--inkGhost);position:relative;flex-shrink:0}
+.conf-fill{height:100%;position:absolute;left:0;top:0}
+.conf-fill.hi{background:var(--green)}
+.conf-fill.mid{background:var(--yellow)}
+.conf-fill.lo{background:var(--magenta)}
+.conf-pct{font-size:11px;color:var(--inkDim);font-variant-numeric:tabular-nums}
+
+.badge{
+  display:inline-flex;align-items:center;gap:4px;font-size:9px;letter-spacing:.13em;
+  text-transform:uppercase;padding:3px 7px;border:1px solid var(--line);
+}
+.badge.green{color:var(--green);border-color:rgba(134,239,172,.4);background:rgba(134,239,172,.06)}
+.badge.yellow{color:var(--yellow);border-color:rgba(253,224,71,.4);background:rgba(253,224,71,.06)}
+.badge.magenta{color:var(--magentaHi);border-color:rgba(255,61,127,.4);background:rgba(255,61,127,.06)}
+.badge.cyan{color:var(--cyan);border-color:rgba(94,234,212,.4);background:rgba(94,234,212,.06)}
+.badge.ghost{color:var(--inkFaint);border-color:var(--line)}
+.dot{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 4px currentColor;flex-shrink:0}
+
+.ep-actions{display:flex;gap:5px;align-items:center;padding:7px 16px}
+.act-btn{
+  font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;
+  padding:4px 8px;border:1px solid var(--line);color:var(--inkDim);cursor:pointer;
+  background:transparent;transition:.12s;
+}
+.act-btn:hover{border-color:var(--lineHi);color:var(--ink)}
+.act-btn.accept{border-color:rgba(134,239,172,.45);color:var(--green)}
+.act-btn.accept:hover{background:rgba(134,239,172,.08)}
+.act-btn.accept.done{background:rgba(134,239,172,.09);border-color:var(--green);pointer-events:none}
+.act-btn.edit{border-color:rgba(253,224,71,.35);color:var(--yellow)}
+.act-btn.skip{border-color:rgba(255,85,85,.3);color:var(--red);opacity:.65}
+.act-btn.skip:hover{opacity:1;background:rgba(255,85,85,.06)}
+
+/* Collapsed summary strip */
+.card-collapsed-strip{
+  padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  border-top:1px solid var(--line);background:rgba(94,234,212,.02);
+}
+.collapsed-ep-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.ep-chip{
+  font-size:9px;letter-spacing:.08em;font-family:var(--mono);
+  padding:3px 7px;border:1px solid var(--line);color:var(--inkDim);
+}
+.ep-chip.green{border-color:rgba(134,239,172,.35);color:var(--greenDim)}
+.ep-chip.cyan{border-color:rgba(94,234,212,.3);color:var(--cyanDim)}
+.ep-chip.yellow{border-color:rgba(253,224,71,.35);color:var(--yellow)}
+.ep-chip.ghost{color:var(--inkFaint)}
+.collapsed-more{font-size:10px;color:var(--inkFaint);letter-spacing:.12em;align-self:center}
+
+/* ── Queue footer ── */
+.queue-bar{
+  position:sticky;bottom:0;z-index:40;
+  margin:0 40px;
+  background:rgba(10,14,24,.97);backdrop-filter:blur(6px);
+  border:1px solid var(--lineHi);border-top:2px solid var(--cyan);
+  display:flex;align-items:center;gap:16px;padding:14px 20px;
+  box-shadow:0 -4px 24px rgba(94,234,212,.1);
+}
+.queue-stat{font-size:11px;letter-spacing:.13em;color:var(--inkDim)}
+.queue-stat b{color:var(--ink)}
+.queue-stat.cyan b{color:var(--cyan)}
+.queue-stat.green b{color:var(--green)}
+.queue-stat.yellow b{color:var(--yellow)}
+.queue-sep{width:1px;height:18px;background:var(--lineMid)}
+.queue-grow{flex:1}
+.fp-label{font-size:10px;letter-spacing:.14em;color:var(--inkDim);text-transform:uppercase}
+.fp-val{font-size:14px;font-weight:700;color:var(--cyanHi);font-family:var(--display);letter-spacing:.1em;margin-left:8px}
+</style>
+<script>
+function toggleExpand(id) {
+  var el = document.getElementById(id);
+  var btn = document.getElementById('toggle-' + id);
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    btn.textContent = '▲ Collapse';
+  } else {
+    el.style.display = 'none';
+    btn.textContent = '▼ Expand';
+  }
+}
+</script>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="logo">ENGRAM</div>
+    <div class="topbar-sep"></div>
+    <div class="nav-item">Dashboard</div>
+    <div class="nav-item">Review</div>
+    <div class="nav-item">History</div>
+    <div class="nav-item active">Library Bootstrap</div>
+    <div class="topbar-grow"></div>
+    <div class="topbar-tag">Beta Feature</div>
+  </div>
+
+  <!-- Sticky top -->
+  <div class="sticky-top">
+    <!-- Page header -->
+    <div class="page-header">
+      <div class="page-title-group">
+        <div class="page-eyebrow">Fingerprint Network · Seed Catalog</div>
+        <div class="page-title">Bootstrap from Library</div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;gap:10px;padding-bottom:2px">
+        <button class="btn" style="border-color:rgba(255,61,127,.4);color:var(--magenta)">Discard Session</button>
+        <button class="btn primary">Queue All Accepted →</button>
+      </div>
+    </div>
+
+    <!-- Dir + scan -->
+    <div class="dir-scan">
+      <div class="dir-label">Source</div>
+      <input class="dir-input" type="text" value="D:\TV" />
+      <button class="btn">Browse…</button>
+      <button class="btn primary">▶ Re-Scan</button>
+      <div style="width:1px;height:18px;background:var(--line);margin:0 4px"></div>
+      <div style="font-size:10px;color:var(--inkFaint)">Scan complete · 6 shows · <span style="color:var(--ink)">187</span> files</div>
+      <div style="flex:1"></div>
+      <button class="btn green-sm">✓ Accept All High Confidence (142)</button>
+    </div>
+
+    <!-- Overall progress -->
+    <div class="overall-bar">
+      <div style="font-size:10px;letter-spacing:.14em;color:var(--inkFaint);white-space:nowrap;text-transform:uppercase">Overall</div>
+      <div class="prog-track">
+        <div class="prog-fill with-review"></div>
+      </div>
+      <div class="prog-legend">
+        <div class="leg-item" style="color:var(--green)"><div class="leg-dot"></div>Accepted <span class="val">107</span></div>
+        <div class="leg-item" style="color:var(--yellow)"><div class="leg-dot"></div>Review <span class="val">32</span></div>
+        <div class="leg-item" style="color:var(--inkFaint)"><div class="leg-dot"></div>Pending <span class="val">48</span></div>
+      </div>
+    </div>
+  </div><!-- /sticky-top -->
+
+  <!-- Content area -->
+  <div class="content-area">
+
+    <!-- Left nav -->
+    <div class="show-nav">
+      <div class="nav-section-lbl">Shows (6)</div>
+
+      <div class="nav-show-item active">
+        <div style="display:flex;flex-direction:column;flex:1;gap:3px;min-width:0">
+          <div class="nav-show-name">Severance</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="nav-prog" style="width:100%"><div class="nav-prog-fill full" style="width:100%"></div></div>
+          </div>
+        </div>
+        <div class="nav-show-ep-count" style="color:var(--green)">18/18</div>
+      </div>
+
+      <div class="nav-show-item">
+        <div style="display:flex;flex-direction:column;flex:1;gap:3px;min-width:0">
+          <div class="nav-show-name">Arrested Development</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="nav-prog" style="width:100%"><div class="nav-prog-fill partial" style="width:44%"></div></div>
+          </div>
+        </div>
+        <div class="nav-show-ep-count" style="color:var(--yellow)">36/82</div>
+      </div>
+
+      <div class="nav-show-item">
+        <div style="display:flex;flex-direction:column;flex:1;gap:3px;min-width:0">
+          <div class="nav-show-name">The Bear</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="nav-prog" style="width:100%"><div class="nav-prog-fill partial" style="width:72%"></div></div>
+          </div>
+        </div>
+        <div class="nav-show-ep-count" style="color:var(--yellow)">19/26</div>
+      </div>
+
+      <div class="nav-show-item">
+        <div style="display:flex;flex-direction:column;flex:1;gap:3px;min-width:0">
+          <div class="nav-show-name">Succession</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="nav-prog" style="width:100%"><div class="nav-prog-fill none" style="width:0"></div></div>
+          </div>
+        </div>
+        <div class="nav-show-ep-count">0/39</div>
+      </div>
+
+      <div class="nav-show-item">
+        <div style="display:flex;flex-direction:column;flex:1;gap:3px;min-width:0">
+          <div class="nav-show-name">The Wire</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="nav-prog" style="width:100%"><div class="nav-prog-fill none" style="width:0"></div></div>
+          </div>
+        </div>
+        <div class="nav-show-ep-count">0/60</div>
+      </div>
+
+      <div class="nav-show-item">
+        <div style="display:flex;flex-direction:column;flex:1;gap:3px;min-width:0">
+          <div class="nav-show-name">Parks &amp; Recreation</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="nav-prog" style="width:100%"><div class="nav-prog-fill full" style="width:100%"></div></div>
+          </div>
+        </div>
+        <div class="nav-show-ep-count" style="color:var(--green)">125/125</div>
+      </div>
+
+    </div><!-- /show-nav -->
+
+    <!-- Show cards -->
+    <div class="show-cards">
+
+      <!-- ───────────────── CARD 1: Severance ───────────────── -->
+      <div class="show-card complete">
+        <div class="card-header">
+          <div class="card-poster">
+            <div class="poster-placeholder">
+              <div class="poster-icon">📺</div>
+              <div class="poster-initials">SVR</div>
+            </div>
+          </div>
+          <div class="card-meta">
+            <div class="card-show-name">Severance</div>
+            <div class="card-show-sub">2 Seasons · 18 files found · Apple TV+</div>
+            <div class="card-mini-prog">
+              <div class="card-prog-track">
+                <div class="card-prog-fill green" style="width:100%"></div>
+              </div>
+              <div class="card-prog-lbl" style="color:var(--green)">18 / 18 accepted</div>
+            </div>
+          </div>
+          <div class="card-header-actions">
+            <div class="ep-stats">
+              <div class="ep-stat">
+                <div class="ep-stat-val green">18</div>
+                <div class="ep-stat-lbl">Accepted</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val">0</div>
+                <div class="ep-stat-lbl">Review</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val">0</div>
+                <div class="ep-stat-lbl">Unmatched</div>
+              </div>
+            </div>
+            <button class="accept-all-btn done">✓ All Accepted</button>
+            <button class="toggle-btn" id="toggle-sev" onclick="toggleExpand('sev')">▼ Expand</button>
+          </div>
+        </div>
+
+        <!-- Collapsed strip showing episode chips -->
+        <div class="card-collapsed-strip" id="sev-strip">
+          <div class="collapsed-ep-chips">
+            <span class="ep-chip green">S01E01</span><span class="ep-chip green">S01E02</span>
+            <span class="ep-chip green">S01E03</span><span class="ep-chip green">S01E04</span>
+            <span class="ep-chip green">S01E05</span><span class="ep-chip green">S01E06</span>
+            <span class="ep-chip green">S01E07</span><span class="ep-chip green">S01E08</span>
+            <span class="ep-chip green">S01E09</span><span class="ep-chip green">S02E01</span>
+            <span class="ep-chip green">S02E02</span><span class="ep-chip green">S02E03</span>
+          </div>
+          <div class="collapsed-more">+6 more</div>
+        </div>
+
+        <!-- Expanded episode list (hidden by default) -->
+        <div class="ep-list" id="sev" style="display:none">
+          <div class="ep-col-header">
+            <div class="col-lbl">#</div>
+            <div class="col-lbl">File</div>
+            <div class="col-lbl">Episode</div>
+            <div class="col-lbl">TMDB Conf.</div>
+            <div class="col-lbl">Status</div>
+            <div class="col-lbl">Actions</div>
+          </div>
+          <div class="ep-row accepted">
+            <div class="ep-cell"><span class="ep-num">S01E01</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">Severance.S01E01.Good.News.About.Hell.mkv</span>
+              <span class="ep-path">D:\TV\Severance\Season 1\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S01E01</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:94%"></div></div><span class="conf-pct">94%</span></div></div>
+            <div class="ep-cell"><span class="badge green"><span class="dot"></span>Accepted</span></div>
+            <div class="ep-actions"><button class="act-btn accept done">✓ Done</button></div>
+          </div>
+          <div class="ep-row accepted">
+            <div class="ep-cell"><span class="ep-num">S01E07</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">Severance_S01E07_Defiant_Jazz.mkv</span>
+              <span class="ep-path">D:\TV\Severance\Season 1\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S01E07</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:88%"></div></div><span class="conf-pct">88%</span></div></div>
+            <div class="ep-cell"><span class="badge green"><span class="dot"></span>Accepted</span></div>
+            <div class="ep-actions"><button class="act-btn accept done">✓ Done</button></div>
+          </div>
+        </div>
+      </div><!-- /show-card severance -->
+
+
+      <!-- ───────────────── CARD 2: Arrested Development ───────────────── -->
+      <div class="show-card">
+        <div class="card-header">
+          <div class="card-poster">
+            <div class="poster-placeholder">
+              <div class="poster-icon">📺</div>
+              <div class="poster-initials">AD</div>
+            </div>
+          </div>
+          <div class="card-meta">
+            <div class="card-show-name">Arrested Development</div>
+            <div class="card-show-sub">5 Seasons · 82 files found · Netflix / Fox</div>
+            <div class="card-mini-prog">
+              <div class="card-prog-track">
+                <div class="card-prog-fill yellow" style="width:44%"></div>
+              </div>
+              <div class="card-prog-lbl" style="color:var(--yellow)">36 / 82 accepted</div>
+            </div>
+          </div>
+          <div class="card-header-actions">
+            <div class="ep-stats">
+              <div class="ep-stat">
+                <div class="ep-stat-val green">36</div>
+                <div class="ep-stat-lbl">Accepted</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val yellow">14</div>
+                <div class="ep-stat-lbl">Review</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val magenta">3</div>
+                <div class="ep-stat-lbl">Unmatched</div>
+              </div>
+            </div>
+            <button class="accept-all-btn">✓ Accept All High Conf. (36)</button>
+            <button class="toggle-btn" id="toggle-ad" onclick="toggleExpand('ad')">▼ Expand</button>
+          </div>
+        </div>
+
+        <!-- Collapsed -->
+        <div class="card-collapsed-strip">
+          <div class="collapsed-ep-chips">
+            <span class="ep-chip green">S01E01</span>
+            <span class="ep-chip yellow">S01E02</span>
+            <span class="ep-chip green">S01E03</span>
+            <span class="ep-chip green">S01E04</span>
+            <span class="ep-chip cyan">S01E05</span>
+            <span class="ep-chip green">S01E06</span>
+            <span class="ep-chip yellow">S01E07</span>
+            <span class="ep-chip ghost">S01E08 ?</span>
+            <span class="ep-chip green">S02E01</span>
+            <span class="ep-chip green">S02E02</span>
+            <span class="ep-chip yellow">S02E03</span>
+            <span class="ep-chip cyan">S02E04</span>
+          </div>
+          <div class="collapsed-more">+70 more</div>
+        </div>
+
+        <!-- Expanded episode list -->
+        <div class="ep-list" id="ad">
+          <div class="ep-col-header">
+            <div class="col-lbl">#</div>
+            <div class="col-lbl">File</div>
+            <div class="col-lbl">Episode</div>
+            <div class="col-lbl">TMDB Conf.</div>
+            <div class="col-lbl">Status</div>
+            <div class="col-lbl">Actions</div>
+          </div>
+
+          <div class="ep-row accepted">
+            <div class="ep-cell"><span class="ep-num">S01E01</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">Arrested.Development.1x01.mp4</span>
+              <span class="ep-path">D:\TV\AD\S1\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S01E01</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:91%"></div></div><span class="conf-pct">91%</span></div></div>
+            <div class="ep-cell"><span class="badge green"><span class="dot"></span>Accepted</span></div>
+            <div class="ep-actions"><button class="act-btn accept done">✓ Done</button></div>
+          </div>
+
+          <div class="ep-row flagged">
+            <div class="ep-cell"><span class="ep-num">S01E02</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">AD_S01E02_Pilot.mkv</span>
+              <span class="ep-path">D:\TV\AD\S1\</span>
+            </div>
+            <div class="ep-cell">
+              <span class="ep-code yellow">S01E02</span>
+              <span class="badge yellow" style="font-size:8px;padding:2px 5px;margin-left:6px">conflict</span>
+            </div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill mid" style="width:47%"></div></div><span class="conf-pct">47%</span></div></div>
+            <div class="ep-cell"><span class="badge yellow"><span class="dot"></span>Review</span></div>
+            <div class="ep-actions">
+              <button class="act-btn accept">✓ Accept</button>
+              <button class="act-btn edit">✎</button>
+              <button class="act-btn skip">Skip</button>
+            </div>
+          </div>
+
+          <div class="ep-row">
+            <div class="ep-cell"><span class="ep-num">S01E03</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">Arrested.Development.S01E03.Bringing.Up.Buster.mkv</span>
+              <span class="ep-path">D:\TV\AD\S1\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S01E03</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:89%"></div></div><span class="conf-pct">89%</span></div></div>
+            <div class="ep-cell"><span class="badge cyan"><span class="dot"></span>High Conf.</span></div>
+            <div class="ep-actions">
+              <button class="act-btn accept">✓ Accept</button>
+              <button class="act-btn edit">✎</button>
+              <button class="act-btn skip">Skip</button>
+            </div>
+          </div>
+
+          <div class="ep-row">
+            <div class="ep-cell"><span class="ep-num">—</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">UNKNOWN_EPISODE_HDR.mkv</span>
+              <span class="ep-path">D:\TV\AD\misc\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code faint">—</span></div>
+            <div class="ep-cell"><span class="badge magenta"><span class="dot"></span>No match</span></div>
+            <div class="ep-cell"><span class="badge magenta"><span class="dot"></span>Unmatched</span></div>
+            <div class="ep-actions">
+              <button class="act-btn edit">✎ Assign</button>
+              <button class="act-btn skip">Skip</button>
+            </div>
+          </div>
+
+          <div class="ep-row skipped">
+            <div class="ep-cell"><span class="ep-num">—</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">Featurette_MakingOf.mkv</span>
+              <span class="ep-path">D:\TV\AD\Extras\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code faint">—</span></div>
+            <div class="ep-cell"><span style="color:var(--inkFaint);font-size:11px">—</span></div>
+            <div class="ep-cell"><span class="badge ghost">Skipped</span></div>
+            <div class="ep-actions"><button class="act-btn" style="font-size:9px">↩ Restore</button></div>
+          </div>
+
+        </div>
+      </div><!-- /show-card AD -->
+
+
+      <!-- ───────────────── CARD 3: The Bear ───────────────── -->
+      <div class="show-card">
+        <div class="card-header">
+          <div class="card-poster">
+            <div class="poster-placeholder">
+              <div class="poster-icon">📺</div>
+              <div class="poster-initials">TB</div>
+            </div>
+          </div>
+          <div class="card-meta">
+            <div class="card-show-name">The Bear</div>
+            <div class="card-show-sub">3 Seasons · 26 files found · FX / Hulu</div>
+            <div class="card-mini-prog">
+              <div class="card-prog-track">
+                <div class="card-prog-fill yellow" style="width:72%"></div>
+              </div>
+              <div class="card-prog-lbl" style="color:var(--yellow)">19 / 26 accepted</div>
+            </div>
+          </div>
+          <div class="card-header-actions">
+            <div class="ep-stats">
+              <div class="ep-stat">
+                <div class="ep-stat-val green">19</div>
+                <div class="ep-stat-lbl">Accepted</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val yellow">6</div>
+                <div class="ep-stat-lbl">Review</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val">1</div>
+                <div class="ep-stat-lbl">Unmatched</div>
+              </div>
+            </div>
+            <button class="accept-all-btn">✓ Accept All High Conf. (19)</button>
+            <button class="toggle-btn" id="toggle-bear" onclick="toggleExpand('bear')">▲ Collapse</button>
+          </div>
+        </div>
+
+        <!-- Expanded by default for demo -->
+        <div class="ep-list" id="bear">
+          <div class="ep-col-header">
+            <div class="col-lbl">#</div>
+            <div class="col-lbl">File</div>
+            <div class="col-lbl">Episode</div>
+            <div class="col-lbl">TMDB Conf.</div>
+            <div class="col-lbl">Status</div>
+            <div class="col-lbl">Actions</div>
+          </div>
+
+          <div class="ep-row accepted">
+            <div class="ep-cell"><span class="ep-num">S01E01</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">TheBear.S01E01.SystemError.mkv</span>
+              <span class="ep-path">D:\TV\The Bear\Season 1\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S01E01</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:97%"></div></div><span class="conf-pct">97%</span></div></div>
+            <div class="ep-cell"><span class="badge green"><span class="dot"></span>Accepted</span></div>
+            <div class="ep-actions"><button class="act-btn accept done">✓ Done</button></div>
+          </div>
+
+          <div class="ep-row">
+            <div class="ep-cell"><span class="ep-num">S02E06</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">The.Bear.S02E06.Fishes.mkv</span>
+              <span class="ep-path">D:\TV\The Bear\S2\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S02E06</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:98%"></div></div><span class="conf-pct">98%</span></div></div>
+            <div class="ep-cell"><span class="badge cyan"><span class="dot"></span>High Conf.</span></div>
+            <div class="ep-actions">
+              <button class="act-btn accept">✓ Accept</button>
+              <button class="act-btn edit">✎</button>
+              <button class="act-btn skip">Skip</button>
+            </div>
+          </div>
+
+          <div class="ep-row">
+            <div class="ep-cell"><span class="ep-num">S03E01</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">The.Bear.S03E01.Tomorrow.mkv</span>
+              <span class="ep-path">D:\TV\The Bear\Season 3\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S03E01</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:95%"></div></div><span class="conf-pct">95%</span></div></div>
+            <div class="ep-cell"><span class="badge cyan"><span class="dot"></span>High Conf.</span></div>
+            <div class="ep-actions">
+              <button class="act-btn accept">✓ Accept</button>
+              <button class="act-btn edit">✎</button>
+              <button class="act-btn skip">Skip</button>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /show-card The Bear -->
+
+
+      <!-- ───────────────── CARD 4: Succession (collapsed, 0 accepted) ───────────────── -->
+      <div class="show-card">
+        <div class="card-header">
+          <div class="card-poster">
+            <div class="poster-placeholder">
+              <div class="poster-icon">📺</div>
+              <div class="poster-initials">SUC</div>
+            </div>
+          </div>
+          <div class="card-meta">
+            <div class="card-show-name">Succession</div>
+            <div class="card-show-sub">4 Seasons · 39 files found · HBO</div>
+            <div class="card-mini-prog">
+              <div class="card-prog-track">
+                <div class="card-prog-fill green" style="width:0"></div>
+              </div>
+              <div class="card-prog-lbl" style="color:var(--inkDim)">0 / 39 accepted</div>
+            </div>
+          </div>
+          <div class="card-header-actions">
+            <div class="ep-stats">
+              <div class="ep-stat">
+                <div class="ep-stat-val">0</div>
+                <div class="ep-stat-lbl">Accepted</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val cyan">39</div>
+                <div class="ep-stat-lbl">High Conf.</div>
+              </div>
+              <div class="ep-stat">
+                <div class="ep-stat-val">0</div>
+                <div class="ep-stat-lbl">Unmatched</div>
+              </div>
+            </div>
+            <button class="accept-all-btn">✓ Accept All High Conf. (39)</button>
+            <button class="toggle-btn" id="toggle-suc" onclick="toggleExpand('suc')">▼ Expand</button>
+          </div>
+        </div>
+        <div class="card-collapsed-strip">
+          <div class="collapsed-ep-chips">
+            <span class="ep-chip cyan">S01E01</span><span class="ep-chip cyan">S01E02</span>
+            <span class="ep-chip cyan">S01E03</span><span class="ep-chip cyan">S01E04</span>
+            <span class="ep-chip cyan">S01E05</span><span class="ep-chip cyan">S02E01</span>
+            <span class="ep-chip cyan">S02E02</span><span class="ep-chip cyan">S02E03</span>
+          </div>
+          <div class="collapsed-more">+31 more · all high confidence</div>
+        </div>
+        <div class="ep-list" id="suc" style="display:none">
+          <div class="ep-col-header">
+            <div class="col-lbl">#</div><div class="col-lbl">File</div>
+            <div class="col-lbl">Episode</div><div class="col-lbl">TMDB Conf.</div>
+            <div class="col-lbl">Status</div><div class="col-lbl">Actions</div>
+          </div>
+          <div class="ep-row">
+            <div class="ep-cell"><span class="ep-num">S01E01</span></div>
+            <div class="ep-cell" style="flex-direction:column;align-items:flex-start;gap:1px">
+              <span class="ep-file">Succession.S01E01.Celebration.mkv</span>
+              <span class="ep-path">D:\TV\Succession\Season 1\</span>
+            </div>
+            <div class="ep-cell"><span class="ep-code">S01E01</span></div>
+            <div class="ep-cell"><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:96%"></div></div><span class="conf-pct">96%</span></div></div>
+            <div class="ep-cell"><span class="badge cyan"><span class="dot"></span>High Conf.</span></div>
+            <div class="ep-actions">
+              <button class="act-btn accept">✓ Accept</button>
+              <button class="act-btn edit">✎</button>
+              <button class="act-btn skip">Skip</button>
+            </div>
+          </div>
+        </div>
+      </div><!-- /succession -->
+
+      <div style="height:80px"></div>
+
+    </div><!-- /show-cards -->
+  </div><!-- /content-area -->
+
+  <!-- Queue footer -->
+  <div class="queue-bar">
+    <div class="queue-stat cyan">6 shows · <b>187</b> files</div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat green">Accepted: <b>55</b></div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat yellow">Needs Review: <b>20</b></div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat" style="color:var(--inkDim)">Pending: <b>108</b></div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat" style="color:var(--magentaHi)">Unmatched: <b>4</b></div>
+    <div class="queue-grow"></div>
+    <div class="fp-label">Queue for fingerprinting:</div>
+    <div class="fp-val">55 files</div>
+    <div style="width:1px;height:24px;background:var(--lineMid);margin:0 8px"></div>
+    <button class="btn" style="border-color:rgba(134,239,172,.45);color:var(--green);padding:10px 18px">
+      Accept All High Confidence (142)
+    </button>
+    <button class="btn primary" style="padding:11px 22px;font-size:11px">
+      Queue 55 Accepted for Fingerprinting →
+    </button>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>
