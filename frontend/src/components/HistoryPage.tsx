@@ -278,6 +278,7 @@ function KvRow({
           overflow: truncate ? "hidden" : undefined,
           textOverflow: truncate ? "ellipsis" : undefined,
           whiteSpace: truncate ? "nowrap" : undefined,
+          overflowWrap: truncate ? undefined : "anywhere",
         }}
       >
         {value}
@@ -722,9 +723,7 @@ function JobDetailPanel({
                           fontFamily: sv.mono,
                           fontSize: 10,
                           color: sv.inkFaint,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          overflowWrap: "anywhere",
                         }}
                       >
                         {t.organized_to}
@@ -757,8 +756,8 @@ function JobDetailPanel({
               <div style={{ marginTop: 8 }}>
                 <SvPanel pad={12}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: sv.mono, fontSize: 11 }}>
-                    {detail.staging_path && <KvRow label="Staging" value={detail.staging_path} truncate />}
-                    {detail.final_path && <KvRow label="Library" value={detail.final_path} truncate />}
+                    {detail.staging_path && <KvRow label="Staging" value={detail.staging_path} />}
+                    {detail.final_path && <KvRow label="Library" value={detail.final_path} />}
                   </div>
                 </SvPanel>
               </div>
