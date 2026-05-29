@@ -169,3 +169,86 @@ async def test_identify_episode_chromaprint_none_when_no_votes(monkeypatch, tmp_
         num_points=6,
     )
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_identify_episode_chromaprint_filters_wrong_season(tmp_path):
+    """A window matching an episode in a DIFFERENT season is filtered out -> None."""
+    from app.matcher.chromaprint_matcher import identify_episode_chromaprint
+    from app.services.fingerprint_pack_cache import DecodedPack
+
+    s2_pack = DecodedPack(tmdb_id=42, n_episodes=1)
+    s2_pack.episodes = {(2, 1): set(range(100, 340))}  # season 2 only
+    s2_pack.df_map = {}
+
+    class FakeMatcher:
+        chunk_duration = 30
+        skip_initial_duration = 90
+
+        def extract_audio_chunk(self, mkv, start, duration=None):
+            return tmp_path / f"chunk_{start}.wav"
+
+    class FakeExtractor:
+        async def extract(self, wav_path):
+            from app.matcher.chromaprint_extractor import ChromaprintResult
+
+            return ChromaprintResult(
+                hashes=list(range(100, 340)), duration_seconds=30.0, fpcalc_version="t"
+            )
+
+    cm = ChromaprintMatcher(
+        tmdb_id=42,
+        server_url="https://s",
+        pack_cache=type("C", (), {"has": lambda self, t: True, "load": lambda self, t: s2_pack})(),
+    )
+
+    # Searching season 1, but the only matching episode is season 2 -> filtered -> None.
+    result = await identify_episode_chromaprint(
+        matcher=FakeMatcher(),
+        video_file=str(tmp_path / "v.mkv"),
+        season_number=1,
+        chromaprint_matcher=cm,
+        extractor=FakeExtractor(),
+        video_duration=1800.0,
+        num_points=6,
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_identify_episode_chromaprint_min_vote_count(tmp_path):
+    """A single scan point (1 vote) with min_vote_count=2 -> None."""
+    from app.matcher.chromaprint_matcher import identify_episode_chromaprint
+
+    class FakeMatcher:
+        chunk_duration = 30
+        skip_initial_duration = 90
+
+        def extract_audio_chunk(self, mkv, start, duration=None):
+            return tmp_path / f"chunk_{start}.wav"
+
+    class FakeExtractor:
+        async def extract(self, wav_path):
+            from app.matcher.chromaprint_extractor import ChromaprintResult
+
+            return ChromaprintResult(
+                hashes=list(range(100, 340)), duration_seconds=30.0, fpcalc_version="t"
+            )
+
+    cm = ChromaprintMatcher(
+        tmdb_id=42,
+        server_url="https://s",
+        pack_cache=type("C", (), {"has": lambda self, t: True, "load": lambda self, t: _pack()})(),
+    )
+
+    result = await identify_episode_chromaprint(
+        matcher=FakeMatcher(),
+        video_file=str(tmp_path / "v.mkv"),
+        season_number=1,
+        chromaprint_matcher=cm,
+        extractor=FakeExtractor(),
+        video_duration=1800.0,
+        num_points=1,
+        min_vote_count=2,
+    )
+    assert result is None

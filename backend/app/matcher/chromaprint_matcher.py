@@ -198,6 +198,7 @@ async def identify_episode_chromaprint(
             logger.debug(f"chromaprint window {start:.0f}s skipped: {e}")
             continue
         cands = await chromaprint_matcher.classify_window(fp.hashes, top_k=3)
+        cands = [c for c in cands if c.season == season_number]
         if not cands:
             continue
         best = cands[0]
@@ -261,10 +262,5 @@ async def identify_episode_chromaprint(
     _attach_calibrated_confidence(
         best_match, results_summary, video_duration, chunk_len, chromaprint_signal
     )
-    best_match["confidence"] = best_match.get("confidence", winner["score"])
     best_match["tier"] = tiers[win_key]
-    best_match["runner_ups"] = [
-        {"episode_name": r["episode_name"], "score": r["score"], "vote_count": r["vote_count"]}
-        for r in results_summary[1:]
-    ]
     return best_match
