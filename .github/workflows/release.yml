@@ -9,6 +9,11 @@ on:
         description: "Tag to release (e.g. v0.7.3)"
         required: true
         type: string
+      draft:
+        description: "Create as a draft release (hidden from users; for testing builds)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -331,7 +336,11 @@ jobs:
           cat sha256sums.txt
       - uses: softprops/action-gh-release@v3
         with:
-          draft: false
+          # A manual workflow_dispatch can request a draft (hidden from the public
+          # releases page and from the /releases/latest endpoint the auto-updater
+          # polls) for testing a build. Tag-push releases leave inputs unset, so
+          # this resolves to false and they publish normally.
+          draft: ${{ inputs.draft || false }}
           generate_release_notes: true
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
