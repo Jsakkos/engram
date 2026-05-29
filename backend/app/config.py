@@ -14,9 +14,21 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def is_frozen() -> bool:
+    """True for packaged (PyInstaller) builds.
+
+    PyInstaller's bootloader sets both ``sys.frozen`` and ``sys._MEIPASS``, but
+    they can diverge in the wild — some builds reach the bundled frontend (served
+    off ``sys._MEIPASS`` in ``main.py``) yet report ``sys.frozen`` falsy, which
+    made the updater wrongly show "dev mode". Treat either signal as
+    authoritative so every "am I frozen?" decision agrees.
+    """
+    return bool(getattr(sys, "frozen", False)) or hasattr(sys, "_MEIPASS")
+
+
 def _default_database_url() -> str:
     """Return the default database URL, using ~/.engram/ for frozen (PyInstaller) builds."""
-    if getattr(sys, "frozen", False):
+    if is_frozen():
         # Frozen build: store DB in a stable, user-writable location
         db_dir = Path.home() / ".engram"
         db_dir.mkdir(parents=True, exist_ok=True)

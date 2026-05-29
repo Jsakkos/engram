@@ -22,6 +22,7 @@ import httpx
 from loguru import logger
 
 from app import __version__
+from app.config import is_frozen
 from app.core.errors import ConfigurationError, EngramError
 from app.database import async_session
 
@@ -63,7 +64,7 @@ class UpdateChecker:
         self.download_progress: float = 0.0
         self.staging_path: Path | None = None
         self.error: str | None = None
-        self._is_frozen: bool = getattr(sys, "frozen", False)
+        self._is_frozen: bool = is_frozen()
         self._current_version: str = __version__
         self._broadcaster = None  # injected by set_broadcaster()
 
