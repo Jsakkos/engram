@@ -64,6 +64,7 @@ async def _resolve_fpcalc_path(cfg_path: str | None) -> str | None:
 # the documented set 'engram_asr' | 'engram_discdb' | 'bootstrap' | 'user_review'.
 _MATCH_SOURCE_TO_CONTRIB: dict[str, str] = {
     "engram": "engram_asr",
+    "engram_chromaprint": "engram_chromaprint_corroboration",
     "discdb": "engram_discdb",
     "ai_llm": "engram_asr",
     "user": "user_review",
@@ -658,6 +659,14 @@ class MatchingCoordinator:
                     except Exception as e:
                         logger.warning(f"[MATCH] Title {title_id}: progress callback error: {e}")
 
+                # Attach a process-shared PackCache to the curator (idempotent).
+                # EpisodeCurator._chromaprint_prepass reads getattr(self, "_pack_cache", None);
+                # wiring it here ensures the cache survives across titles in the same process.
+                if not hasattr(episode_curator, "_pack_cache"):
+                    from app.services.fingerprint_pack_cache import PackCache
+
+                    episode_curator._pack_cache = PackCache()
+
                 # Run the episode matcher
                 logger.info(
                     f"[MATCH] Title {title_id} (Job {job_id}): calling episode_curator.match_single_file for {file_path.name}"
@@ -744,6 +753,12 @@ class MatchingCoordinator:
                             exc_info=True,
                         )
 
+                    # Tag the source as chromaprint when the cascade accepted via
+                    # chromaprint so the contribution enqueue maps to
+                    # "engram_chromaprint_corroboration" rather than "engram_asr".
+                    if (result.match_details or {}).get("chromaprint_accepted"):
+                        title.match_source = "engram_chromaprint"
+
                     # Phase 1: enqueue contribution if extraction produced a fingerprint
                     if title.chromaprint_blob and title.matched_episode:
                         try:
@@ -816,7 +831,9 @@ class MatchingCoordinator:
                 # actually recorded. A title routed to REVIEW with no episode must
                 # not carry the "ENGRAM" provider badge — that implies a confident
                 # auto-match the matcher never made.
-                if title.state == TitleState.MATCHED:
+                # Preserve "engram_chromaprint" if already set above (chromaprint
+                # cascade path) — it must not be overwritten with the generic label.
+                if title.state == TitleState.MATCHED and title.match_source != "engram_chromaprint":
                     title.match_source = "engram"
 
                 # Extract match stats for broadcast
