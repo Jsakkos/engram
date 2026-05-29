@@ -27,6 +27,7 @@ import os
 import platform
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -115,8 +116,13 @@ def main() -> int:
     asset, expected_sha = _ASSETS[system]
     url = f"{_BASE}/{asset}"
     print(f"downloading {url}")
-    with urllib.request.urlopen(url) as resp:  # noqa: S310 - pinned https GitHub release URL
-        data = resp.read()
+    try:
+        with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310 - pinned https URL
+            data = resp.read()
+    except urllib.error.HTTPError as exc:  # HTTPError is a URLError subclass — catch first
+        raise SystemExit(f"error: HTTP {exc.code} fetching {url}") from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"error: network failure fetching {url}: {exc.reason}") from exc
 
     actual_sha = _sha256(data)
     if actual_sha != expected_sha:

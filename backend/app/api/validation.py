@@ -262,9 +262,14 @@ def _bundled_fpcalc_path() -> str | None:
     roots: list[Path] = []
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
+        # Frozen build: the spec bundles fpcalc to <_MEIPASS>/bin. (In a frozen
+        # build __file__ also lives under _MEIPASS, so the app/bin probe below
+        # would resolve to a path that never exists — skip it.)
         roots.append(Path(meipass) / "bin")
-    # app/ is the parent of this module's package dir (app/api/ -> app/).
-    roots.append(Path(__file__).resolve().parent.parent / "bin")
+    else:
+        # Source checkout: app/bin/ (app/ is the parent of this module's package
+        # dir, app/api/ -> app/), populated by scripts/fetch_fpcalc.py.
+        roots.append(Path(__file__).resolve().parent.parent / "bin")
     for root in roots:
         candidate = root / name
         if candidate.is_file():
