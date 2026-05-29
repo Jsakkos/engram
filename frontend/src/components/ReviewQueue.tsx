@@ -172,6 +172,7 @@ function ReviewQueue() {
     const [titleActions, setTitleActions] = useState<Record<number, TitleAction>>({});
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
     const [rematchNotice, setRematchNotice] = useState<string | null>(null);
+    const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
 
     // Bulk multiselect — ids checked for bulk actions (independent of the
@@ -186,11 +187,15 @@ function ReviewQueue() {
     // stored by tmdb_id rather than threaded through the review-batch decision.
     const handleOrderingChange = async (ordering: string) => {
         if (!roster?.show_id) return;
+        setOrderingError(null);
         try {
             await setShowOrdering(roster.show_id, ordering);
             reloadRoster();
         } catch (e) {
             console.error('Failed to set show ordering', e);
+            setOrderingError(
+                'Could not save the ordering preference — the selection was not applied. Please try again.',
+            );
         }
     };
 
@@ -875,6 +880,7 @@ function ReviewQueue() {
                     </SvNotice>
                 )}
                 {rematchNotice && <SvNotice tone="warn">› {rematchNotice}</SvNotice>}
+                {orderingError && <SvNotice tone="warn">› {orderingError}</SvNotice>}
 
                 {/* Episode ordering (#200) — only when a divergent ordering exists. */}
                 {roster?.ordering_available && roster?.ordering_diverges && roster.ordering_options && (

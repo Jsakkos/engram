@@ -57,7 +57,7 @@ class TestResolveShowOrdering:
         ordering, group_id = await resolve_show_ordering(None, session)
         assert (ordering, group_id) == ("aired", None)
 
-    async def test_per_show_override_resolves_and_persists_group(self, session):
+    async def test_per_show_override_resolves_group_without_writing_session(self, session):
         session.add(ShowOrderingPreference(tmdb_id=1437, ordering="dvd"))
         await session.commit()
         with patch(
@@ -67,9 +67,33 @@ class TestResolveShowOrdering:
             ordering, group_id = await resolve_show_ordering(1437, session)
         assert (ordering, group_id) == ("dvd", "grp_dvd")
         m.assert_called_once_with("1437", "dvd", "k")
-        # persisted onto the row for next time
+        # Pure read: the resolver must NOT mutate/commit the caller's session
+        # (both finalization call sites are mid-transaction). The per-show row's
+        # group id is populated by set_show_ordering, not here.
         row = await session.get(ShowOrderingPreference, 1437)
-        assert row.episode_group_id == "grp_dvd"
+        assert row.episode_group_id is None
+
+    async def test_does_not_commit_callers_session(self, session, monkeypatch):
+        # Bug guard: finalize_disc_job / _finalize_tv_if_resolved call this
+        # mid-transaction with the session they're still using. A commit here
+        # would prematurely flush their in-progress work.
+        session.add(ShowOrderingPreference(tmdb_id=1437, ordering="dvd"))
+        await session.commit()
+
+        commits = {"n": 0}
+        orig = session.commit
+
+        async def counting_commit(*a, **k):
+            commits["n"] += 1
+            return await orig(*a, **k)
+
+        monkeypatch.setattr(session, "commit", counting_commit)
+        with patch(
+            "app.services.episode_ordering_service.episode_ordering.resolve_episode_group_id",
+            return_value="grp_dvd",
+        ):
+            await resolve_show_ordering(1437, session)
+        assert commits["n"] == 0
 
     async def test_per_show_with_cached_group_skips_resolution(self, session):
         session.add(
