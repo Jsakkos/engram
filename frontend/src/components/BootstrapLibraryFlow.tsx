@@ -11,7 +11,7 @@
  * review surface is per-SHOW TMDB resolution. No per-episode confidence UI.
  */
 
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, useCallback, useMemo, type CSSProperties } from 'react';
 import { sv } from '../app/components/synapse/tokens';
 import { SvPanel } from '../app/components/synapse/SvPanel';
 import { SvCorners } from '../app/components/synapse/SvCorners';
@@ -458,8 +458,13 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
         }));
     }, []);
 
-    /** Build the full list of AcceptItems from the current showStates. */
-    const buildAcceptItems = useCallback((): AcceptItem[] => {
+    /**
+     * Full list of AcceptItems derived from the current showStates.
+     * Memoized so it only recomputes when the scan result or per-show
+     * acceptance state changes — not on every render (e.g. a keystroke in
+     * any unrelated input would otherwise re-walk every show/episode).
+     */
+    const acceptItems = useMemo<AcceptItem[]>(() => {
         if (!scanResult) return [];
         const items: AcceptItem[] = [];
         for (const show of scanResult.shows) {
@@ -479,7 +484,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
     }, [scanResult, showStates]);
 
     const handleFingerprint = useCallback(async () => {
-        const items = buildAcceptItems();
+        const items = acceptItems;
         if (items.length === 0) {
             setStep('fingerprint');
             setFinalResult({ queued: 0, failed: 0 });
@@ -523,7 +528,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
         }
 
         setFinalResult({ queued: totalQueued, failed: totalFailed });
-    }, [buildAcceptItems]);
+    }, [acceptItems]);
 
     // ─── Computed values for review step ─────────────────────────────────────
 
@@ -532,7 +537,6 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
     const acceptedCount = Object.values(showStates).filter((s) => s.accepted).length;
 
     // Count episodes that will be submitted (only shows with valid TMDB IDs)
-    const acceptItems = buildAcceptItems();
     const acceptEpisodeCount = acceptItems.length;
 
     // ─── Step renderers ───────────────────────────────────────────────────────
@@ -624,10 +628,9 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                     border: `2px solid ${sv.line}`,
                     borderTopColor: sv.cyan,
                     borderRadius: '50%',
-                    animation: 'spin 0.8s linear infinite',
+                    animation: 'svSpin 0.8s linear infinite',
                 }}
             />
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             <p style={{ ...mono, fontSize: 12, color: sv.inkDim, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
                 Scanning directory&hellip;
             </p>
@@ -914,7 +917,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                                 border: `2px solid ${sv.line}`,
                                 borderTopColor: sv.cyan,
                                 borderRadius: '50%',
-                                animation: 'spin 0.8s linear infinite',
+                                animation: 'svSpin 0.8s linear infinite',
                                 flexShrink: 0,
                             }}
                         />
