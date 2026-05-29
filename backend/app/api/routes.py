@@ -1851,9 +1851,8 @@ async def bootstrap_accept(
     # then push duplicate rows to the network). Skip any (tmdb_id, season,
     # episode) already present as a bootstrap row, plus duplicates within this
     # request. Keyed off episode identity since the filename was ground truth.
-    EpisodeKey = tuple[int, int | None, int | None]
     request_tmdb_ids = {item.tmdb_id for item in req.items}
-    existing_keys: set[EpisodeKey] = set()
+    existing_keys: set[tuple[int, int | None, int | None]] = set()
     if request_tmdb_ids:
         existing_rows = await session.execute(
             select(
@@ -1869,10 +1868,10 @@ async def bootstrap_accept(
 
     queued = 0
     failed = 0
-    seen: set[EpisodeKey] = set()
+    seen: set[tuple[int, int | None, int | None]] = set()
 
     for item in req.items:
-        key: EpisodeKey = (item.tmdb_id, item.season, item.episode)
+        key = (item.tmdb_id, item.season, item.episode)
         if key in existing_keys or key in seen:
             # Already queued by a prior call or earlier in this batch — count it
             # as queued (the episode is in the queue) but don't duplicate it.
