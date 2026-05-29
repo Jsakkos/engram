@@ -169,3 +169,8 @@ class AppConfig(SQLModel, table=True):
         default=False, sa_column_kwargs={"server_default": text("0")}
     )
     fingerprint_disclosure_accepted_at: datetime | None = Field(default=None)
+
+    # Phase 3: chromaprint identification (default OFF until the catalog is seeded).
+    enable_fingerprint_identification: bool = Field(
+        default=False, sa_column_kwargs={"server_default": text("0")}
+    )

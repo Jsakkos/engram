@@ -32,6 +32,7 @@ class EpisodeCurator:
     # Confidence thresholds
     HIGH_CONFIDENCE_THRESHOLD = 0.7
     LOW_CONFIDENCE_THRESHOLD = 0.5
+    CHROMAPRINT_GATE = 0.90
 
     def __init__(self) -> None:
         self._matcher = None
@@ -204,6 +205,78 @@ class EpisodeCurator:
             # Fall back to filename parsing if matcher unavailable or no season
             return self._fallback_result(file_path)
 
+        # Phase 3 cascade: chromaprint first (no-op when the flag is off → identical to legacy ASR path).
+        cp = None
+        if series_name and season:
+            try:
+                cp = await self._chromaprint_prepass(
+                    file_path=file_path, series_name=series_name, season=season
+                )
+            except Exception as e:  # noqa: BLE001 — never block matching
+                logger.warning(f"chromaprint prepass failed: {e}")
+
+        if cp and cp.get("episode") is not None:
+            cp_conf = cp.get("confidence", 0.0)
+            cp_code = f"S{cp['season']:02d}E{cp['episode']:02d}"
+            if cp.get("tier") == "canonical" and cp_conf >= self.CHROMAPRINT_GATE:
+                details = dict(cp.get("match_details") or {})
+                details["chromaprint_accepted"] = True
+                details["match_source"] = "engram_chromaprint"
+                logger.info(
+                    f"chromaprint accepted {file_path.name} -> {cp_code} (conf {cp_conf:.2f})"
+                )
+                return MatchResult(
+                    file_path=file_path,
+                    episode_code=cp_code,
+                    episode_title=None,
+                    confidence=cp_conf,
+                    needs_review=False,
+                    match_details=details,
+                )
+
+        # Fall through to ASR (the legacy path).
+        asr = await self._run_asr_identify(
+            file_path, series_name, season, progress_callback, num_points, min_vote_count
+        )
+
+        # Cross-validate when BOTH produced an episode.
+        if cp and cp.get("episode") is not None and asr.episode_code:
+            cp_code = f"S{cp['season']:02d}E{cp['episode']:02d}"
+            details = dict(asr.match_details or {})
+            if cp_code == asr.episode_code:
+                details["chromaprint_asr_agreement"] = True
+                return MatchResult(
+                    file_path=file_path,
+                    episode_code=asr.episode_code,
+                    episode_title=asr.episode_title,
+                    confidence=max(asr.confidence, cp.get("confidence", 0.0)),
+                    needs_review=False,
+                    match_details=details,
+                )
+            details["chromaprint_vs_asr_conflict"] = {
+                "chromaprint": {"episode_code": cp_code, "confidence": cp.get("confidence")},
+                "asr": {"episode_code": asr.episode_code, "confidence": asr.confidence},
+            }
+            return MatchResult(
+                file_path=file_path,
+                episode_code=asr.episode_code,
+                episode_title=asr.episode_title,
+                confidence=asr.confidence,
+                needs_review=True,
+                match_details=details,
+            )
+        return asr
+
+    async def _run_asr_identify(
+        self,
+        file_path: Path,
+        series_name: str | None,
+        season: int | None,
+        progress_callback: Callable[..., None] | None = None,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> MatchResult:
+        """Run the ASR/subtitle matching path — the original match_single_file try/except body."""
         try:
             # Run the matcher in a thread to not block async loop
             logger.debug(f"[Curator] Starting identifying_episode in thread for {file_path.name}")
@@ -278,6 +351,67 @@ class EpisodeCurator:
             logger.error(f"Matcher error for {file_path}: {e}")
             # Fall back to filename parsing
             return self._fallback_result(file_path)
+
+    async def _chromaprint_prepass(
+        self,
+        *,
+        file_path: Path,
+        series_name: str,
+        season: int,
+    ) -> dict | None:
+        """Run chromaprint identification; return its result dict or None if unavailable/empty."""
+        from app.services.config_service import get_config
+
+        cfg = await get_config()
+        if not cfg or not getattr(cfg, "enable_fingerprint_identification", False):
+            return None
+        if self._matcher is None:
+            return None
+
+        from app.api.validation import detect_fpcalc
+
+        fpcalc = cfg.fpcalc_path
+        if not fpcalc:
+            detected = detect_fpcalc()
+            fpcalc = detected.path if detected.found else None
+        if not fpcalc:
+            return None
+
+        from app.matcher.tmdb_client import fetch_show_id
+
+        tmdb_id = await asyncio.to_thread(fetch_show_id, series_name)
+        if not tmdb_id:
+            return None
+
+        from app.matcher.chromaprint_extractor import ChromaprintExtractor
+        from app.matcher.chromaprint_matcher import ChromaprintMatcher, identify_episode_chromaprint
+        from app.matcher.episode_identification import get_video_duration
+
+        server_url = (
+            cfg.fingerprint_server_url or "https://engram-fp-prod.jonathansakkos.workers.dev"
+        )
+        pack_cache = getattr(self, "_pack_cache", None)
+        if pack_cache is not None:
+            try:
+                await pack_cache.ensure(int(tmdb_id), server_url)
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"pack ensure failed: {e}")
+
+        cm = ChromaprintMatcher(tmdb_id=int(tmdb_id), server_url=server_url, pack_cache=pack_cache)
+        extractor = ChromaprintExtractor(fpcalc_path=fpcalc)
+        try:
+            video_duration = await asyncio.to_thread(get_video_duration, str(file_path))
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"chromaprint prepass: could not get duration: {e}")
+            return None
+        return await identify_episode_chromaprint(
+            matcher=self._matcher,
+            video_file=str(file_path),
+            season_number=season,
+            chromaprint_matcher=cm,
+            extractor=extractor,
+            video_duration=video_duration,
+        )
 
     async def _maybe_add_llm_suggestion(
         self,
