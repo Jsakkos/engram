@@ -144,6 +144,37 @@ async def test_extract_ffmpeg_failure_propagates():
 
 
 @pytest.mark.asyncio
+async def test_missing_fpcalc_binary_wrapped_as_runtimeerror():
+    """A non-launchable fpcalc (FileNotFoundError) surfaces as RuntimeError,
+    honoring the documented contract instead of leaking an OSError subclass."""
+
+    def fake_run(cmd, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    with patch("app.matcher.chromaprint_extractor.subprocess.run", side_effect=fake_run):
+        ex = ChromaprintExtractor(fpcalc_path="/no/such/fpcalc")
+        with pytest.raises(RuntimeError, match="fpcalc could not be launched"):
+            await ex.extract("/fake/movie.mkv")
+
+
+@pytest.mark.asyncio
+async def test_missing_ffmpeg_binary_wrapped_as_runtimeerror():
+    """If the ffmpeg fallback binary can't be launched, surface a RuntimeError."""
+
+    def fake_run(cmd, **kwargs):
+        if cmd[0] == "/no/such/ffmpeg":
+            raise FileNotFoundError(2, "No such file or directory")
+        if "-version" in cmd:
+            return _make_proc(0, stdout="fpcalc version 1.5.1\n")
+        return _make_proc(2, stderr=_DECODER_GAP_STDERR)
+
+    with patch("app.matcher.chromaprint_extractor.subprocess.run", side_effect=fake_run):
+        ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc", ffmpeg_path="/no/such/ffmpeg")
+        with pytest.raises(RuntimeError, match="ffmpeg could not be launched"):
+            await ex.extract("/fake/dts.mkv")
+
+
+@pytest.mark.asyncio
 async def test_extract_parses_fpcalc_output():
     """extract() parses DURATION and FINGERPRINT from fpcalc -raw output."""
     # We mock asyncio.to_thread so the subprocess never runs.

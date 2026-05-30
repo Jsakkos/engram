@@ -108,7 +108,11 @@ class ChromaprintExtractor:
     async def _run_fpcalc(
         self, path: str, *, timeout: float | None = None
     ) -> subprocess.CompletedProcess[str]:
-        """Run `fpcalc -raw` on a file. Raises RuntimeError only on timeout."""
+        """Run `fpcalc -raw` on a file.
+
+        Raises RuntimeError on timeout or if the binary cannot be launched (e.g.
+        a wrong/removed fpcalc path) — so callers only ever see RuntimeError.
+        """
         deadline = timeout if timeout is not None else self.timeout_seconds
 
         def _run() -> subprocess.CompletedProcess[str]:
@@ -123,6 +127,8 @@ class ChromaprintExtractor:
             return await asyncio.to_thread(_run)
         except subprocess.TimeoutExpired as e:
             raise RuntimeError(f"fpcalc timed out after {deadline}s on {path}") from e
+        except OSError as e:
+            raise RuntimeError(f"fpcalc could not be launched ({self.fpcalc_path}): {e}") from e
 
     async def _build_result(self, stdout: str, media_path: str) -> ChromaprintResult:
         """Parse fpcalc `-raw` stdout into a ChromaprintResult."""
@@ -201,6 +207,8 @@ class ChromaprintExtractor:
                 raise RuntimeError(
                     f"ffmpeg pre-decode timed out after {ffmpeg_timeout}s on {media_path}"
                 ) from e
+            except OSError as e:
+                raise RuntimeError(f"ffmpeg could not be launched ({self.ffmpeg_path}): {e}") from e
             if ff.returncode != 0:
                 raise RuntimeError(
                     f"ffmpeg pre-decode failed for {media_path}: {(ff.stderr or '').strip()}"

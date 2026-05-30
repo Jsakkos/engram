@@ -33,10 +33,10 @@ class ContributionQueue:
         contributions_enabled: bool = True,
     ) -> None:
         """Append a contribution if the user has opt-in (default True)."""
+        # Prefer the human-readable show name; fall back to the DiscTitle FK
+        # (disc rows) or the tmdb id (bootstrap rows without a name).
+        label = show_title or (f"title {title_id}" if title_id is not None else f"tmdb {tmdb_id}")
         if not contributions_enabled:
-            label = show_title or (
-                f"title {title_id}" if title_id is not None else f"tmdb {tmdb_id}"
-            )
             logger.debug(f"Skipping contribution for {label}: contributions disabled")
             return
         row = FingerprintContribution(
@@ -52,9 +52,6 @@ class ContributionQueue:
             show_title=show_title,
         )
         session.add(row)
-        # Prefer the human-readable show name; fall back to the DiscTitle FK
-        # (disc rows) or the tmdb id (bootstrap rows without a name).
-        label = show_title or (f"title {title_id}" if title_id is not None else f"tmdb {tmdb_id}")
         logger.info(
             f"Queued contribution for {label} (tmdb={tmdb_id} s{season}e{episode}, "
             f"source={match_source}, conf={match_confidence:.2f})"

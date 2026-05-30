@@ -76,6 +76,9 @@ async def _resolve_ffmpeg_path(cfg_path: str | None) -> str | None:
 
     detected = await asyncio.to_thread(detect_ffmpeg)
     _ffmpeg_path_cache = detected.path if detected.found else None
+    # NOTE: the cache is frozen for the process lifetime. If detection misses here
+    # (ffmpeg absent at first probe), a later config change that sets ffmpeg_path
+    # takes effect only after a restart — same limitation as _fpcalc_path_cache.
     return _ffmpeg_path_cache  # type: ignore[return-value]
 
 
