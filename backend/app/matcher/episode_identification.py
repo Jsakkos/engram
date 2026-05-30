@@ -273,6 +273,54 @@ MAX_VOTE_BOOST = 0.30
 HIGH_VOTE_RATIO = 3.0
 MIN_CONSENSUS_FOR_RATIO = 0.50
 
+# Rank+margin chunk-vote gate. A 30s ASR chunk (~30-120 words) compared against a
+# full-episode TF-IDF vector (~3-5k words) yields a structurally low absolute
+# cosine even for a perfect match (~0.08-0.22): both vectors are L2-normalized, so
+# the short, sparse chunk can only overlap a small fraction of the episode's mass.
+# An absolute gate (the historical `cosine > 0.15`) therefore rejected most
+# correct chunks, returning episode=None. The *ranking* is reliable instead -- the
+# correct episode leads the runner-up by ~1.8-5.6x -- so a chunk votes for its top
+# episode when that lead is clear. See select_chunk_vote and the empirical scale
+# measurement in docs/superpowers/reviews/2026-05-29-asr-chunk-vote-scale-mismatch.md.
+CHUNK_VOTE_FLOOR = 0.06  # below this top-1 cosine, treat the chunk as noise
+CHUNK_VOTE_MARGIN_RATIO = 1.8  # top-1 must lead the runner-up by this ratio to vote
+
+
+def select_chunk_vote(
+    tfidf_results: list[tuple[str, float]],
+    floor: float = CHUNK_VOTE_FLOOR,
+    ratio: float = CHUNK_VOTE_MARGIN_RATIO,
+) -> tuple[str, float] | None:
+    """Pick the single episode a transcribed chunk votes for, or None.
+
+    Replaces the miscalibrated absolute cosine gate with a rank+margin rule that
+    survives the chunk-vs-full-episode scale mismatch (see CHUNK_VOTE_FLOOR notes).
+    A chunk votes for its top-ranked episode iff that episode (a) clears ``floor``
+    (guards pure-noise/near-silent chunks) and (b) leads the runner-up by
+    ``ratio``x (so recap or shared-dialogue chunks, where two episodes score
+    similarly, abstain instead of casting a confident-but-wrong vote).
+
+    Args:
+        tfidf_results: ``(reference, cosine)`` pairs sorted by cosine descending,
+            as returned by ``TfidfMatcher.match()``.
+        floor: minimum top-1 cosine required to consider voting.
+        ratio: required ``top1 / runner_up`` lead. A lone candidate (no runner-up)
+            only needs to clear the floor.
+
+    Returns:
+        ``(reference, cosine)`` for the winning episode, or None when no episode
+        clearly leads.
+    """
+    if not tfidf_results:
+        return None
+    top_ref, top_score = tfidf_results[0]
+    if top_score < floor:
+        return None
+    runner_up_score = tfidf_results[1][1] if len(tfidf_results) > 1 else 0.0
+    if top_score < ratio * runner_up_score:
+        return None
+    return top_ref, top_score
+
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
@@ -724,6 +772,9 @@ class EpisodeMatcher:
         # Ranked voting parameters
         self.min_vote_count = min_vote_count
         self.match_threshold = match_threshold
+        # Rank+margin chunk-vote gate parameters (see select_chunk_vote).
+        self.chunk_vote_floor = CHUNK_VOTE_FLOOR
+        self.chunk_vote_margin_ratio = CHUNK_VOTE_MARGIN_RATIO
         # Enable/disable ranked voting (default: True for improved confidence scores)
         self.use_ranked_voting = use_ranked_voting
 
@@ -1224,30 +1275,36 @@ class EpisodeMatcher:
                         f"Chunk {i}/{len(scan_points)} @ {start_time}s: transcribed {len(text)} chars, matching via TF-IDF..."
                     )
 
-                    # TF-IDF cosine similarity against full episode texts
+                    # TF-IDF cosine similarity against full episode texts. The
+                    # chunk-vs-full-episode cosine is structurally low even for a
+                    # perfect match, so vote on rank+margin rather than an absolute
+                    # cosine gate (see select_chunk_vote). One vote per chunk: its
+                    # clearly-leading top episode, or none.
                     tfidf_results = self.tfidf_matcher.match(text)
-                    chunk_matches = 0
-                    for rf_str, score in tfidf_results:
-                        if score > 0.15:  # TF-IDF cosine threshold (range ~0.05-0.5)
-                            coverages[rf_str].add_match(start_time, chunk_len, score)
-                            chunk_matches += 1
-                            logger.debug(
-                                f"  {Path(rf_str).stem}: MATCH @ video={start_time}s "
-                                f"(cosine={score:.3f})"
-                            )
-                        elif score > 0.08:  # Log near-misses
-                            logger.debug(
-                                f"  {Path(rf_str).stem}: near-miss @ video={start_time}s "
-                                f"(cosine={score:.3f})"
-                            )
+                    vote = select_chunk_vote(
+                        tfidf_results,
+                        floor=self.chunk_vote_floor,
+                        ratio=self.chunk_vote_margin_ratio,
+                    )
 
-                    if chunk_matches > 0:
+                    if vote is not None:
+                        rf_str, score = vote
+                        coverages[rf_str].add_match(start_time, chunk_len, score)
                         matches_found_count += 1
-                    else:
                         logger.debug(
-                            f"Chunk {i}/{len(scan_points)} @ {start_time}s: no matches found (best cosine < 0.15)"
+                            f"  {Path(rf_str).stem}: VOTE @ video={start_time}s "
+                            f"(cosine={score:.3f}, clear margin over runner-up)"
                         )
+                    else:
                         matches_rejected_count += 1
+                        if tfidf_results:
+                            top_ref, top_score = tfidf_results[0]
+                            runner = tfidf_results[1][1] if len(tfidf_results) > 1 else 0.0
+                            logger.debug(
+                                f"Chunk {i}/{len(scan_points)} @ {start_time}s: no clear vote "
+                                f"(top {Path(top_ref).stem}={top_score:.3f}, "
+                                f"runner-up={runner:.3f})"
+                            )
 
                 except Exception as e:
                     logger.warning(
@@ -1328,85 +1385,88 @@ class EpisodeMatcher:
                 "total_chunks": len(scan_points),
             }
 
-            if not best_match:
-                logger.warning(f"No episode matches found for {video_file}")
-                return {
-                    "season": season_number,
-                    "episode": None,
-                    "confidence": 0.0,
-                    "score": 0.0,
-                    "match_details": match_stats,
-                    "runner_ups": [],
-                }
+            if best_match:
+                # Merge stats into match_details before calibration so the helper
+                # operates on the full per-winner detail dict.
+                best_match["match_details"].update(match_stats)
 
-            # Merge stats into match_details before calibration so the helper
-            # operates on the full per-winner detail dict.
-            best_match["match_details"].update(match_stats)
+                # Sort candidates so the calibrator sees top1/top2 in order, then
+                # translate the raw signals into a 0-1 reviewer-facing confidence
+                # and build the runner-up leaderboard. This sets
+                # best_match["confidence"] (calibrated, -> DiscTitle.match_confidence)
+                # while leaving best_match["score"] raw for the accept-gate and
+                # conflict resolution. All candidates (incl. the winner) appear in
+                # runner_ups so the UI can show the full leaderboard. See
+                # calibrate_confidence for rationale.
+                results_summary.sort(key=lambda x: x["score"], reverse=True)
+                _attach_calibrated_confidence(best_match, results_summary, video_duration)
 
-            # Sort candidates so the calibrator sees top1/top2 in order, then
-            # translate the raw signals into a 0-1 reviewer-facing confidence and
-            # build the runner-up leaderboard. This sets best_match["confidence"]
-            # (calibrated, -> DiscTitle.match_confidence) while leaving
-            # best_match["score"] raw for the accept-gate and conflict resolution.
-            # All candidates (incl. the winner) appear in runner_ups so the UI can
-            # show the full leaderboard. See calibrate_confidence for rationale.
-            results_summary.sort(key=lambda x: x["score"], reverse=True)
-            _attach_calibrated_confidence(best_match, results_summary, video_duration)
+                score_gap = best_match["match_details"].get("score_gap", 0.0)
 
-            score_gap = best_match["match_details"].get("score_gap", 0.0)
-
-            # Log top candidates with voting + calibration analysis
-            voting_method = "ranked voting" if self.use_ranked_voting else "weighted score"
-            logger.info(f"{voting_method.capitalize()} results for {video_file.name}:")
-            logger.info(
-                f"  Calibrated confidence: {best_match['confidence']:.3f} "
-                f"(raw score={best_match['score']:.3f}, "
-                f"score_gap={score_gap:.4f} "
-                f"{'decisive' if score_gap > 0.01 else 'LOW-uncertain'})"
-            )
-
-            for i, result in enumerate(results_summary[:5], 1):
+                # Log top candidates with voting + calibration analysis
+                voting_method = "ranked voting" if self.use_ranked_voting else "weighted score"
+                logger.info(f"{voting_method.capitalize()} results for {video_file.name}:")
                 logger.info(
-                    f"  {i}. {result['episode']}: "
-                    f"score={result['score']:.3f}, "
-                    f"votes={result['vote_count']}, "
-                    f"avg_conf={result['avg_conf']:.3f}, "
-                    f"coverage={result['file_cov']:.1%}, "
-                    f"total_weight={result['total_weight']:.4f}"
+                    f"  Calibrated confidence: {best_match['confidence']:.3f} "
+                    f"(raw score={best_match['score']:.3f}, "
+                    f"score_gap={score_gap:.4f} "
+                    f"{'decisive' if score_gap > 0.01 else 'LOW-uncertain'})"
                 )
 
-            effective_min_votes = (
-                min_vote_count if min_vote_count is not None else self.min_vote_count
-            )
-
-            if best_match and best_match["score"] > self.match_threshold:
-                vote_count = best_match["match_details"]["vote_count"]
-
-                logger.info(
-                    f"Best match evaluation: "
-                    f"score {best_match['score']:.3f} vs threshold {self.match_threshold}, "
-                    f"votes {vote_count} vs minimum {effective_min_votes}"
-                )
-
-                if vote_count < effective_min_votes:
-                    logger.warning(
-                        f"⚠ Match rejected: insufficient evidence. "
-                        f"Episode: {best_match['match_details']['episode']}, "
-                        f"score: {best_match['score']:.3f}, "
-                        f"votes: {vote_count}/{effective_min_votes}, "
-                        f"coverage: {best_match['match_details']['file_cov']:.1%}, "
-                        f"matched_at: {best_match['matched_at']}s"
-                    )
-                    # Fall through to fallback
-                else:
+                for i, result in enumerate(results_summary[:5], 1):
                     logger.info(
-                        f"Ranked voting match: S{best_match['season']:02d}E{best_match['episode']:02d} "
-                        f"(score: {best_match['score']:.3f}, votes: {vote_count})"
+                        f"  {i}. {result['episode']}: "
+                        f"score={result['score']:.3f}, "
+                        f"votes={result['vote_count']}, "
+                        f"avg_conf={result['avg_conf']:.3f}, "
+                        f"coverage={result['file_cov']:.1%}, "
+                        f"total_weight={result['total_weight']:.4f}"
                     )
-                    return best_match
+
+                effective_min_votes = (
+                    min_vote_count if min_vote_count is not None else self.min_vote_count
+                )
+
+                if best_match["score"] > self.match_threshold:
+                    vote_count = best_match["match_details"]["vote_count"]
+
+                    logger.info(
+                        f"Best match evaluation: "
+                        f"score {best_match['score']:.3f} vs threshold {self.match_threshold}, "
+                        f"votes {vote_count} vs minimum {effective_min_votes}"
+                    )
+
+                    if vote_count < effective_min_votes:
+                        logger.warning(
+                            f"⚠ Match rejected: insufficient evidence. "
+                            f"Episode: {best_match['match_details']['episode']}, "
+                            f"score: {best_match['score']:.3f}, "
+                            f"votes: {vote_count}/{effective_min_votes}, "
+                            f"coverage: {best_match['match_details']['file_cov']:.1%}, "
+                            f"matched_at: {best_match['matched_at']}s"
+                        )
+                        # Fall through to fallback
+                    else:
+                        logger.info(
+                            f"Ranked voting match: S{best_match['season']:02d}E{best_match['episode']:02d} "
+                            f"(score: {best_match['score']:.3f}, votes: {vote_count})"
+                        )
+                        return best_match
+            else:
+                # Zero chunks cleared the rank+margin vote gate. Crucially, do NOT
+                # early-return episode=None here: the chunk cosine scale is
+                # structurally low, while the full-file fallback compares
+                # whole-vs-whole on a higher, properly-calibrated scale. Falling
+                # through reaches it. (Historically the early return made that
+                # fallback dead code in exactly the total-miss case it exists for.)
+                logger.warning(
+                    f"No chunks cleared the vote gate for {video_file}; "
+                    f"attempting full-file fallback"
+                )
 
             # --- FALLBACK ---
-            # Standard full file fallback if no good match
+            # Full-file fallback when chunk voting produced no acceptable match
+            # (no votes at all, score below threshold, or too few votes).
             logger.info(
                 f"Ranked voting matching failed "
                 f"(best score: {best_score:.3f} < {self.match_threshold} threshold "
@@ -1430,7 +1490,18 @@ class EpisodeMatcher:
                 }
                 return match
 
-            return None
+            # Nothing matched, even via the fallback. Return the no-episode result
+            # with scan stats preserved (not a bare None) so the UI/diagnostics
+            # show what was attempted.
+            logger.warning(f"No episode matches found for {video_file}")
+            return {
+                "season": season_number,
+                "episode": None,
+                "confidence": 0.0,
+                "score": 0.0,
+                "match_details": match_stats,
+                "runner_ups": [],
+            }
 
         except Exception as e:
             logger.error(
