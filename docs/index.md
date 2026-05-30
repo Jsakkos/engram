@@ -68,6 +68,26 @@ and files everything into your media library -- automatically.
 
 **Windows** has full automatic disc detection via kernel32 APIs. **Linux** has native optical-drive detection via `/sys/block` and `blkid`. On **macOS**, the backend and dashboard run fully, but disc insertion must be triggered via the staging import API. On all platforms, a **staging folder workflow** lets you drop pre-ripped MKV files into the staging directory for automatic classification, matching, and organization.
 
+### Importing pre-ripped files
+
+Set an **Import Watch Folder** in Settings and Engram will automatically pick up MKV files placed there (e.g. by AutomaticRippingMachine, or copied in by hand). Point the watch folder at the directory that holds your rips. Three layouts are supported:
+
+```
+Import Watch Folder/
+├── The Expanse/
+│   └── Season 01/            ← recommended: gives the best episode matching
+│       ├── episode.mkv
+│       └── episode.mkv
+├── Firefly/                  ← flat: episodes are matched across all seasons
+│   ├── episode.mkv
+│   └── episode.mkv
+└── THE_OFFICE_S1D1/          ← per-disc, ARM-style
+    ├── title_t00.mkv
+    └── title_t01.mkv
+```
+
+Season folders may be written `Season 1` or `Season 01`. When there's no season folder, matching searches every season of the show, which works but is slower.
+
 ---
 
 <div style="text-align: center;" markdown>

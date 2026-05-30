@@ -153,6 +153,15 @@ class MatchingCoordinator:
             self.download_subtitles(job_id, show_name, season)
         )
 
+    def start_subtitle_download_all_seasons(
+        self, job_id: int, show_name: str, seasons: list[int]
+    ) -> None:
+        """Start a background download spanning multiple seasons (unknown-season import)."""
+        self._subtitle_ready[job_id] = asyncio.Event()
+        self._subtitle_tasks[job_id] = asyncio.create_task(
+            self.download_subtitles_all_seasons(job_id, show_name, seasons)
+        )
+
     async def restart_subtitle_download(self, job_id: int, show_name: str, season: int) -> None:
         """Cancel any in-flight subtitle download and start a fresh one.
 
@@ -1232,6 +1241,92 @@ class MatchingCoordinator:
                     match_details=title.match_details,
                 )
             await self._check_job_completion(session, job_id)
+
+    async def download_subtitles_all_seasons(
+        self, job_id: int, show_name: str, seasons: list[int]
+    ) -> None:
+        """Download references for every candidate season (unknown-season import).
+
+        Seasons already covered by the precomputed cache or prior downloads are cheap
+        no-ops. Results aggregate into a single ``subtitle_status`` ("completed" if any
+        season yielded references, else "failed") and one ``_subtitle_ready`` event, so
+        the existing per-job matching gate works without change. Failure BLOCKS matching.
+        """
+        from sqlalchemy import update
+
+        try:
+            async with async_session() as session:
+                await session.execute(
+                    update(DiscJob)
+                    .where(DiscJob.id == job_id)
+                    .values(subtitle_status="downloading")
+                )
+                await session.commit()
+
+            logger.info(
+                f"Starting background subtitle download for {show_name} across "
+                f"seasons {seasons} (season unknown)"
+            )
+            await ws_manager.broadcast_subtitle_event(job_id, "downloading", downloaded=0, total=0)
+
+            from app.matcher.testing_service import download_subtitles
+
+            any_refs = False
+            canonical_name: str | None = None
+            for season in seasons:
+                try:
+                    result = await asyncio.to_thread(download_subtitles, show_name, season)
+                except Exception as e:  # noqa: BLE001 — one season failing must not abort the rest
+                    logger.warning(f"Subtitle download failed for {show_name} S{season}: {e}")
+                    continue
+
+                episodes = result.get("episodes") or []
+                if any(ep["status"] in ("downloaded", "cached", "precomputed") for ep in episodes):
+                    any_refs = True
+                if result.get("show_name"):
+                    canonical_name = result["show_name"]
+
+            status = "completed" if any_refs else "failed"
+            error_msg = None
+            if status == "failed":
+                error_msg = (
+                    f"No reference subtitles found for '{show_name}' in any season. Episode "
+                    "matching can't run without them — add an OpenSubtitles API key in Settings, "
+                    "drop .srt files into the show's cache folder, or assign episodes manually "
+                    "in Review."
+                )
+
+            async with async_session() as session:
+                update_values: dict = {
+                    "subtitle_status": status,
+                    "subtitle_error_message": error_msg,
+                }
+                if canonical_name and canonical_name != show_name:
+                    logger.info(f"Updating job {job_id} title to canonical: {canonical_name}")
+                    update_values["detected_title"] = canonical_name
+                await session.execute(
+                    update(DiscJob).where(DiscJob.id == job_id).values(**update_values)
+                )
+                await session.commit()
+
+            await ws_manager.broadcast_subtitle_event(job_id, status, downloaded=0, total=0)
+
+        except Exception as e:
+            logger.exception(
+                f"Unexpected error in all-season subtitle download for {show_name}: {e}"
+            )
+            async with async_session() as session:
+                await session.execute(
+                    update(DiscJob)
+                    .where(DiscJob.id == job_id)
+                    .values(subtitle_status="failed", error_message=f"Download error: {str(e)}")
+                )
+                await session.commit()
+            await ws_manager.broadcast_subtitle_event(job_id, "failed")
+
+        finally:
+            if job_id in self._subtitle_ready:
+                self._subtitle_ready[job_id].set()
 
     async def download_subtitles(self, job_id: int, show_name: str, season: int) -> None:
         """Download subtitles in background. Failure BLOCKS matching."""
