@@ -86,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
+        # A capture/replacement stream (e.g. pytest) may lack reconfigure or
+        # reject an encoding change mid-stream; fall back to default stdout.
         pass
 
     try:
