@@ -272,6 +272,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [step]);
 
+    // #243: once the first-run gate has been shown, advance as soon as the user
+    // satisfies it — the token validates in the background, or they opt to continue
+    // without one — so they don't have to click Next a second time. Keeping the
+    // advance here (not in the button) routes every transition through one place.
+    useEffect(() => {
+        if (
+            isOnboarding &&
+            step === 3 &&
+            tmdbGatePrompted &&
+            (tmdbValidation.status === 'valid' || tmdbContinueAnyway)
+        ) {
+            setTmdbGatePrompted(false);
+            setStep((s) => s + 1);
+        }
+    }, [isOnboarding, step, tmdbGatePrompted, tmdbValidation.status, tmdbContinueAnyway]);
+
     const detectTools = async () => {
         setIsDetecting(true);
         try {
@@ -744,10 +760,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     tone="amber"
                                     size="md"
                                     style={{ alignSelf: 'flex-start' }}
-                                    onClick={() => {
-                                        setTmdbContinueAnyway(true);
-                                        setStep((s) => s + 1);
-                                    }}
+                                    onClick={() => setTmdbContinueAnyway(true)}
                                 >
                                     Continue without TMDB
                                 </SvActionButton>
