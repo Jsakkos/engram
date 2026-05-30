@@ -46,6 +46,7 @@ class IdentificationCoordinator:
         self._get_discdb_mappings: callable = None
         self._set_discdb_mappings: callable = None
         self._start_subtitle_download: callable = None
+        self._start_subtitle_download_all_seasons: callable = None
         self._restart_subtitle_download: callable = None
         self._try_discdb_assignment: callable = None
         self._match_single_file: callable = None
@@ -62,6 +63,7 @@ class IdentificationCoordinator:
         start_subtitle_download,
         restart_subtitle_download,
         try_discdb_assignment,
+        start_subtitle_download_all_seasons=None,
         match_single_file,
         on_match_task_done,
         check_job_completion,
@@ -72,6 +74,7 @@ class IdentificationCoordinator:
         self._get_discdb_mappings = get_discdb_mappings
         self._set_discdb_mappings = set_discdb_mappings
         self._start_subtitle_download = start_subtitle_download
+        self._start_subtitle_download_all_seasons = start_subtitle_download_all_seasons
         self._restart_subtitle_download = restart_subtitle_download
         self._try_discdb_assignment = try_discdb_assignment
         self._match_single_file = match_single_file
@@ -384,6 +387,25 @@ class IdentificationCoordinator:
                 logger.exception(f"Error identifying disc for job {job_id}")
                 await self._state_machine.transition_to_failed(job, session, str(e))
 
+    async def _resolve_all_season_numbers(self, title: str) -> list[int]:
+        """Resolve 1..N season numbers for a show via TMDB (unknown-season import).
+
+        Returns an empty list when the show can't be resolved; callers then rely on
+        the precomputed cache / already-downloaded references during matching.
+        """
+        try:
+            from app.matcher.tmdb_client import fetch_show_id, get_number_of_seasons
+
+            show_id = await asyncio.to_thread(fetch_show_id, title)
+            if not show_id:
+                return []
+            count = await asyncio.to_thread(get_number_of_seasons, show_id)
+            if count and count > 0:
+                return list(range(1, count + 1))
+        except Exception as e:  # noqa: BLE001 — best-effort; fall back to cache at match time
+            logger.debug(f"Could not resolve season count for '{title}': {e}")
+        return []
+
     async def identify_from_staging(self, job_id: int) -> None:
         """Identify and process pre-ripped MKV files from staging."""
         from app.core.analyst import TitleInfo
@@ -503,6 +525,18 @@ class IdentificationCoordinator:
                         self._start_subtitle_download(
                             job_id, job.detected_title, job.detected_season
                         )
+                    elif job.detected_title and self._start_subtitle_download_all_seasons:
+                        # Season unknown (flat import folder): prefetch references for
+                        # every season so the curator can match across all of them.
+                        all_seasons = await self._resolve_all_season_numbers(job.detected_title)
+                        if all_seasons:
+                            logger.info(
+                                f"Job {job_id}: season unknown for '{job.detected_title}'; "
+                                f"prefetching subtitles for seasons {all_seasons}"
+                            )
+                            self._start_subtitle_download_all_seasons(
+                                job_id, job.detected_title, all_seasons
+                            )
 
                     # Transition to MATCHING and kick off per-title matching
                     succeeded = await self._state_machine.transition(

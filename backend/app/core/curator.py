@@ -39,6 +39,7 @@ class EpisodeCurator:
         self._initialized = False
         self._cache_dir: Path | None = None
         self._current_show: str | None = None
+        self._current_show_id: str | None = None
 
     def _ensure_initialized(self, show_name: str) -> bool:
         """Lazily initialize the matcher library for a specific show."""
@@ -62,6 +63,7 @@ class EpisodeCurator:
                 # We need to run async TMDB calls in a sync context here or use sync versions?
                 # tmdb_client functions are synchronous (requests based)
                 tmdb_id = fetch_show_id(show_name)
+                self._current_show_id = str(tmdb_id) if tmdb_id else None
                 if tmdb_id:
                     details = fetch_show_details(tmdb_id)
                     if details and "name" in details:
@@ -122,6 +124,109 @@ class EpisodeCurator:
             needs_review=True,
             match_details=match_details,
         )
+
+    def _candidate_seasons(self, series_name: str | None) -> list[int]:
+        """Seasons worth searching when the season is unknown.
+
+        Prefers seasons that already have reference data (precomputed cloud cache
+        or downloaded subtitles) so we don't run Whisper against seasons we cannot
+        match. Falls back to 1..N from TMDB when nothing is cached yet.
+        """
+        show = (self._matcher.show_name if self._matcher else None) or series_name
+        if not show:
+            return []
+
+        seasons: set[int] = set()
+
+        # 1. Precomputed cloud cache — the manifest lists which seasons it covers.
+        if self._cache_dir:
+            try:
+                from app.matcher.episode_identification import load_precomputed_manifest
+
+                manifest = load_precomputed_manifest(self._cache_dir)
+                entry = (manifest or {}).get("shows", {}).get(show)
+                if entry:
+                    seasons.update(int(s) for s in entry.get("seasons", []))
+            except Exception as e:  # noqa: BLE001 — best-effort enumeration
+                logger.debug(f"Precomputed manifest unavailable for '{show}': {e}")
+
+        # 2. Subtitles already downloaded to disk (cache_dir/data/<show>/*.srt).
+        if self._cache_dir:
+            try:
+                from app.matcher.subtitle_utils import (
+                    parse_season_episode_numbers,
+                    sanitize_filename,
+                )
+
+                data_dir = self._cache_dir / "data" / sanitize_filename(show)
+                if data_dir.is_dir():
+                    for srt in list(data_dir.glob("*.srt")) + list(data_dir.glob("*.SRT")):
+                        parsed = parse_season_episode_numbers(srt.name)
+                        if parsed:
+                            seasons.add(parsed[0])
+            except Exception as e:  # noqa: BLE001 — best-effort enumeration
+                logger.debug(f"Could not enumerate downloaded subtitles for '{show}': {e}")
+
+        if seasons:
+            return sorted(seasons)
+
+        # 3. Nothing cached yet — fall back to the show's full season count.
+        try:
+            from app.matcher.tmdb_client import fetch_show_id, get_number_of_seasons
+
+            show_id = self._current_show_id or fetch_show_id(show)
+            if show_id:
+                count = get_number_of_seasons(show_id)
+                if count and count > 0:
+                    return list(range(1, count + 1))
+        except Exception as e:  # noqa: BLE001 — best-effort enumeration
+            logger.debug(f"Could not resolve season count for '{show}': {e}")
+
+        return []
+
+    async def _match_across_seasons(
+        self,
+        file_path: Path,
+        series_name: str | None,
+        progress_callback: Callable[..., None] | None = None,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+    ) -> MatchResult:
+        """Match a file when the season is unknown by searching every candidate season.
+
+        Runs the normal single-season matcher once per candidate season and keeps the
+        most confident episode match. Returns early on a confident (no-review) match to
+        bound the per-season Whisper cost. Falls back to filename parsing when no season
+        produces a match or none have references available.
+        """
+        seasons = self._candidate_seasons(series_name)
+        if not seasons:
+            logger.warning(
+                f"No candidate seasons with references for '{series_name}'; "
+                f"cannot audio-match {file_path.name} without a season"
+            )
+            return self._fallback_result(file_path)
+
+        logger.info(
+            f"Season unknown for {file_path.name}; searching seasons {seasons} of '{series_name}'"
+        )
+
+        best: MatchResult | None = None
+        for s in seasons:
+            result = await self.match_single_file(
+                file_path, series_name, s, progress_callback, num_points, min_vote_count
+            )
+            if not result.episode_code:
+                continue
+            if best is None or result.confidence > best.confidence:
+                best = result
+            if not result.needs_review:
+                # A confident match is definitive; stop burning Whisper on other seasons.
+                break
+
+        if best is None:
+            return self._fallback_result(file_path)
+        return best
 
     async def match_files(
         self,
@@ -201,9 +306,16 @@ class EpisodeCurator:
                 f"Matcher initialized={initialized}, matcher={'available' if self._matcher else 'None'}"
             )
 
-        if not self._matcher or not season:
-            # Fall back to filename parsing if matcher unavailable or no season
+        if not self._matcher:
+            # Fall back to filename parsing if the matcher is unavailable
             return self._fallback_result(file_path)
+
+        if not season:
+            # Season unknown (e.g. a flat import folder with no Season NN dir):
+            # search across every candidate season and keep the best match.
+            return await self._match_across_seasons(
+                file_path, series_name, progress_callback, num_points, min_vote_count
+            )
 
         # Phase 3 cascade: chromaprint first (no-op when the flag is off → identical to legacy ASR path).
         # The guard above already guarantees `season` is truthy, so only `series_name` needs checking.
