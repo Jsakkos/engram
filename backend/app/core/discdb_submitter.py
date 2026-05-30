@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select
@@ -134,6 +134,12 @@ _IMAGE_KINDS = ("front", "back")
 _FRONT_PATTERNS = ("cover.jpg", "cover.jpeg", "cover.png")
 _BACK_PATTERNS = ("cover_back.jpg", "cover_back.jpeg", "cover_back.png")
 
+# A TheDiscDB release_id is an engram-minted UUID4 (or a DiscDB slug). Constrain
+# it to safe URL-path characters before interpolating it into the request URL —
+# this is the barrier that closes the partial-SSRF path: a value containing
+# "/", ".." or a scheme can't redirect the upload to a different resource/host.
+_RELEASE_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
 
 def _image_content_type(path: Path) -> str:
     suffix = path.suffix.lower()
@@ -160,14 +166,18 @@ async def submit_release_image(
     """
     if kind not in _IMAGE_KINDS:
         raise ValueError(f"kind must be one of {_IMAGE_KINDS}, got {kind!r}")
+    if not _RELEASE_ID_RE.fullmatch(release_id):
+        logger.warning(
+            f"Refusing image upload: invalid release_id {sanitize_log_value(release_id)}"
+        )
+        return False
     if not image_path.exists():
         logger.debug(f"No image at {image_path}, skipping {kind} upload")
         return False
 
-    # quote() neutralises any path-altering chars in release_id, then guard the
-    # fully-built URL (host comes from the user-configurable discdb_api_url) so a
-    # misconfigured base_url can't redirect the upload at an internal host (SSRF).
-    url = f"{base_url.rstrip('/')}/api/engram/release/{quote(release_id, safe='')}/images/{kind}"
+    # release_id is allowlist-validated above; also guard the fully-built URL so a
+    # misconfigured discdb_api_url can't point the upload at an internal host (SSRF).
+    url = f"{base_url.rstrip('/')}/api/engram/release/{release_id}/images/{kind}"
     if not is_safe_remote_url(url):
         logger.warning(f"Refusing {kind} image upload to unsafe URL for {sanitize_log_value(url)}")
         return False

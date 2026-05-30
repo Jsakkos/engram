@@ -369,6 +369,25 @@ class TestSubmitReleaseImage:
             ok = await submit_release_image("rel-8", "front", not_a_file, api_key, base_url)
 
         assert ok is False
+
+    @pytest.mark.anyio
+    async def test_invalid_release_id_returns_false_without_request(
+        self, api_key, base_url, tmp_path
+    ):
+        """A release_id with path-altering chars is rejected before any request."""
+        cover = tmp_path / "cover.jpg"
+        cover.write_bytes(b"x")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await submit_release_image("../../etc/passwd", "front", cover, api_key, base_url)
+
+        assert ok is False
+        mock_client.post.assert_not_called()
         mock_client.post.assert_not_called()
 
 
