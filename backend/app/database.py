@@ -20,10 +20,13 @@ logger = logging.getLogger(__name__)
 # Path to Alembic config (relative to backend/)
 _ALEMBIC_INI = Path(__file__).parent.parent / "alembic.ini"
 
-# Create async engine
+# Create async engine.
+# echo is gated on the dedicated db_echo setting (NOT debug): the E2E backend
+# runs with DEBUG=true but must not echo SQL, which floods stdout and stalls the
+# event loop under simulation load. See Settings.db_echo for the full rationale.
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=settings.db_echo,
     future=True,
     connect_args={"check_same_thread": False},  # Needed for SQLite
 )
