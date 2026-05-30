@@ -369,7 +369,7 @@ class EpisodeCurator:
         if self._matcher is None:
             return None
 
-        from app.api.validation import detect_fpcalc
+        from app.api.validation import detect_ffmpeg, detect_fpcalc
 
         fpcalc = cfg.fpcalc_path
         if not fpcalc:
@@ -377,6 +377,12 @@ class EpisodeCurator:
             fpcalc = detected.path if detected.found else None
         if not fpcalc:
             return None
+
+        # ffmpeg backs the pre-decode fallback for codecs fpcalc can't decode.
+        ffmpeg = cfg.ffmpeg_path
+        if not ffmpeg:
+            detected_ffmpeg = detect_ffmpeg()
+            ffmpeg = detected_ffmpeg.path if detected_ffmpeg.found else None
 
         from app.matcher.tmdb_client import fetch_show_id
 
@@ -399,7 +405,7 @@ class EpisodeCurator:
                 logger.debug(f"pack ensure failed: {e}")
 
         cm = ChromaprintMatcher(tmdb_id=int(tmdb_id), server_url=server_url, pack_cache=pack_cache)
-        extractor = ChromaprintExtractor(fpcalc_path=fpcalc)
+        extractor = ChromaprintExtractor(fpcalc_path=fpcalc, ffmpeg_path=ffmpeg)
         try:
             video_duration = await asyncio.to_thread(get_video_duration, str(file_path))
         except Exception as e:  # noqa: BLE001

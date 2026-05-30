@@ -58,6 +58,8 @@ interface AcceptItem {
     tmdb_id: number;
     season: number;
     episode: number;
+    // Human-readable show name for local display/diagnostics (logs, queue).
+    show_title: string | null;
 }
 
 interface AcceptResult {
@@ -488,8 +490,15 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
             const tmdbId = parseInt(rawId, 10);
             if (isNaN(tmdbId) || tmdbId <= 0) continue; // no valid TMDB ID → skip
 
+            const showTitle = show.tmdb_name ?? show.folder_name;
             for (const ep of show.episodes) {
-                items.push({ file: ep.file, tmdb_id: tmdbId, season: ep.season, episode: ep.episode });
+                items.push({
+                    file: ep.file,
+                    tmdb_id: tmdbId,
+                    season: ep.season,
+                    episode: ep.episode,
+                    show_title: showTitle,
+                });
             }
         }
         return items;

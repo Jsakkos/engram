@@ -1664,6 +1664,9 @@ class BootstrapAcceptItem(BaseModel):
     tmdb_id: int
     season: int
     episode: int
+    # Human-readable show name (from the scan's tmdb_name/folder_name) for local
+    # display/diagnostics. Optional — uploads key off tmdb_id+season+episode.
+    show_title: str | None = None
 
 
 class BootstrapAcceptRequest(BaseModel):
@@ -1876,7 +1879,7 @@ async def bootstrap_accept(
 
     Localhost-only: processes local library files on behalf of the user.
     """
-    from app.api.validation import detect_fpcalc
+    from app.api.validation import detect_ffmpeg, detect_fpcalc
     from app.matcher.chromaprint_extractor import ChromaprintExtractor
     from app.models.fingerprint import FingerprintContribution
     from app.services.config_service import get_config
@@ -1899,7 +1902,15 @@ async def bootstrap_accept(
             ),
         )
 
-    extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path)
+    # Resolve ffmpeg too — it backs the pre-decode fallback for codecs fpcalc's
+    # bundled FFmpeg can't decode (DTS/TrueHD/FLAC/E-AC-3). Optional: if absent,
+    # the fallback is simply disabled and such files are reported as failures.
+    ffmpeg_path = cfg.ffmpeg_path
+    if not ffmpeg_path:
+        detected_ffmpeg = await asyncio.to_thread(detect_ffmpeg)
+        ffmpeg_path = detected_ffmpeg.path if detected_ffmpeg.found else None
+
+    extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path, ffmpeg_path=ffmpeg_path)
     queue = ContributionQueue()
     pseudonym = cfg.contribution_pseudonym or ""
 
@@ -1948,6 +1959,7 @@ async def bootstrap_accept(
                 match_source="bootstrap",
                 disc_content_hash=None,
                 pseudonym=pseudonym,
+                show_title=item.show_title,
                 contributions_enabled=cfg.enable_fingerprint_contributions,
             )
             seen.add(key)

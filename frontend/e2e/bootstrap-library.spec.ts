@@ -68,7 +68,13 @@ const SCAN_RESULT = {
 const MYSTERY_TMDB_ID = 603; // entered by the user for the unresolved show
 
 interface AcceptBody {
-    items: Array<{ file: string; tmdb_id: number; season: number; episode: number }>;
+    items: Array<{
+        file: string;
+        tmdb_id: number;
+        season: number;
+        episode: number;
+        show_title: string | null;
+    }>;
 }
 
 /** Open the Settings modal and land on the Data Sharing tab (step 4). */
@@ -165,19 +171,22 @@ test.describe('Bootstrap library wizard', () => {
         expect(acceptBodies).toHaveLength(1);
         const items = acceptBodies[0].items;
         expect(items).toHaveLength(7);
-        // Resolved show items carry the scan's TMDB ID...
+        // Resolved show items carry the scan's TMDB ID and resolved name...
         expect(items).toContainEqual({
             file: 'Breaking Bad/Season 01/Breaking Bad - S01E01.mkv',
             tmdb_id: 1396,
             season: 1,
             episode: 1,
+            show_title: 'Breaking Bad',
         });
-        // ...and the unresolved show carries the user-entered ID.
+        // ...and the unresolved show carries the user-entered ID, falling back to
+        // the folder name for show_title (tmdb_name is null until resolved).
         expect(items).toContainEqual({
             file: 'Mystery Show/Season 01/Mystery Show - S01E01.mkv',
             tmdb_id: MYSTERY_TMDB_ID,
             season: 1,
             episode: 1,
+            show_title: 'Mystery Show',
         });
 
         // Done closes the wizard.
