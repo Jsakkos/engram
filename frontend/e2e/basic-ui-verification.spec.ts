@@ -15,7 +15,13 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
     // suite executes before the Firefox/WebKit projects reach this spec — that
     // cross-spec contamination is exactly what made "Empty state displays when
     // no discs present" flake on Firefox.
-    await resetAllJobs().catch(() => {});
+    // Best-effort: don't block the test if the backend is momentarily
+    // unavailable, but surface a misconfiguration (e.g. DEBUG off -> 403,
+    // backend down -> network error) in the logs instead of failing later with
+    // a confusing assertion error.
+    await resetAllJobs().catch((e) =>
+      console.warn('[beforeEach] resetAllJobs failed (continuing):', e),
+    );
     await page.goto('/');
   });
 

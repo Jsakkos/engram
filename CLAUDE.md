@@ -271,7 +271,7 @@ No client messages currently supported (WebSocket is server-push only).
 ### Configuration Sources (Priority Order)
 
 1. **Database** (`app_config` table) — Runtime configuration, editable via API
-2. **Environment variables** (or optional `.env` file) — Server-level settings (DEBUG, HOST, PORT, DATABASE_URL)
+2. **Environment variables** (or optional `.env` file) — Server-level settings (DEBUG, HOST, PORT, DATABASE_URL, DB_ECHO). `DB_ECHO=true` enables verbose SQLAlchemy SQL tracing (default off; decoupled from DEBUG so the E2E backend can run with DEBUG=true without flooding logs)
 3. **Defaults** — Hardcoded in `AppConfig` model
 
 ### Configuration Flow
