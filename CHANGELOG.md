@@ -4,6 +4,24 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-29
+
+### Added
+
+- **Bootstrap Library (bulk fingerprint upload)** — a one-pass tool that walks your existing organized TV library, extracts a Chromaprint acoustic fingerprint from every episode, and contributes them to the shared fingerprint network in bulk. Previously the network only grew as you ripped new discs; now shows you already own can seed matching immediately. Respects the same privacy model and opt-out as the per-rip contribution flow. (#253)
+- **Bundled `fpcalc`** — the Chromaprint `fpcalc` binary is now shipped inside the Windows, Linux, and macOS builds, so audio fingerprinting works out of the box with no manual Chromaprint install. Development builds fetch it on demand. (#260)
+- **Broadcast vs. DVD/streaming episode reordering** — episode organization now reconciles aired order with DVD/streaming order using TMDB episode groups, so shows that shipped in a different order than they aired land in the correct files. (#200, #254)
+- **Global episode-ordering default in the Config UI** — pick DVD or aired ordering as the library-wide default directly from Settings, instead of per-show only. (#255, #259)
+
+### Fixed
+
+- **Startup crash `no such column: app_config.episode_ordering_preference`** — the pre-init LAN-address read queried `app_config` before the schema reconcilers ran, so a freshly migrated database crashed on launch. The read now tolerates schema drift. (#261)
+- **Bulk fingerprint upload silently skipped episodes with certain codecs** — the bundled Chromaprint 1.5.1 `fpcalc` can't decode DTS, TrueHD, FLAC, or E-AC-3 audio, so ~128 library episodes failed fingerprinting with no warning. Engram now falls back to an `ffmpeg` pre-decode so every track can be fingerprinted. (#261)
+- **"Queued contribution for title None" in the logs** — the show title is now persisted and logged, so bulk-upload progress is attributable per show. (#261)
+- **Dashboard not refreshing after an in-app update, and incorrect frozen-build detection** — the UI now reloads after applying an update and correctly identifies packaged builds. (#258)
+- **Long filenames and paths truncated in job history** — they now wrap instead of being cut off. (#256)
+- **Cramped MANUAL row in the review inspector** — split into two rows so the manual-assignment controls are readable. (#257)
+
 ## [0.10.0] - 2026-05-28
 
 ### Added
