@@ -44,7 +44,7 @@
 
 .wizard-modal {
     width: 100%;
-    max-width: 800px;
+    max-width: 1040px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -826,4 +826,180 @@
 
 .wizard-actions .btn-primary:not(:disabled):hover {
     background: rgba(255, 61, 127, 0.10);
+}
+
+/* ── Collapsible setting groups (Synapse v2) ─────────────────────────
+   Native <details>/<summary>: open/closed state lives in the DOM, so it
+   survives React re-renders and is keyboard-accessible for free. */
+.wizard-group {
+    border: 1px solid var(--color-sv-line-mid);
+    background: rgba(94, 234, 212, 0.02);
+    margin-bottom: 0.85rem;
+}
+
+.wizard-group > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.85rem 1rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-sv-cyan-hi);
+    user-select: none;
+    transition: background 120ms ease-out;
+}
+
+.wizard-group > summary::-webkit-details-marker {
+    display: none;
+}
+
+.wizard-group > summary:hover {
+    background: rgba(94, 234, 212, 0.05);
+}
+
+.wizard-group-chevron {
+    color: var(--color-sv-cyan);
+    transition: transform 150ms ease;
+    display: inline-block;
+}
+
+.wizard-group[open] > summary {
+    border-bottom: 1px solid var(--color-sv-line);
+    background: rgba(94, 234, 212, 0.05);
+}
+
+.wizard-group[open] > summary .wizard-group-chevron {
+    transform: rotate(90deg);
+}
+
+.wizard-group-sub {
+    margin-left: auto;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--color-sv-ink-faint);
+    font-size: 0.72rem;
+}
+
+.wizard-group-body {
+    padding: 1.1rem;
+}
+
+.wizard-group-body > .form-group:last-child,
+.wizard-group-body > .checkbox-group:last-child {
+    margin-bottom: 0;
+}
+
+/* ── Two-column field grid (used inside dense groups) ──────────────── */
+.wizard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 1.5rem;
+    align-items: start;
+}
+
+@media (max-width: 720px) {
+    .wizard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Anonymous-ID / disclosure panel (Data Sharing) ────────────────── */
+.id-panel {
+    padding: 1rem;
+    margin-bottom: 1.1rem;
+    border: 1px solid var(--color-sv-line-mid);
+    background: rgba(94, 234, 212, 0.04);
+}
+
+.id-panel-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.id-panel-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--color-sv-ink-dim);
+    margin-bottom: 0.4rem;
+}
+
+.id-panel-value {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.82rem;
+    color: var(--color-sv-cyan);
+    word-break: break-all;
+}
+
+.id-panel-actions {
+    margin-top: 0.9rem;
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+/* ── Disclosure status badge ───────────────────────────────────────── */
+.contrib-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: 1px solid;
+    white-space: nowrap;
+}
+
+.contrib-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+}
+
+.contrib-badge--amber {
+    color: var(--color-sv-amber);
+    border-color: rgba(252, 211, 77, 0.5);
+    background: rgba(252, 211, 77, 0.08);
+}
+
+.contrib-badge--green {
+    color: var(--color-sv-green);
+    border-color: rgba(134, 239, 172, 0.5);
+    background: rgba(134, 239, 172, 0.08);
+}
+
+/* ── #243: first-run TMDB gate warning ─────────────────────────────── */
+.tmdb-gate-warning {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border: 1px solid rgba(252, 211, 77, 0.45);
+    background: rgba(252, 211, 77, 0.08);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: var(--color-sv-ink-dim);
+    line-height: 1.55;
+}
+
+.tmdb-gate-warning strong {
+    color: var(--color-sv-amber);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.78rem;
 }
