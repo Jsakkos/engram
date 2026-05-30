@@ -58,8 +58,10 @@ class TestChunkVoteRealCache:
                     last_end = max(
                         last_end, SubtitleReader.parse_timestamp(lines[1].split(" --> ")[1].strip())
                     )
-                except Exception:
-                    pass
+                except (ValueError, IndexError):
+                    # Malformed timestamp/block: skip it when scanning for the
+                    # last subtitle end time (matches extract_subtitle_chunk).
+                    continue
         skip_initial, skip_final, chunk_len, n = 300, 120, 30, 10
         interval = (last_end - skip_initial - skip_final) / (n - 1)
         queries = []
