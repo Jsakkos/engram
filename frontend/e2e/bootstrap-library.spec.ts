@@ -77,12 +77,12 @@ interface AcceptBody {
     }>;
 }
 
-/** Open the Settings modal and land on the Preferences tab (step 4). */
-async function openSettingsPreferences(page: Page) {
+/** Open the Settings modal and land on the Data Sharing tab (step 4). */
+async function openSettingsDataSharing(page: Page) {
     await page.locator('[data-testid="sv-settings-btn"]').click();
-    await expect(page.getByText('Preferences')).toBeVisible({ timeout: 5000 });
-    await page.getByRole('button', { name: /Step 4: Preferences/i }).click();
-    await expect(page.getByText('Configure additional options for your workflow')).toBeVisible({ timeout: 3000 });
+    await expect(page.getByText('Data Sharing')).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: /Step 4: Data Sharing/i }).click();
+    await expect(page.getByText(/governs data that leaves your machine/i)).toBeVisible({ timeout: 3000 });
 }
 
 test.describe('Bootstrap library wizard', () => {
@@ -115,7 +115,7 @@ test.describe('Bootstrap library wizard', () => {
         await expect(page.locator('text=/LIVE/i')).toBeVisible({ timeout: 10000 });
 
         // ── Open the wizard from Preferences ─────────────────────────────────
-        await openSettingsPreferences(page);
+        await openSettingsDataSharing(page);
 
         // Contributions are opt-in (checked by default); the bootstrap button is
         // gated behind it. Ensure it's on, then open the wizard.

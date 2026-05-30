@@ -289,3 +289,78 @@ class TestDownloadSubtitlesMessaging:
             refreshed = await session.get(DiscJob, job_id)
             assert refreshed.subtitle_status == "partial"
             assert refreshed.subtitle_error_message is None
+
+
+@pytest.mark.unit
+class TestDownloadSubtitlesAllSeasons:
+    """Unknown-season import downloads references for every candidate season and
+    aggregates them into a single subtitle_status / ready event so the existing
+    matching gate works unchanged.
+    """
+
+    def _mock(self, monkeypatch, per_season):
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
+        monkeypatch.setattr(
+            "app.matcher.testing_service.download_subtitles",
+            lambda show, season: {"episodes": per_season.get(season, []), "show_name": show},
+        )
+
+    async def test_completes_when_any_season_has_references(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(
+            monkeypatch,
+            {
+                1: [{"status": "not_found"}],
+                2: [{"status": "downloaded"}, {"status": "cached"}],
+                3: [{"status": "precomputed"}],
+            },
+        )
+        async with _unit_session_factory() as session:
+            job, _t = await _seed(session)
+            job_id = job.id
+        coord._subtitle_ready[job_id] = asyncio.Event()
+
+        await coord.download_subtitles_all_seasons(job_id, "The Expanse", [1, 2, 3])
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "completed"
+            assert refreshed.subtitle_error_message is None
+        # The ready event must be set so the matching gate unblocks.
+        assert coord._subtitle_ready[job_id].is_set()
+
+    async def test_fails_when_no_season_has_references(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(
+            monkeypatch,
+            {1: [{"status": "not_found"}], 2: [{"status": "failed"}]},
+        )
+        async with _unit_session_factory() as session:
+            job, _t = await _seed(session)
+            job_id = job.id
+        coord._subtitle_ready[job_id] = asyncio.Event()
+
+        await coord.download_subtitles_all_seasons(job_id, "Obscure Show", [1, 2])
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "failed"
+            assert "Obscure Show" in (refreshed.subtitle_error_message or "")
+            assert refreshed.error_message is None
+        # The ready event must be set so the matching gate unblocks.
+        assert coord._subtitle_ready[job_id].is_set()
+
+    async def test_sets_subtitle_ready_event(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(monkeypatch, {1: [{"status": "downloaded"}]})
+        async with _unit_session_factory() as session:
+            job, _t = await _seed(session)
+            job_id = job.id
+        coord._subtitle_ready[job_id] = asyncio.Event()
+
+        await coord.download_subtitles_all_seasons(job_id, "Show", [1])
+
+        assert coord._subtitle_ready[job_id].is_set()
