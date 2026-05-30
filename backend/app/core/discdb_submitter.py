@@ -149,7 +149,12 @@ async def submit_release_image(
 ) -> bool:
     """Upload a release-level cover image to TheDiscDB.
 
-    POST {base_url}/api/engram/{release_id}/images/{kind}
+    POST {base_url}/api/engram/release/{release_id}/images/{kind}
+
+    Sent as multipart/form-data with a ``file`` field (ASP.NET ``IFormFile``),
+    matching the maintainer's working curl. The ``release/`` path segment and
+    the multipart body are both required — the disc-level path and raw-bytes
+    body return 404/415 respectively (verified against prod, discussion #111).
     """
     if kind not in _IMAGE_KINDS:
         raise ValueError(f"kind must be one of {_IMAGE_KINDS}, got {kind!r}")
@@ -157,7 +162,7 @@ async def submit_release_image(
         logger.debug(f"No image at {image_path}, skipping {kind} upload")
         return False
 
-    url = f"{base_url.rstrip('/')}/api/engram/{release_id}/images/{kind}"
+    url = f"{base_url.rstrip('/')}/api/engram/release/{release_id}/images/{kind}"
     content_type = _image_content_type(image_path)
     body = image_path.read_bytes()
 
@@ -165,11 +170,8 @@ async def submit_release_image(
         async with httpx.AsyncClient(timeout=SUBMIT_TIMEOUT) as client:
             resp = await client.post(
                 url,
-                content=body,
-                headers={
-                    **_auth_headers(api_key),
-                    "Content-Type": content_type,
-                },
+                files={"file": (image_path.name, body, content_type)},
+                headers=_auth_headers(api_key),
             )
             resp.raise_for_status()
             return True

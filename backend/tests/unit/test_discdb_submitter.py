@@ -258,10 +258,16 @@ class TestSubmitReleaseImage:
 
         assert ok is True
         call_kwargs = mock_client.post.call_args
-        assert call_kwargs.args[0] == "https://thediscdb.com/api/engram/rel-uuid-1/images/front"
-        assert call_kwargs.kwargs["headers"]["Content-Type"] == "image/jpeg"
+        assert (
+            call_kwargs.args[0]
+            == "https://thediscdb.com/api/engram/release/rel-uuid-1/images/front"
+        )
         assert call_kwargs.kwargs["headers"]["Authorization"] == f"ApiKey {api_key}"
-        assert call_kwargs.kwargs["content"] == cover.read_bytes()
+        # multipart/form-data with a `file` field: (filename, bytes, content-type)
+        file_field = call_kwargs.kwargs["files"]["file"]
+        assert file_field[0] == cover.name
+        assert file_field[1] == cover.read_bytes()
+        assert file_field[2] == "image/jpeg"
 
     @pytest.mark.anyio
     async def test_uploads_back_image(self, api_key, base_url, tmp_path):
@@ -279,7 +285,7 @@ class TestSubmitReleaseImage:
 
         assert ok is True
         call_kwargs = mock_client.post.call_args
-        assert call_kwargs.args[0] == "https://thediscdb.com/api/engram/rel-2/images/back"
+        assert call_kwargs.args[0] == "https://thediscdb.com/api/engram/release/rel-2/images/back"
 
     @pytest.mark.anyio
     async def test_png_content_type(self, api_key, base_url, tmp_path):
@@ -297,7 +303,7 @@ class TestSubmitReleaseImage:
 
         assert ok is True
         call_kwargs = mock_client.post.call_args
-        assert call_kwargs.kwargs["headers"]["Content-Type"] == "image/png"
+        assert call_kwargs.kwargs["files"]["file"][2] == "image/png"
 
     @pytest.mark.anyio
     async def test_missing_file_returns_false(self, api_key, base_url, tmp_path):
@@ -428,7 +434,7 @@ class TestUploadReleaseImages:
 
         assert results == {"front": True}
         assert mock_client.post.call_args.args[0] == (
-            "https://thediscdb.com/api/engram/rel-x/images/front"
+            "https://thediscdb.com/api/engram/release/rel-x/images/front"
         )
 
     @pytest.mark.anyio
