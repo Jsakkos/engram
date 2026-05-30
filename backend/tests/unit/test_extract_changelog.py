@@ -99,12 +99,13 @@ def test_unknown_version_returns_none(ecl):
     assert ecl.extract_section(_SAMPLE, "9.9.9") is None
 
 
-def test_unreleased_is_not_matched_by_a_version_query(ecl):
-    # Extraction targets a concrete version; the [Unreleased] placeholder
-    # should never be returned for a numeric version query.
-    assert ecl.extract_section(_SAMPLE, "Unreleased") is not None  # explicit only
-    section = ecl.extract_section(_SAMPLE, "0.10.0")
-    assert "[Unreleased]" not in section
+def test_unreleased_placeholder_is_empty_and_not_leaked(ecl):
+    # The [Unreleased] header exists but has no body, so it extracts to ""
+    # (falsy) — not None, and not the next version's content. main() rejects
+    # this empty result (see test_empty_section_rejected_by_check).
+    assert ecl.extract_section(_SAMPLE, "Unreleased") == ""
+    # A concrete-version query must never bleed into the [Unreleased] block.
+    assert "[Unreleased]" not in ecl.extract_section(_SAMPLE, "0.10.0")
 
 
 def test_main_default_prints_body(ecl, tmp_path, capsys):
@@ -132,6 +133,30 @@ def test_main_missing_version_reports_error(ecl, tmp_path, capsys):
     assert rc != 0
     err = capsys.readouterr().err
     assert "9.9.9" in err
+
+
+# A header that exists but carries no body — e.g. a stub `## [X.Y.Z]` added
+# before the entry is written. This must be treated as "no usable section",
+# not silently accepted (which would publish a blank release body).
+_EMPTY_SECTION = "## [1.0.0]\n\n## [0.9.0]\n\n### Fixed\n\n- a real entry\n"
+
+
+def test_empty_section_body_returns_falsy(ecl):
+    assert not ecl.extract_section(_EMPTY_SECTION, "1.0.0")
+
+
+def test_empty_section_rejected_by_check(ecl, tmp_path):
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(_EMPTY_SECTION, encoding="utf-8")
+    assert ecl.main(["--version", "1.0.0", "--changelog", str(path), "--check"]) != 0
+
+
+def test_empty_section_rejected_in_print_mode(ecl, tmp_path, capsys):
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(_EMPTY_SECTION, encoding="utf-8")
+    rc = ecl.main(["--version", "1.0.0", "--changelog", str(path)])
+    assert rc != 0
+    assert capsys.readouterr().out.strip() == ""
 
 
 @pytest.mark.skipif(

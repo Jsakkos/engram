@@ -97,9 +97,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     section = extract_section(text, args.version)
-    if section is None:
+    # `not section` catches both a missing header (None) and a header with an
+    # empty body (""), e.g. a stub `## [X.Y.Z]` added before the entry is
+    # written — an empty release body is as broken as a missing one.
+    if not section:
         print(
-            f"error: no CHANGELOG section found for version {args.version!r} in {args.changelog}",
+            f"error: no non-empty CHANGELOG section for version {args.version!r} "
+            f"in {args.changelog}",
             file=sys.stderr,
         )
         return 1
