@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
 import { EngramSelect } from './ui/EngramSelect';
+import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import './ConfigWizard.css';
 
@@ -12,7 +13,7 @@ interface ConfigWizardProps {
     isOnboarding?: boolean;
 }
 
-const STEP_LABELS = ['Paths', 'Tools', 'TMDB', 'Preferences'];
+const STEP_LABELS = ['Paths', 'Tools', 'TMDB', 'Data Sharing', 'Preferences'];
 
 const AI_PROVIDER_LABELS: Record<string, string> = {
     anthropic: 'Anthropic',
@@ -168,9 +169,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
     const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean}>({makemkv: false, tmdb: false, opensubtitles: false});
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
+    // #243: first-run gate — require a validated TMDB token (or explicit skip) before leaving the TMDB step.
+    const [tmdbContinueAnyway, setTmdbContinueAnyway] = useState(false);
+    const [tmdbGatePrompted, setTmdbGatePrompted] = useState(false);
     const [showBootstrapFlow, setShowBootstrapFlow] = useState(false);
 
-    const totalSteps = 4;
+    const totalSteps = STEP_LABELS.length;
 
     const fetchNetworkInfo = useCallback(async () => {
         try {
@@ -268,6 +272,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [step]);
 
+    // #243: once the first-run gate has been shown, advance as soon as the user
+    // satisfies it — the token validates in the background, or they opt to continue
+    // without one — so they don't have to click Next a second time. Keeping the
+    // advance here (not in the button) routes every transition through one place.
+    useEffect(() => {
+        if (
+            isOnboarding &&
+            step === 3 &&
+            tmdbGatePrompted &&
+            (tmdbValidation.status === 'valid' || tmdbContinueAnyway)
+        ) {
+            setTmdbGatePrompted(false);
+            setStep((s) => s + 1);
+        }
+    }, [isOnboarding, step, tmdbGatePrompted, tmdbValidation.status, tmdbContinueAnyway]);
+
     const detectTools = async () => {
         setIsDetecting(true);
         try {
@@ -297,6 +317,18 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     };
 
     const handleNext = () => {
+        // #243: don't let first-run users sail past the TMDB step with an unvalidated
+        // (or missing) token — it's the single most impactful silent misconfiguration.
+        if (isOnboarding && step === 3) {
+            const tmdbReady = savedKeys.tmdb || tmdbValidation.status === 'valid';
+            if (!tmdbReady && !tmdbContinueAnyway) {
+                if (config.tmdbApiKey.trim() && tmdbValidation.status === 'idle') {
+                    handleTestTmdb();
+                }
+                setTmdbGatePrompted(true);
+                return;
+            }
+        }
         if (step < totalSteps) {
             setStep(step + 1);
         } else {
@@ -691,7 +723,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     handleInputChange('tmdbApiKey', e.target.value);
                                     setTmdbValidation({status: 'idle'});
                                 }}
-                                placeholder={savedKeys.tmdb ? "Enter new token to replace existing" : "eyJhbGciOiJIUzI1NiJ9..."}
+                                onBlur={() => {
+                                    // #243: auto-validate on blur so users get inline ✓/✗ without clicking.
+                                    if (config.tmdbApiKey.trim() && tmdbValidation.status === 'idle') {
+                                        handleTestTmdb();
+                                    }
+                                }}
+                                placeholder={savedKeys.tmdb ? "Enter new token to replace existing" : "Paste your Read Access Token here (long string starting with eyJ…)"}
                             />
                             <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem'}}>
                                 <button
@@ -704,10 +742,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     {tmdbValidation.status === 'testing' ? 'Testing...' : 'Test Token'}
                                 </button>
                                 {tmdbValidation.status === 'valid' && (
-                                    <span style={{color: '#22c55e', fontSize: '0.85rem'}}>Valid token</span>
+                                    <span style={{color: '#22c55e', fontSize: '0.85rem'}}>✓ Valid token</span>
                                 )}
                                 {tmdbValidation.status === 'invalid' && (
-                                    <span style={{color: '#ef4444', fontSize: '0.85rem'}}>{tmdbValidation.error}</span>
+                                    <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {tmdbValidation.error}</span>
                                 )}
                             </div>
                             <span className="form-hint">
@@ -715,6 +753,26 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 Find it under API &rarr; Read Access Token in your TMDB account settings.
                             </span>
                         </div>
+
+                        {isOnboarding && tmdbGatePrompted &&
+                            !(savedKeys.tmdb || tmdbValidation.status === 'valid') && !tmdbContinueAnyway && (
+                            <div className="tmdb-gate-warning">
+                                <strong>TMDB token not validated</strong>
+                                <span>
+                                    Without a working token Engram can&apos;t reliably identify shows or movies —
+                                    classification falls back to heuristics only. Enter a token above (it validates
+                                    automatically), or continue without it.
+                                </span>
+                                <SvActionButton
+                                    tone="amber"
+                                    size="md"
+                                    style={{ alignSelf: 'flex-start' }}
+                                    onClick={() => setTmdbContinueAnyway(true)}
+                                >
+                                    Continue without TMDB
+                                </SvActionButton>
+                            </div>
+                        )}
 
                         <h4 style={{marginTop: '1.5rem', marginBottom: '0.25rem', fontSize: '1rem', fontWeight: 600}}>
                             OpenSubtitles.com <span style={{fontWeight: 400, fontSize: '0.85rem', opacity: 0.7}}>(Optional)</span>
@@ -773,28 +831,19 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 const providerLabel = AI_PROVIDER_LABELS[config.aiProvider] || config.aiProvider;
                 return (
                     <div className="wizard-step">
-                        <h3 className="step-title">Preferences</h3>
+                        <h3 className="step-title">Data Sharing</h3>
                         <p className="step-description">
-                            Configure additional options for your workflow.
+                            Everything here is optional and governs data that leaves your machine. Nothing is on by
+                            default except local fingerprint extraction — and no filenames, paths, or personal
+                            information are ever sent.
                         </p>
 
-                        {FEATURES.DISCDB && (
-                            <div className="form-group checkbox-group">
-                                <label className="checkbox-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={config.discdbEnabled}
-                                        onChange={(e) => handleInputChange('discdbEnabled', e.target.checked)}
-                                    />
-                                    <span className="checkbox-text">
-                                        <strong>Enable TheDiscDB Lookup</strong>
-                                        <span className="checkbox-hint">
-                                            Query TheDiscDB for known disc layouts. When matched, skips audio fingerprinting and instantly maps episodes. No API key required.
-                                        </span>
-                                    </span>
-                                </label>
-                            </div>
-                        )}
+                        {/* ── Fingerprint network ─────────────────────────────── */}
+                        <details className="wizard-group" open>
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>Fingerprint network
+                            </summary>
+                            <div className="wizard-group-body">
 
                         <div className="form-group checkbox-group">
                             <label className="checkbox-label">
@@ -806,10 +855,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 <span className="checkbox-text">
                                     <strong>Contribute audio fingerprints</strong>
                                     <span className="checkbox-hint">
-                                        Engram extracts a perceptual audio fingerprint from each ripped title and queues it
-                                        locally. Future versions will share these fingerprints with a community catalog so
-                                        everyone&apos;s rips identify faster. No filenames, paths, or personally identifying
-                                        information are sent. Disable to skip extraction entirely.
+                                        Engram extracts a perceptual audio fingerprint from each ripped title and shares
+                                        it with the community catalog so everyone&apos;s rips identify faster. Only the
+                                        fingerprint is sent — never audio, filenames, or paths. Untick to keep
+                                        fingerprints entirely on this machine.
                                     </span>
                                 </span>
                             </label>
@@ -832,72 +881,97 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     </span>
                                 </div>
 
-                                <div className="form-group">
-                                    <span className="form-hint">
-                                        Your anonymous contribution ID:{' '}
-                                        <code>{config.contributionPseudonym || '(generated on first run)'}</code>
+                                <div className="id-panel">
+                                    <div className="id-panel-row">
+                                        <div>
+                                            <div className="id-panel-label">Your anonymous contribution ID</div>
+                                            <div className="id-panel-value">
+                                                {config.contributionPseudonym || '(generated on first run)'}
+                                            </div>
+                                        </div>
                                         {config.fingerprintDisclosureAccepted ? (
-                                            <>
-                                                {' '}· Disclosure accepted
-                                                {config.fingerprintDisclosureAcceptedAt
-                                                    ? ` on ${new Date(config.fingerprintDisclosureAcceptedAt).toLocaleString()}`
-                                                    : ''}
-                                            </>
+                                            <span className="contrib-badge contrib-badge--green">
+                                                <span className="dot" />
+                                                Disclosure accepted
+                                            </span>
                                         ) : (
-                                            <> · Disclosure not yet accepted</>
+                                            <span className="contrib-badge contrib-badge--amber">
+                                                <span className="dot" />
+                                                Disclosure not accepted
+                                            </span>
                                         )}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        className="btn-secondary"
-                                        style={{ marginTop: 8 }}
-                                        onClick={async () => {
-                                            if (!window.confirm(
-                                                'This deletes your raw contributions on the fingerprint server, clears the local queue, and generates a new anonymous ID. Already-promoted consensus data cannot be recalled. Continue?'
-                                            )) return;
-                                            try {
-                                                const r = await fetch('/api/fingerprint/forget', { method: 'POST' });
-                                                if (!r.ok) {
-                                                    const detail = await r.text();
-                                                    window.alert(`Forget failed: ${r.status} ${detail}`);
-                                                    return;
+                                    </div>
+                                    {config.fingerprintDisclosureAccepted && config.fingerprintDisclosureAcceptedAt && (
+                                        <span className="form-hint">
+                                            Accepted on {new Date(config.fingerprintDisclosureAcceptedAt).toLocaleString()}.
+                                        </span>
+                                    )}
+                                    <div className="id-panel-actions">
+                                        <SvActionButton
+                                            tone="red"
+                                            size="md"
+                                            onClick={async () => {
+                                                if (!window.confirm(
+                                                    'This deletes your raw contributions on the fingerprint server, clears the local queue, and generates a new anonymous ID. Already-promoted consensus data cannot be recalled. Continue?'
+                                                )) return;
+                                                try {
+                                                    const r = await fetch('/api/fingerprint/forget', { method: 'POST' });
+                                                    if (!r.ok) {
+                                                        const detail = await r.text();
+                                                        window.alert(`Forget failed: ${r.status} ${detail}`);
+                                                        return;
+                                                    }
+                                                    const d = await r.json();
+                                                    window.alert(
+                                                        `Done. Server deleted ${d.server_rows_deleted} row(s), local queue cleared (${d.local_rows_deleted}). New anonymous ID: ${d.new_pseudonym}`
+                                                    );
+                                                    setConfig((prev) => ({
+                                                        ...prev,
+                                                        contributionPseudonym: d.new_pseudonym,
+                                                        fingerprintDisclosureAccepted: false,
+                                                        fingerprintDisclosureAcceptedAt: null,
+                                                    }));
+                                                } catch (err) {
+                                                    window.alert(`Forget failed: ${err}`);
                                                 }
-                                                const d = await r.json();
-                                                window.alert(
-                                                    `Done. Server deleted ${d.server_rows_deleted} row(s), local queue cleared (${d.local_rows_deleted}). New anonymous ID: ${d.new_pseudonym}`
-                                                );
-                                                setConfig((prev) => ({
-                                                    ...prev,
-                                                    contributionPseudonym: d.new_pseudonym,
-                                                    fingerprintDisclosureAccepted: false,
-                                                    fingerprintDisclosureAcceptedAt: null,
-                                                }));
-                                            } catch (err) {
-                                                window.alert(`Forget failed: ${err}`);
-                                            }
-                                        }}
-                                    >
-                                        Forget me on the fingerprint server
-                                    </button>
+                                            }}
+                                        >
+                                            Forget me on the server
+                                        </SvActionButton>
+                                    </div>
+                                    <span className="form-hint">
+                                        Forgetting deletes your raw contributions on the server, clears the local queue,
+                                        and rotates your ID. Already-promoted consensus data can&apos;t be recalled.
+                                    </span>
                                 </div>
                             </>
                         )}
 
                         {config.enableFingerprintContributions && (
                             <div className="form-group" style={{ marginTop: '0.75rem' }}>
-                                <button
-                                    type="button"
-                                    className="btn-secondary"
-                                    style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}
+                                <SvActionButton
+                                    tone="cyan"
+                                    size="md"
                                     onClick={() => setShowBootstrapFlow(true)}
                                 >
                                     Contribute from existing library&hellip;
-                                </button>
+                                </SvActionButton>
                                 <span className="form-hint" style={{ display: 'block', marginTop: '0.4rem' }}>
                                     Seed the fingerprint network from your existing TV library (reads filenames only — no files are uploaded).
                                 </span>
                             </div>
                         )}
+
+                            </div>
+                        </details>
+
+                        {/* ── AI assistance ───────────────────────────────────── */}
+                        <details className="wizard-group">
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>AI assistance
+                                <span className="wizard-group-sub">optional · API key required</span>
+                            </summary>
+                            <div className="wizard-group-body">
 
                         <div className="form-group checkbox-group">
                             <label className="checkbox-label">
@@ -917,6 +991,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         {config.aiIdentificationEnabled && (
                             <>
+                                <div className="wizard-grid">
                                 <div className="form-group">
                                     <label htmlFor="aiProvider">AI Provider</label>
                                     <EngramSelect
@@ -946,6 +1021,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                         API key for {providerLabel}. Used only when TMDB lookup fails.
                                     </span>
                                 </div>
+                                </div>
                                 <div className="form-group checkbox-group">
                                     <label className="checkbox-label">
                                         <input
@@ -964,8 +1040,31 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </>
                         )}
 
+                            </div>
+                        </details>
+
+                        {/* ── TheDiscDB (feature-flagged) ──────────────────────── */}
                         {FEATURES.DISCDB && (
-                            <>
+                            <details className="wizard-group">
+                                <summary>
+                                    <span className="wizard-group-chevron">▸</span>TheDiscDB
+                                </summary>
+                                <div className="wizard-group-body">
+                                <div className="form-group checkbox-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.discdbEnabled}
+                                            onChange={(e) => handleInputChange('discdbEnabled', e.target.checked)}
+                                        />
+                                        <span className="checkbox-text">
+                                            <strong>Enable TheDiscDB Lookup</strong>
+                                            <span className="checkbox-hint">
+                                                Query TheDiscDB for known disc layouts. When matched, skips audio fingerprinting and instantly maps episodes. No API key required.
+                                            </span>
+                                        </span>
+                                    </label>
+                                </div>
                                 <div className="form-group checkbox-group">
                                     <label className="checkbox-label">
                                         <input
@@ -1022,8 +1121,28 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                         </div>
                                     </>
                                 )}
-                            </>
+                                </div>
+                            </details>
                         )}
+
+                    </div>
+                );
+            }
+
+            case 5:
+                return (
+                    <div className="wizard-step">
+                        <h3 className="step-title">Preferences</h3>
+                        <p className="step-description">
+                            How Engram matches, names, and tidies up — all processed locally on this machine.
+                        </p>
+
+                        {/* ── Matching & ordering ─────────────────────────────── */}
+                        <details className="wizard-group" open>
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>Matching &amp; ordering
+                            </summary>
+                            <div className="wizard-group-body">
 
                         <div className="form-group">
                             <label htmlFor="maxConcurrentMatches">Max Concurrent Matches</label>
@@ -1077,6 +1196,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 Individual shows can be overridden during review.
                             </span>
                         </div>
+
+                            </div>
+                        </details>
+
+                        {/* ── Maintenance & watchdog ──────────────────────────── */}
+                        <details className="wizard-group">
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>Maintenance &amp; watchdog
+                            </summary>
+                            <div className="wizard-group-body">
 
                         <div className="form-group">
                             <label htmlFor="stagingCleanup">Staging Cleanup Policy</label>
@@ -1179,6 +1308,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </div>
                         )}
 
+                            </div>
+                        </details>
+
+                        {/* ── Naming & extras ─────────────────────────────────── */}
+                        <details className="wizard-group">
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>Naming &amp; extras
+                            </summary>
+                            <div className="wizard-group-body">
+
                         <div className="form-group">
                             <label htmlFor="extrasPolicy">Extras Handling</label>
                             <EngramSelect
@@ -1256,6 +1395,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 </div>
                             </>
                         )}
+
+                            </div>
+                        </details>
+
+                        {/* ── Network access ──────────────────────────────────── */}
+                        <details className="wizard-group">
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>Network access
+                            </summary>
+                            <div className="wizard-group-body">
 
                         <div className="form-group checkbox-group">
                             <label className="checkbox-label">
@@ -1342,6 +1491,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </div>
                         )}
 
+                            </div>
+                        </details>
+
                         <div className="config-summary">
                             <h4>Configuration Summary</h4>
                             <dl>
@@ -1357,7 +1509,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         </div>
                     </div>
                 );
-            }
 
             default:
                 return null;
@@ -1374,7 +1525,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 </div>
 
                 <div className={`wizard-progress ${!isOnboarding ? 'tabs-mode' : ''}`}>
-                    {[1, 2, 3, 4].map((s) => (
+                    {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
                         <div
                             key={s}
                             className={`progress-step ${s === step ? 'active' : ''} ${s < step || !isOnboarding ? 'completed' : ''} ${!isOnboarding ? 'clickable' : ''}`}
