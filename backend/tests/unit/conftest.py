@@ -58,6 +58,12 @@ def bsc():
     return _load_script_module("build_subtitle_cache")
 
 
+@pytest.fixture(scope="session")
+def ecl():
+    """The extract_changelog.py module, loaded once per pytest session."""
+    return _load_script_module("extract_changelog")
+
+
 _unit_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
     connect_args={"check_same_thread": False},
