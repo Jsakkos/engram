@@ -19,9 +19,9 @@ const API = 'http://localhost:8001';
 async function openSettingsPreferences(page: import('@playwright/test').Page) {
     await page.locator('[data-testid="sv-settings-btn"]').click();
     await expect(page.getByText('Preferences')).toBeVisible({ timeout: 5000 });
-    // In settings mode all tabs are clickable; jump straight to step 4.
-    await page.getByRole('button', { name: /Step 4: Preferences/i }).click();
-    await expect(page.getByText('Configure additional options for your workflow')).toBeVisible({
+    // In settings mode all tabs are clickable; jump straight to Preferences (step 5).
+    await page.getByRole('button', { name: /Step 5: Preferences/i }).click();
+    await expect(page.getByText(/processed locally on this machine/i)).toBeVisible({
         timeout: 3000,
     });
 }

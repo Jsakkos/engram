@@ -218,7 +218,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         await expect(page.getByText('Identify Disc')).not.toBeVisible({ timeout: 5000 });
     });
 
-    test('Settings wizard - all 4 steps', async ({ page }) => {
+    test('Settings wizard - all 5 steps', async ({ page }) => {
         test.setTimeout(30_000);
 
         await page.goto('/');
@@ -265,16 +265,27 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         // 22: Step 3 — TMDB Read Access Token
         await page.screenshot({ path: `${SCREENSHOT_DIR}/22-settings-step3-tmdb.png`, fullPage: true, animations: 'disabled' });
 
-        // Advance to step 4
+        // Advance to step 4 — Data Sharing
         if (isOnboardingMode) {
             await page.locator('.btn-primary').click();
         } else {
             await page.locator('[aria-label*="Step 4:"]').click();
         }
+        await expect(page.locator('.step-title').first()).toContainText('Data Sharing', { timeout: 5000 });
+
+        // 23: Step 4 — Data Sharing
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/23-settings-step4-data-sharing.png`, fullPage: true, animations: 'disabled' });
+
+        // Advance to step 5 — Preferences
+        if (isOnboardingMode) {
+            await page.locator('.btn-primary').click();
+        } else {
+            await page.locator('[aria-label*="Step 5:"]').click();
+        }
         await expect(page.locator('.step-title').first()).toContainText('Preferences', { timeout: 5000 });
 
-        // 23: Step 4 — Preferences
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/23-settings-step4-prefs.png`, fullPage: true, animations: 'disabled' });
+        // 24: Step 5 — Preferences
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/24-settings-step5-prefs.png`, fullPage: true, animations: 'disabled' });
 
         // Close the wizard
         await page.locator('.modal-close').click();
