@@ -44,9 +44,12 @@ def resolve_startup_host(default_host: str = LOCALHOST) -> str:
     """
     allow_lan = False
     try:
-        from app.services.config_service import get_config_sync
+        from app.services.config_service import read_allow_lan_sync
 
-        allow_lan = bool(get_config_sync().allow_lan_access)
+        # Narrow single-column read: tolerates schema drift (a new AppConfig
+        # column not yet reconciled into an existing DB) that a full-row SELECT
+        # would choke on at this pre-init_db point.
+        allow_lan = read_allow_lan_sync()
     except Exception as e:  # noqa: BLE001 — startup must never crash on a config read
         logger.warning("Could not read LAN access setting, binding localhost: %s", e, exc_info=True)
         allow_lan = False
