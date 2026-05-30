@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select
@@ -25,6 +26,7 @@ from app.core.discdb_exporter import (
     generate_export,
     get_makemkv_log_dir,
 )
+from app.core.security import is_safe_remote_url, sanitize_log_value
 from app.models.app_config import AppConfig
 from app.models.disc_job import DiscJob, DiscTitle, JobState
 
@@ -162,11 +164,17 @@ async def submit_release_image(
         logger.debug(f"No image at {image_path}, skipping {kind} upload")
         return False
 
-    url = f"{base_url.rstrip('/')}/api/engram/release/{release_id}/images/{kind}"
+    # quote() neutralises any path-altering chars in release_id, then guard the
+    # fully-built URL (host comes from the user-configurable discdb_api_url) so a
+    # misconfigured base_url can't redirect the upload at an internal host (SSRF).
+    url = f"{base_url.rstrip('/')}/api/engram/release/{quote(release_id, safe='')}/images/{kind}"
+    if not is_safe_remote_url(url):
+        logger.warning(f"Refusing {kind} image upload to unsafe URL for {sanitize_log_value(url)}")
+        return False
     content_type = _image_content_type(image_path)
-    body = image_path.read_bytes()
 
     try:
+        body = image_path.read_bytes()
         async with httpx.AsyncClient(timeout=SUBMIT_TIMEOUT) as client:
             resp = await client.post(
                 url,
@@ -175,8 +183,10 @@ async def submit_release_image(
             )
             resp.raise_for_status()
             return True
-    except httpx.HTTPError as e:
-        logger.warning(f"Release {kind} image upload failed for {release_id}: {e}")
+    except (httpx.HTTPError, OSError) as e:
+        logger.warning(
+            f"Release {kind} image upload failed for {sanitize_log_value(release_id)}: {e}"
+        )
         return False
 
 
@@ -289,7 +299,6 @@ class BatchSubmissionResult:
     failed: int = 0
     results: list[dict] = field(default_factory=list)
     contribute_url: str | None = None
-    images_uploaded: dict[str, bool] = field(default_factory=dict)
 
 
 async def submit_release_group(
@@ -347,17 +356,9 @@ async def submit_release_group(
         else:
             result.failed += 1
 
-    if result.submitted > 0:
-        from app.core.discdb_exporter import get_export_directory
-
-        export_base = get_export_directory(config)
-        export_dirs = [export_base / j.content_hash for j in jobs if j.content_hash]
-        result.images_uploaded = await _upload_release_images(
-            release_group_id,
-            export_dirs,
-            config.discdb_api_key,
-            config.discdb_api_url,
-        )
-
+    # NOTE: cover images are uploaded per-disc inside submit_job() above, which
+    # only runs after that disc's data submits successfully. No consolidated
+    # group-level upload here — it would double-POST disc 1's cover and could
+    # attach images for discs whose submission failed.
     await session.commit()
     return result

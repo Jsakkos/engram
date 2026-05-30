@@ -334,6 +334,43 @@ class TestSubmitReleaseImage:
 
         assert ok is False
 
+    @pytest.mark.anyio
+    async def test_unsafe_base_url_returns_false_without_request(self, api_key, tmp_path):
+        """SSRF guard: a base_url pointing at an internal host is refused, no POST."""
+        cover = tmp_path / "cover.jpg"
+        cover.write_bytes(b"x")
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await submit_release_image(
+                "rel-7", "front", cover, api_key, "http://localhost:8080"
+            )
+
+        assert ok is False
+        mock_client.post.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_read_error_returns_false(self, api_key, base_url, tmp_path):
+        """A read failure (e.g. path is a directory) is caught, not propagated."""
+        # A directory passes exists() but read_bytes() raises an OSError subclass.
+        not_a_file = tmp_path / "cover.jpg"
+        not_a_file.mkdir()
+
+        with patch("app.core.discdb_submitter.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await submit_release_image("rel-8", "front", not_a_file, api_key, base_url)
+
+        assert ok is False
+        mock_client.post.assert_not_called()
+
 
 class TestFindReleaseImageFiles:
     def test_finds_front_cover(self, tmp_path):
