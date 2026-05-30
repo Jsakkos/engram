@@ -4,6 +4,24 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-30
+
+_Highlights: a wider setup wizard with a dedicated Data Sharing tab and guided TMDB onboarding; the Import Watch Folder now handles libraries pointed straight at a show and flat folders with no season; and an ASR matcher fix that restores episode matches the new fingerprint-vector scale had started rejecting._
+
+### Added
+
+- **Data Sharing settings tab** — a dedicated tab in the setup/settings wizard now groups everything that sends data off your machine (the fingerprint network, AI assistance, and the gated TheDiscDB integration) in one place, separate from local Preferences. (#263)
+- **Guided TMDB onboarding** — the TMDB token field shows instructional text instead of a token-shaped placeholder, validates automatically when you leave the field (with inline ✓/✗ feedback), and first-run setup no longer advances past the TMDB step until you've entered a valid token or explicitly chosen to continue without one. (#243, #263)
+
+### Changed
+
+- **Wider, collapsible config wizard** — the setup/settings modal is wider (800 → 1040px) and Preferences plus the new Data Sharing tab are grouped into collapsible sections, so the page starts compact and you expand only what you need. Inline action buttons that previously rendered as bare text ("Forget me", "Contribute from existing library") are fixed. (#263)
+
+### Fixed
+
+- **Import Watch Folder missed shows it was pointed at directly** — pointing the watch folder straight at a single show's folder broke ingestion: `Season NN` subfolders sat one nesting level too shallow to be detected (jobs were mislabeled with no show or season), and flat folders with no season matched nothing because the matcher requires a season. Engram now recognizes `Season N` / `Season 01` folders when the watch root *is* the show, and searches every candidate season for flat imports so they match across all seasons. (#264)
+- **ASR episode matching rejected correct matches on known seasons** — a 30-second speech-recognition chunk scores a structurally low similarity against a full-episode reference vector, and the recent precomputed-vector migration lowered that scale further, so the old fixed similarity threshold rejected most correct chunks and returned no episode. Matching now uses a rank-and-margin vote (the top candidate must clear a low floor *and* lead the runner-up by a wide margin) and falls through to a full-file comparison when no chunk votes, restoring matches while still abstaining on out-of-corpus content. (#269)
+
 ## [0.11.0] - 2026-05-29
 
 ### Added
