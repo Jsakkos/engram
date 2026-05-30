@@ -321,6 +321,7 @@ class TestDownloadSubtitlesAllSeasons:
         async with _unit_session_factory() as session:
             job, _t = await _seed(session)
             job_id = job.id
+        coord._subtitle_ready[job_id] = asyncio.Event()
 
         await coord.download_subtitles_all_seasons(job_id, "The Expanse", [1, 2, 3])
 
@@ -328,6 +329,8 @@ class TestDownloadSubtitlesAllSeasons:
             refreshed = await session.get(DiscJob, job_id)
             assert refreshed.subtitle_status == "completed"
             assert refreshed.subtitle_error_message is None
+        # The ready event must be set so the matching gate unblocks.
+        assert coord._subtitle_ready[job_id].is_set()
 
     async def test_fails_when_no_season_has_references(self, monkeypatch):
         coord = _make_coord()
@@ -338,6 +341,7 @@ class TestDownloadSubtitlesAllSeasons:
         async with _unit_session_factory() as session:
             job, _t = await _seed(session)
             job_id = job.id
+        coord._subtitle_ready[job_id] = asyncio.Event()
 
         await coord.download_subtitles_all_seasons(job_id, "Obscure Show", [1, 2])
 
@@ -346,6 +350,8 @@ class TestDownloadSubtitlesAllSeasons:
             assert refreshed.subtitle_status == "failed"
             assert "Obscure Show" in (refreshed.subtitle_error_message or "")
             assert refreshed.error_message is None
+        # The ready event must be set so the matching gate unblocks.
+        assert coord._subtitle_ready[job_id].is_set()
 
     async def test_sets_subtitle_ready_event(self, monkeypatch):
         coord = _make_coord()

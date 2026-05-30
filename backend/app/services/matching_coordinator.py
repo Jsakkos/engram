@@ -1271,8 +1271,10 @@ class MatchingCoordinator:
 
             from app.matcher.testing_service import download_subtitles
 
-            any_refs = False
             canonical_name: str | None = None
+            downloaded_total = 0
+            failed_total = 0
+            episode_total = 0
             for season in seasons:
                 try:
                     result = await asyncio.to_thread(download_subtitles, show_name, season)
@@ -1281,12 +1283,24 @@ class MatchingCoordinator:
                     continue
 
                 episodes = result.get("episodes") or []
-                if any(ep["status"] in ("downloaded", "cached", "precomputed") for ep in episodes):
-                    any_refs = True
-                if result.get("show_name"):
+                downloaded_total += sum(
+                    1 for ep in episodes if ep["status"] in ("downloaded", "cached", "precomputed")
+                )
+                failed_total += sum(1 for ep in episodes if ep["status"] in ("not_found", "failed"))
+                episode_total += len(episodes)
+                # First non-None canonical name wins (deterministic across seasons).
+                if result.get("show_name") and canonical_name is None:
                     canonical_name = result["show_name"]
+                # Per-season progress so the UI isn't silent during a cold multi-season fetch.
+                await ws_manager.broadcast_subtitle_event(
+                    job_id,
+                    "downloading",
+                    downloaded=downloaded_total,
+                    total=episode_total,
+                    failed_count=failed_total,
+                )
 
-            status = "completed" if any_refs else "failed"
+            status = "completed" if downloaded_total > 0 else "failed"
             error_msg = None
             if status == "failed":
                 error_msg = (
@@ -1309,7 +1323,13 @@ class MatchingCoordinator:
                 )
                 await session.commit()
 
-            await ws_manager.broadcast_subtitle_event(job_id, status, downloaded=0, total=0)
+            await ws_manager.broadcast_subtitle_event(
+                job_id,
+                status,
+                downloaded=downloaded_total,
+                total=episode_total,
+                failed_count=failed_total,
+            )
 
         except Exception as e:
             logger.exception(
@@ -1319,7 +1339,10 @@ class MatchingCoordinator:
                 await session.execute(
                     update(DiscJob)
                     .where(DiscJob.id == job_id)
-                    .values(subtitle_status="failed", error_message=f"Download error: {str(e)}")
+                    .values(
+                        subtitle_status="failed",
+                        subtitle_error_message=f"Download error: {str(e)}",
+                    )
                 )
                 await session.commit()
             await ws_manager.broadcast_subtitle_event(job_id, "failed")
