@@ -561,10 +561,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
 
                         <div className="form-group" style={{ marginTop: '1.5rem' }}>
                             <label htmlFor="importWatchPath">Import Watch Folder</label>
-                            <span className="form-hint" style={{ display: 'block', marginBottom: '0.5rem' }}>
-                                Automatically import MKV files ripped by AutomaticRippingMachine or similar tools.
-                                Engram detects per-disc subfolders, show-organised trees, and flat layouts.
-                            </span>
+                            <div className="form-hint" style={{ display: 'block', marginBottom: '0.5rem' }}>
+                                Automatically import MKV files ripped by AutomaticRippingMachine or copied in
+                                manually. Point it at the folder that holds your rips. Supported layouts:
+                                <ul style={{ margin: '0.4rem 0 0.4rem', paddingLeft: '1.1rem' }}>
+                                    <li><code>Show Name / Season 01 / episode.mkv</code> — recommended, best episode matching</li>
+                                    <li><code>Show Name / episode.mkv</code> — flat; episodes are matched across all seasons of the show</li>
+                                    <li><code>DISC_LABEL / title_t00.mkv</code> — per-disc, ARM-style</li>
+                                </ul>
+                                Season folders may be written <code>Season 1</code> or <code>Season 01</code>.
+                                Without a season folder, matching searches every season, which is slower.
+                            </div>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <input
                                     id="importWatchPath"

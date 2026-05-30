@@ -76,15 +76,18 @@ class TestMatchSingleFile:
         assert result.needs_review is True
         assert result.episode_code == "S01E04"  # recovered from filename
 
-    async def test_fallback_when_no_season(self, tmp_path, monkeypatch):
+    async def test_unknown_season_with_no_candidate_seasons_falls_back(self, tmp_path, monkeypatch):
+        # Season unknown + no seasons have references → filename fallback (needs review).
         curator = EpisodeCurator()
         curator._matcher = Mock()
         f = tmp_path / "Show.S01E04.mkv"
         f.write_text("")
         monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [])
 
         result = await curator.match_single_file(f, "Show", None)
         assert result.needs_review is True
+        assert result.episode_code == "S01E04"  # recovered from filename
 
     async def test_high_confidence_match(self, tmp_path, monkeypatch):
         curator = EpisodeCurator()
@@ -157,6 +160,123 @@ class TestMatchSingleFile:
         result = await curator.match_single_file(f, "Show", 3)
         assert result.needs_review is True
         assert result.episode_code == "S03E07"  # filename fallback
+
+
+@pytest.mark.unit
+class TestMatchAcrossSeasons:
+    """Unknown-season import: search every candidate season, keep the best match."""
+
+    async def test_dispatches_when_season_unknown(self, tmp_path, monkeypatch):
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "ep.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        sentinel = MatchResult(f, "S04E02", None, 0.8, False)
+
+        async def fake_across(fp, series, *a, **k):
+            return sentinel
+
+        monkeypatch.setattr(curator, "_match_across_seasons", fake_across)
+        result = await curator.match_single_file(f, "Show", None)
+        assert result is sentinel
+
+    async def test_known_season_does_not_dispatch(self, tmp_path, monkeypatch):
+        curator = EpisodeCurator()
+        curator._cache_dir = tmp_path
+        curator._matcher = Mock()
+        f = tmp_path / "ep.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+
+        async def boom(*a, **k):
+            raise AssertionError("should not search all seasons when season is known")
+
+        monkeypatch.setattr(curator, "_match_across_seasons", boom)
+
+        async def fake_prepass(**k):
+            return None
+
+        monkeypatch.setattr(curator, "_chromaprint_prepass", fake_prepass)
+        sentinel = MatchResult(f, "S02E01", None, 0.9, False)
+
+        async def fake_asr(*a, **k):
+            return sentinel
+
+        monkeypatch.setattr(curator, "_run_asr_identify", fake_asr)
+        result = await curator.match_single_file(f, "Show", 2)
+        assert result is sentinel
+
+    async def test_picks_highest_confidence_across_seasons(self, tmp_path, monkeypatch):
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "ep.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [1, 2, 3])
+
+        canned = {
+            1: MatchResult(f, None, None, 0.0, True),
+            2: MatchResult(f, "S02E05", None, 0.92, False),
+            3: MatchResult(f, "S03E01", None, 0.6, True),
+        }
+
+        async def fake_single(fp, series, season, *a, **k):
+            return canned[season]
+
+        monkeypatch.setattr(curator, "match_single_file", fake_single)
+        result = await curator._match_across_seasons(f, "Show")
+        assert result.episode_code == "S02E05"
+        assert result.confidence == 0.92
+
+    async def test_no_match_in_any_season_falls_back(self, tmp_path, monkeypatch):
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "Show.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [1, 2])
+
+        async def fake_single(fp, series, season, *a, **k):
+            return MatchResult(fp, None, None, 0.0, True)
+
+        monkeypatch.setattr(curator, "match_single_file", fake_single)
+        result = await curator._match_across_seasons(f, "Show")
+        assert result.episode_code is None
+        assert result.needs_review is True
+
+    async def test_no_candidate_seasons_falls_back(self, tmp_path, monkeypatch):
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "Show.S01E04.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [])
+        result = await curator._match_across_seasons(f, "Show")
+        assert result.needs_review is True
+        assert result.episode_code == "S01E04"  # filename fallback
+
+
+@pytest.mark.unit
+class TestCandidateSeasons:
+    def test_enumerates_seasons_from_downloaded_srts(self, tmp_path):
+        curator = EpisodeCurator()
+        curator._cache_dir = tmp_path
+        curator._matcher = Mock()
+        curator._matcher.show_name = "The Expanse"
+        data_dir = tmp_path / "data" / "The Expanse"
+        data_dir.mkdir(parents=True)
+        (data_dir / "The Expanse - S01E01.srt").write_text("")
+        (data_dir / "The Expanse - S01E02.srt").write_text("")
+        (data_dir / "The Expanse - S03E05.srt").write_text("")
+
+        assert curator._candidate_seasons("The Expanse") == [1, 3]
+
+    def test_falls_back_to_tmdb_season_count(self, tmp_path, monkeypatch):
+        curator = EpisodeCurator()
+        curator._cache_dir = tmp_path  # empty: no manifest, no SRTs
+        curator._matcher = Mock()
+        curator._matcher.show_name = "The Expanse"
+        curator._current_show_id = "999"
+        monkeypatch.setattr("app.matcher.tmdb_client.get_number_of_seasons", lambda show_id: 6)
+        assert curator._candidate_seasons("The Expanse") == [1, 2, 3, 4, 5, 6]
 
 
 @pytest.mark.unit
