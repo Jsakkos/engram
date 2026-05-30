@@ -404,3 +404,13 @@ For development without physical discs:
 - SQLite database stored at `backend/engram.db`
 - Subtitle cache stored at `~/.engram/cache/`
 - Logs written to `~/.engram/engram.log`
+
+## Release and Changelog
+
+**The GitHub release page is generated from `CHANGELOG.md`, not from GitHub's auto-generated PR list.** At release time, `release.yml` runs `backend/scripts/extract_changelog.py` to pull the section for the version being tagged and uses it as the release body, then appends a `**Full Changelog**` compare link. So the curated changelog *is* the release notes — keep it good.
+
+- **Before cutting a release, `CHANGELOG.md` MUST contain a curated `## [X.Y.Z] - YYYY-MM-DD` section whose version matches `backend/pyproject.toml`.** CI enforces this: the `changelog-version-check` job (`ci.yml`) runs the extractor in `--check` mode against the pyproject version and fails the PR if the section is missing — so a release PR can't merge without its changelog entry.
+- **Section format** (Keep a Changelog): open with a one-line italic `_Highlights: …_` summary (this leads the release notes), then `### Added` / `### Changed` / `### Fixed` / `### Removed` as needed. Reference PRs as `(#NNN)`. Write user-facing prose, not commit subjects.
+- **`[Unreleased]`** holds entries accumulated between releases; move its content into the new `## [X.Y.Z]` section as part of the release PR. Extraction targets a concrete version and never returns `[Unreleased]`.
+- **Release flow**: a `chore: release vX.Y.Z` PR (bump the version files + write the CHANGELOG section) → squash-merge → `tag-release.yml` tags from `main` → `release.yml` builds binaries and publishes the release with the extracted notes.
+- **Preview locally**: `python3 backend/scripts/extract_changelog.py --version X.Y.Z` (or `uv run python …` on Windows) prints exactly what the release body will contain.

@@ -18,6 +18,23 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  changelog-version-check:
+    name: Changelog Version Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # The GitHub release body is generated from the matching CHANGELOG.md
+      # section (see release.yml), so a `chore: release vX.Y.Z` PR must ship its
+      # changelog entry. This fails such a PR fast — before the ~20-min binary
+      # build — when the section is missing. Normal PRs pass trivially (pyproject
+      # is still the last released version, whose section already exists).
+      - name: CHANGELOG has a section for the pyproject version
+        run: |
+          VERSION=$(grep '^version = ' backend/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "pyproject version: $VERSION"
+          python3 backend/scripts/extract_changelog.py \
+            --version "$VERSION" --changelog CHANGELOG.md --check
+
   backend-lint:
     name: Backend Lint
     runs-on: ubuntu-latest
