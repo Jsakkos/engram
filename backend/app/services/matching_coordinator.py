@@ -39,6 +39,7 @@ STRICT_MIN_VOTES = 4
 # Sentinel value `_UNSET` distinguishes "haven't tried yet" from "tried and got None".
 _UNSET: object = object()
 _fpcalc_path_cache: str | None | object = _UNSET
+_ffmpeg_path_cache: str | None | object = _UNSET
 
 
 async def _resolve_fpcalc_path(cfg_path: str | None) -> str | None:
@@ -57,6 +58,25 @@ async def _resolve_fpcalc_path(cfg_path: str | None) -> str | None:
     detected = await asyncio.to_thread(detect_fpcalc)
     _fpcalc_path_cache = detected.path if detected.found else None
     return _fpcalc_path_cache  # type: ignore[return-value]
+
+
+async def _resolve_ffmpeg_path(cfg_path: str | None) -> str | None:
+    """Return the ffmpeg binary path (backs the chromaprint pre-decode fallback).
+
+    Prefers explicit config over auto-detect; caches the detect result at module
+    level so a multi-title rip doesn't re-probe per title (same rationale as
+    `_resolve_fpcalc_path`).
+    """
+    if cfg_path:
+        return cfg_path
+    global _ffmpeg_path_cache
+    if _ffmpeg_path_cache is not _UNSET:
+        return _ffmpeg_path_cache  # type: ignore[return-value]
+    from app.api.validation import detect_ffmpeg
+
+    detected = await asyncio.to_thread(detect_ffmpeg)
+    _ffmpeg_path_cache = detected.path if detected.found else None
+    return _ffmpeg_path_cache  # type: ignore[return-value]
 
 
 # Maps DiscTitle.match_source (the internal label, e.g. "engram", "discdb",
@@ -738,7 +758,10 @@ class MatchingCoordinator:
                         cfg = await get_config()
                         fpcalc_path = await _resolve_fpcalc_path(cfg.fpcalc_path)
                         if fpcalc_path:
-                            extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path)
+                            ffmpeg_path = await _resolve_ffmpeg_path(cfg.ffmpeg_path)
+                            extractor = ChromaprintExtractor(
+                                fpcalc_path=fpcalc_path, ffmpeg_path=ffmpeg_path
+                            )
                             fp_result = await extractor.extract(str(file_path))
                             title.chromaprint_blob = fp_result.to_blob()
                             title.chromaprint_extracted_at = datetime.now(UTC)
@@ -813,6 +836,8 @@ class MatchingCoordinator:
                                         match_source=_contrib_source,
                                         disc_content_hash=disc_hash,
                                         pseudonym=_cfg.contribution_pseudonym,
+                                        show_title=getattr(job, "tmdb_name", None)
+                                        or getattr(job, "detected_title", None),
                                         contributions_enabled=_cfg.enable_fingerprint_contributions,
                                     )
                         except Exception as e:

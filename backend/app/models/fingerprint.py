@@ -33,6 +33,11 @@ class FingerprintContribution(SQLModel, table=True):
     season: int | None = None
     episode: int | None = None
 
+    # Human-readable show name for local display/diagnostics (logs, future queue
+    # UI). Not part of the upload identity — the server keys off tmdb_id+season+
+    # episode. Nullable: older rows and disc-flow rows may leave it unset.
+    show_title: str | None = None
+
     # Provenance for trust-tier promotion
     match_confidence: float
     match_source: str  # 'engram_asr' | 'engram_discdb' | 'bootstrap' | 'user_review'

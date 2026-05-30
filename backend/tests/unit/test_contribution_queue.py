@@ -22,6 +22,7 @@ def test_fingerprint_contribution_has_required_fields():
         "match_source",
         "disc_content_hash",
         "pseudonym",
+        "show_title",
         "uploaded_at",
         "upload_attempts",
     ):
@@ -81,6 +82,43 @@ async def test_enqueue_persists_row():
     added = session.add.call_args[0][0]
     assert added.title_id == 42
     assert added.match_source == "engram_asr"
+
+
+@pytest.mark.asyncio
+async def test_enqueue_persists_and_logs_show_title():
+    """Bootstrap rows have title_id=None; the show name is stored and used in the log.
+
+    Regression for the misleading "Queued contribution for title None" line: when a
+    show_title is supplied, it is persisted on the row and the log names the show
+    instead of the null title_id.
+    """
+    from loguru import logger as _logger
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    messages: list[str] = []
+    sink_id = _logger.add(messages.append, format="{message}", level="INFO")
+    try:
+        await ContributionQueue().enqueue(
+            session=session,
+            title_id=None,
+            chromaprint_blob=b"x",
+            tmdb_id=4589,
+            season=1,
+            episode=1,
+            match_confidence=1.0,
+            match_source="bootstrap",
+            disc_content_hash=None,
+            pseudonym="11111111-1111-4111-8111-111111111111",
+            show_title="Arrested Development",
+        )
+    finally:
+        _logger.remove(sink_id)
+
+    added = session.add.call_args[0][0]
+    assert added.show_title == "Arrested Development"
+    assert any("Arrested Development" in m for m in messages)
+    assert not any("title None" in m for m in messages)
 
 
 @pytest.mark.asyncio

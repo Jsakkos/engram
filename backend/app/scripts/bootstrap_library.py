@@ -124,6 +124,7 @@ async def bootstrap_directory(
     *,
     dry_run: bool = False,
     fpcalc_path: str | None = None,
+    ffmpeg_path: str | None = None,
     search_fn: SearchFn | None = None,
 ) -> dict[str, int]:
     """Walk `root`, extract + enqueue contributions, return summary counts.
@@ -155,7 +156,14 @@ async def bootstrap_directory(
         logger.error("fpcalc not configured; cannot bootstrap")
         return counters
 
-    extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path)
+    # ffmpeg backs the pre-decode fallback for codecs fpcalc can't decode.
+    if ffmpeg_path is None:
+        from app.api.validation import detect_ffmpeg
+
+        detected_ffmpeg = await asyncio.to_thread(detect_ffmpeg)
+        ffmpeg_path = detected_ffmpeg.path if detected_ffmpeg.found else None
+
+    extractor = ChromaprintExtractor(fpcalc_path=fpcalc_path, ffmpeg_path=ffmpeg_path)
 
     async with async_session() as session:
         cfg = await get_config()
@@ -197,6 +205,7 @@ async def bootstrap_directory(
                 match_source="bootstrap",
                 disc_content_hash=None,
                 pseudonym=pseudonym,
+                show_title=show,
                 contributions_enabled=cfg.enable_fingerprint_contributions,
             )
             counters["queued"] += 1
@@ -220,10 +229,16 @@ def _main() -> int:
     parser.add_argument("library_root", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--fpcalc", type=str, default=None, help="Override fpcalc binary path")
+    parser.add_argument("--ffmpeg", type=str, default=None, help="Override ffmpeg binary path")
     args = parser.parse_args()
 
     counters = asyncio.run(
-        bootstrap_directory(args.library_root, dry_run=args.dry_run, fpcalc_path=args.fpcalc)
+        bootstrap_directory(
+            args.library_root,
+            dry_run=args.dry_run,
+            fpcalc_path=args.fpcalc,
+            ffmpeg_path=args.ffmpeg,
+        )
     )
     logger.info(f"Bootstrap done: {counters}")
     return 0 if counters["errors"] == 0 else 1

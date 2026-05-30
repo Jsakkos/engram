@@ -65,9 +65,82 @@ def test_chromaprint_result_roundtrip():
 
 
 def test_extractor_construction():
-    """ChromaprintExtractor takes an fpcalc_path."""
+    """ChromaprintExtractor takes an fpcalc_path and an optional ffmpeg_path."""
     ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc")
     assert ex.fpcalc_path == "/fake/fpcalc"
+    assert ex.ffmpeg_path is None  # fallback disabled by default
+
+    ex2 = ChromaprintExtractor(fpcalc_path="/fake/fpcalc", ffmpeg_path="/fake/ffmpeg")
+    assert ex2.ffmpeg_path == "/fake/ffmpeg"
+
+
+# Real fpcalc stderr for the codec-gap case (DTS/TrueHD/FLAC/E-AC-3).
+_DECODER_GAP_STDERR = "ERROR: Could not find any audio stream in the file (Decoder not found)"
+
+
+def _make_proc(returncode, stdout="", stderr=""):
+    m = MagicMock()
+    m.returncode = returncode
+    m.stdout = stdout
+    m.stderr = stderr
+    return m
+
+
+@pytest.mark.asyncio
+async def test_extract_falls_back_to_ffmpeg_on_decoder_error():
+    """When fpcalc can't decode (decoder-not-found) and ffmpeg is configured,
+    the audio is re-decoded via ffmpeg and fingerprinted from the temp WAV."""
+
+    def fake_run(cmd, **kwargs):
+        exe = cmd[0]
+        if exe == "/fake/ffmpeg":
+            return _make_proc(0)  # transcode "succeeds"
+        if "-version" in cmd:
+            return _make_proc(0, stdout="fpcalc version 1.5.1\n")
+        target = cmd[-1]
+        if target.endswith(".wav"):  # fpcalc on the ffmpeg-decoded WAV
+            return _make_proc(0, stdout="DURATION=1304\nFINGERPRINT=10,20,30\n")
+        return _make_proc(2, stderr=_DECODER_GAP_STDERR)  # fpcalc on the source
+
+    with patch("app.matcher.chromaprint_extractor.subprocess.run", side_effect=fake_run):
+        ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc", ffmpeg_path="/fake/ffmpeg")
+        result = await ex.extract("/fake/dts.mkv")
+
+    assert result.hashes == [10, 20, 30]
+    assert result.duration_seconds == 1304.0
+
+
+@pytest.mark.asyncio
+async def test_extract_decoder_error_raises_without_ffmpeg():
+    """No ffmpeg configured → the decoder-not-found failure propagates as-is."""
+
+    def fake_run(cmd, **kwargs):
+        if "-version" in cmd:
+            return _make_proc(0, stdout="fpcalc version 1.5.1\n")
+        return _make_proc(2, stderr=_DECODER_GAP_STDERR)
+
+    with patch("app.matcher.chromaprint_extractor.subprocess.run", side_effect=fake_run):
+        ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc")  # no ffmpeg → no fallback
+        with pytest.raises(RuntimeError, match="Decoder not found"):
+            await ex.extract("/fake/dts.mkv")
+
+
+@pytest.mark.asyncio
+async def test_extract_ffmpeg_failure_propagates():
+    """If the ffmpeg pre-decode itself fails, surface that error (not a fingerprint)."""
+
+    def fake_run(cmd, **kwargs):
+        exe = cmd[0]
+        if exe == "/fake/ffmpeg":
+            return _make_proc(1, stderr="ffmpeg: boom")
+        if "-version" in cmd:
+            return _make_proc(0, stdout="fpcalc version 1.5.1\n")
+        return _make_proc(2, stderr=_DECODER_GAP_STDERR)
+
+    with patch("app.matcher.chromaprint_extractor.subprocess.run", side_effect=fake_run):
+        ex = ChromaprintExtractor(fpcalc_path="/fake/fpcalc", ffmpeg_path="/fake/ffmpeg")
+        with pytest.raises(RuntimeError, match="ffmpeg pre-decode failed"):
+            await ex.extract("/fake/dts.mkv")
 
 
 @pytest.mark.asyncio
