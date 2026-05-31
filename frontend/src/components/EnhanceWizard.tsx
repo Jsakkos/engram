@@ -99,6 +99,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [coverSaved, setCoverSaved] = useState(false);
   const [coverSaving, setCoverSaving] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
 
   const [extraDescriptions, setExtraDescriptions] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {};
@@ -173,13 +174,21 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
   const handleFetchCover = async () => {
     if (!selectedImage) return;
     setCoverSaving(true);
+    setCoverError(null);
     try {
       const res = await fetch(`/api/contributions/${job.id}/fetch-cover`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_url: selectedImage }),
       });
-      if (res.ok) setCoverSaved(true);
+      if (res.ok) {
+        setCoverSaved(true);
+      } else {
+        const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        setCoverError(body.detail ?? "Cover fetch failed");
+      }
+    } catch (e) {
+      setCoverError(e instanceof Error ? e.message : "Cover fetch failed");
     } finally {
       setCoverSaving(false);
     }
@@ -420,6 +429,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                       onClick={() => {
                         setSelectedImage(url);
                         setCoverSaved(false);
+                        setCoverError(null);
                       }}
                       style={{
                         aspectRatio: "2 / 3",
@@ -448,6 +458,11 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                   )}
                   {coverSaved ? "Saved" : "Fetch cover"}
                 </SvActionButton>
+              )}
+              {coverError && (
+                <div style={{ marginTop: 12 }}>
+                  <SvNotice tone="error">{coverError}</SvNotice>
+                </div>
               )}
             </div>
           )}
