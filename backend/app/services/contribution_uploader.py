@@ -245,6 +245,7 @@ class ContributionUploader:
         # Honour the lifetime attempt cap: prior failures consumed some budget.
         remaining = _MAX_ATTEMPTS - contrib.upload_attempts
         for attempt in range(remaining):
+            backoff: float = 2**attempt
             try:
                 resp = await client.post(
                     f"{server_url.rstrip('/')}/v1/contribute",
@@ -264,19 +265,29 @@ class ContributionUploader:
 
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
-                if 400 <= status < 500:
+                if status == 429:
+                    # Rate limited — transient. Honor Retry-After; else exponential.
+                    backoff = _retry_after_seconds(e.response.headers.get("Retry-After")) or backoff
+                    contrib.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Contrib {contrib.id}: rate limited (429), "
+                        f"backoff {backoff}s, attempt {attempt + 1}"
+                    )
+                elif 400 <= status < 500:
                     contrib.upload_status = "failed"
                     contrib.upload_error_msg = f"HTTP {status} (permanent)"
                     contrib.upload_attempts += 1
                     await session.commit()
                     logger.warning(f"Contrib {contrib.id}: permanent HTTP {status}; marking failed")
                     return
-                # 5xx — transient, fall through to retry
-                contrib.upload_attempts += 1
-                await session.commit()
-                logger.warning(
-                    f"Contrib {contrib.id}: transient HTTP {status}, attempt {attempt + 1}"
-                )
+                else:
+                    # 5xx — transient, fall through to retry
+                    contrib.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Contrib {contrib.id}: transient HTTP {status}, attempt {attempt + 1}"
+                    )
 
             except httpx.HTTPError as e:
                 contrib.upload_attempts += 1
@@ -284,7 +295,7 @@ class ContributionUploader:
                 logger.warning(f"Contrib {contrib.id}: network error, attempt {attempt + 1}: {e}")
 
             if attempt < remaining - 1:
-                await asyncio.sleep(2**attempt)
+                await asyncio.sleep(backoff)
 
         # Exhausted retries
         contrib.upload_status = "failed"

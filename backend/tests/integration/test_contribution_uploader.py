@@ -1047,3 +1047,134 @@ async def test_upload_loop_drains_then_idles(monkeypatch):
 
     drain_mock.assert_awaited_once()
     assert sleep_calls == [900]
+
+
+@pytest.mark.asyncio
+async def test_uploader_retries_on_429_then_succeeds(setup_db, tmp_path, monkeypatch):
+    """429 is transient: the row retries (honoring Retry-After) and can still succeed."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=_make_valid_blob(),
+            tmdb_id=1399,
+            season=1,
+            episode=1,
+            match_confidence=0.9,
+            match_source="engram_asr",
+            pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        contrib_id = row.id
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    # First call → 429 with Retry-After: 30; second call → success.
+    rate_limited = httpx.HTTPStatusError(
+        "429",
+        request=MagicMock(),
+        response=MagicMock(status_code=429, headers={"Retry-After": "30"}),
+    )
+    ok_resp = MagicMock()
+    ok_resp.raise_for_status = MagicMock()
+
+    sleep_durations: list[float] = []
+
+    async def fake_sleep(duration):
+        sleep_durations.append(duration)
+
+    with (
+        patch("httpx.AsyncClient") as MockClient,
+        patch("asyncio.sleep", side_effect=fake_sleep),
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=[rate_limited, ok_resp])
+        MockClient.return_value = mock_client
+
+        await ContributionUploader()._drain()
+
+    async with async_session() as session:
+        refreshed = await session.get(FingerprintContribution, contrib_id)
+
+    # Not marked permanently failed; eventually succeeded after retrying.
+    assert refreshed.upload_status == "success"
+    # The 429 backoff honored Retry-After (30s), not the 2**0 = 1s exponential default.
+    assert 30.0 in sleep_durations
+
+
+@pytest.mark.asyncio
+async def test_uploader_429_falls_back_to_exponential_without_retry_after(
+    setup_db, tmp_path, monkeypatch
+):
+    """429 without a Retry-After header falls back to exponential backoff (not permanent)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=_make_valid_blob(),
+            tmdb_id=1399,
+            season=1,
+            episode=2,
+            match_confidence=0.9,
+            match_source="engram_asr",
+            pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        contrib_id = row.id
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    # Always 429 with no Retry-After → exhausts the attempt budget, then fails.
+    rate_limited = httpx.HTTPStatusError(
+        "429",
+        request=MagicMock(),
+        response=MagicMock(status_code=429, headers={}),
+    )
+
+    with patch("httpx.AsyncClient") as MockClient, patch("asyncio.sleep", AsyncMock()):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=rate_limited)
+        MockClient.return_value = mock_client
+
+        await ContributionUploader()._drain()
+
+    async with async_session() as session:
+        refreshed = await session.get(FingerprintContribution, contrib_id)
+
+    # 429 is transient: it consumes the budget like a 5xx, not an instant 4xx fail.
+    assert refreshed.upload_status == "failed"
+    assert refreshed.upload_attempts == _MAX_ATTEMPTS
