@@ -28,7 +28,6 @@ CONTRIBUTION_LOG_PATH = Path("~/.engram/cache/contribution_log.jsonl").expanduse
 _BATCH_SIZE = 50
 _MAX_ATTEMPTS = 5
 _UPLOAD_TIMEOUT = 30.0
-_CONCURRENCY = 5
 
 
 def _retry_after_seconds(value: str | None) -> float | None:
