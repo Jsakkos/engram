@@ -85,7 +85,7 @@ async def test_restart_clears_failed_state_and_starts_new_task(matching_coordina
 
     # Stub the actual download so the test stays offline. The new task will
     # await this and write subtitle_status="completed" to the DB.
-    async def fake_download(self, jid, show_name, season):
+    async def fake_download(self, jid, show_name, season, tmdb_id=None):
         # Capture the show_name the new task was started with.
         fake_download.last_args = (jid, show_name, season)
         from sqlalchemy import update
@@ -152,7 +152,7 @@ async def test_restart_cancels_inflight_task(matching_coordinator):
     # before we trigger restart, so cancellation lands at a real await point.
     await started.wait()
 
-    async def fake_download(self, jid, show_name, season):
+    async def fake_download(self, jid, show_name, season, tmdb_id=None):
         return None
 
     with patch.object(MatchingCoordinator, "download_subtitles", fake_download):
@@ -182,7 +182,7 @@ async def test_restart_preserves_non_subtitle_error_message(matching_coordinator
         await session.refresh(job)
         job_id = job.id
 
-    async def fake_download(self, jid, show_name, season):
+    async def fake_download(self, jid, show_name, season, tmdb_id=None):
         return None
 
     with patch.object(MatchingCoordinator, "download_subtitles", fake_download):

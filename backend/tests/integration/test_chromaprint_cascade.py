@@ -11,7 +11,9 @@ def _setup(monkeypatch):
     """A curator that passes match_single_file's guards (matcher present, init stubbed)."""
     curator = EpisodeCurator()
     curator._matcher = object()  # truthy; real matcher unused because prepass/asr are mocked
-    monkeypatch.setattr(EpisodeCurator, "_ensure_initialized", lambda self, name: True)
+    monkeypatch.setattr(
+        EpisodeCurator, "_ensure_initialized", lambda self, name, tmdb_id=None: True
+    )
     return curator
 
 
