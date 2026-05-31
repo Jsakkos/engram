@@ -1,8 +1,9 @@
 # CODEOWNERS — require owner sign-off on the machinery that guards the repo.
 #
 # These paths gate the merge process itself (CI checks, release/deploy logic),
-# enforce security boundaries, or perform schema migration that runs against
-# every user's database. Changes here should always carry the owner's review.
+# define OR enforce security boundaries, or perform privileged operations
+# (schema migration, self-update). Changes here should always carry the owner's
+# review.
 #
 # NOTE: Until branch protection on `main` sets `require_code_owner_reviews: true`,
 # this file only AUTO-REQUESTS the owner's review on matching PRs (advisory).
@@ -12,8 +13,18 @@
 # CI/CD and release machinery — weakening a check here weakens every PR's gate
 /.github/                       @Jsakkos
 
-# Security guards (SSRF / path-traversal helpers)
+# Security guards AND their enforcement sites. require_localhost is defined in
+# routes.py (not security.py) and applied via Depends() on sensitive endpoints;
+# validation.py holds the executable allowlists behind /api/validate/*. A call
+# site is where a guard actually fires — removing a Depends() or widening an
+# allowlist bypasses it without ever touching security.py.
 /backend/app/core/security.py   @Jsakkos
+/backend/app/api/routes.py      @Jsakkos
+/backend/app/api/validation.py  @Jsakkos
+
+# Self-update: downloads a binary, verifies SHA-256, and replaces the running
+# process via os.execv. The highest-privilege supply-chain surface in the tree.
+/backend/app/core/updater.py    @Jsakkos
 
 # Schema migration & reconciliation. Frozen builds bypass Alembic entirely, so
 # database.py is the real convergence path for end-user databases.
