@@ -85,9 +85,16 @@ def test_curator_routes_fallback_through_constant():
     import app.core.curator as curator_mod
 
     source = inspect.getsource(curator_mod)
+    # The durable guard: curator must reference the shared constant by name. This
+    # holds regardless of the URL's value, so it survives the upcoming rename.
     assert "DEFAULT_FINGERPRINT_SERVER_URL" in source, (
         "curator.py should reference the shared constant for its server-URL fallback"
     )
+    # Belt-and-suspenders catch for the *current* hostname while it still ends in
+    # .workers.dev. DURABILITY LIMIT (revisit at URL migration): getsource() also
+    # scans comments/strings, and once the URL no longer ends in .workers.dev this
+    # check can no longer catch a re-hardcoded literal — the assertion above is the
+    # one that keeps protecting the single-source-of-truth invariant.
     assert ".workers.dev" not in source, (
         "curator.py must not hardcode a fingerprint host literal; route through "
         "DEFAULT_FINGERPRINT_SERVER_URL instead"
@@ -101,7 +108,6 @@ async def test_uploader_falls_back_to_default_url_when_unset(setup_db, monkeypat
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.database import async_session
-    from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 
     async with async_session() as session:
         row = FingerprintContribution(
