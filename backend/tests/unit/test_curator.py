@@ -70,7 +70,7 @@ class TestMatchSingleFile:
         curator = EpisodeCurator()
         f = tmp_path / "Show.S01E04.mkv"
         f.write_text("")
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: False)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: False)
 
         result = await curator.match_single_file(f, "Show", 1)
         assert result.needs_review is True
@@ -82,7 +82,7 @@ class TestMatchSingleFile:
         curator._matcher = Mock()
         f = tmp_path / "Show.S01E04.mkv"
         f.write_text("")
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
         monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [])
 
         result = await curator.match_single_file(f, "Show", None)
@@ -103,7 +103,7 @@ class TestMatchSingleFile:
             "runner_ups": [{"episode": "S01E04"}],
         }
         curator._matcher = mock_matcher
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
         result = await curator.match_single_file(f, "Show", 1)
         assert result.episode_code == "S01E03"
@@ -124,7 +124,7 @@ class TestMatchSingleFile:
             "confidence": 0.6,
         }
         curator._matcher = mock_matcher
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
         result = await curator.match_single_file(f, "Show", 1)
         assert result.episode_code == "S01E02"
@@ -141,7 +141,7 @@ class TestMatchSingleFile:
             "match_details": {"reason": "no votes"},
         }
         curator._matcher = mock_matcher
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
         result = await curator.match_single_file(f, "Show", 1)
         assert result.needs_review is True
@@ -155,7 +155,7 @@ class TestMatchSingleFile:
         mock_matcher = Mock()
         mock_matcher.identify_episode.side_effect = RuntimeError("boom")
         curator._matcher = mock_matcher
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
         result = await curator.match_single_file(f, "Show", 3)
         assert result.needs_review is True
@@ -171,7 +171,7 @@ class TestMatchAcrossSeasons:
         curator._matcher = Mock()
         f = tmp_path / "ep.mkv"
         f.write_text("")
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
         sentinel = MatchResult(f, "S04E02", None, 0.8, False)
 
         async def fake_across(fp, series, *a, **k):
@@ -187,7 +187,7 @@ class TestMatchAcrossSeasons:
         curator._matcher = Mock()
         f = tmp_path / "ep.mkv"
         f.write_text("")
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
         async def boom(*a, **k):
             raise AssertionError("should not search all seasons when season is known")
@@ -291,7 +291,7 @@ class TestMatchFiles:
         self, tmp_path, monkeypatch
     ):
         curator = EpisodeCurator()
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: False)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: False)
         files = [tmp_path / "a.mkv", tmp_path / "b.mkv"]
         seen: list[tuple[int, int]] = []
 
@@ -303,7 +303,7 @@ class TestMatchFiles:
 
     async def test_success_path_reports_progress(self, tmp_path, monkeypatch):
         curator = EpisodeCurator()
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
         async def fake_single(fp, series, season):
             return MatchResult(fp, "S01E01", None, 0.9, False)
@@ -319,7 +319,7 @@ class TestMatchFiles:
 
     async def test_per_file_exception_falls_back(self, tmp_path, monkeypatch):
         curator = EpisodeCurator()
-        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: True)
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
         async def boom(fp, series, season):
             raise RuntimeError("x")

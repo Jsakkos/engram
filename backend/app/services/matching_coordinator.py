@@ -714,6 +714,7 @@ class MatchingCoordinator:
                     progress_callback=on_progress,
                     num_points=num_points,
                     min_vote_count=min_vote_count,
+                    tmdb_id=job.tmdb_id,
                 )
 
                 elapsed = time.monotonic() - match_start
