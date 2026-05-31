@@ -4,11 +4,15 @@ The SSRF guard runs before the job lookup, so a disallowed URL must yield
 HTTP 400 even for a non-existent job_id — proving the guard fires first.
 """
 
+from unittest.mock import AsyncMock, patch
+
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.database import get_session
 from app.main import app
+from app.models.disc_job import ContentType, DiscJob, JobState
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -71,3 +75,56 @@ class TestFetchCoverSsrfGuard:
             json={"image_url": "https://m.media-amazon.com/images/I/test.jpg"},
         )
         assert resp.status_code == 404
+
+
+class TestFetchCoverExportPath:
+    """fetch_cover must use the export-dir fallback, not 400, when the path is unset."""
+
+    async def test_empty_export_path_falls_back_and_saves(
+        self, client: AsyncClient, monkeypatch, tmp_path
+    ):
+        """Default config has discdb_export_path="" — the cover must still save.
+
+        Regression for the silent fetch-cover failure: the route used to 400
+        with "No export path configured" instead of falling back to
+        ~/.engram/discdb-exports/ like every other call site.
+        """
+        async with _unit_session_factory() as s:
+            job = DiscJob(
+                drive_id="E:",
+                volume_label="X",
+                content_hash="HASH123",
+                content_type=ContentType.MOVIE,
+                state=JobState.COMPLETED,
+            )
+            s.add(job)
+            await s.commit()
+            await s.refresh(job)
+            job_id = job.id
+
+        # Redirect the fallback dir to tmp so the test never writes to ~/.engram.
+        import app.core.discdb_exporter as exp
+
+        monkeypatch.setattr(exp, "get_export_directory", lambda config: tmp_path)
+
+        download = httpx.Response(
+            200,
+            headers={"content-type": "image/jpeg"},
+            content=b"\xff\xd8\xff\xe0fake-jpeg",
+            request=httpx.Request("GET", "https://m.media-amazon.com/x.jpg"),
+        )
+        with patch("app.api.routes.httpx.AsyncClient") as cls:
+            mc = AsyncMock()
+            mc.get.return_value = download
+            mc.__aenter__ = AsyncMock(return_value=mc)
+            mc.__aexit__ = AsyncMock(return_value=False)
+            cls.return_value = mc
+
+            resp = await client.post(
+                f"/api/contributions/{job_id}/fetch-cover",
+                json={"image_url": "https://m.media-amazon.com/images/I/cover.jpg"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["filename"] == "cover.jpg"
+        assert (tmp_path / "HASH123" / "cover.jpg").read_bytes() == b"\xff\xd8\xff\xe0fake-jpeg"

@@ -247,6 +247,14 @@ async def _upload_release_images(
     """Find and upload release-level cover images from the given export dirs."""
     results: dict[str, bool] = {}
     images = _find_release_image_files(export_dirs)
+    if not any(images.values()):
+        # Surface the silent skip in logs — a missing cover here is usually an
+        # upstream fetch-cover failure, not an intentional omission.
+        logger.info(
+            f"No release cover images found for release {sanitize_log_value(release_id)} "
+            f"(searched {len(export_dirs)} export dir(s)); skipping image upload"
+        )
+        return {}
     for kind, path in images.items():
         if path is None:
             continue

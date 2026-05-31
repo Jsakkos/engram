@@ -2969,6 +2969,7 @@ async def fetch_cover(
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
+    from app.core.discdb_exporter import get_export_directory
     from app.services.config_service import get_config as get_db_config
 
     # SSRF guard runs BEFORE the DB lookup so a disallowed URL fails fast
@@ -2985,12 +2986,11 @@ async def fetch_cover(
     if not job.content_hash:
         raise HTTPException(status_code=400, detail="No content hash")
 
+    # Use the canonical export-dir helper (falls back to ~/.engram/discdb-exports/)
+    # rather than 400-ing on an unset discdb_export_path — matches every other
+    # call site, and an empty path is the default.
     config = await get_db_config()
-    export_base = Path(config.discdb_export_path) if config.discdb_export_path else None
-    if not export_base:
-        raise HTTPException(status_code=400, detail="No export path configured")
-
-    export_dir = export_base / job.content_hash
+    export_dir = get_export_directory(config) / job.content_hash
     export_dir.mkdir(parents=True, exist_ok=True)
 
     max_size = 10 * 1024 * 1024  # 10 MB
