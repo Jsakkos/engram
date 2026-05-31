@@ -61,7 +61,9 @@ def load_precomputed_manifest(cache_dir) -> dict | None:
     return manifest
 
 
-def precomputed_covers_season(cache_dir, show_name: str, season: int, manifest=None) -> bool:
+def precomputed_covers_season(
+    cache_dir, show_name: str, season: int, manifest=None, expected_tmdb_id=None
+) -> bool:
     """Return True when the precomputed vector cache fully covers show+season.
 
     Mirrors the gate EpisodeMatcher applies at match time (manifest validity,
@@ -71,6 +73,13 @@ def precomputed_covers_season(cache_dir, show_name: str, season: int, manifest=N
 
     ``manifest`` may be a pre-loaded manifest dict to avoid re-reading and
     re-validating manifest.json (callers holding a cached copy pass it in).
+
+    ``expected_tmdb_id`` is the TMDB id the calling job has resolved for the
+    show. When supplied, it is compared against the manifest entry's ``tmdb_id``
+    (string comparison); a mismatch means the corpus is for a *different*
+    same-named show (e.g. Frasier 1993 vs 2023 revival) and this function
+    returns False before inspecting any on-disk files. When either id is
+    unknown the guard is skipped (backward-compatible).
     """
     if manifest is None:
         manifest = load_precomputed_manifest(cache_dir)
@@ -79,6 +88,18 @@ def precomputed_covers_season(cache_dir, show_name: str, season: int, manifest=N
 
     show_entry = manifest.get("shows", {}).get(show_name)
     if not show_entry or season not in show_entry.get("seasons", []):
+        return False
+
+    # Corpus guard: if the job knows its TMDB id and it contradicts the
+    # manifest entry's id, this precomputed corpus is for a DIFFERENT same-named
+    # show — refuse it so we never match e.g. the Frasier 2023 revival against the
+    # 1993 corpus. Skipped when either id is unknown (backward-compatible).
+    entry_id = show_entry.get("tmdb_id")
+    if (
+        expected_tmdb_id is not None
+        and entry_id is not None
+        and str(entry_id) != str(expected_tmdb_id)
+    ):
         return False
 
     show_dir = Path(cache_dir) / "precomputed" / sanitize_filename(show_name)
