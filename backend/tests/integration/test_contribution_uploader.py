@@ -609,7 +609,7 @@ async def test_uploader_increments_attempts_on_5xx(setup_db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_uploader_skips_when_opted_out(setup_db, monkeypatch):
-    """If enable_fingerprint_contributions is False, _process_batch is a no-op."""
+    """If enable_fingerprint_contributions is False, _drain is a no-op."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
     async with async_session() as session:
@@ -718,7 +718,7 @@ async def test_uploader_prompts_when_disclosure_not_accepted(setup_db, monkeypat
 
 @pytest.mark.asyncio
 async def test_uploader_uploads_when_all_gates_pass(setup_db, tmp_path, monkeypatch):
-    """When all three privacy gates pass, _process_batch uploads and marks success."""
+    """When all three privacy gates pass, _drain uploads and marks success."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
     monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
