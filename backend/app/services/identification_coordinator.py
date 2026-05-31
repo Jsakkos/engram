@@ -314,7 +314,9 @@ class IdentificationCoordinator:
                     and job.detected_season
                     and not _amb
                 ):
-                    self._start_subtitle_download(job_id, job.detected_title, job.detected_season)
+                    self._start_subtitle_download(
+                        job_id, job.detected_title, job.detected_season, job.tmdb_id
+                    )
                     logger.info(
                         f"Job {job_id}: starting subtitle download for "
                         f"{job.detected_title} S{job.detected_season}"
@@ -528,7 +530,7 @@ class IdentificationCoordinator:
                     # Start subtitle download
                     if job.detected_title and job.detected_season:
                         self._start_subtitle_download(
-                            job_id, job.detected_title, job.detected_season
+                            job_id, job.detected_title, job.detected_season, job.tmdb_id
                         )
                     elif job.detected_title and self._start_subtitle_download_all_seasons:
                         # Season unknown (flat import folder): prefetch references for
@@ -742,7 +744,7 @@ class IdentificationCoordinator:
                 and self._restart_subtitle_download is not None
             )
             restart_args = (
-                (job_id, job.detected_title, job.detected_season)
+                (job_id, job.detected_title, job.detected_season, job.tmdb_id)
                 if should_restart_subtitles
                 else None
             )

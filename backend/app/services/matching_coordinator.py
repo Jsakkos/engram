@@ -146,11 +146,13 @@ class MatchingCoordinator:
         """Set DiscDB mappings for a job."""
         self._discdb_mappings[job_id] = mappings
 
-    def start_subtitle_download(self, job_id: int, show_name: str, season: int) -> None:
+    def start_subtitle_download(
+        self, job_id: int, show_name: str, season: int, tmdb_id: int | None = None
+    ) -> None:
         """Start background subtitle download with tracking."""
         self._subtitle_ready[job_id] = asyncio.Event()
         self._subtitle_tasks[job_id] = asyncio.create_task(
-            self.download_subtitles(job_id, show_name, season)
+            self.download_subtitles(job_id, show_name, season, tmdb_id)
         )
 
     def start_subtitle_download_all_seasons(
@@ -162,7 +164,9 @@ class MatchingCoordinator:
             self.download_subtitles_all_seasons(job_id, show_name, seasons)
         )
 
-    async def restart_subtitle_download(self, job_id: int, show_name: str, season: int) -> None:
+    async def restart_subtitle_download(
+        self, job_id: int, show_name: str, season: int, tmdb_id: int | None = None
+    ) -> None:
         """Cancel any in-flight subtitle download and start a fresh one.
 
         Used after re-identification corrects the show title. Resets the
@@ -203,7 +207,7 @@ class MatchingCoordinator:
         # progress events as it runs.
         await ws_manager.broadcast_subtitle_event(job_id, "downloading", downloaded=0, total=0)
 
-        self.start_subtitle_download(job_id, show_name, season)
+        self.start_subtitle_download(job_id, show_name, season, tmdb_id)
 
     async def try_discdb_assignment(self, job_id: int, title: "DiscTitle", session) -> bool:
         """Try to assign episode info from TheDiscDB mappings, skipping fingerprinting.
@@ -1351,7 +1355,9 @@ class MatchingCoordinator:
             if job_id in self._subtitle_ready:
                 self._subtitle_ready[job_id].set()
 
-    async def download_subtitles(self, job_id: int, show_name: str, season: int) -> None:
+    async def download_subtitles(
+        self, job_id: int, show_name: str, season: int, tmdb_id: int | None = None
+    ) -> None:
         """Download subtitles in background. Failure BLOCKS matching."""
         from sqlalchemy import update
 
@@ -1369,7 +1375,7 @@ class MatchingCoordinator:
 
             from app.matcher.testing_service import download_subtitles
 
-            result = await asyncio.to_thread(download_subtitles, show_name, season)
+            result = await asyncio.to_thread(download_subtitles, show_name, season, tmdb_id=tmdb_id)
 
             episodes = result["episodes"]
             # The precomputed vector cache covered the whole season, so no SRTs
