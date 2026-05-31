@@ -47,22 +47,6 @@ def _retry_after_seconds(value: str | None) -> float | None:
     return float(seconds) if seconds >= 0 else None
 
 
-def _retry_after_seconds(value: str | None) -> float | None:
-    """Parse a Retry-After header value (integer seconds) into float seconds.
-
-    Returns None when the header is absent or not a non-negative integer. We do
-    not support the HTTP-date form — our server only ever emits integer seconds —
-    so callers fall back to exponential backoff when this returns None.
-    """
-    if value is None:
-        return None
-    try:
-        seconds = int(value.strip())
-    except (ValueError, AttributeError):
-        return None
-    return float(seconds) if seconds >= 0 else None
-
-
 class ContributionUploader:
     """Background service: drain FingerprintContribution queue over HTTPS."""
 
