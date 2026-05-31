@@ -19,6 +19,15 @@ TMDB_SEARCH_MOVIE_URL = "https://api.themoviedb.org/3/search/movie"
 # Popularity threshold for high-confidence matches
 HIGH_POPULARITY_THRESHOLD = 50
 
+# Same-name collision detection (item 1). Flag a job for review only when two
+# distinct same-name TMDB shows are BOTH plausibly real: the runner-up clears
+# this popularity floor AND the top/second popularity ratio is small enough that
+# popularity is not a confident pick. Dominant-twin cases (e.g. Frasier 1993 vs
+# 2023 revival) intentionally fall through — they have no identify-time signal
+# and are handled downstream (item 3). Tunable.
+AMBIGUOUS_POPULARITY_FLOOR = 10.0
+AMBIGUOUS_POPULARITY_RATIO = 4.0
+
 
 def _confidence_from_popularity(popularity: float, ambiguous: bool) -> float:
     """Map a TMDB popularity score to a classification confidence value."""
@@ -64,7 +73,14 @@ def _name_similarity(query: str, candidate: str) -> float:
 class TmdbSignal:
     """Signal from TMDB about content type."""
 
-    __slots__ = ("content_type", "confidence", "tmdb_id", "tmdb_name")
+    __slots__ = (
+        "content_type",
+        "confidence",
+        "tmdb_id",
+        "tmdb_name",
+        "ambiguous_identity",
+        "candidates",
+    )
 
     def __init__(
         self,
@@ -72,17 +88,21 @@ class TmdbSignal:
         confidence: float,
         tmdb_id: int | None = None,
         tmdb_name: str | None = None,
+        ambiguous_identity: bool = False,
+        candidates: list[dict] | None = None,
     ):
         self.content_type = content_type
         self.confidence = confidence
         self.tmdb_id = tmdb_id
         self.tmdb_name = tmdb_name
+        self.ambiguous_identity = ambiguous_identity
+        self.candidates = candidates
 
     def __repr__(self) -> str:
         return (
             f"TmdbSignal(content_type={self.content_type.value}, "
             f"confidence={self.confidence:.0%}, tmdb_id={self.tmdb_id}, "
-            f"tmdb_name={self.tmdb_name!r})"
+            f"tmdb_name={self.tmdb_name!r}, ambiguous_identity={self.ambiguous_identity})"
         )
 
 
