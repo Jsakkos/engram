@@ -2165,15 +2165,15 @@ async def simulate_insert_disc_from_staging(
     dependencies=[Depends(require_localhost), Depends(require_debug)],
 )
 async def debug_drain_uploader(request: Request) -> dict:
-    """Force one uploader drain tick (DEBUG only).
+    """Force a full uploader drain (DEBUG only).
 
-    The uploader normally ticks on a long poll interval; tests call this to
-    trigger a drain immediately. Returns {"ok": true}.
+    The uploader normally drains on a long poll interval; tests call this to
+    drain the pending queue immediately. Returns {"ok": true}.
     """
     uploader = getattr(request.app.state, "contribution_uploader", None)
     if uploader is None:
         raise HTTPException(status_code=503, detail="uploader not running")
-    await uploader._process_batch()
+    await uploader._drain()
     return {"ok": True}
 
 
