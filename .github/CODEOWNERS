@@ -1,0 +1,22 @@
+# CODEOWNERS — require owner sign-off on the machinery that guards the repo.
+#
+# These paths gate the merge process itself (CI checks, release/deploy logic),
+# enforce security boundaries, or perform schema migration that runs against
+# every user's database. Changes here should always carry the owner's review.
+#
+# NOTE: Until branch protection on `main` sets `require_code_owner_reviews: true`,
+# this file only AUTO-REQUESTS the owner's review on matching PRs (advisory).
+# It gains enforcement teeth the day that flag is flipped (e.g. when a
+# collaborator joins). See docs/development for the one-command enablement.
+
+# CI/CD and release machinery — weakening a check here weakens every PR's gate
+/.github/                       @Jsakkos
+
+# Security guards (SSRF / path-traversal helpers)
+/backend/app/core/security.py   @Jsakkos
+
+# Schema migration & reconciliation. Frozen builds bypass Alembic entirely, so
+# database.py is the real convergence path for end-user databases.
+/backend/app/database.py        @Jsakkos
+/backend/alembic.ini            @Jsakkos
+/backend/migrations/            @Jsakkos
