@@ -128,12 +128,11 @@ def _search_tmdb(
     headers: dict,
     base_params: dict,
     timeout: float,
-) -> dict | None:
-    """Search a TMDB endpoint and return the best-matching result.
+) -> tuple[dict | None, list[dict]]:
+    """Search a TMDB endpoint; return (best-matching result, all raw results).
 
     Prefers results whose name closely matches the query over raw popularity.
-    Returns:
-        Best result dict with 'id', 'name'/'title', 'popularity', or None
+    The raw list lets callers detect same-name collisions.
     """
     params = {**base_params, "query": query}
     try:
@@ -141,22 +140,21 @@ def _search_tmdb(
         if response.status_code == 200:
             results = response.json().get("results", [])
             if not results:
-                return None
+                return None, []
             if len(results) == 1:
-                return results[0]
-            # Score each result by name similarity, break ties with popularity
+                return results[0], results
             best = results[0]
             best_name = best.get("name", best.get("title", ""))
             best_sim = _name_similarity(query, best_name)
-            for r in results[1:5]:  # Check top 5 results
+            for r in results[1:5]:
                 r_name = r.get("name", r.get("title", ""))
                 r_sim = _name_similarity(query, r_name)
                 if r_sim > best_sim:
                     best, best_sim = r, r_sim
-            return best
+            return best, results
     except (requests.RequestException, ConnectionError, TimeoutError):
         pass
-    return None
+    return None, []
 
 
 def classify_from_tmdb(
@@ -180,8 +178,9 @@ def classify_from_tmdb(
     headers, base_params = _build_auth(api_key)
 
     # Search both TV and movie endpoints
-    tv_result = _search_tmdb(TMDB_SEARCH_TV_URL, name, headers, base_params, timeout)
-    movie_result = _search_tmdb(TMDB_SEARCH_MOVIE_URL, name, headers, base_params, timeout)
+    tv_results: list[dict] = []
+    tv_result, tv_results = _search_tmdb(TMDB_SEARCH_TV_URL, name, headers, base_params, timeout)
+    movie_result, _ = _search_tmdb(TMDB_SEARCH_MOVIE_URL, name, headers, base_params, timeout)
 
     # If neither returned results, try name variations
     if not tv_result and not movie_result:
@@ -189,8 +188,10 @@ def classify_from_tmdb(
 
         variations = generate_name_variations(name)
         for variation in variations:
-            tv_result = _search_tmdb(TMDB_SEARCH_TV_URL, variation, headers, base_params, timeout)
-            movie_result = _search_tmdb(
+            tv_result, tv_results = _search_tmdb(
+                TMDB_SEARCH_TV_URL, variation, headers, base_params, timeout
+            )
+            movie_result, _ = _search_tmdb(
                 TMDB_SEARCH_MOVIE_URL, variation, headers, base_params, timeout
             )
             if tv_result or movie_result:
