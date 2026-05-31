@@ -4,6 +4,10 @@ import pytest
 
 import app.matcher.testing_service as ts
 
+# download_subtitles does `from app.services.config_service import get_config_sync`
+# at call time, so patching the source module (not `ts.get_config_sync`) is what
+# the function actually resolves.
+
 
 def _mock_config(tmp_path):
     cfg = Mock()
