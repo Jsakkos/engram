@@ -144,7 +144,7 @@ async def test_uploader_falls_back_to_default_url_when_unset(setup_db, monkeypat
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(return_value=mock_resp)
         MockClient.return_value = mock_client
-        await ContributionUploader()._process_batch()
+        await ContributionUploader()._drain()
 
     mock_client.post.assert_called_once()
     posted_url = mock_client.post.call_args[0][0]
@@ -198,7 +198,7 @@ async def test_uploader_posts_pending_contributions(setup_db, tmp_path, monkeypa
             ),
         )
         uploader = ContributionUploader()
-        await uploader._process_batch()
+        await uploader._drain()
 
     async with async_session() as session:
         refreshed = await session.get(FingerprintContribution, contrib_id)
@@ -257,7 +257,7 @@ async def test_uploader_marks_failed_on_4xx(setup_db, monkeypatch):
             ),
         )
         uploader = ContributionUploader()
-        await uploader._process_batch()
+        await uploader._drain()
 
     async with async_session() as session:
         refreshed = await session.get(FingerprintContribution, contrib_id)
@@ -520,7 +520,7 @@ async def test_uploader_posts_wire_format_v1(setup_db, tmp_path, monkeypatch):
             ),
         )
         uploader = ContributionUploader()
-        await uploader._process_batch()
+        await uploader._drain()
 
     # The payload must have exactly these keys
     expected_keys = {
@@ -597,7 +597,7 @@ async def test_uploader_increments_attempts_on_5xx(setup_db, monkeypatch):
             ),
         )
         uploader = ContributionUploader()
-        await uploader._process_batch()
+        await uploader._drain()
 
     async with async_session() as session:
         refreshed = await session.get(FingerprintContribution, contrib_id)
@@ -647,7 +647,7 @@ async def test_uploader_skips_when_opted_out(setup_db, monkeypatch):
         MockClient.return_value = mock_client
 
         uploader = ContributionUploader()
-        await uploader._process_batch()
+        await uploader._drain()
 
         mock_client.post.assert_not_called()
 
@@ -703,7 +703,7 @@ async def test_uploader_prompts_when_disclosure_not_accepted(setup_db, monkeypat
         MockClient.return_value = mock_client
 
         uploader = ContributionUploader()
-        await uploader._process_batch()
+        await uploader._drain()
 
         mock_client.post.assert_not_called()
 
@@ -762,7 +762,7 @@ async def test_uploader_uploads_when_all_gates_pass(setup_db, tmp_path, monkeypa
         MockClient.return_value = mock_client
 
         uploader = ContributionUploader()
-        await uploader._process_batch()
+        await uploader._drain()
 
         mock_client.post.assert_called_once()
 
@@ -899,3 +899,151 @@ def test_retry_after_seconds_returns_none_for_unparseable():
     assert uploader_mod._retry_after_seconds("Wed, 21 Oct 2026 07:28:00 GMT") is None
     assert uploader_mod._retry_after_seconds("") is None
     assert uploader_mod._retry_after_seconds("-5") is None
+
+
+@pytest.mark.asyncio
+async def test_drain_uploads_all_rows_across_multiple_batches(setup_db, tmp_path, monkeypatch):
+    """_drain loops batches until the queue empties, uploading every pending row."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from sqlmodel import select
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+    # Small batch size so 5 rows span 3 batches (2 + 2 + 1).
+    monkeypatch.setattr(uploader_mod, "_BATCH_SIZE", 2)
+
+    async with async_session() as session:
+        for i in range(5):
+            session.add(
+                FingerprintContribution(
+                    chromaprint_blob=_make_valid_blob(),
+                    tmdb_id=1399,
+                    season=1,
+                    episode=i + 1,
+                    match_confidence=0.9,
+                    match_source="engram_asr",
+                    pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                )
+            )
+        await session.commit()
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        MockClient.return_value = mock_client
+
+        drained = await ContributionUploader()._drain()
+
+        # Every row uploaded, and a single shared client was constructed once.
+        assert mock_client.post.call_count == 5
+        assert MockClient.call_count == 1
+
+    assert drained == 5
+    async with async_session() as session:
+        rows = (await session.execute(select(FingerprintContribution))).scalars().all()
+    assert all(r.upload_status == "success" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_drain_bounds_concurrency_to_semaphore(setup_db, tmp_path, monkeypatch):
+    """No more than _CONCURRENCY uploads are in flight at once."""
+    import asyncio as _asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+    monkeypatch.setattr(uploader_mod, "_CONCURRENCY", 3)
+
+    async with async_session() as session:
+        for i in range(12):
+            session.add(
+                FingerprintContribution(
+                    chromaprint_blob=_make_valid_blob(),
+                    tmdb_id=1399,
+                    season=1,
+                    episode=i + 1,
+                    match_confidence=0.9,
+                    match_source="engram_asr",
+                    pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                )
+            )
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+
+    in_flight = 0
+    max_in_flight = 0
+
+    async def tracking_post(*args, **kwargs):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await _asyncio.sleep(0.01)
+        in_flight -= 1
+        return mock_resp
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=tracking_post)
+        MockClient.return_value = mock_client
+
+        await ContributionUploader()._drain()
+
+    assert max_in_flight <= 3, f"concurrency exceeded semaphore: {max_in_flight}"
+
+
+@pytest.mark.asyncio
+async def test_upload_loop_drains_then_idles(monkeypatch):
+    """_upload_loop drains, then sleeps the idle poll interval."""
+    import asyncio as _asyncio
+    from unittest.mock import AsyncMock
+
+    uploader = ContributionUploader(poll_interval_seconds=900)
+    drain_mock = AsyncMock(return_value=3)
+    monkeypatch.setattr(uploader, "_drain", drain_mock)
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(duration):
+        sleep_calls.append(duration)
+        raise _asyncio.CancelledError  # break the loop after one iteration
+
+    monkeypatch.setattr(uploader_mod.asyncio, "sleep", fake_sleep)
+
+    await uploader._upload_loop()  # CancelledError is caught → returns
+
+    drain_mock.assert_awaited_once()
+    assert sleep_calls == [900]
