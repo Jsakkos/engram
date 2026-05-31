@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import ipaddress
 import json
 import logging
 import platform
@@ -60,24 +61,41 @@ def require_debug() -> None:
         raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
-# Loopback addresses that count as "the user is querying their own machine".
-# Used by endpoints that surface privacy-sensitive data (e.g. ripping history)
-# so they remain reachable from the dashboard but not from LAN peers when
-# `allow_lan_access` binds 0.0.0.0. Tests should override the dependency via
-# `app.dependency_overrides[require_localhost] = lambda: None` rather than
-# widening this set with test-framework implementation details.
-_LOCALHOST_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost"})
+def _is_loopback(host: str | None) -> bool:
+    """True if ``host`` names the local machine.
+
+    Covers every loopback form a peer address can take — IPv4 (`127.0.0.0/8`),
+    IPv6 (`::1`), and the IPv4-mapped IPv6 loopback (`::ffff:127.0.0.1`) that
+    arrives on dual-stack binds (`HOST=::`). `localhost` is kept as an explicit
+    fallback: Starlette normally reports a numeric peer address, but a literal
+    hostname is accepted rather than silently rejected.
+    """
+    if not host:
+        return False
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return host == "localhost"
+    if addr.is_loopback:
+        return True
+    # Python < 3.13's is_loopback does not unwrap IPv4-mapped addresses, so
+    # check the mapped IPv4 explicitly for version-independent correctness.
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return bool(mapped and mapped.is_loopback)
 
 
 def require_localhost(request: Request) -> None:
     """FastAPI dependency: 403 unless the request came from the host machine.
 
-    Allowed: real loopback (`127.0.0.1`, `::1`) and the literal `localhost`.
-    Everything else — including LAN peers when `allow_lan_access=True` opens
-    the bind to all interfaces — is rejected.
+    Used by endpoints that surface or mutate privacy-sensitive local data
+    (e.g. ripping history, DiscDB/fingerprint contributions) so they stay
+    reachable from the dashboard but not from LAN peers when
+    `allow_lan_access=True` opens the bind to all interfaces. Tests should
+    override the dependency via
+    `app.dependency_overrides[require_localhost] = lambda: None` rather than
+    spoofing peer addresses.
     """
-    client = request.client.host if request.client else None
-    if client not in _LOCALHOST_CLIENTS:
+    if not _is_loopback(request.client.host if request.client else None):
         raise HTTPException(
             status_code=403, detail="This endpoint is only reachable from the host machine"
         )
@@ -2816,7 +2834,11 @@ class ReleaseGroupAssignRequest(BaseModel):
     release_group_id: str | None = None
 
 
-@router.get("/contributions", response_model=list[ContributionJobResponse])
+@router.get(
+    "/contributions",
+    response_model=list[ContributionJobResponse],
+    dependencies=[Depends(require_localhost)],
+)
 async def list_contributions(session: AsyncSession = Depends(get_session)):
     """List completed jobs with their export status."""
     result = await session.execute(
@@ -2856,7 +2878,11 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
     return responses
 
 
-@router.get("/contributions/stats", response_model=ContributionStatsResponse)
+@router.get(
+    "/contributions/stats",
+    response_model=ContributionStatsResponse,
+    dependencies=[Depends(require_localhost)],
+)
 async def contribution_stats(session: AsyncSession = Depends(get_session)):
     """Get contribution counts for nav badge."""
     result = await session.execute(select(DiscJob).where(DiscJob.state == JobState.COMPLETED))
@@ -2872,7 +2898,7 @@ async def contribution_stats(session: AsyncSession = Depends(get_session)):
     )
 
 
-@router.post("/contributions/{job_id}/export")
+@router.post("/contributions/{job_id}/export", dependencies=[Depends(require_localhost)])
 async def export_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
@@ -2905,7 +2931,7 @@ async def export_contribution(
     return {"status": "exported", "export_path": str(export_dir)}
 
 
-@router.post("/contributions/{job_id}/skip")
+@router.post("/contributions/{job_id}/skip", dependencies=[Depends(require_localhost)])
 async def skip_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
@@ -2937,7 +2963,7 @@ class FetchCoverRequest(BaseModel):
     image_url: str
 
 
-@router.post("/contributions/{job_id}/upc-lookup")
+@router.post("/contributions/{job_id}/upc-lookup", dependencies=[Depends(require_localhost)])
 async def upc_lookup(
     request: UPCLookupRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -2962,7 +2988,7 @@ async def upc_lookup(
     }
 
 
-@router.post("/contributions/{job_id}/fetch-cover")
+@router.post("/contributions/{job_id}/fetch-cover", dependencies=[Depends(require_localhost)])
 async def fetch_cover(
     job_id: int,
     request: FetchCoverRequest,
@@ -3043,7 +3069,7 @@ async def fetch_cover(
         raise HTTPException(status_code=502, detail=f"Failed to download image: {e}") from e
 
 
-@router.post("/contributions/{job_id}/enhance")
+@router.post("/contributions/{job_id}/enhance", dependencies=[Depends(require_localhost)])
 async def enhance_contribution(
     request: EnhanceRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -3098,7 +3124,7 @@ async def enhance_contribution(
     return {"status": "enhanced", "export_path": str(export_dir)}
 
 
-@router.post("/jobs/{job_id}/flag-discdb")
+@router.post("/jobs/{job_id}/flag-discdb", dependencies=[Depends(require_localhost)])
 async def flag_discdb(
     request: FlagDiscDBRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -3385,7 +3411,7 @@ async def llm_match_title(
     return {"suggestion": suggestion, "reason": None}
 
 
-@router.post("/contributions/{job_id}/submit")
+@router.post("/contributions/{job_id}/submit", dependencies=[Depends(require_localhost)])
 async def submit_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
@@ -3429,7 +3455,7 @@ async def submit_contribution(
     }
 
 
-@router.post("/contributions/release-group")
+@router.post("/contributions/release-group", dependencies=[Depends(require_localhost)])
 async def create_release_group(
     request: ReleaseGroupRequest,
     session: AsyncSession = Depends(get_session),
@@ -3459,7 +3485,7 @@ async def create_release_group(
     return {"release_group_id": release_group_id, "job_ids": request.job_ids}
 
 
-@router.put("/contributions/{job_id}/release-group")
+@router.put("/contributions/{job_id}/release-group", dependencies=[Depends(require_localhost)])
 async def assign_release_group(
     request: ReleaseGroupAssignRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -3484,7 +3510,10 @@ async def assign_release_group(
     return {"job_id": job.id, "release_group_id": request.release_group_id}
 
 
-@router.post("/contributions/release-group/{release_group_id}/submit")
+@router.post(
+    "/contributions/release-group/{release_group_id}/submit",
+    dependencies=[Depends(require_localhost)],
+)
 async def submit_release_group_endpoint(
     release_group_id: str,
     session: AsyncSession = Depends(get_session),
