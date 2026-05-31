@@ -66,7 +66,7 @@ def _retry_after_seconds(value: str | None) -> float | None:
 class ContributionUploader:
     """Background service: drain FingerprintContribution queue over HTTPS."""
 
-    def __init__(self, poll_interval_seconds: int = 3600) -> None:
+    def __init__(self, poll_interval_seconds: int = 900) -> None:
         self.poll_interval = poll_interval_seconds
         self._task: asyncio.Task | None = None
 

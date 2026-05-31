@@ -1178,3 +1178,8 @@ async def test_uploader_429_falls_back_to_exponential_without_retry_after(
     # 429 is transient: it consumes the budget like a 5xx, not an instant 4xx fail.
     assert refreshed.upload_status == "failed"
     assert refreshed.upload_attempts == _MAX_ATTEMPTS
+
+
+def test_uploader_default_poll_interval_is_900():
+    """The default idle poll interval is 15 minutes (900s), not an hour."""
+    assert ContributionUploader().poll_interval == 900
