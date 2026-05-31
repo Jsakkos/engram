@@ -178,7 +178,6 @@ def classify_from_tmdb(
     headers, base_params = _build_auth(api_key)
 
     # Search both TV and movie endpoints
-    tv_results: list[dict] = []
     tv_result, tv_results = _search_tmdb(TMDB_SEARCH_TV_URL, name, headers, base_params, timeout)
     movie_result, _ = _search_tmdb(TMDB_SEARCH_MOVIE_URL, name, headers, base_params, timeout)
 
