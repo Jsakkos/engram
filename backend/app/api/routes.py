@@ -1482,12 +1482,21 @@ async def list_fingerprint_contributions(
 @router.delete("/fingerprint/contributions/{contrib_id}", dependencies=[Depends(require_localhost)])
 async def forget_fingerprint_contribution(
     contrib_id: int,
+    force: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Delete a locally-queued fingerprint contribution (forget).
 
     Returns 400 if the contribution was already uploaded — the data already
-    exists on the server and cannot be recalled from here.
+    exists on the server and cannot be recalled from here (use /fingerprint/forget
+    to recall server-side data). Returns 409 if the row has been attempted and is
+    still retrying, unless `force=true` is passed.
+
+    `force=true` is the escape hatch for the resilience behavior: transient upload
+    failures keep a row pending (`upload_status=None`, `upload_attempts>0`) and
+    retry across drains indefinitely, so without force a row stuck against a dead
+    server could never be deleted individually. force overrides ONLY that retry
+    guard — it never bypasses the already-uploaded (400) guard.
     """
     from app.models.fingerprint import FingerprintContribution
 
@@ -1495,11 +1504,12 @@ async def forget_fingerprint_contribution(
     if contrib is None:
         raise HTTPException(status_code=404, detail="Contribution not found")
     if contrib.upload_status == "success":
+        # Never bypassed, even with force — the data is already on the server.
         raise HTTPException(
             status_code=400,
             detail="Cannot delete an already-uploaded contribution; the data is already on the server.",
         )
-    if contrib.upload_status is None and contrib.upload_attempts > 0:
+    if not force and contrib.upload_status is None and contrib.upload_attempts > 0:
         # upload_attempts > 0 means the background uploader has already tried this
         # row at least once and may be holding it in an active HTTP call; deleting
         # now could be a silent no-op UPDATE on a ghost row. Transient failures keep
@@ -1509,13 +1519,13 @@ async def forget_fingerprint_contribution(
             status_code=409,
             detail=(
                 "Contribution upload already attempted; it will keep retrying on "
-                "later drains until it succeeds. To stop contributing it, opt out "
-                "of fingerprint contributions or use the forget action."
+                "later drains until it succeeds. To retract it now, retry with "
+                "force=true, or opt out / use the forget action."
             ),
         )
     await session.delete(contrib)
     await session.commit()
-    return {"status": "deleted", "contrib_id": contrib_id}
+    return {"status": "deleted", "contrib_id": contrib_id, "forced": force}
 
 
 @router.post(

@@ -1485,3 +1485,84 @@ async def test_sustained_5xx_does_not_loop_and_recovers_on_later_drain(
     assert all(r.upload_error_msg is None for r in rows), (
         "upload_error_msg must be cleared when a previously-transient row succeeds"
     )
+
+
+@pytest.mark.asyncio
+async def test_force_delete_removes_retrying_contribution(setup_db, client):
+    """`?force=true` deletes a transiently-stuck row that the plain delete 409s.
+
+    Escape hatch for the new resilience behavior: transient failures keep a row
+    pending (`upload_status=None`, `upload_attempts>0`) and retry forever, so the
+    plain delete's in-flight guard would otherwise block it permanently. force
+    lets the user retract a single row that won't upload.
+    """
+    from app.api.routes import require_localhost
+    from app.database import async_session
+    from app.main import app
+
+    app.dependency_overrides[require_localhost] = lambda: None
+    try:
+        async with async_session() as session:
+            row = FingerprintContribution(
+                chromaprint_blob=b"\x06",
+                tmdb_id=66,
+                season=1,
+                episode=1,
+                match_confidence=0.7,
+                match_source="engram_asr",
+                pseudonym="iiiiiiii-iiii-4iii-8iii-iiiiiiiiiiii",
+                upload_attempts=5,  # attempted and retrying: status None, attempts>0
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            contrib_id = row.id
+
+        # Plain delete is blocked — the row has been attempted and keeps retrying.
+        blocked = await client.delete(f"/api/fingerprint/contributions/{contrib_id}")
+        assert blocked.status_code == 409
+
+        # force=true overrides the retry guard and removes the row.
+        forced = await client.delete(f"/api/fingerprint/contributions/{contrib_id}?force=true")
+        assert forced.status_code == 200
+        assert forced.json()["status"] == "deleted"
+
+        async with async_session() as session:
+            assert await session.get(FingerprintContribution, contrib_id) is None
+    finally:
+        app.dependency_overrides.pop(require_localhost, None)
+
+
+@pytest.mark.asyncio
+async def test_force_delete_still_rejects_uploaded_contribution(setup_db, client):
+    """`?force=true` must NOT delete an already-uploaded row — the data is on the
+    server and a local delete can't recall it (use /fingerprint/forget instead)."""
+    from app.api.routes import require_localhost
+    from app.database import async_session
+    from app.main import app
+
+    app.dependency_overrides[require_localhost] = lambda: None
+    try:
+        async with async_session() as session:
+            row = FingerprintContribution(
+                chromaprint_blob=b"\x07",
+                tmdb_id=55,
+                season=2,
+                episode=4,
+                match_confidence=0.9,
+                match_source="engram_asr",
+                pseudonym="jjjjjjjj-jjjj-4jjj-8jjj-jjjjjjjjjjjj",
+                upload_status="success",
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            contrib_id = row.id
+
+        resp = await client.delete(f"/api/fingerprint/contributions/{contrib_id}?force=true")
+        assert resp.status_code == 400
+
+        async with async_session() as session:
+            assert await session.get(FingerprintContribution, contrib_id) is not None
+    finally:
+        app.dependency_overrides.pop(require_localhost, None)
