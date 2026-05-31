@@ -16,8 +16,16 @@ def test_guard_rejects_mismatched_tmdb_id(tmp_path):
 
 
 def test_guard_skipped_when_no_expected_id(tmp_path):
-    # No expected id -> guard does not apply; falls through to file existence (absent -> False).
+    # No expected id -> guard does not apply; coverage depends only on files.
     assert precomputed_covers_season(tmp_path, "Frasier", 1, manifest=_manifest("3452")) is False
+    # Files present -> True. Proves the guard was SKIPPED (not that the file gate
+    # masked an inverted guard): an int/string id mismatch is irrelevant when no
+    # expected_tmdb_id is supplied.
+    show_dir = tmp_path / "precomputed" / "Frasier"
+    show_dir.mkdir(parents=True)
+    (show_dir / "S01.npz").write_bytes(b"x")
+    (show_dir / "S01.index.json").write_text("[]")
+    assert precomputed_covers_season(tmp_path, "Frasier", 1, manifest=_manifest("3452")) is True
 
 
 def test_guard_passes_on_matching_id_then_checks_files(tmp_path):
