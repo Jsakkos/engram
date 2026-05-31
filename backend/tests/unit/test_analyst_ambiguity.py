@@ -33,3 +33,4 @@ def test_non_ambiguous_signal_sets_id_normally():
     out = analyst._apply_tmdb_signal(result, sig)
     assert out.tmdb_id == 1396
     assert out.needs_review is False
+    assert out.review_reason is None

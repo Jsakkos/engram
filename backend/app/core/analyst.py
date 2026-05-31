@@ -453,10 +453,11 @@ class DiscAnalyst:
 
         # Same-name collision (item 1): two real same-name TMDB shows. Don't commit
         # an id — force review and let the user pick via the existing re-identify UI.
-        if getattr(tmdb_signal, "ambiguous_identity", False):
+        if tmdb_signal.ambiguous_identity:
             result.tmdb_id = None
             result.tmdb_name = tmdb_signal.tmdb_name
             result.content_type = tmdb_signal.content_type
+            result.classification_source = "tmdb"
             result.needs_review = True
             cands = tmdb_signal.candidates or []
             listed = "; ".join(f"{c['name']} ({c['year']}, #{c['tmdb_id']})" for c in cands)
