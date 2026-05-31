@@ -10,7 +10,7 @@ from sqlalchemy import text
 import app.services.contribution_uploader as uploader_mod
 from app.database import async_session, init_db
 from app.main import app
-from app.models.app_config import AppConfig
+from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL, AppConfig
 from app.models.fingerprint import FingerprintContribution
 
 ContributionUploader = uploader_mod.ContributionUploader
@@ -64,13 +64,34 @@ def test_fingerprint_contribution_has_upload_status_fields():
 def test_app_config_has_fingerprint_server_url():
     """AppConfig defaults fingerprint_server_url to the network base origin.
 
-    The default must be the BASE (no /v1 suffix) — the uploader appends
-    /v1/contribute, so a /v1 here would double to /v1/v1/... and 404.
+    Asserted constant-relative (not the literal string) so de-personalizing the
+    URL is a one-line edit to DEFAULT_FINGERPRINT_SERVER_URL. The default must be
+    the BASE (no /v1 suffix) — the uploader appends /v1/contribute, so a /v1 here
+    would double to /v1/v1/... and 404.
     """
     cfg = AppConfig()
     assert hasattr(cfg, "fingerprint_server_url")
-    assert cfg.fingerprint_server_url == "https://engram-fp-prod.jonathansakkos.workers.dev"
+    assert cfg.fingerprint_server_url == DEFAULT_FINGERPRINT_SERVER_URL
     assert not cfg.fingerprint_server_url.endswith("/v1")
+
+
+def test_curator_routes_fallback_through_constant():
+    """curator.py must use DEFAULT_FINGERPRINT_SERVER_URL for its server-URL
+    fallback, not a re-hardcoded literal. Guarantees the URL value lives in
+    exactly one place (app_config.py), so de-personalizing is a one-line edit.
+    """
+    import inspect
+
+    import app.core.curator as curator_mod
+
+    source = inspect.getsource(curator_mod)
+    assert "DEFAULT_FINGERPRINT_SERVER_URL" in source, (
+        "curator.py should reference the shared constant for its server-URL fallback"
+    )
+    assert ".workers.dev" not in source, (
+        "curator.py must not hardcode a fingerprint host literal; route through "
+        "DEFAULT_FINGERPRINT_SERVER_URL instead"
+    )
 
 
 @pytest.mark.asyncio
