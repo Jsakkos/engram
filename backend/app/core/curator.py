@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.matcher.llm_episode_matcher import match_episode_via_llm
+from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 
 logger = logging.getLogger(__name__)
 
@@ -506,9 +507,7 @@ class EpisodeCurator:
         from app.matcher.chromaprint_matcher import ChromaprintMatcher, identify_episode_chromaprint
         from app.matcher.episode_identification import get_video_duration
 
-        server_url = (
-            cfg.fingerprint_server_url or "https://engram-fp-prod.jonathansakkos.workers.dev"
-        )
+        server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
         pack_cache = getattr(self, "_pack_cache", None)
         if pack_cache is not None:
             try:
