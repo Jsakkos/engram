@@ -61,6 +61,17 @@ def load_precomputed_manifest(cache_dir) -> dict | None:
     return manifest
 
 
+def _tmdb_id_mismatch(expected, entry_id) -> bool:
+    """True when both ids are known and disagree (string-compared).
+
+    Shared by the corpus guard's two call sites (this module's
+    ``precomputed_covers_season`` and ``EpisodeMatcher._load_precomputed_season``)
+    so the comparison can't silently diverge. Returns False when either id is
+    unknown — backward-compatible with name-only matching.
+    """
+    return expected is not None and entry_id is not None and str(entry_id) != str(expected)
+
+
 def precomputed_covers_season(
     cache_dir, show_name: str, season: int, manifest=None, expected_tmdb_id=None
 ) -> bool:
@@ -94,12 +105,7 @@ def precomputed_covers_season(
     # manifest entry's id, this precomputed corpus is for a DIFFERENT same-named
     # show — refuse it so we never match e.g. the Frasier 2023 revival against the
     # 1993 corpus. Skipped when either id is unknown (backward-compatible).
-    entry_id = show_entry.get("tmdb_id")
-    if (
-        expected_tmdb_id is not None
-        and entry_id is not None
-        and str(entry_id) != str(expected_tmdb_id)
-    ):
+    if _tmdb_id_mismatch(expected_tmdb_id, show_entry.get("tmdb_id")):
         return False
 
     show_dir = Path(cache_dir) / "precomputed" / sanitize_filename(show_name)
@@ -883,11 +889,7 @@ class EpisodeMatcher:
         # wrongly drop a valid entry whose files are present.
         show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
         entry_id = show_entry.get("tmdb_id") if show_entry else None
-        if (
-            self.expected_tmdb_id is not None
-            and entry_id is not None
-            and str(entry_id) != str(self.expected_tmdb_id)
-        ):
+        if _tmdb_id_mismatch(self.expected_tmdb_id, entry_id):
             logger.warning(
                 f"Precomputed corpus for '{self.show_name}' is tmdb_id {entry_id} but this "
                 f"job resolved tmdb_id {self.expected_tmdb_id}; skipping precomputed (wrong show)"

@@ -251,6 +251,7 @@ class EpisodeCurator:
         series_name: str | None = None,
         season: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        tmdb_id: int | None = None,
     ) -> list[MatchResult]:
         """Match a list of MKV files to episodes.
 
@@ -273,7 +274,7 @@ class EpisodeCurator:
                 results.append(self._fallback_result(file_path))
             return results
 
-        if not self._ensure_initialized(series_name):
+        if not self._ensure_initialized(series_name, tmdb_id):
             # Return unmatched results if matcher not available
             for i, file_path in enumerate(files):
                 if progress_callback:
@@ -283,7 +284,9 @@ class EpisodeCurator:
 
         for i, file_path in enumerate(files):
             try:
-                result = await self.match_single_file(file_path, series_name, season)
+                result = await self.match_single_file(
+                    file_path, series_name, season, tmdb_id=tmdb_id
+                )
                 results.append(result)
             except Exception as e:
                 logger.error(f"Error matching {file_path}: {e}")

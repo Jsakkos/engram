@@ -383,6 +383,9 @@ class IdentificationCoordinator:
                     await session.commit()
 
                 # Both review and high-confidence paths broadcast the same job update.
+                # review_reason is None for the high-confidence path (omitted by the
+                # broadcaster) and carries the candidate-naming reason for review jobs —
+                # the ReIdentifyModal needs it to show why the disc needs disambiguation.
                 await ws_manager.broadcast_job_update(
                     job_id,
                     job.state.value,
@@ -390,6 +393,7 @@ class IdentificationCoordinator:
                     detected_title=job.detected_title,
                     detected_season=job.detected_season,
                     total_titles=job.total_titles,
+                    review_reason=analysis.review_reason,
                 )
 
                 if analysis.needs_review:
@@ -552,6 +556,10 @@ class IdentificationCoordinator:
                         detected_season=job.detected_season,
                         total_titles=job.total_titles,
                         review_reason=analysis.review_reason,
+                    )
+                    logger.info(
+                        f"Job {job_id}: ambiguous identity for '{job.detected_title}', "
+                        f"routing to REVIEW_NEEDED"
                     )
                     return
 

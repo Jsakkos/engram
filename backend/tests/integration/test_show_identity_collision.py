@@ -115,6 +115,17 @@ async def test_ambiguous_disc_routes_to_review_with_candidate_reason(monkeypatch
 
     monkeypatch.setattr(coord, "_run_classification", fake_run_classification)
 
+    # Capture WebSocket job updates so we can assert the candidate reason reaches the
+    # client (the ReIdentifyModal banner relies on it), not just the DB.
+    import app.services.identification_coordinator as idc
+
+    broadcasts: list[tuple[str, dict]] = []
+
+    async def record_broadcast(job_id_arg, state, **kwargs):
+        broadcasts.append((state, kwargs))
+
+    monkeypatch.setattr(idc.ws_manager, "broadcast_job_update", record_broadcast)
+
     # Drive the real identify_disc flow.
     await coord.identify_disc(job_id)
 
@@ -130,3 +141,13 @@ async def test_ambiguous_disc_routes_to_review_with_candidate_reason(monkeypatch
         assert "words merged" not in (refreshed.review_reason or ""), (
             f"Generic 'words merged' message incorrectly set: {refreshed.review_reason!r}"
         )
+
+    # The WS broadcast for the review must carry the candidate reason.
+    review_reasons = [
+        kwargs.get("review_reason")
+        for state, kwargs in broadcasts
+        if state == JobState.REVIEW_NEEDED.value
+    ]
+    assert any("Multiple shows match" in (r or "") for r in review_reasons), (
+        f"No REVIEW_NEEDED broadcast carried the candidate reason; saw: {review_reasons!r}"
+    )

@@ -305,7 +305,7 @@ class TestMatchFiles:
         curator = EpisodeCurator()
         monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
 
-        async def fake_single(fp, series, season):
+        async def fake_single(fp, series, season, tmdb_id=None):
             return MatchResult(fp, "S01E01", None, 0.9, False)
 
         monkeypatch.setattr(curator, "match_single_file", fake_single)
