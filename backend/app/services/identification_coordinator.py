@@ -272,11 +272,25 @@ class IdentificationCoordinator:
                     )
                     return
 
+                # Compute ambiguous-identity flag before the TMDB-lookup-failed guard so
+                # same-name collisions (which withhold tmdb_id by design) are not
+                # intercepted with the generic "words merged" message.
+                _signal = getattr(analysis, "_tmdb_signal", None)
+                _amb = bool(_signal and _signal.ambiguous_identity)
+
                 # TV show detected but TMDB lookup failed — name cannot be trusted for episode
                 # matching. Block ripping until the user confirms the correct show name.
                 # (Disc-name fallback already ran in _run_classification; if we reach here,
                 # neither the volume label nor the DINFO name resolved on TMDB.)
-                if job.content_type == ContentType.TV and not job.tmdb_id and job.detected_title:
+                # Exclude ambiguous-identity jobs: they have tmdb_id=None by design and
+                # carry a candidate-naming review_reason that the needs_review branch below
+                # will surface.
+                if (
+                    job.content_type == ContentType.TV
+                    and not job.tmdb_id
+                    and job.detected_title
+                    and not _amb
+                ):
                     reason = (
                         f'Could not find "{job.detected_title}" on TMDB — the disc label '
                         f"may have words merged without separators. "
@@ -306,8 +320,6 @@ class IdentificationCoordinator:
                 # Start subtitle download for ALL TV content — except when identity is
                 # ambiguous (same-name collision). Downloading by the tentative name would
                 # fetch the wrong show's subtitles before the user disambiguates.
-                _signal = getattr(analysis, "_tmdb_signal", None)
-                _amb = bool(_signal and _signal.ambiguous_identity)
                 if (
                     job.content_type == ContentType.TV
                     and job.detected_title
@@ -522,6 +534,24 @@ class IdentificationCoordinator:
                         content_type=(job.content_type.value if job.content_type else None),
                         total_titles=job.total_titles,
                         review_reason="Could not determine title. Please enter the title to continue.",
+                    )
+                    return
+
+                # Same-name collision (item 1): route to review with the candidate list
+                # instead of matching against the wrong same-named show's corpus by name.
+                _amb_signal = getattr(analysis, "_tmdb_signal", None)
+                if _amb_signal and _amb_signal.ambiguous_identity:
+                    await self._state_machine.transition_to_review(
+                        job, session, reason=analysis.review_reason, broadcast=False
+                    )
+                    await ws_manager.broadcast_job_update(
+                        job_id,
+                        JobState.REVIEW_NEEDED.value,
+                        content_type=job.content_type.value,
+                        detected_title=job.detected_title,
+                        detected_season=job.detected_season,
+                        total_titles=job.total_titles,
+                        review_reason=analysis.review_reason,
                     )
                     return
 
