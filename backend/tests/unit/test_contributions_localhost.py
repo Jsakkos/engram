@@ -1,13 +1,14 @@
-"""Endpoint tests: DiscDB ``/contributions/*`` routes are localhost-only.
+"""Endpoint tests: DiscDB contribution routes are localhost-only.
 
-These routes drive TheDiscDB contribution workflow (list, export, submit,
-cover fetch, enhance, release groups). They surface and act on local library
-data, so — like the fingerprint-contribution routes — they must only be
+The DiscDB contribution surface — the 11 ``/contributions/*`` routes plus
+``POST /jobs/{job_id}/flag-discdb`` (which writes the ``discdb_flagged``
+metadata the contribution pipeline reads) — surfaces and mutates local
+library data. Like the fingerprint-contribution routes, it must only be
 reachable from the host machine. ``require_localhost`` rejects LAN peers even
 when ``allow_lan_access`` binds the server to ``0.0.0.0``.
 
 httpx's ``ASGITransport`` defaults ``request.client.host`` to ``127.0.0.1``
-(an allowed loopback), so we set an explicit LAN client to exercise the guard.
+(an allowed loopback), so we set an explicit client tuple to drive the guard.
 """
 
 import pytest
@@ -16,6 +17,25 @@ from httpx import ASGITransport, AsyncClient
 from app.database import get_session
 from app.main import app
 from tests.unit.conftest import _unit_session_factory
+
+# Every route the localhost guard must cover: (method, path). Bodies are
+# omitted deliberately — the guard runs *before* body validation, so a LAN
+# caller is rejected with 403 regardless, and a loopback caller falls through
+# to validation/lookup (422/404/400) which is, crucially, never 403.
+GUARDED_ROUTES = [
+    ("GET", "/api/contributions"),
+    ("GET", "/api/contributions/stats"),
+    ("POST", "/api/contributions/999/export"),
+    ("POST", "/api/contributions/999/skip"),
+    ("POST", "/api/contributions/999/upc-lookup"),
+    ("POST", "/api/contributions/999/fetch-cover"),
+    ("POST", "/api/contributions/999/enhance"),
+    ("POST", "/api/contributions/999/submit"),
+    ("POST", "/api/contributions/release-group"),
+    ("PUT", "/api/contributions/999/release-group"),
+    ("POST", "/api/contributions/release-group/some-group/submit"),
+    ("POST", "/api/jobs/999/flag-discdb"),
+]
 
 
 def _client(host: str) -> AsyncClient:
@@ -42,20 +62,34 @@ async def db_override():
 
 
 class TestContributionsLocalhostGuard:
-    """``/api/contributions/*`` must reject off-box callers with 403."""
+    """Every DiscDB contribution route rejects off-box callers with 403."""
 
-    async def test_list_rejects_non_localhost(self, db_override):
-        """A LAN peer cannot enumerate contributions."""
+    @pytest.mark.parametrize(("method", "path"), GUARDED_ROUTES)
+    async def test_lan_client_rejected(self, db_override, method: str, path: str):
+        """A LAN peer (10.0.0.5) is refused with 403 on every guarded route."""
         async with _client("10.0.0.5") as client:
-            resp = await client.get("/api/contributions")
-        assert resp.status_code == 403
+            resp = await client.request(method, path)
+        assert resp.status_code == 403, f"{method} {path} not guarded"
         assert "host machine" in resp.json()["detail"].lower()
 
-    async def test_fetch_cover_rejects_non_localhost(self, db_override):
-        """The localhost guard fires before the SSRF guard.
+    @pytest.mark.parametrize(("method", "path"), GUARDED_ROUTES)
+    async def test_loopback_not_overblocked(self, db_override, method: str, path: str):
+        """A loopback caller passes the guard and reaches the handler.
 
-        Off-box, even a disallowed URL yields 403 — not the 400 the SSRF guard
-        would raise — proving the localhost check runs first.
+        This is the meaningful positive control: for the *same* route and
+        request, switching only the client IP from LAN to loopback changes the
+        outcome away from 403 — proving the guard keys off the client address,
+        not on route behavior. (An empty-DB 200 alone would be vacuous.)
+        """
+        async with _client("127.0.0.1") as client:
+            resp = await client.request(method, path)
+        assert resp.status_code != 403, f"{method} {path} over-blocks loopback"
+
+    async def test_fetch_cover_guard_precedes_ssrf(self, db_override):
+        """The localhost guard fires before the fetch-cover SSRF allowlist.
+
+        Off-box, even an SSRF-triggering URL yields 403 — not the 400 the SSRF
+        guard would raise — proving the localhost check runs first.
         """
         async with _client("10.0.0.5") as client:
             resp = await client.post(
@@ -64,18 +98,12 @@ class TestContributionsLocalhostGuard:
             )
         assert resp.status_code == 403
 
-    async def test_submit_rejects_non_localhost(self, db_override):
-        """A LAN peer cannot trigger a TheDiscDB submission."""
-        async with _client("10.0.0.5") as client:
-            resp = await client.post("/api/contributions/999/submit")
-        assert resp.status_code == 403
+    async def test_ipv4_mapped_loopback_allowed(self, db_override):
+        """A dual-stack loopback (``::ffff:127.0.0.1``) is treated as local.
 
-    async def test_localhost_still_allowed(self, db_override):
-        """Positive control: a loopback client reaches the handler.
-
-        An empty DB yields an empty list with 200, proving the guard does not
-        break legitimate dashboard access.
+        When the server binds ``HOST=::``, local connections can arrive as an
+        IPv4-mapped IPv6 address. The guard must not 403 the host's own user.
         """
-        async with _client("127.0.0.1") as client:
+        async with _client("::ffff:127.0.0.1") as client:
             resp = await client.get("/api/contributions")
-        assert resp.status_code == 200
+        assert resp.status_code != 403

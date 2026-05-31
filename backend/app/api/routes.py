@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import ipaddress
 import json
 import logging
 import platform
@@ -60,24 +61,41 @@ def require_debug() -> None:
         raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
-# Loopback addresses that count as "the user is querying their own machine".
-# Used by endpoints that surface privacy-sensitive data (e.g. ripping history)
-# so they remain reachable from the dashboard but not from LAN peers when
-# `allow_lan_access` binds 0.0.0.0. Tests should override the dependency via
-# `app.dependency_overrides[require_localhost] = lambda: None` rather than
-# widening this set with test-framework implementation details.
-_LOCALHOST_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost"})
+def _is_loopback(host: str | None) -> bool:
+    """True if ``host`` names the local machine.
+
+    Covers every loopback form a peer address can take — IPv4 (`127.0.0.0/8`),
+    IPv6 (`::1`), and the IPv4-mapped IPv6 loopback (`::ffff:127.0.0.1`) that
+    arrives on dual-stack binds (`HOST=::`). `localhost` is kept as an explicit
+    fallback: Starlette normally reports a numeric peer address, but a literal
+    hostname is accepted rather than silently rejected.
+    """
+    if not host:
+        return False
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return host == "localhost"
+    if addr.is_loopback:
+        return True
+    # Python < 3.13's is_loopback does not unwrap IPv4-mapped addresses, so
+    # check the mapped IPv4 explicitly for version-independent correctness.
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return bool(mapped and mapped.is_loopback)
 
 
 def require_localhost(request: Request) -> None:
     """FastAPI dependency: 403 unless the request came from the host machine.
 
-    Allowed: real loopback (`127.0.0.1`, `::1`) and the literal `localhost`.
-    Everything else — including LAN peers when `allow_lan_access=True` opens
-    the bind to all interfaces — is rejected.
+    Used by endpoints that surface or mutate privacy-sensitive local data
+    (e.g. ripping history, DiscDB/fingerprint contributions) so they stay
+    reachable from the dashboard but not from LAN peers when
+    `allow_lan_access=True` opens the bind to all interfaces. Tests should
+    override the dependency via
+    `app.dependency_overrides[require_localhost] = lambda: None` rather than
+    spoofing peer addresses.
     """
-    client = request.client.host if request.client else None
-    if client not in _LOCALHOST_CLIENTS:
+    if not _is_loopback(request.client.host if request.client else None):
         raise HTTPException(
             status_code=403, detail="This endpoint is only reachable from the host machine"
         )
@@ -3095,7 +3113,7 @@ async def enhance_contribution(
     return {"status": "enhanced", "export_path": str(export_dir)}
 
 
-@router.post("/jobs/{job_id}/flag-discdb")
+@router.post("/jobs/{job_id}/flag-discdb", dependencies=[Depends(require_localhost)])
 async def flag_discdb(
     request: FlagDiscDBRequest,
     job: DiscJob = Depends(get_job_or_404),
