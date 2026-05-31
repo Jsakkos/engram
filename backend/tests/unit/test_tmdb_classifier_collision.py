@@ -57,3 +57,60 @@ def test_search_tmdb_empty_returns_none_and_empty_list():
         best, raw = tc._search_tmdb(tc.TMDB_SEARCH_TV_URL, "Nothing", {}, {}, 5.0)
     assert best is None
     assert raw == []
+
+
+def _patch_searches(tv_results, movie_results=None):
+    """Patch _search_tmdb to return canned TV/movie results regardless of URL."""
+    movie_results = movie_results or []
+
+    def fake(url, query, headers, params, timeout):
+        if url == tc.TMDB_SEARCH_TV_URL:
+            return (tv_results[0] if tv_results else None), tv_results
+        return (movie_results[0] if movie_results else None), movie_results
+
+    return patch.object(tc, "_search_tmdb", side_effect=fake)
+
+
+def test_collision_flagged_when_both_substantial_and_close():
+    # One Piece: anime 1999 p60 vs live-action 2023 p38.3 -> ratio 1.57, both >= 10
+    tv = [
+        {"id": 37854, "name": "One Piece", "popularity": 60.0, "first_air_date": "1999-10-20"},
+        {"id": 111110, "name": "One Piece", "popularity": 38.3, "first_air_date": "2023-08-31"},
+    ]
+    with _patch_searches(tv):
+        sig = tc.classify_from_tmdb("One Piece", "k" * 41)
+    assert sig is not None
+    assert sig.ambiguous_identity is True
+    assert sig.tmdb_id is not None  # tentative best still reported
+    ids = {c["tmdb_id"] for c in sig.candidates}
+    assert ids == {37854, 111110}
+
+
+def test_dominant_twin_not_flagged():
+    # Frasier: 1993 p75.6 vs 2023 p5.7 -> ratio 13.3 AND runner-up below floor.
+    tv = [
+        {"id": 3452, "name": "Frasier", "popularity": 75.6, "first_air_date": "1993-09-16"},
+        {"id": 195241, "name": "Frasier", "popularity": 5.7, "first_air_date": "2023-10-12"},
+    ]
+    with _patch_searches(tv):
+        sig = tc.classify_from_tmdb("Frasier", "k" * 41)
+    assert sig is not None
+    assert sig.ambiguous_identity is False
+
+
+def test_noise_twin_not_flagged():
+    # Yellowstone 2018 p159 vs 2009 p1.2 -> runner-up below floor.
+    tv = [
+        {"id": 73586, "name": "Yellowstone", "popularity": 159.7, "first_air_date": "2018-06-20"},
+        {"id": 19355, "name": "Yellowstone", "popularity": 1.2, "first_air_date": "2009-01-01"},
+    ]
+    with _patch_searches(tv):
+        sig = tc.classify_from_tmdb("Yellowstone", "k" * 41)
+    assert sig.ambiguous_identity is False
+
+
+def test_unique_name_not_flagged():
+    tv = [{"id": 1396, "name": "Breaking Bad", "popularity": 300.0, "first_air_date": "2008-01-20"}]
+    with _patch_searches(tv):
+        sig = tc.classify_from_tmdb("Breaking Bad", "k" * 41)
+    assert sig.ambiguous_identity is False

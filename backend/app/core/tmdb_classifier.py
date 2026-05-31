@@ -157,6 +157,58 @@ def _search_tmdb(
     return None, []
 
 
+def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] | None:
+    """Return same-name collision candidates when the materiality gate fires, else None.
+
+    "Same-name" = normalized name equals the query's (>= 0.95 similarity). The gate
+    fires only when the top two distinct same-name shows are BOTH plausibly real:
+    runner-up popularity >= AMBIGUOUS_POPULARITY_FLOOR AND
+    top/second popularity ratio <= AMBIGUOUS_POPULARITY_RATIO.
+    """
+    same = []
+    seen_ids = set()
+    for r in results:
+        rid = r.get("id")
+        if rid in seen_ids:
+            continue
+        name = r.get("name", r.get("original_name", ""))
+        if _name_similarity(query, name) >= 0.95:
+            seen_ids.add(rid)
+            same.append(r)
+    if len(same) < 2:
+        return None
+    same.sort(key=lambda r: r.get("popularity", 0.0), reverse=True)
+    top, second = same[0].get("popularity", 0.0), same[1].get("popularity", 0.0)
+    if second < AMBIGUOUS_POPULARITY_FLOOR:
+        return None
+    if second <= 0 or (top / second) > AMBIGUOUS_POPULARITY_RATIO:
+        return None
+    return [
+        {
+            "tmdb_id": r["id"],
+            "name": r.get("name", r.get("original_name", "")),
+            "year": (r.get("first_air_date") or "")[:4],
+            "popularity": round(r.get("popularity", 0.0), 1),
+        }
+        for r in same
+    ]
+
+
+def _maybe_flag_tv_ambiguity(signal: TmdbSignal, query: str, tv_results: list[dict]) -> TmdbSignal:
+    """Attach same-name collision info to a TV signal when the gate fires."""
+    if signal.content_type != ContentType.TV:
+        return signal
+    candidates = _detect_same_name_candidates(query, tv_results)
+    if candidates:
+        signal.ambiguous_identity = True
+        signal.candidates = candidates
+        logger.info(
+            f"TMDB: same-name collision for '{query}' — candidates "
+            + ", ".join(f"{c['name']} ({c['year']}, id={c['tmdb_id']})" for c in candidates)
+        )
+    return signal
+
+
 def classify_from_tmdb(
     name: str,
     api_key: str,
@@ -216,7 +268,7 @@ def classify_from_tmdb(
         sim_diff = abs(tv_sim - movie_sim)
         if sim_diff >= 0.2:
             if tv_sim > movie_sim:
-                return _make_tv_signal(tv_result)
+                return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), name, tv_results)
             else:
                 return _make_movie_signal(movie_result)
 
@@ -226,17 +278,19 @@ def classify_from_tmdb(
             if ratio < 2:
                 # Close popularity — ambiguous, use the higher one but lower confidence
                 if tv_pop >= movie_pop:
-                    return _make_tv_signal(tv_result, ambiguous=True)
+                    return _maybe_flag_tv_ambiguity(
+                        _make_tv_signal(tv_result, ambiguous=True), name, tv_results
+                    )
                 else:
                     return _make_movie_signal(movie_result, ambiguous=True)
 
         if tv_pop >= movie_pop:
-            return _make_tv_signal(tv_result)
+            return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), name, tv_results)
         else:
             return _make_movie_signal(movie_result)
 
     if tv_result:
-        return _make_tv_signal(tv_result)
+        return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), name, tv_results)
 
     return _make_movie_signal(movie_result)
 
