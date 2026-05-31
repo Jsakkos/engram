@@ -1500,12 +1500,18 @@ async def forget_fingerprint_contribution(
             detail="Cannot delete an already-uploaded contribution; the data is already on the server.",
         )
     if contrib.upload_status is None and contrib.upload_attempts > 0:
-        # upload_attempts > 0 means the background uploader has already tried
-        # this row at least once and may be holding it in an active HTTP call.
-        # Deleting now would cause a silent no-op UPDATE on a ghost row.
+        # upload_attempts > 0 means the background uploader has already tried this
+        # row at least once and may be holding it in an active HTTP call; deleting
+        # now could be a silent no-op UPDATE on a ghost row. Transient failures keep
+        # the row pending (status=None) and retry across drains rather than reaching
+        # a terminal "failed", so this guard holds until the row eventually uploads.
         raise HTTPException(
             status_code=409,
-            detail="Contribution may be in-flight (upload already attempted). Try again after the next poll cycle or wait for it to succeed or fail.",
+            detail=(
+                "Contribution upload already attempted; it will keep retrying on "
+                "later drains until it succeeds. To stop contributing it, opt out "
+                "of fingerprint contributions or use the forget action."
+            ),
         )
     await session.delete(contrib)
     await session.commit()

@@ -263,6 +263,9 @@ class ContributionUploader:
 
                 contrib.upload_status = "success"
                 contrib.uploaded_at = datetime.now(UTC)
+                # Clear any transient-error message from a prior drain so a
+                # recovered row doesn't surface a stale error next to "success".
+                contrib.upload_error_msg = None
                 await session.commit()
                 self._append_audit_log(contrib)
                 logger.info(

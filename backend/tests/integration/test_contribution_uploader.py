@@ -1479,3 +1479,9 @@ async def test_sustained_5xx_does_not_loop_and_recovers_on_later_drain(
     async with async_session() as session:
         rows = (await session.execute(select(FingerprintContribution))).scalars().all()
     assert all(r.upload_status == "success" for r in rows)
+    # The transient-error message from drain #1 must not linger on a row that
+    # later uploaded cleanly — the listing endpoint returns it verbatim, so a
+    # stale message would surface a phantom error next to a "success" status.
+    assert all(r.upload_error_msg is None for r in rows), (
+        "upload_error_msg must be cleared when a previously-transient row succeeds"
+    )
