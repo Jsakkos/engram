@@ -102,7 +102,8 @@ class TmdbSignal:
         return (
             f"TmdbSignal(content_type={self.content_type.value}, "
             f"confidence={self.confidence:.0%}, tmdb_id={self.tmdb_id}, "
-            f"tmdb_name={self.tmdb_name!r}, ambiguous_identity={self.ambiguous_identity})"
+            f"tmdb_name={self.tmdb_name!r}, ambiguous_identity={self.ambiguous_identity}, "
+            f"candidates={self.candidates!r})"
         )
 
 
