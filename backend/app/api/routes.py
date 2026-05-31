@@ -1018,7 +1018,9 @@ async def retry_subtitle_download(
     from app.services.job_manager import job_manager
 
     asyncio.create_task(
-        job_manager._download_subtitles(job.id, job.detected_title, job.detected_season)
+        job_manager._download_subtitles(
+            job.id, job.detected_title, job.detected_season, job.tmdb_id
+        )
     )
 
     return {"status": "retry_started", "job_id": job.id}

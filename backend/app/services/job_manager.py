@@ -1947,9 +1947,11 @@ class JobManager:
 
     # --- Convenience access for routes (subtitle download) ---
 
-    async def _download_subtitles(self, job_id: int, show_name: str, season: int) -> None:
+    async def _download_subtitles(
+        self, job_id: int, show_name: str, season: int, tmdb_id: int | None = None
+    ) -> None:
         """Download subtitles — exposed for test routes."""
-        await self._matching.download_subtitles(job_id, show_name, season)
+        await self._matching.download_subtitles(job_id, show_name, season, tmdb_id)
 
 
 # Singleton instance
