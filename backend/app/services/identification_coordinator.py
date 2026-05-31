@@ -303,11 +303,18 @@ class IdentificationCoordinator:
                     )
                     return
 
-                # Start subtitle download for ALL TV content
+                # Start subtitle download for ALL TV content — except when identity is
+                # ambiguous (same-name collision). Downloading by the tentative name would
+                # fetch the wrong show's subtitles before the user disambiguates.
+                _amb = bool(
+                    getattr(analysis, "_tmdb_signal", None)
+                    and getattr(analysis._tmdb_signal, "ambiguous_identity", False)
+                )
                 if (
                     job.content_type == ContentType.TV
                     and job.detected_title
                     and job.detected_season
+                    and not _amb
                 ):
                     self._start_subtitle_download(job_id, job.detected_title, job.detected_season)
                     logger.info(
