@@ -207,6 +207,7 @@ class EpisodeCurator:
         progress_callback: Callable[..., None] | None = None,
         num_points: int | None = None,
         min_vote_count: int | None = None,
+        tmdb_id: int | None = None,
     ) -> MatchResult:
         """Match a file when the season is unknown by searching every candidate season.
 
@@ -230,7 +231,7 @@ class EpisodeCurator:
         best: MatchResult | None = None
         for s in seasons:
             result = await self.match_single_file(
-                file_path, series_name, s, progress_callback, num_points, min_vote_count
+                file_path, series_name, s, progress_callback, num_points, min_vote_count, tmdb_id
             )
             if not result.episode_code:
                 continue
@@ -331,7 +332,7 @@ class EpisodeCurator:
             # Season unknown (e.g. a flat import folder with no Season NN dir):
             # search across every candidate season and keep the best match.
             return await self._match_across_seasons(
-                file_path, series_name, progress_callback, num_points, min_vote_count
+                file_path, series_name, progress_callback, num_points, min_vote_count, tmdb_id
             )
 
         # Phase 3 cascade: chromaprint first (no-op when the flag is off → identical to legacy ASR path).
