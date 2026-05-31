@@ -4,6 +4,18 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-05-31
+
+_Highlights: fingerprint-network contributions now upload far faster — a backlog drains in back-to-back batches instead of trickling out an hour at a time, and rate-limited uploads are retried instead of dropped. Plus a LAN-access fix so a dual-stack host no longer rejects its own requests._
+
+### Changed
+
+- **Faster fingerprint-contribution uploads** — the contribution uploader now drains its queue in back-to-back batches instead of sending one batch and then sleeping an hour, so a backlog (for example right after a bulk library bootstrap) clears promptly rather than over many hours. Rate-limit responses (HTTP 429) are now treated as transient and retried — honoring the server's `Retry-After`, capped so a misbehaving server can't stall uploads — instead of silently dropping the contribution. The steady-state idle poll interval also dropped from 60 to 15 minutes for quicker pickup of newly ripped episodes. (#276)
+
+### Fixed
+
+- **LAN access could reject the host's own requests on dual-stack (IPv6) binds** — with LAN access bound to all interfaces, the host's own loopback connection can arrive as the IPv4-mapped IPv6 address `::ffff:127.0.0.1`, which the localhost-only guard wrongly rejected with HTTP 403. Loopback is now classified via `ipaddress` (with an explicit IPv4-mapped fallback for Python < 3.13), so local requests are recognized correctly. (#273)
+
 ## [0.12.0] - 2026-05-30
 
 _Highlights: a wider setup wizard with a dedicated Data Sharing tab and guided TMDB onboarding; the Import Watch Folder now handles libraries pointed straight at a show and flat folders with no season; and an ASR matcher fix that restores episode matches the new fingerprint-vector scale had started rejecting._
