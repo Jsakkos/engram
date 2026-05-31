@@ -28,6 +28,23 @@ CONTRIBUTION_LOG_PATH = Path("~/.engram/cache/contribution_log.jsonl").expanduse
 _BATCH_SIZE = 50
 _MAX_ATTEMPTS = 5
 _UPLOAD_TIMEOUT = 30.0
+_CONCURRENCY = 5
+
+
+def _retry_after_seconds(value: str | None) -> float | None:
+    """Parse a Retry-After header value (integer seconds) into float seconds.
+
+    Returns None when the header is absent or not a non-negative integer. We do
+    not support the HTTP-date form — our server only ever emits integer seconds —
+    so callers fall back to exponential backoff when this returns None.
+    """
+    if value is None:
+        return None
+    try:
+        seconds = int(value.strip())
+    except (ValueError, AttributeError):
+        return None
+    return float(seconds) if seconds >= 0 else None
 
 
 class ContributionUploader:

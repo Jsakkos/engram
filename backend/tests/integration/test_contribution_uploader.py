@@ -857,3 +857,18 @@ async def test_contributions_endpoint_includes_audit_log(setup_db, client, tmp_p
         assert any(e.get("tmdb_id") == 99 for e in data["audit_log"])
     finally:
         app.dependency_overrides.pop(require_localhost, None)
+
+
+def test_retry_after_seconds_parses_integer():
+    """A plain integer Retry-After header parses to float seconds."""
+    assert uploader_mod._retry_after_seconds("60") == 60.0
+    assert uploader_mod._retry_after_seconds(" 30 ") == 30.0
+    assert uploader_mod._retry_after_seconds("0") == 0.0
+
+
+def test_retry_after_seconds_returns_none_for_unparseable():
+    """Absent or non-integer (e.g. HTTP-date) Retry-After falls back to None."""
+    assert uploader_mod._retry_after_seconds(None) is None
+    assert uploader_mod._retry_after_seconds("Wed, 21 Oct 2026 07:28:00 GMT") is None
+    assert uploader_mod._retry_after_seconds("") is None
+    assert uploader_mod._retry_after_seconds("-5") is None
