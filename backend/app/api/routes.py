@@ -2969,6 +2969,10 @@ async def fetch_cover(
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
+    # Lazy import (matches get_db_config below). Keep it inline: the fetch-cover
+    # test patches app.core.discdb_exporter.get_export_directory — the binding
+    # this resolves at call time — so hoisting it to module scope would bypass
+    # the patch and silently break that test.
     from app.core.discdb_exporter import get_export_directory
     from app.services.config_service import get_config as get_db_config
 

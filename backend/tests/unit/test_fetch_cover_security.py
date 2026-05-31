@@ -103,6 +103,8 @@ class TestFetchCoverExportPath:
             job_id = job.id
 
         # Redirect the fallback dir to tmp so the test never writes to ~/.engram.
+        # Patch the source-module attribute: fetch_cover imports get_export_directory
+        # lazily at call time, so this is the binding it actually resolves.
         import app.core.discdb_exporter as exp
 
         monkeypatch.setattr(exp, "get_export_directory", lambda config: tmp_path)
