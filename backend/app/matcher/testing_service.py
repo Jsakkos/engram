@@ -226,14 +226,29 @@ def _get_os_client(config) -> object | None:
         return client
 
 
-def _precomputed_skip_result(cache_path: Path, show_name: str, season: int) -> dict | None:
+def _precomputed_skip_result(
+    cache_path: Path, show_name: str, season: int, expected_tmdb_id: int | None = None
+) -> dict | None:
     """Build a 'skip download' result when the precomputed cache covers the season.
 
     Returns None when the cache doesn't cover ``show_name`` S``season``. The result
     is sized from the cache's own episode index (no TMDB call), so it works even
     when TMDB is unreachable — the whole point of the precomputed cache.
+
+    ``expected_tmdb_id`` applies the corpus guard: a precomputed corpus whose
+    manifest id contradicts the job's id is for a different same-named show, so
+    we must NOT skip the download against it.
     """
-    from app.matcher.episode_identification import precomputed_episode_codes
+    from app.matcher.episode_identification import (
+        precomputed_covers_season,
+        precomputed_episode_codes,
+    )
+
+    # Corpus guard first — returns False on an id mismatch (different same-named show).
+    if not precomputed_covers_season(
+        cache_path, show_name, season, expected_tmdb_id=expected_tmdb_id
+    ):
+        return None
 
     codes = precomputed_episode_codes(cache_path, show_name, season)
     if not codes:
@@ -255,7 +270,9 @@ def _precomputed_skip_result(cache_path: Path, show_name: str, season: int) -> d
     }
 
 
-def download_subtitles(show_name: str, season: int, *, use_precomputed: bool = True) -> dict:
+def download_subtitles(
+    show_name: str, season: int, *, tmdb_id: int | None = None, use_precomputed: bool = True
+) -> dict:
     """Download SRT subtitle files for a show/season.
 
     Strategy:
@@ -293,14 +310,19 @@ def download_subtitles(show_name: str, season: int, *, use_precomputed: bool = T
     # offline fallback — manifest keys are canonical names, so a hit means this
     # name *is* the canonical key the cache was built under.
     if use_precomputed:
-        skip = _precomputed_skip_result(cache_path, show_name, season)
+        skip = _precomputed_skip_result(cache_path, show_name, season, expected_tmdb_id=tmdb_id)
         if skip is not None:
             return skip
 
-    # Get TMDB show ID to determine episode count
-    show_id = fetch_show_id(show_name)
-    if not show_id:
-        raise ValueError(f"Could not find show '{show_name}' on TMDB")
+    # Resolve the TMDB show id. When the caller already knows it (e.g. after the
+    # user disambiguated a same-name collision), use it directly — fetch_show_id
+    # resolves by NAME and cannot tell two same-named shows apart.
+    if tmdb_id is not None:
+        show_id = str(tmdb_id)
+    else:
+        show_id = fetch_show_id(show_name)
+        if not show_id:
+            raise ValueError(f"Could not find show '{show_name}' on TMDB")
 
     # Fetch canonical details to get the correct show name (e.g., "Southpark6" -> "South Park")
     show_details = fetch_show_details(show_id)
@@ -311,7 +333,9 @@ def download_subtitles(show_name: str, season: int, *, use_precomputed: bool = T
         # Retry the precomputed fast path under the canonical name, for discs whose
         # label differs from the cache's canonical key.
         if use_precomputed:
-            skip = _precomputed_skip_result(cache_path, canonical_show_name, season)
+            skip = _precomputed_skip_result(
+                cache_path, canonical_show_name, season, expected_tmdb_id=tmdb_id
+            )
             if skip is not None:
                 return skip
 
