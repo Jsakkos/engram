@@ -29,6 +29,9 @@ _BATCH_SIZE = 50
 _MAX_ATTEMPTS = 5
 _UPLOAD_TIMEOUT = 30.0
 _CONCURRENCY = 5
+# Upper bound on an honored Retry-After (seconds). A buggy proxy/server could send
+# an absurd value (e.g. 86400); cap it so a concurrency slot can't stall for hours.
+_MAX_RETRY_AFTER = 300.0
 
 
 def _retry_after_seconds(value: str | None) -> float | None:
@@ -91,19 +94,26 @@ class ContributionUploader:
 
         Returns the number of rows successfully uploaded this drain.
         """
-        cfg = await get_config()
-        if not cfg.enable_fingerprint_contributions:
+        # Pre-check: if disabled, do nothing — don't even open a client.
+        if not (await get_config()).enable_fingerprint_contributions:
             logger.debug("fingerprint contributions disabled by user; skipping upload")
             return 0
-
-        # NULL/blank stored URL means "use the default network base origin".
-        server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
 
         drained = 0
         semaphore = asyncio.Semaphore(_CONCURRENCY)
         # One client for the whole drain → HTTP keep-alive across every batch/row.
         async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:
             while True:
+                # Re-read config each batch so a mid-drain opt-out (or disclosure
+                # revocation) takes effect within one batch, not only at the next
+                # idle tick — a long backlog drain can run for minutes.
+                cfg = await get_config()
+                if not cfg.enable_fingerprint_contributions:
+                    logger.info("fingerprint contributions disabled mid-drain; stopping")
+                    break
+                # NULL/blank stored URL means "use the default network base origin".
+                server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
+
                 # Collect IDs in a short-lived session so the connection is
                 # released before any per-row upload work.
                 async with async_session() as session:
@@ -142,7 +152,9 @@ class ContributionUploader:
                     if r is True:
                         drained += 1
                     elif isinstance(r, Exception):
-                        logger.warning("Contribution upload task errored: {}", r)
+                        # r is a gathered exception, not the active one — pass it
+                        # explicitly so loguru captures its traceback.
+                        logger.opt(exception=r).warning("Contribution upload task errored")
 
         return drained
 
@@ -250,8 +262,11 @@ class ContributionUploader:
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
                 if status == 429:
-                    # Rate limited — transient. Honor Retry-After; else exponential.
-                    backoff = _retry_after_seconds(e.response.headers.get("Retry-After")) or backoff
+                    # Rate limited — transient. Honor Retry-After (capped, and 0 means
+                    # "retry now"); fall back to exponential when the header is absent.
+                    retry_after = _retry_after_seconds(e.response.headers.get("Retry-After"))
+                    if retry_after is not None:
+                        backoff = min(retry_after, _MAX_RETRY_AFTER)
                     contrib.upload_attempts += 1
                     await session.commit()
                     logger.warning(

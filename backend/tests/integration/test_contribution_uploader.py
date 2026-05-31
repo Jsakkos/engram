@@ -1183,3 +1183,199 @@ async def test_uploader_429_falls_back_to_exponential_without_retry_after(
 def test_uploader_default_poll_interval_is_900():
     """The default idle poll interval is 15 minutes (900s), not an hour."""
     assert ContributionUploader().poll_interval == 900
+
+
+@pytest.mark.asyncio
+async def test_uploader_429_retry_after_zero_is_immediate(setup_db, tmp_path, monkeypatch):
+    """Retry-After: 0 means retry immediately — it must not be swallowed by `or`."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=_make_valid_blob(),
+            tmdb_id=1399,
+            season=1,
+            episode=1,
+            match_confidence=0.9,
+            match_source="engram_asr",
+            pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+        session.add(row)
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    rate_limited = httpx.HTTPStatusError(
+        "429",
+        request=MagicMock(),
+        response=MagicMock(status_code=429, headers={"Retry-After": "0"}),
+    )
+    ok_resp = MagicMock()
+    ok_resp.raise_for_status = MagicMock()
+
+    sleep_durations: list[float] = []
+
+    async def fake_sleep(duration):
+        sleep_durations.append(duration)
+
+    with (
+        patch("httpx.AsyncClient") as MockClient,
+        patch("asyncio.sleep", side_effect=fake_sleep),
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=[rate_limited, ok_resp])
+        MockClient.return_value = mock_client
+
+        await ContributionUploader()._drain()
+
+    # Retry-After: 0 → backoff 0.0 (immediate), NOT the 2**0 = 1.0 exponential default.
+    assert 0.0 in sleep_durations
+    assert 1.0 not in sleep_durations
+
+
+@pytest.mark.asyncio
+async def test_uploader_caps_oversized_retry_after(setup_db, tmp_path, monkeypatch):
+    """An absurd Retry-After is capped to _MAX_RETRY_AFTER so a slot can't stall for hours."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    async with async_session() as session:
+        row = FingerprintContribution(
+            chromaprint_blob=_make_valid_blob(),
+            tmdb_id=1399,
+            season=1,
+            episode=3,
+            match_confidence=0.9,
+            match_source="engram_asr",
+            pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+        session.add(row)
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    rate_limited = httpx.HTTPStatusError(
+        "429",
+        request=MagicMock(),
+        response=MagicMock(status_code=429, headers={"Retry-After": "86400"}),
+    )
+
+    sleep_durations: list[float] = []
+
+    async def fake_sleep(duration):
+        sleep_durations.append(duration)
+
+    with (
+        patch("httpx.AsyncClient") as MockClient,
+        patch("asyncio.sleep", side_effect=fake_sleep),
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=rate_limited)
+        MockClient.return_value = mock_client
+
+        await ContributionUploader()._drain()
+
+    assert sleep_durations, "expected at least one backoff sleep"
+    assert max(sleep_durations) <= uploader_mod._MAX_RETRY_AFTER
+    assert 86400.0 not in sleep_durations
+
+
+@pytest.mark.asyncio
+async def test_drain_respects_midstream_optout(setup_db, tmp_path, monkeypatch):
+    """Opting out mid-drain stops further batches (config is re-checked per batch)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from sqlmodel import select
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+    monkeypatch.setattr(uploader_mod, "_BATCH_SIZE", 2)
+
+    async with async_session() as session:
+        for i in range(4):
+            session.add(
+                FingerprintContribution(
+                    chromaprint_blob=_make_valid_blob(),
+                    tmdb_id=1399,
+                    season=1,
+                    episode=i + 1,
+                    match_confidence=0.9,
+                    match_source="engram_asr",
+                    pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                )
+            )
+        await session.commit()
+
+    enabled = MagicMock(
+        fingerprint_server_url="https://fp.example.com",
+        contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        enable_fingerprint_contributions=True,
+        fingerprint_disclosure_accepted=True,
+    )
+    disabled = MagicMock(
+        fingerprint_server_url="https://fp.example.com",
+        contribution_pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        enable_fingerprint_contributions=False,
+        fingerprint_disclosure_accepted=True,
+    )
+    # pre-check (enabled), batch 1 (enabled), batch 2 (disabled → stop).
+    monkeypatch.setattr(
+        uploader_mod, "get_config", AsyncMock(side_effect=[enabled, enabled, disabled])
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        MockClient.return_value = mock_client
+
+        drained = await ContributionUploader()._drain()
+
+    # Only the first batch of 2 uploaded; opt-out stopped the rest.
+    assert drained == 2
+    assert mock_client.post.call_count == 2
+    async with async_session() as session:
+        pending = (
+            (
+                await session.execute(
+                    select(FingerprintContribution).where(
+                        FingerprintContribution.upload_status.is_(None)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(pending) == 2
