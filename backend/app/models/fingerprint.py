@@ -49,6 +49,10 @@ class FingerprintContribution(SQLModel, table=True):
 
     # Phase 2 uploader state
     uploaded_at: datetime | None = None
-    upload_attempts: int = Field(default=0)
-    upload_status: str | None = Field(default=None)  # None=pending, "success", "failed"
+    upload_attempts: int = Field(default=0)  # cumulative lifetime attempts (diagnostic)
+    # None=pending OR transiently failed (5xx/network/429) and awaiting retry on a
+    # later drain — distinguish via upload_attempts/upload_error_msg; "success";
+    # "failed"=PERMANENT only (4xx or blob-decode). A sustained transient outage
+    # never reaches "failed" — that is what keeps a 503 storm from burning rows.
+    upload_status: str | None = Field(default=None)
     upload_error_msg: str | None = Field(default=None)  # last error text for UI

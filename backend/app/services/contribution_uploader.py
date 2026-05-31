@@ -101,6 +101,12 @@ class ContributionUploader:
 
         drained = 0
         semaphore = asyncio.Semaphore(_CONCURRENCY)
+        # Id-cursor so the drain sweeps the pending queue exactly once. Transient
+        # failures leave the row pending (upload_status=None) for a later drain to
+        # retry — without the cursor those still-None rows would be re-selected
+        # within this same drain forever. A *new* _drain() resets last_id to 0 and
+        # re-sweeps, which is what makes a recovered server re-pick burned rows.
+        last_id = 0
         # One client for the whole drain → HTTP keep-alive across every batch/row.
         async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:
             while True:
@@ -120,13 +126,17 @@ class ContributionUploader:
                     stmt = (
                         select(FingerprintContribution.id)
                         .where(FingerprintContribution.upload_status.is_(None))
-                        .where(FingerprintContribution.upload_attempts < _MAX_ATTEMPTS)
+                        .where(FingerprintContribution.id > last_id)
+                        .order_by(FingerprintContribution.id)
                         .limit(_BATCH_SIZE)
                     )
                     row_ids = (await session.execute(stmt)).scalars().all()
 
                 if not row_ids:
                     break
+                # Advance past this batch so transiently-failed rows (still None)
+                # aren't re-selected later in this same drain.
+                last_id = row_ids[-1]
 
                 if not cfg.fingerprint_disclosure_accepted:
                     # Data is queued but the user hasn't consented yet. Prompt; don't upload.
@@ -238,9 +248,11 @@ class ContributionUploader:
             await session.commit()
             return
 
-        # Honour the lifetime attempt cap: prior failures consumed some budget.
-        remaining = _MAX_ATTEMPTS - contrib.upload_attempts
-        for attempt in range(remaining):
+        # Per-drain retry budget — _MAX_ATTEMPTS is NOT a lifetime cap. Exhausting
+        # it on transient errors leaves the row pending (see the post-loop block)
+        # so a later drain retries; a sustained-but-transient outage (e.g. a 503
+        # storm) must never permanently burn a row.
+        for attempt in range(_MAX_ATTEMPTS):
             backoff: float = 2**attempt
             try:
                 resp = await client.post(
@@ -251,6 +263,9 @@ class ContributionUploader:
 
                 contrib.upload_status = "success"
                 contrib.uploaded_at = datetime.now(UTC)
+                # Clear any transient-error message from a prior drain so a
+                # recovered row doesn't surface a stale error next to "success".
+                contrib.upload_error_msg = None
                 await session.commit()
                 self._append_audit_log(contrib)
                 logger.info(
@@ -293,14 +308,23 @@ class ContributionUploader:
                 await session.commit()
                 logger.warning(f"Contrib {contrib.id}: network error, attempt {attempt + 1}: {e}")
 
-            if attempt < remaining - 1:
+            if attempt < _MAX_ATTEMPTS - 1:
                 await asyncio.sleep(backoff)
 
-        # Exhausted retries
-        contrib.upload_status = "failed"
-        contrib.upload_error_msg = f"Retries exhausted after {_MAX_ATTEMPTS} attempts"
+        # Transient retries exhausted for THIS drain. Leave upload_status=None so a
+        # later drain re-picks the row once the server recovers — permanent failures
+        # (4xx / blob-decode) already returned above with upload_status="failed".
+        # upload_attempts keeps climbing as a lifetime diagnostic, and the row stays
+        # NULL so rotate-pseudonym still re-tags it before its eventual upload.
+        contrib.upload_error_msg = (
+            f"Transient errors after {contrib.upload_attempts} attempt(s); "
+            "will retry on a later drain"
+        )
         await session.commit()
-        logger.error(f"Contrib {contrib.id}: upload failed after {_MAX_ATTEMPTS} attempts")
+        logger.warning(
+            f"Contrib {contrib.id}: transient errors persisted this drain ("
+            f"{contrib.upload_attempts} total attempts); left pending for retry"
+        )
 
     @staticmethod
     def _append_audit_log(contrib: FingerprintContribution) -> None:
