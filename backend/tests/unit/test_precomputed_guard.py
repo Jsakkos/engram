@@ -1,4 +1,4 @@
-from app.matcher.episode_identification import precomputed_covers_season
+from app.matcher.episode_identification import EpisodeMatcher, precomputed_covers_season
 
 
 def _manifest(tmdb_id):
@@ -47,3 +47,19 @@ def test_guard_passes_on_matching_id_then_checks_files(tmp_path):
         )
         is True
     )
+
+
+def test_matcher_stores_expected_tmdb_id(tmp_path):
+    m = EpisodeMatcher(cache_dir=tmp_path, show_name="Frasier", expected_tmdb_id=195241)
+    assert m.expected_tmdb_id == 195241
+
+
+def test_load_precomputed_returns_none_on_id_mismatch_without_pruning(tmp_path, monkeypatch):
+    m = EpisodeMatcher(cache_dir=tmp_path, show_name="Frasier", expected_tmdb_id=195241)
+    manifest = {
+        "shows": {"Frasier": {"tmdb_id": "3452", "seasons": [1], "episode_counts": {"1": 24}}}
+    }
+    monkeypatch.setattr(m, "_load_precomputed_manifest", lambda: manifest)
+    assert m._load_precomputed_season(1) is None
+    # The valid 3452 entry must survive (not pruned as "files missing").
+    assert manifest["shows"]["Frasier"]["seasons"] == [1]

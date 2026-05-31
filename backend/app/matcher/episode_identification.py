@@ -719,10 +719,12 @@ class EpisodeMatcher:
         min_vote_count=2,
         match_threshold=0.10,
         model_name="small",
+        expected_tmdb_id=None,
     ):
         self.cache_dir = Path(cache_dir)
         self.min_confidence = min_confidence
         self.show_name = show_name
+        self.expected_tmdb_id = expected_tmdb_id
         self.chunk_duration = 30
         self.skip_initial_duration = (
             90  # Minimal skip for title cards; ranked voting handles intro noise
@@ -876,11 +878,29 @@ class EpisodeMatcher:
         # reuse it for the coverage gate so we read+validate manifest.json at most
         # once per matcher instance instead of once per title.
         manifest = self._load_precomputed_manifest()
+        # Corpus guard: a positive tmdb_id mismatch means the manifest entry is a
+        # different same-named show. Bail BEFORE the stale-prune branch so we don't
+        # wrongly drop a valid entry whose files are present.
+        show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
+        entry_id = show_entry.get("tmdb_id") if show_entry else None
+        if (
+            self.expected_tmdb_id is not None
+            and entry_id is not None
+            and str(entry_id) != str(self.expected_tmdb_id)
+        ):
+            logger.warning(
+                f"Precomputed corpus for '{self.show_name}' is tmdb_id {entry_id} but this "
+                f"job resolved tmdb_id {self.expected_tmdb_id}; skipping precomputed (wrong show)"
+            )
+            return None
         if not precomputed_covers_season(
-            self.cache_dir, self.show_name, season_number, manifest=manifest
+            self.cache_dir,
+            self.show_name,
+            season_number,
+            manifest=manifest,
+            expected_tmdb_id=self.expected_tmdb_id,
         ):
             # Prune the stale season in-memory so the warning fires at most once per matcher.
-            show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
             if show_entry and season_number in show_entry.get("seasons", []):
                 logger.warning(
                     f"Precomputed cache lists {self.show_name} S{season_number:02d} "
