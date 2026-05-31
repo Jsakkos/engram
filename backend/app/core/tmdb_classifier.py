@@ -169,7 +169,7 @@ def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] 
     seen_ids = set()
     for r in results:
         rid = r.get("id")
-        if rid in seen_ids:
+        if rid is None or rid in seen_ids:
             continue
         name = r.get("name", r.get("original_name", ""))
         if _name_similarity(query, name) >= 0.95:
@@ -181,8 +181,13 @@ def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] 
     top, second = same[0].get("popularity", 0.0), same[1].get("popularity", 0.0)
     if second < AMBIGUOUS_POPULARITY_FLOOR:
         return None
+    # `second <= 0` is a division-by-zero rail kept intentionally: the floor check
+    # above covers it for the default floor, but the constants are tunable.
     if second <= 0 or (top / second) > AMBIGUOUS_POPULARITY_RATIO:
         return None
+    # Return ALL same-name candidates (not just the gated top two): a franchise like
+    # Doctor Who has 3+ legitimate same-name shows, and the user may own any of them.
+    # The gate decides whether to flag; the list shows every show they pick between.
     return [
         {
             "tmdb_id": r["id"],

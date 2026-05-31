@@ -114,3 +114,19 @@ def test_unique_name_not_flagged():
     with _patch_searches(tv):
         sig = tc.classify_from_tmdb("Breaking Bad", "k" * 41)
     assert sig.ambiguous_identity is False
+
+
+def test_collision_lists_all_same_name_candidates():
+    # Doctor Who: 2005 p109 vs 1963 p62 (gate fires on these two) plus a 2024 entry.
+    # All three legitimate same-name shows must appear in candidates — the user may
+    # own any of them — even though only the top two drove the materiality gate.
+    tv = [
+        {"id": 57243, "name": "Doctor Who", "popularity": 109.9, "first_air_date": "2005-03-26"},
+        {"id": 121, "name": "Doctor Who", "popularity": 62.7, "first_air_date": "1963-11-23"},
+        {"id": 239770, "name": "Doctor Who", "popularity": 21.9, "first_air_date": "2024-01-01"},
+    ]
+    with _patch_searches(tv):
+        sig = tc.classify_from_tmdb("Doctor Who", "k" * 41)
+    assert sig.ambiguous_identity is True
+    ids = {c["tmdb_id"] for c in sig.candidates}
+    assert ids == {57243, 121, 239770}
