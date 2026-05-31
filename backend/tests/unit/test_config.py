@@ -2,7 +2,7 @@
 
 import sys
 
-from app.config import is_frozen
+from app.config import Settings, is_frozen
 
 
 class TestIsFrozen:
@@ -34,3 +34,31 @@ class TestIsFrozen:
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "_MEIPASS", "/tmp/_MEIxxxx", raising=False)
         assert is_frozen() is True
+
+
+class TestDbEcho:
+    """SQLAlchemy echo must be controlled by db_echo, NOT debug.
+
+    Regression guard for E2E flakiness: the E2E backend runs with DEBUG=true to
+    expose the /api/simulate/* endpoints, but echoing every SQL statement during
+    a simulated rip floods stdout and stalls the single-worker event loop,
+    causing visibility-assertion timeouts. db_echo is decoupled from debug and
+    defaults off. ``_env_file=None`` skips any local backend/.env so the test is
+    deterministic regardless of the developer's environment.
+    """
+
+    def test_db_echo_defaults_false(self, monkeypatch):
+        monkeypatch.delenv("DB_ECHO", raising=False)
+        assert Settings(_env_file=None).db_echo is False
+
+    def test_debug_true_does_not_enable_db_echo(self, monkeypatch):
+        # The exact E2E configuration: DEBUG on, DB_ECHO unset. Echo must stay off.
+        monkeypatch.setenv("DEBUG", "true")
+        monkeypatch.delenv("DB_ECHO", raising=False)
+        settings = Settings(_env_file=None)
+        assert settings.debug is True
+        assert settings.db_echo is False
+
+    def test_db_echo_env_opt_in(self, monkeypatch):
+        monkeypatch.setenv("DB_ECHO", "true")
+        assert Settings(_env_file=None).db_echo is True

@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # Database
     database_url: str = _default_database_url()
 
+    # SQLAlchemy engine echo. Deliberately decoupled from `debug`: the E2E
+    # backend runs DEBUG=true (for /api/simulate/*) but must not echo SQL, which
+    # floods stdout and stalls the event loop under simulation load (flaky test
+    # timeouts; see PR #267). Off by default; set DB_ECHO=true for local SQL tracing.
+    db_echo: bool = False
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000

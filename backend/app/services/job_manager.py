@@ -91,6 +91,7 @@ class JobManager:
             get_discdb_mappings=self._matching.get_discdb_mappings,
             set_discdb_mappings=self._matching.set_discdb_mappings,
             start_subtitle_download=self._matching.start_subtitle_download,
+            start_subtitle_download_all_seasons=self._matching.start_subtitle_download_all_seasons,
             restart_subtitle_download=self._matching.restart_subtitle_download,
             try_discdb_assignment=self._matching.try_discdb_assignment,
             match_single_file=self._matching.match_single_file,

@@ -375,6 +375,61 @@ class TestImportWatcherStructureDetection:
 
         assert units[0][3]["destination_mode"] == "in_place"
 
+    async def test_watch_root_is_show_with_season_subdirs(self, tmp_path):
+        """Watch root pointed directly at a show folder with Season NN subdirs.
+
+        User layout: import_watch_path = .../The Expanse, containing Season 01/, Season 02/.
+        Each season folder should yield a show_organised unit whose show_name is the
+        watch-root folder name and whose season is parsed from the folder name.
+        """
+        show_root = tmp_path / "The Expanse"
+        show_root.mkdir()
+        s1 = show_root / "Season 01"
+        s1.mkdir()
+        (s1 / "title_t00.mkv").write_bytes(b"\x00" * 1024)
+        s2 = show_root / "Season 02"
+        s2.mkdir()
+        (s2 / "title_t00.mkv").write_bytes(b"\x00" * 2048)
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(show_root))
+        units = watcher._scan_import_dir(show_root)
+
+        assert len(units) == 2
+        seasons = {meta["season"]: (path, meta) for path, _, _, meta in units}
+        assert set(seasons) == {1, 2}
+        assert seasons[1][0] == s1
+        assert seasons[1][1]["show_name"] == "The Expanse"
+        assert seasons[1][1]["structure"] == "show_organised"
+        assert seasons[2][0] == s2
+        assert seasons[2][1]["show_name"] == "The Expanse"
+
+    @pytest.mark.parametrize(
+        "folder_name,expected_season",
+        [
+            ("Season 1", 1),
+            ("Season 01", 1),
+            ("Season1", 1),
+            ("season 2", 2),
+            ("Season 12", 12),
+        ],
+    )
+    async def test_season_folder_spelling_variants(self, tmp_path, folder_name, expected_season):
+        """Single-digit, double-digit, and zero-padded season spellings all parse."""
+        show_root = tmp_path / "The Expanse"
+        show_root.mkdir()
+        season_dir = show_root / folder_name
+        season_dir.mkdir()
+        (season_dir / "title_t00.mkv").write_bytes(b"\x00" * 512)
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(show_root))
+        units = watcher._scan_import_dir(show_root)
+
+        assert len(units) == 1
+        _, _, _, meta = units[0]
+        assert meta["season"] == expected_season
+        assert meta["show_name"] == "The Expanse"
+        assert meta["structure"] == "show_organised"
+
 
 class TestImportWatcherPolling:
     """Tests for the full poll loop with import paths."""

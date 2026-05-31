@@ -4,6 +4,42 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-30
+
+_Highlights: a wider setup wizard with a dedicated Data Sharing tab and guided TMDB onboarding; the Import Watch Folder now handles libraries pointed straight at a show and flat folders with no season; and an ASR matcher fix that restores episode matches the new fingerprint-vector scale had started rejecting._
+
+### Added
+
+- **Data Sharing settings tab** — a dedicated tab in the setup/settings wizard now groups everything that sends data off your machine (the fingerprint network, AI assistance, and the gated TheDiscDB integration) in one place, separate from local Preferences. (#263)
+- **Guided TMDB onboarding** — the TMDB token field shows instructional text instead of a token-shaped placeholder, validates automatically when you leave the field (with inline ✓/✗ feedback), and first-run setup no longer advances past the TMDB step until you've entered a valid token or explicitly chosen to continue without one. (#243, #263)
+
+### Changed
+
+- **Wider, collapsible config wizard** — the setup/settings modal is wider (800 → 1040px) and Preferences plus the new Data Sharing tab are grouped into collapsible sections, so the page starts compact and you expand only what you need. Inline action buttons that previously rendered as bare text ("Forget me", "Contribute from existing library") are fixed. (#263)
+
+### Fixed
+
+- **Import Watch Folder missed shows it was pointed at directly** — pointing the watch folder straight at a single show's folder broke ingestion: `Season NN` subfolders sat one nesting level too shallow to be detected (jobs were mislabeled with no show or season), and flat folders with no season matched nothing because the matcher requires a season. Engram now recognizes `Season N` / `Season 01` folders when the watch root *is* the show, and searches every candidate season for flat imports so they match across all seasons. (#264)
+- **ASR episode matching rejected correct matches on known seasons** — a 30-second speech-recognition chunk scores a structurally low similarity against a full-episode reference vector, and the recent precomputed-vector migration lowered that scale further, so the old fixed similarity threshold rejected most correct chunks and returned no episode. Matching now uses a rank-and-margin vote (the top candidate must clear a low floor *and* lead the runner-up by a wide margin) and falls through to a full-file comparison when no chunk votes, restoring matches while still abstaining on out-of-corpus content. (#269)
+
+## [0.11.0] - 2026-05-29
+
+### Added
+
+- **Bootstrap Library (bulk fingerprint upload)** — a one-pass tool that walks your existing organized TV library, extracts a Chromaprint acoustic fingerprint from every episode, and contributes them to the shared fingerprint network in bulk. Previously the network only grew as you ripped new discs; now shows you already own can seed matching immediately. Respects the same privacy model and opt-out as the per-rip contribution flow. (#253)
+- **Bundled `fpcalc`** — the Chromaprint `fpcalc` binary is now shipped inside the Windows, Linux, and macOS builds, so audio fingerprinting works out of the box with no manual Chromaprint install. Development builds fetch it on demand. (#260)
+- **Broadcast vs. DVD/streaming episode reordering** — episode organization now reconciles aired order with DVD/streaming order using TMDB episode groups, so shows that shipped in a different order than they aired land in the correct files. (#200, #254)
+- **Global episode-ordering default in the Config UI** — pick DVD or aired ordering as the library-wide default directly from Settings, instead of per-show only. (#255, #259)
+
+### Fixed
+
+- **Startup crash `no such column: app_config.episode_ordering_preference`** — the pre-init LAN-address read queried `app_config` before the schema reconcilers ran, so a freshly migrated database crashed on launch. The read now tolerates schema drift. (#261)
+- **Bulk fingerprint upload silently skipped episodes with certain codecs** — the bundled Chromaprint 1.5.1 `fpcalc` can't decode DTS, TrueHD, FLAC, or E-AC-3 audio, so ~128 library episodes failed fingerprinting with no warning. Engram now falls back to an `ffmpeg` pre-decode so every track can be fingerprinted. (#261)
+- **"Queued contribution for title None" in the logs** — the show title is now persisted and logged, so bulk-upload progress is attributable per show. (#261)
+- **Dashboard not refreshing after an in-app update, and incorrect frozen-build detection** — the UI now reloads after applying an update and correctly identifies packaged builds. (#258)
+- **Long filenames and paths truncated in job history** — they now wrap instead of being cut off. (#256)
+- **Cramped MANUAL row in the review inspector** — split into two rows so the manual-assignment controls are readable. (#257)
+
 ## [0.10.0] - 2026-05-28
 
 ### Added

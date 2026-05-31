@@ -9,7 +9,7 @@ Engram is a disc ripping and media organization tool with a reactive web dashboa
 ## Important Rules
 
 - **NEVER delete `backend/engram.db`** unless the user explicitly asks. It contains API keys and credentials that must be re-entered manually.
-- **Always terminate backend processes after testing.** Kill all `uvicorn`, `python` (uvicorn workers), and `makemkvcon` processes when done. Orphaned processes cause duplicate jobs and MakeMKV drive conflicts. Never use `--reload` — it spawns a child process with its own drive sentinel, creating duplicate disc events.
+- **Always terminate this session's servers when work is done — and before opening a PR.** Kill the `uvicorn`/`python` (uvicorn workers) and `makemkvcon` processes you started; orphans cause duplicate jobs and MakeMKV drive conflicts. If you're the only running session, killing them all is fine; if other sessions are live, scope the kill to **your own ports** so you don't take down a sibling (see "Parallel sessions / worktree isolation"). Never use `--reload` — it spawns a child process with its own drive sentinel, creating duplicate disc events.
 
 ## Repository Organization
 
@@ -45,6 +45,52 @@ npm run test:e2e     # Run Playwright E2E tests
 npm run test:e2e:ui  # Run E2E tests with interactive UI
 npm run brand:export # Regenerate favicons + .ico/.icns from SVG sources
 ```
+
+### Parallel sessions / worktree isolation
+
+Running two Claude/dev sessions at once (e.g. two `.claude/worktrees/*`) collides on the
+default **ports** (backend `8000`, Vite `5173`) and on any **shared database**. Give each
+session its own ports + DB:
+
+| Knob | Env var | Default | Notes |
+|------|---------|---------|-------|
+| Backend DB | `DATABASE_URL` | `sqlite+aiosqlite:///./engram.db` | Read at import (`database.py`). Each worktree's relative `./engram.db` is already distinct — only override if you pointed it at a **shared/real** DB. Never let two live sessions share one DB file. |
+| Backend port | uvicorn `--port` flag | `8000` | **`PORT`/`HOST` env vars are ignored** by `uvicorn app.main:app` (only honored by `python -m app.main`). Use the CLI flag. |
+| Frontend port | `VITE_PORT` | `5173` | Vite dev server. |
+| Proxy target | `VITE_BACKEND_PORT` | `8000` | **Must equal the backend `--port`** or `/api` + `/ws` 502. |
+
+Second stack (PowerShell), backend from `backend/`, frontend from `frontend/`:
+
+```powershell
+# backend  (distinct DB + port)
+$env:DATABASE_URL = "sqlite+aiosqlite:///./engram-b.db"
+uv run uvicorn app.main:app --port 8100
+
+# frontend (distinct port; proxy points at the backend above)
+$env:VITE_PORT = "5273"; $env:VITE_BACKEND_PORT = "8100"; npm run dev
+```
+
+bash equivalent: `DATABASE_URL=sqlite+aiosqlite:///./engram-b.db uv run uvicorn app.main:app --port 8100`
+and `VITE_PORT=5273 VITE_BACKEND_PORT=8100 npm run dev`.
+
+**Drive sentinel is per-backend and unconditional** (`job_manager.start()` → `_drive_monitor.start()`):
+every backend polls the physical optical drive. Two live backends → duplicate disc events +
+`makemkvcon` conflicts. For parallel work use **simulation** (`DEBUG=true` + `/api/simulate/*`),
+never two backends against a real inserted disc. Real-disc testing = exactly one backend.
+
+**Clean up before the PR.** When the work is done, stop the servers this session started —
+scoped by port so a sibling session keeps running:
+
+```powershell
+# Stop THIS session's backend + frontend by port (use the ports you launched on)
+Get-NetTCPConnection -LocalPort 8100,5273 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
+```
+
+If you're the only session (e.g. single real-disc backend), the global kill from **Important
+Rules** — all `uvicorn`/`python`/`makemkvcon` — is equivalent and also sweeps orphaned
+`makemkvcon` children.
 
 ### Simulation (requires backend running with DEBUG=true)
 
@@ -271,7 +317,7 @@ No client messages currently supported (WebSocket is server-push only).
 ### Configuration Sources (Priority Order)
 
 1. **Database** (`app_config` table) — Runtime configuration, editable via API
-2. **Environment variables** (or optional `.env` file) — Server-level settings (DEBUG, HOST, PORT, DATABASE_URL)
+2. **Environment variables** (or optional `.env` file) — Server-level settings (DEBUG, HOST, PORT, DATABASE_URL, DB_ECHO). `DB_ECHO=true` enables verbose SQLAlchemy SQL tracing (default off; decoupled from DEBUG so the E2E backend can run with DEBUG=true without flooding logs)
 3. **Defaults** — Hardcoded in `AppConfig` model
 
 ### Configuration Flow
@@ -404,3 +450,13 @@ For development without physical discs:
 - SQLite database stored at `backend/engram.db`
 - Subtitle cache stored at `~/.engram/cache/`
 - Logs written to `~/.engram/engram.log`
+
+## Release and Changelog
+
+**The GitHub release page is generated from `CHANGELOG.md`, not from GitHub's auto-generated PR list.** At release time, `release.yml` runs `backend/scripts/extract_changelog.py` to pull the section for the version being tagged and uses it as the release body, then appends a `**Full Changelog**` compare link. So the curated changelog *is* the release notes — keep it good.
+
+- **Before cutting a release, `CHANGELOG.md` MUST contain a curated `## [X.Y.Z] - YYYY-MM-DD` section whose version matches `backend/pyproject.toml`.** CI enforces this: the `changelog-version-check` job (`ci.yml`) runs the extractor in `--check` mode against the pyproject version and fails the PR if the section is missing — so a release PR can't merge without its changelog entry.
+- **Section format** (Keep a Changelog): open with a one-line italic `_Highlights: …_` summary (this leads the release notes), then `### Added` / `### Changed` / `### Fixed` / `### Removed` as needed. Reference PRs as `(#NNN)`. Write user-facing prose, not commit subjects.
+- **`[Unreleased]`** holds entries accumulated between releases; move its content into the new `## [X.Y.Z]` section as part of the release PR. Extraction targets a concrete version and never returns `[Unreleased]`.
+- **Release flow**: a `chore: release vX.Y.Z` PR (bump the version files + write the CHANGELOG section) → squash-merge → `tag-release.yml` tags from `main` → `release.yml` builds binaries and publishes the release with the extracted notes.
+- **Preview locally**: `python3 backend/scripts/extract_changelog.py --version X.Y.Z` (or `uv run python …` on Windows) prints exactly what the release body will contain.

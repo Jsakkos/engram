@@ -255,6 +255,28 @@ class StagingWatcher:
                     units.extend(season_units)
                     continue
 
+                # Pattern B': the watch root IS the show — subdir itself is a Season
+                # folder (root/Season NN/*.mkv). Derive the show name from the root.
+                season_match = _SEASON_RE.match(entry.name)
+                if season_match:
+                    mkv_count, total_size = self._count_mkvs(subdir)
+                    if mkv_count > 0:
+                        units.append(
+                            (
+                                subdir,
+                                mkv_count,
+                                total_size,
+                                {
+                                    "structure": "show_organised",
+                                    "show_name": root.name,
+                                    "season": int(season_match.group(1)),
+                                    "destination_mode": self._import_destination_mode,
+                                    "source": "import",
+                                },
+                            )
+                        )
+                    continue
+
                 # Pattern A: subdir directly contains MKVs
                 mkv_count, total_size = self._count_mkvs(subdir)
                 if mkv_count > 0:

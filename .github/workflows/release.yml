@@ -321,6 +321,11 @@ jobs:
     needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+        with:
+          # Need CHANGELOG.md for the release body and full tag history so the
+          # "Full Changelog" compare link can resolve the previous tag.
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           name: engram-windows-x64
@@ -334,6 +339,20 @@ jobs:
         run: |
           sha256sum engram-windows-x64.zip engram-linux-x64.tar.gz engram-macos-arm64.tar.gz > sha256sums.txt
           cat sha256sums.txt
+      - name: Generate release notes from CHANGELOG
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          python3 backend/scripts/extract_changelog.py \
+            --version "$VERSION" --changelog CHANGELOG.md > release-notes.md
+          # Append a compare link to the previous tag (omitted for the first release).
+          PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then
+            printf '\n\n---\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
+              "${{ github.repository }}" "$PREV" "$TAG" >> release-notes.md
+          fi
+          echo "----- release-notes.md -----"
+          cat release-notes.md
       - uses: softprops/action-gh-release@v3
         with:
           # A manual workflow_dispatch can request a draft (hidden from the public
@@ -341,7 +360,11 @@ jobs:
           # polls) for testing a build. Tag-push releases leave inputs unset, so
           # this resolves to false and they publish normally.
           draft: ${{ inputs.draft || false }}
-          generate_release_notes: true
+          # Release body is the curated CHANGELOG section (built in the step above)
+          # plus a compare-link footer — not GitHub's flat auto-generated PR list.
+          generate_release_notes: false
+          body_path: release-notes.md
+          name: ${{ inputs.tag || github.ref_name }}
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
             engram-windows-x64.zip
