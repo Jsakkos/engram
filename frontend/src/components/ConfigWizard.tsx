@@ -167,7 +167,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
-    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean}>({makemkv: false, tmdb: false, opensubtitles: false});
+    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, ai: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, ai: false});
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
     // #243: first-run gate — require a validated TMDB token (or explicit skip) before leaving the TMDB step.
     const [tmdbContinueAnyway, setTmdbContinueAnyway] = useState(false);
@@ -209,6 +209,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     makemkv: data.makemkv_key === '***',
                     tmdb: data.tmdb_api_key === '***',
                     opensubtitles: data.opensubtitles_api_key === '***',
+                    ai: data.ai_api_key === '***',
                 });
                 // Note: API keys are redacted as "***" for security
                 setConfig({
@@ -1009,11 +1010,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 <div className="form-group">
                                     <label htmlFor="aiApiKey">
                                         {providerLabel} API Key
+                                        <SavedKeyBadge saved={savedKeys.ai} text="Key saved" />
                                     </label>
                                     <input
                                         id="aiApiKey"
                                         type="password"
-                                        placeholder={AI_KEY_PLACEHOLDERS[config.aiProvider] || ''}
+                                        placeholder={savedKeys.ai ? 'Enter new key to replace existing' : (AI_KEY_PLACEHOLDERS[config.aiProvider] || '')}
                                         value={config.aiApiKey}
                                         onChange={(e) => handleInputChange('aiApiKey', e.target.value)}
                                     />
@@ -1505,6 +1507,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 <dd>{config.makemkvKey ? 'New key entered' : (savedKeys.makemkv ? 'Configured' : 'Not set')}</dd>
                                 <dt>TMDB Token:</dt>
                                 <dd>{config.tmdbApiKey ? 'New token entered' : (savedKeys.tmdb ? 'Configured' : 'Not set')}</dd>
+                                {(config.aiApiKey || savedKeys.ai) && (
+                                    <>
+                                        <dt>AI Key:</dt>
+                                        <dd>{config.aiApiKey ? 'New key entered' : 'Configured'}</dd>
+                                    </>
+                                )}
                             </dl>
                         </div>
                     </div>
