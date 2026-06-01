@@ -4,6 +4,7 @@ Patches async_session so no test touches engram.db.
 httpx is mocked via unittest.mock so no real network calls are made.
 """
 
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -297,17 +298,15 @@ class TestSpawnDetachedHelper:
     """The Windows update helper must escape a kill-on-close Job Object."""
 
     def _breakaway_flag(self):
-        import app.core.updater as updater_mod
-
-        return getattr(updater_mod.subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+        # app.core.updater calls subprocess.Popen (module-qualified), so the stdlib
+        # subprocess module here is the same object it uses.
+        return getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
 
     def test_spawns_with_breakaway_from_job(self, monkeypatch):
         """First attempt must include CREATE_BREAKAWAY_FROM_JOB so a job can't kill it."""
-        import app.core.updater as updater_mod
-
         flags_seen = []
         monkeypatch.setattr(
-            updater_mod.subprocess,
+            subprocess,
             "Popen",
             lambda *a, **kw: flags_seen.append(kw.get("creationflags", 0)) or MagicMock(),
         )
@@ -318,8 +317,6 @@ class TestSpawnDetachedHelper:
 
     def test_falls_back_without_breakaway_on_oserror(self, monkeypatch):
         """If the job forbids breakaway (CreateProcess raises), retry plain-detached."""
-        import app.core.updater as updater_mod
-
         breakaway = self._breakaway_flag()
         flags_seen = []
 
@@ -330,7 +327,7 @@ class TestSpawnDetachedHelper:
                 raise OSError("Access is denied")
             return MagicMock()
 
-        monkeypatch.setattr(updater_mod.subprocess, "Popen", fake_popen)
+        monkeypatch.setattr(subprocess, "Popen", fake_popen)
         UpdateChecker._spawn_detached_helper(["cmd", "/c", "x.bat"])
 
         assert len(flags_seen) == 2
