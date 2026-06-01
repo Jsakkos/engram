@@ -573,3 +573,66 @@ class TestLLMFallback:
         # The transcript that reached the LLM should be the one from the primary
         passed_transcript = mock_llm.call_args.kwargs["transcript"]
         assert passed_transcript.startswith("primary already transcribed this")
+
+
+@pytest.mark.unit
+class TestSuggestEpisodeViaLLM:
+    """The no-subtitles fallback entry point: ASR-transcribe the ripped file and
+    match the transcript against the TMDB synopsis — no reference subtitles."""
+
+    @pytest.mark.asyncio
+    async def test_returns_llm_suggestion_without_subtitles(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.core.curator import EpisodeCurator
+        from app.matcher.llm_episode_matcher import LLMEpisodeMatch
+
+        curator = EpisodeCurator()
+        curator._matcher = MagicMock()
+        curator._matcher.transcribe_full = MagicMock(return_value="x" * 600)
+        curator._cache_dir = tmp_path
+        # Pre-initialized for "Test" so _ensure_initialized short-circuits to True
+        # without any TMDB calls (matcher is present).
+        curator._initialized = True
+        curator._current_show = "Test"
+
+        fake_config = MagicMock(
+            ai_episode_matching_enabled=True,
+            ai_api_key="k",
+            ai_provider="gemini",
+            tmdb_api_key="t",
+        )
+        llm = LLMEpisodeMatch(
+            episode=7,
+            confidence=0.88,
+            reasoning="from the transcript",
+            runner_up=None,
+            model="gemini-2.5-flash-lite",
+        )
+        with (
+            patch(
+                "app.services.config_service.get_config", new=AsyncMock(return_value=fake_config)
+            ),
+            patch("app.matcher.tmdb_client.fetch_show_id", return_value="1234"),
+            patch("app.core.curator.match_episode_via_llm", new=AsyncMock(return_value=llm)),
+        ):
+            details = await curator.suggest_episode_via_llm(
+                file_path=tmp_path / "x.mkv", series_name="Test", season=1
+            )
+
+        assert details is not None
+        assert details["llm_suggestion"]["episode"] == 7
+        assert details["llm_suggestion"]["confidence"] == 0.88
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_matcher_unavailable(self, tmp_path, monkeypatch):
+        from app.core.curator import EpisodeCurator
+
+        curator = EpisodeCurator()
+        # Matcher can't initialize (e.g. import failure) → no suggestion possible.
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show: False)
+
+        details = await curator.suggest_episode_via_llm(
+            file_path=tmp_path / "x.mkv", series_name="Test", season=1
+        )
+        assert details is None

@@ -537,7 +537,7 @@ class EpisodeCurator:
         file_path: Path,
         series_name: str,
         season: int,
-        match_details: dict,
+        match_details: dict | None = None,
         existing_transcript: str | None = None,
     ) -> dict | None:
         """Run the LLM matcher when enabled and attach the suggestion to match_details.
@@ -607,6 +607,34 @@ class EpisodeCurator:
             "model": suggestion.model,
         }
         return enriched
+
+    async def suggest_episode_via_llm(
+        self, *, file_path: Path, series_name: str, season: int
+    ) -> dict | None:
+        """Run only the AI episode matcher for a file — no subtitle-based matching.
+
+        This is the no-subtitles fallback: it ASR-transcribes the ripped file and
+        asks the LLM to pick the episode from the TMDB season synopsis. Reference
+        subtitles are NOT required (only the show + season), which is exactly the
+        case the normal pipeline can't handle because it gates on subtitles.
+
+        Returns ``match_details`` carrying an ``llm_suggestion`` for the Review UI,
+        or ``None`` when the matcher can't initialize or AI matching is
+        disabled/unconfigured/produces nothing (the caller then falls back to
+        plain manual review).
+        """
+        # Initialize in the event loop, NOT a worker thread: _ensure_initialized
+        # mutates singleton state (_matcher/_current_show/...) and the regular
+        # match path also calls it from the loop, so a thread dispatch could race
+        # with a concurrent job for a different show and clobber the active
+        # matcher. The blocking TMDB lookups inside are cached.
+        if not self._ensure_initialized(series_name):
+            return None
+        return await self._maybe_add_llm_suggestion(
+            file_path=file_path,
+            series_name=series_name,
+            season=season,
+        )
 
     def _parse_episode_from_filename(self, filename: str) -> str | None:
         """Try to parse episode code from filename.

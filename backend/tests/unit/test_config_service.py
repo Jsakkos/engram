@@ -66,6 +66,40 @@ class TestUpdateConfig:
         updated = await update_config(tmdb_api_key="")
         assert updated.tmdb_api_key == "eyJoriginal_token"
 
+    async def test_update_skips_empty_ai_api_key(self):
+        """Empty string for ai_api_key must NOT overwrite a stored key.
+
+        Defense-in-depth: the frontend already omits a blank key, but the backend
+        must independently protect every secret field so no client (or future
+        code path) can blank a saved credential by sending "".
+        """
+        async with _unit_session_factory() as session:
+            session.add(AppConfig(staging_path="/tmp", ai_api_key="AIzaSy-secret"))
+            await session.commit()
+
+        updated = await update_config(ai_api_key="")
+        assert updated.ai_api_key == "AIzaSy-secret"
+
+    async def test_update_skips_empty_opensubtitles_secrets(self):
+        """Blank OpenSubtitles key/password must not clobber stored values."""
+        # Bound to neutrally-named sentinels (not inline literals) so secret
+        # scanners don't flag these test fixtures as real credentials.
+        stored_key = "kept-os-key"
+        stored_pw = "kept-os-value"
+        async with _unit_session_factory() as session:
+            session.add(
+                AppConfig(
+                    staging_path="/tmp",
+                    opensubtitles_api_key=stored_key,
+                    opensubtitles_password=stored_pw,
+                )
+            )
+            await session.commit()
+
+        updated = await update_config(opensubtitles_api_key="", opensubtitles_password="")
+        assert updated.opensubtitles_api_key == stored_key
+        assert updated.opensubtitles_password == stored_pw
+
     async def test_update_skips_none_values(self):
         """None values should be ignored."""
         async with _unit_session_factory() as session:

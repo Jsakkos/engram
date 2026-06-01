@@ -291,6 +291,7 @@ class ConfigResponse(BaseModel):
     ai_identification_enabled: bool
     ai_provider: str
     ai_api_key: str
+    ai_episode_matching_enabled: bool
     # Staging watcher
     staging_watch_enabled: bool
     # TheDiscDB
@@ -368,6 +369,7 @@ class ConfigUpdate(BaseModel):
     ai_identification_enabled: bool | None = None
     ai_provider: str | None = None
     ai_api_key: str | None = None
+    ai_episode_matching_enabled: bool | None = None
     # Staging watcher
     staging_watch_enabled: bool | None = None
     # TheDiscDB
@@ -1138,6 +1140,7 @@ async def get_config() -> ConfigResponse:
         ai_identification_enabled=config.ai_identification_enabled,
         ai_provider=config.ai_provider,
         ai_api_key="***" if config.ai_api_key else "",  # Redacted
+        ai_episode_matching_enabled=config.ai_episode_matching_enabled,
         # Staging watcher
         staging_watch_enabled=config.staging_watch_enabled,
         # TheDiscDB
