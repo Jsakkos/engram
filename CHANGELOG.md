@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-06-01
+
+_Highlights: the in-app auto-update is fixed end to end on Windows — installed builds now actually show the **Restart now** button (it was hidden by a status flag that never reached the UI), and clicking it reliably swaps in the new version and relaunches instead of silently shutting Engram down._
+
+### Fixed
+
+- **The in-app "Restart now" update button never appeared on installed builds** — when a new version finished downloading in the background, the banner showed "ready to install — dev mode, manual download required" and hid the one-click restart button, even on real (frozen) installs that already had the update staged and ready. The build-type flag the button gates on was dropped from the live status push (it rode only the REST endpoint, not the WebSocket message), so the UI always read it as "dev mode." Installed builds now correctly show **Restart now**. The banner is also seeded from the authoritative status endpoint so it appears even if you open the dashboard after the update finished downloading, and stale downloaded versions are now pruned from `~/.engram/update/` instead of accumulating.
+- **Restarting to apply an update could shut Engram down without installing it (Windows)** — the helper that swaps in the new files after Engram exits was launched in a way that let Windows terminate it together with the closing app when Engram was running inside a process Job Object, so the app went down and the update was never applied. The helper now breaks away from the job (and uses a console-independent wait), so the restart reliably swaps in the new version and relaunches.
+
 ## [0.13.0] - 2026-06-01
 
 _Highlights: a new opt-in AI episode-matching fallback for discs that have no reference subtitles — Engram transcribes the rip and matches it against the TMDB synopsis to suggest an episode in Review; the AI key and "AI-Powered Episode Matching" toggle now save and persist; and queued fingerprint contributions survive a sustained server outage instead of being permanently dropped._

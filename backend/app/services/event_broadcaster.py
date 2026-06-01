@@ -199,15 +199,19 @@ class EventBroadcaster:
     ) -> None:
         """Broadcast update availability status to all connected clients.
 
-        current_version is always the running build's __version__ — injected here
-        so UpdateChecker doesn't need to import it separately.
+        current_version and is_frozen are build-level facts injected here so they
+        ride every push: the frontend gates the "Restart now" button on is_frozen,
+        and it learns update state only from this message. Dropping is_frozen made
+        the UI default it to false and hide the button even on frozen builds.
         """
         from app import __version__
+        from app.config import is_frozen
 
         data: dict = {
             "type": "update_status",
             "state": state,
             "current_version": __version__,
+            "is_frozen": is_frozen(),
         }
         if latest_version is not None:
             data["latest_version"] = latest_version
