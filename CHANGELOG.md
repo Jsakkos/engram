@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-06-01
+
+_Highlights: Engram can now tell apart two TV shows that share a name — for example **Frasier** (1993) and the 2023 revival. An ambiguous disc is sent to Review with both candidates to choose from, and once you pick one, that exact show drives subtitle download and episode matching instead of whichever same-named show happened to rank first._
+
+### Fixed
+
+- **A disc for a show that shares its name with another show could be mis-identified and silently fail to match** — Engram identified shows by *name*, so two different TMDB shows with the same title (for example **Frasier** from 1993 and the 2023 revival) were indistinguishable: it downloaded subtitles for, and matched against, whichever one ranked first, and a disc for the other one would score at the noise floor and land in Review with no clear reason. The resolved TMDB id is now carried as the authoritative show identity through subtitle download, episode matching, and the reference-corpus lookup. When a disc is genuinely ambiguous between two substantial same-name shows, it is routed to Review with both candidates so you can choose; your choice then drives subtitle re-download and matching, and a guard refuses a precomputed reference set that actually belongs to the other same-named show. No library, database, or cache rebuild is required. (#278)
+- **The fingerprint and AI episode-matching paths could still pick a same-name show by name** — the fingerprint-identification cascade and the AI (LLM) episode-matching fallback each looked the show up by name independently, so for a same-name collision they could fetch the wrong show's fingerprint data or AI context when those features are enabled. Both now use the known TMDB id when it is available, falling back to name lookup only when it is not. (#282)
+
 ## [0.13.1] - 2026-06-01
 
 _Highlights: the in-app auto-update is fixed end to end on Windows — installed builds now actually show the **Restart now** button (it was hidden by a status flag that never reached the UI), and clicking it reliably swaps in the new version and relaunches instead of silently shutting Engram down._
