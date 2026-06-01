@@ -419,6 +419,81 @@ class MatchingCoordinator:
                 job_id, title_id, file_path, num_points, min_vote_count
             )
 
+    async def _llm_fallback_without_subtitles(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        series_name: str | None,
+        season: int | None,
+    ) -> dict | None:
+        """AI episode-matching fallback for the no-subtitles case.
+
+        When ``ai_episode_matching_enabled`` is on (with a key) and the season is
+        known, transcribe the ripped file and match the transcript against the
+        TMDB synopsis — no reference subtitles required. Returns enriched
+        ``match_details`` carrying an ``llm_suggestion`` for the Review UI, or
+        ``None`` when AI matching is disabled/unconfigured, the show/season is
+        unknown, or no suggestion was produced (the caller then keeps the plain
+        manual-review path). Never raises — a fallback failure must not break the
+        review hand-off.
+        """
+        if not series_name or not season:
+            return None
+
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        if not config or not getattr(config, "ai_episode_matching_enabled", False):
+            return None
+        if not getattr(config, "ai_api_key", None):
+            return None
+
+        logger.info(
+            f"[MATCH] Title {title_id} (Job {job_id}): no reference subtitles — attempting AI "
+            f"episode-matching fallback (ASR transcript + TMDB synopsis)."
+        )
+
+        # Surface activity while the (slow) full-file transcription runs.
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if title:
+                title.state = TitleState.MATCHING
+                session.add(title)
+                await session.commit()
+                await ws_manager.broadcast_title_update(job_id, title_id, TitleState.MATCHING.value)
+
+        # Bound concurrent Whisper runs the same way the main matcher does — this
+        # gate sits *before* the normal semaphore acquire, so failed titles would
+        # otherwise transcribe unbounded.
+        acquired = False
+        try:
+            if self._match_semaphore is not None:
+                await self._match_semaphore.acquire()
+                acquired = True
+            enriched = await episode_curator.suggest_episode_via_llm(
+                file_path=file_path,
+                series_name=series_name,
+                season=season,
+            )
+        except Exception as e:  # never let the fallback break the review hand-off
+            logger.warning(
+                f"[MATCH] Title {title_id} (Job {job_id}): AI fallback failed: {e}",
+                exc_info=True,
+            )
+            enriched = None
+        finally:
+            if acquired and self._match_semaphore is not None:
+                self._match_semaphore.release()
+
+        if enriched and enriched.get("llm_suggestion"):
+            logger.info(
+                f"[MATCH] Title {title_id} (Job {job_id}): AI fallback produced a suggestion "
+                f"(episode {enriched['llm_suggestion'].get('episode')!r}) for review."
+            )
+            return enriched
+        return None
+
     async def _run_match_single_file(
         self,
         job_id: int,
@@ -462,6 +537,8 @@ class MatchingCoordinator:
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             subtitle_status = job.subtitle_status if job else None
+            detected_title = job.detected_title if job else None
+            detected_season = job.detected_season if job else None
 
         # Gate matching based on subtitle status
         if subtitle_status == "failed":
@@ -469,17 +546,27 @@ class MatchingCoordinator:
                 f"[MATCH] Title {title_id} (Job {job_id}): subtitle download failed. "
                 f"No reference files available. Title needs manual episode assignment."
             )
+            # Last resort before manual assignment: when AI episode matching is
+            # enabled, transcribe the ripped file (ASR) and match the transcript
+            # against the TMDB synopsis — this needs no reference subtitles. Any
+            # result is a REVIEW suggestion only (never auto-organized).
+            enriched = await self._llm_fallback_without_subtitles(
+                job_id, title_id, file_path, detected_title, detected_season
+            )
             async with async_session() as session:
                 title = await session.get(DiscTitle, title_id)
                 if title:
                     title.state = TitleState.REVIEW
                     title.match_confidence = 0.0
-                    title.match_details = json.dumps(
-                        {
-                            "error": "subtitle_download_failed",
-                            "message": "Subtitle download failed, cannot auto-match. Manual episode assignment needed.",
-                        }
-                    )
+                    if enriched:
+                        title.match_details = json.dumps(enriched)
+                    else:
+                        title.match_details = json.dumps(
+                            {
+                                "error": "subtitle_download_failed",
+                                "message": "Subtitle download failed, cannot auto-match. Manual episode assignment needed.",
+                            }
+                        )
                     session.add(title)
                     await session.commit()
                     await ws_manager.broadcast_title_update(

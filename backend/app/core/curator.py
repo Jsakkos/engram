@@ -608,6 +608,32 @@ class EpisodeCurator:
         }
         return enriched
 
+    async def suggest_episode_via_llm(
+        self, *, file_path: Path, series_name: str, season: int
+    ) -> dict | None:
+        """Run only the AI episode matcher for a file — no subtitle-based matching.
+
+        This is the no-subtitles fallback: it ASR-transcribes the ripped file and
+        asks the LLM to pick the episode from the TMDB season synopsis. Reference
+        subtitles are NOT required (only the show + season), which is exactly the
+        case the normal pipeline can't handle because it gates on subtitles.
+
+        Returns ``match_details`` carrying an ``llm_suggestion`` for the Review UI,
+        or ``None`` when the matcher can't initialize or AI matching is
+        disabled/unconfigured/produces nothing (the caller then falls back to
+        plain manual review). Initialization (``_ensure_initialized``) does
+        blocking TMDB lookups, so it runs in a thread.
+        """
+        initialized = await asyncio.to_thread(self._ensure_initialized, series_name)
+        if not initialized:
+            return None
+        return await self._maybe_add_llm_suggestion(
+            file_path=file_path,
+            series_name=series_name,
+            season=season,
+            match_details={},
+        )
+
     def _parse_episode_from_filename(self, filename: str) -> str | None:
         """Try to parse episode code from filename.
 
