@@ -74,8 +74,25 @@ class UpdateChecker:
 
     async def start(self) -> None:
         """Entry point — call once from the FastAPI lifespan as asyncio.create_task()."""
+        self._prune_staging()
         skipped_version = await self._load_skipped_version()
         await self._check(skipped_version)
+
+    def _prune_staging(self) -> None:
+        """Delete staged update dirs for versions already installed (<= current).
+
+        Staging holds only not-yet-applied updates. Without this, every release ever
+        downloaded accumulates under ~/.engram/update/ forever (e.g. 0.9.1 … 0.13.0).
+        Best-effort: never let cleanup failures interfere with the update check.
+        """
+        if not STAGING_BASE.exists():
+            return
+        for child in STAGING_BASE.iterdir():
+            if not child.is_dir():
+                continue
+            if self._is_older_or_equal(child.name, self._current_version):
+                logger.info(f"Pruning stale staged update: {child}")
+                shutil.rmtree(child, ignore_errors=True)
 
     async def _load_skipped_version(self) -> str | None:
         """Load the skipped version preference from AppConfig."""
@@ -389,6 +406,17 @@ class UpdateChecker:
 
         The .bat polls the current PID until it disappears, then copies the staged
         directory over the install directory and relaunches engram.exe.
+
+        Two robustness details, each fixing a way the helper could silently fail to
+        run the swap:
+          * Spawned with CREATE_BREAKAWAY_FROM_JOB. If engram runs inside a Windows
+            Job Object that terminates children when the parent exits (some
+            launchers/sandboxes/packagers do), a plain DETACHED_PROCESS child is
+            killed at os._exit() *before* it can swap — the app just goes down with
+            no update applied. Breaking away from the job lets the helper outlive us.
+          * Uses ``ping`` instead of ``timeout`` for the poll delay. ``timeout``
+            aborts immediately ("input redirection is not supported") in the helper's
+            console-less DETACHED_PROCESS context, so it can't be relied on there.
         """
         assert self.staging_path is not None
         new_engram_dir = self.staging_path / "engram"
@@ -405,7 +433,7 @@ class UpdateChecker:
             ":wait\n"
             f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL\n'
             "if not errorlevel 1 (\n"
-            "    timeout /t 1 /nobreak > nul\n"
+            "    ping -n 2 127.0.0.1 >nul\n"
             "    goto wait\n"
             ")\n"
             f'xcopy /Y /E /I "{new_engram_dir}\\*" "{install_dir}\\"\n'
@@ -417,13 +445,29 @@ class UpdateChecker:
             f.write(bat_content)
 
         logger.info(f"Launching update helper: {bat_path}")
-        subprocess.Popen(
-            ["cmd", "/c", str(bat_path)],
-            shell=False,
-            close_fds=True,
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-        )
+        self._spawn_detached_helper(["cmd", "/c", str(bat_path)])
         os._exit(0)  # Hard exit: avoids asyncio catching SystemExit
+
+    @staticmethod
+    def _spawn_detached_helper(args: list[str]) -> None:
+        """Spawn a helper that outlives this process and any owning Job Object.
+
+        Tries CREATE_BREAKAWAY_FROM_JOB first so the helper escapes a kill-on-close
+        job. The flag is a no-op when we're not in a job; if we're in a job that
+        forbids breakaway, CreateProcess raises and we fall back to a plain detached
+        spawn (best effort — that's the pre-existing behavior).
+        """
+        # Resolve the Windows creationflags via getattr so this module stays
+        # importable and unit-testable on non-Windows CI, where they're absent.
+        detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+        base = detached | new_group
+        try:
+            subprocess.Popen(args, shell=False, close_fds=True, creationflags=base | breakaway)
+        except OSError as exc:
+            logger.warning(f"Update helper breakaway spawn failed ({exc}); retrying detached")
+            subprocess.Popen(args, shell=False, close_fds=True, creationflags=base)
 
     async def _broadcast(self) -> None:
         """Push current update state to all WebSocket clients."""

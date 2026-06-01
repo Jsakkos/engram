@@ -460,6 +460,34 @@ describe("useJobManagement hook integration", () => {
     // @ts-expect-error — restore the real location for other tests.
     window.location = realLocation;
   });
+
+  it("seeds updateStatus (incl. is_frozen) from /api/updates/status on mount", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.includes("/api/updates/status"))
+        return Promise.resolve(
+          okJson({
+            state: "ready",
+            current_version: __APP_VERSION__,
+            latest_version: "9.9.9",
+            release_url: "https://example.com",
+            is_frozen: true,
+          }),
+        );
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await waitFor(() => {
+      expect(result.current.updateStatus?.state).toBe("ready");
+    });
+    // Regression: is_frozen must survive the REST seed. It was dropped on the WS
+    // push, defaulting to false and hiding the "Restart now" button on frozen builds.
+    expect(result.current.updateStatus?.is_frozen).toBe(true);
+    expect(result.current.updateStatus?.latest_version).toBe("9.9.9");
+  });
 });
 
 // ---------------------------------------------------------------------------
