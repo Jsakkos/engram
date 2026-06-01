@@ -17,7 +17,7 @@ from app.api.websocket import manager as ws_manager
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
-from app.services.matching_coordinator import MatchingCoordinator
+from app.services.matching_coordinator import MatchingCoordinator, episode_curator
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -317,8 +317,6 @@ class TestNoSubtitleAIFallback:
         return job, title
 
     async def test_runs_llm_fallback_and_attaches_suggestion(self, monkeypatch, tmp_path):
-        import app.services.matching_coordinator as mc
-
         self._patch_ai_config(monkeypatch, enabled=True)
         suggestion = {
             "llm_suggestion": {
@@ -330,7 +328,7 @@ class TestNoSubtitleAIFallback:
             }
         }
         suggest = AsyncMock(return_value=suggestion)
-        monkeypatch.setattr(mc.episode_curator, "suggest_episode_via_llm", suggest)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
 
         coord = _make_coord()
         async with _unit_session_factory() as session:
@@ -350,11 +348,9 @@ class TestNoSubtitleAIFallback:
         coord._check_job_completion.assert_awaited()
 
     async def test_disabled_keeps_manual_review_path(self, monkeypatch, tmp_path):
-        import app.services.matching_coordinator as mc
-
         self._patch_ai_config(monkeypatch, enabled=False)
         suggest = AsyncMock()
-        monkeypatch.setattr(mc.episode_curator, "suggest_episode_via_llm", suggest)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
 
         coord = _make_coord()
         async with _unit_session_factory() as session:
@@ -370,11 +366,9 @@ class TestNoSubtitleAIFallback:
             assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
 
     async def test_unknown_season_keeps_manual_review_path(self, monkeypatch, tmp_path):
-        import app.services.matching_coordinator as mc
-
         self._patch_ai_config(monkeypatch, enabled=True)
         suggest = AsyncMock(return_value={"llm_suggestion": {"episode": 1}})
-        monkeypatch.setattr(mc.episode_curator, "suggest_episode_via_llm", suggest)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
 
         coord = _make_coord()
         async with _unit_session_factory() as session:
@@ -390,12 +384,10 @@ class TestNoSubtitleAIFallback:
             assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
 
     async def test_no_suggestion_keeps_manual_review_path(self, monkeypatch, tmp_path):
-        import app.services.matching_coordinator as mc
-
         self._patch_ai_config(monkeypatch, enabled=True)
         # AI ran but couldn't produce a suggestion (e.g. LLM declined / TMDB miss).
         suggest = AsyncMock(return_value=None)
-        monkeypatch.setattr(mc.episode_curator, "suggest_episode_via_llm", suggest)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
 
         coord = _make_coord()
         async with _unit_session_factory() as session:

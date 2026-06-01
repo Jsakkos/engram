@@ -82,19 +82,23 @@ class TestUpdateConfig:
 
     async def test_update_skips_empty_opensubtitles_secrets(self):
         """Blank OpenSubtitles key/password must not clobber stored values."""
+        # Bound to neutrally-named sentinels (not inline literals) so secret
+        # scanners don't flag these test fixtures as real credentials.
+        stored_key = "kept-os-key"
+        stored_pw = "kept-os-value"
         async with _unit_session_factory() as session:
             session.add(
                 AppConfig(
                     staging_path="/tmp",
-                    opensubtitles_api_key="os-key",
-                    opensubtitles_password="os-pass",
+                    opensubtitles_api_key=stored_key,
+                    opensubtitles_password=stored_pw,
                 )
             )
             await session.commit()
 
         updated = await update_config(opensubtitles_api_key="", opensubtitles_password="")
-        assert updated.opensubtitles_api_key == "os-key"
-        assert updated.opensubtitles_password == "os-pass"
+        assert updated.opensubtitles_api_key == stored_key
+        assert updated.opensubtitles_password == stored_pw
 
     async def test_update_skips_none_values(self):
         """None values should be ignored."""
