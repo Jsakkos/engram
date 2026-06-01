@@ -28,12 +28,32 @@ CONTRIBUTION_LOG_PATH = Path("~/.engram/cache/contribution_log.jsonl").expanduse
 _BATCH_SIZE = 50
 _MAX_ATTEMPTS = 5
 _UPLOAD_TIMEOUT = 30.0
+_CONCURRENCY = 5
+# Upper bound on an honored Retry-After (seconds). A buggy proxy/server could send
+# an absurd value (e.g. 86400); cap it so a concurrency slot can't stall for hours.
+_MAX_RETRY_AFTER = 300.0
+
+
+def _retry_after_seconds(value: str | None) -> float | None:
+    """Parse a Retry-After header value (integer seconds) into float seconds.
+
+    Returns None when the header is absent or not a non-negative integer. We do
+    not support the HTTP-date form — our server only ever emits integer seconds —
+    so callers fall back to exponential backoff when this returns None.
+    """
+    if value is None:
+        return None
+    try:
+        seconds = int(value.strip())
+    except (ValueError, AttributeError):
+        return None
+    return float(seconds) if seconds >= 0 else None
 
 
 class ContributionUploader:
     """Background service: drain FingerprintContribution queue over HTTPS."""
 
-    def __init__(self, poll_interval_seconds: int = 3600) -> None:
+    def __init__(self, poll_interval_seconds: int = 900) -> None:
         self.poll_interval = poll_interval_seconds
         self._task: asyncio.Task | None = None
 
@@ -53,15 +73,17 @@ class ContributionUploader:
     async def _upload_loop(self) -> None:
         while True:
             try:
-                await self._process_batch()
+                drained = await self._drain()
+                if drained:
+                    logger.info("ContributionUploader drained {} contribution(s)", drained)
                 await asyncio.sleep(self.poll_interval)
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.exception("ContributionUploader loop error — will retry next interval")
 
-    async def _process_batch(self) -> None:
-        """Fetch up to _BATCH_SIZE pending rows and upload each one.
+    async def _drain(self) -> int:
+        """Upload pending contributions in back-to-back batches until empty.
 
         Pre-flight privacy gate — nothing leaves the machine unless BOTH hold:
           1. the user has not opted out (enable_fingerprint_contributions),
@@ -69,46 +91,103 @@ class ContributionUploader:
         The server URL falls back to DEFAULT_FINGERPRINT_SERVER_URL when unset, so
         existing installs (NULL column) still engage. If data is queued but
         consent is missing, fire the JIT disclosure event — and upload nothing.
+
+        Returns the number of rows successfully uploaded this drain.
         """
-        cfg = await get_config()
-        if not cfg.enable_fingerprint_contributions:
-            logger.debug("fingerprint contributions disabled by user; skipping upload batch")
-            return
+        # Pre-check: if disabled, do nothing — don't even open a client.
+        if not (await get_config()).enable_fingerprint_contributions:
+            logger.debug("fingerprint contributions disabled by user; skipping upload")
+            return 0
 
-        # NULL/blank stored URL means "use the default network base origin".
-        server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
+        drained = 0
+        semaphore = asyncio.Semaphore(_CONCURRENCY)
+        # Id-cursor so the drain sweeps the pending queue exactly once. Transient
+        # failures leave the row pending (upload_status=None) for a later drain to
+        # retry — without the cursor those still-None rows would be re-selected
+        # within this same drain forever. A *new* _drain() resets last_id to 0 and
+        # re-sweeps, which is what makes a recovered server re-pick burned rows.
+        last_id = 0
+        # One client for the whole drain → HTTP keep-alive across every batch/row.
+        async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:
+            while True:
+                # Re-read config each batch so a mid-drain opt-out (or disclosure
+                # revocation) takes effect within one batch, not only at the next
+                # idle tick — a long backlog drain can run for minutes.
+                cfg = await get_config()
+                if not cfg.enable_fingerprint_contributions:
+                    logger.info("fingerprint contributions disabled mid-drain; stopping")
+                    break
+                # NULL/blank stored URL means "use the default network base origin".
+                server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
 
-        # Collect IDs in a short-lived session so the connection is released
-        # before any per-row exponential backoff sleep.
-        async with async_session() as session:
-            stmt = (
-                select(FingerprintContribution.id)
-                .where(FingerprintContribution.upload_status.is_(None))
-                .where(FingerprintContribution.upload_attempts < _MAX_ATTEMPTS)
-                .limit(_BATCH_SIZE)
-            )
-            row_ids = (await session.execute(stmt)).scalars().all()
+                # Collect IDs in a short-lived session so the connection is
+                # released before any per-row upload work.
+                async with async_session() as session:
+                    stmt = (
+                        select(FingerprintContribution.id)
+                        .where(FingerprintContribution.upload_status.is_(None))
+                        .where(FingerprintContribution.id > last_id)
+                        .order_by(FingerprintContribution.id)
+                        .limit(_BATCH_SIZE)
+                    )
+                    row_ids = (await session.execute(stmt)).scalars().all()
 
-        if not row_ids:
-            return
+                if not row_ids:
+                    break
+                # Advance past this batch so transiently-failed rows (still None)
+                # aren't re-selected later in this same drain.
+                last_id = row_ids[-1]
 
-        if not cfg.fingerprint_disclosure_accepted:
-            # Data is queued but the user hasn't consented yet. Prompt; don't upload.
-            logger.info(
-                "%d fingerprint contribution(s) queued but disclosure not accepted; prompting user",
-                len(row_ids),
-            )
-            await self._notify_disclosure_required(
-                len(row_ids), cfg.contribution_pseudonym, server_url
-            )
-            return
+                if not cfg.fingerprint_disclosure_accepted:
+                    # Data is queued but the user hasn't consented yet. Prompt; don't upload.
+                    logger.info(
+                        "%d fingerprint contribution(s) queued but disclosure not accepted; "
+                        "prompting user",
+                        len(row_ids),
+                    )
+                    await self._notify_disclosure_required(
+                        len(row_ids), cfg.contribution_pseudonym, server_url
+                    )
+                    break
 
-        for row_id in row_ids:
+                # One row failing must not abort the batch.
+                results = await asyncio.gather(
+                    *(
+                        self._upload_row(row_id, client, server_url, semaphore)
+                        for row_id in row_ids
+                    ),
+                    return_exceptions=True,
+                )
+                for r in results:
+                    if r is True:
+                        drained += 1
+                    elif isinstance(r, Exception):
+                        # r is a gathered exception, not the active one — pass it
+                        # explicitly so loguru captures its traceback.
+                        logger.opt(exception=r).warning("Contribution upload task errored")
+
+        return drained
+
+    async def _upload_row(
+        self,
+        row_id: int,
+        client: httpx.AsyncClient,
+        server_url: str,
+        semaphore: asyncio.Semaphore,
+    ) -> bool:
+        """Upload one queued row under the concurrency semaphore.
+
+        Uses its own short-lived DB session so each row's status update commits
+        independently (the engram DB is WAL-mode, so concurrent writers are fine).
+        Returns True when the row was uploaded successfully.
+        """
+        async with semaphore:
             async with async_session() as session:
                 row = await session.get(FingerprintContribution, row_id)
                 if row is None:
-                    continue  # deleted between the ID query and now
-                await self._upload_one(row, session, server_url=server_url)
+                    return False  # deleted between the ID query and now
+                await self._upload_one(row, session, client=client, server_url=server_url)
+                return row.upload_status == "success"
 
     async def _notify_disclosure_required(
         self, pending_count: int, pseudonym: str | None, server_url: str | None
@@ -134,6 +213,7 @@ class ContributionUploader:
         self,
         contrib: FingerprintContribution,
         session,
+        client: httpx.AsyncClient,
         server_url: str,
     ) -> None:
         from app.matcher.chromaprint_extractor import ChromaprintResult
@@ -168,19 +248,24 @@ class ContributionUploader:
             await session.commit()
             return
 
-        # Honour the lifetime attempt cap: prior failures consumed some budget.
-        remaining = _MAX_ATTEMPTS - contrib.upload_attempts
-        for attempt in range(remaining):
+        # Per-drain retry budget — _MAX_ATTEMPTS is NOT a lifetime cap. Exhausting
+        # it on transient errors leaves the row pending (see the post-loop block)
+        # so a later drain retries; a sustained-but-transient outage (e.g. a 503
+        # storm) must never permanently burn a row.
+        for attempt in range(_MAX_ATTEMPTS):
+            backoff: float = 2**attempt
             try:
-                async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:
-                    resp = await client.post(
-                        f"{server_url.rstrip('/')}/v1/contribute",
-                        json=payload,
-                    )
-                    resp.raise_for_status()
+                resp = await client.post(
+                    f"{server_url.rstrip('/')}/v1/contribute",
+                    json=payload,
+                )
+                resp.raise_for_status()
 
                 contrib.upload_status = "success"
                 contrib.uploaded_at = datetime.now(UTC)
+                # Clear any transient-error message from a prior drain so a
+                # recovered row doesn't surface a stale error next to "success".
+                contrib.upload_error_msg = None
                 await session.commit()
                 self._append_audit_log(contrib)
                 logger.info(
@@ -191,33 +276,55 @@ class ContributionUploader:
 
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
-                if 400 <= status < 500:
+                if status == 429:
+                    # Rate limited — transient. Honor Retry-After (capped, and 0 means
+                    # "retry now"); fall back to exponential when the header is absent.
+                    retry_after = _retry_after_seconds(e.response.headers.get("Retry-After"))
+                    if retry_after is not None:
+                        backoff = min(retry_after, _MAX_RETRY_AFTER)
+                    contrib.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Contrib {contrib.id}: rate limited (429), "
+                        f"backoff {backoff}s, attempt {attempt + 1}"
+                    )
+                elif 400 <= status < 500:
                     contrib.upload_status = "failed"
                     contrib.upload_error_msg = f"HTTP {status} (permanent)"
                     contrib.upload_attempts += 1
                     await session.commit()
                     logger.warning(f"Contrib {contrib.id}: permanent HTTP {status}; marking failed")
                     return
-                # 5xx — transient, fall through to retry
-                contrib.upload_attempts += 1
-                await session.commit()
-                logger.warning(
-                    f"Contrib {contrib.id}: transient HTTP {status}, attempt {attempt + 1}"
-                )
+                else:
+                    # 5xx — transient, fall through to retry
+                    contrib.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Contrib {contrib.id}: transient HTTP {status}, attempt {attempt + 1}"
+                    )
 
             except httpx.HTTPError as e:
                 contrib.upload_attempts += 1
                 await session.commit()
                 logger.warning(f"Contrib {contrib.id}: network error, attempt {attempt + 1}: {e}")
 
-            if attempt < remaining - 1:
-                await asyncio.sleep(2**attempt)
+            if attempt < _MAX_ATTEMPTS - 1:
+                await asyncio.sleep(backoff)
 
-        # Exhausted retries
-        contrib.upload_status = "failed"
-        contrib.upload_error_msg = f"Retries exhausted after {_MAX_ATTEMPTS} attempts"
+        # Transient retries exhausted for THIS drain. Leave upload_status=None so a
+        # later drain re-picks the row once the server recovers — permanent failures
+        # (4xx / blob-decode) already returned above with upload_status="failed".
+        # upload_attempts keeps climbing as a lifetime diagnostic, and the row stays
+        # NULL so rotate-pseudonym still re-tags it before its eventual upload.
+        contrib.upload_error_msg = (
+            f"Transient errors after {contrib.upload_attempts} attempt(s); "
+            "will retry on a later drain"
+        )
         await session.commit()
-        logger.error(f"Contrib {contrib.id}: upload failed after {_MAX_ATTEMPTS} attempts")
+        logger.warning(
+            f"Contrib {contrib.id}: transient errors persisted this drain ("
+            f"{contrib.upload_attempts} total attempts); left pending for retry"
+        )
 
     @staticmethod
     def _append_audit_log(contrib: FingerprintContribution) -> None:

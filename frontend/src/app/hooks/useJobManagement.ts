@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { apiFetch, apiFetchVoid } from '../../api/client';
-import type { Job, DiscTitle, WebSocketMessage } from '../../types';
+import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage } from '../../types';
 
 // Trailing-debounce window for refetches triggered by a burst of unknown
 // `job_update` messages, so we issue one fetch instead of N.
@@ -29,22 +29,23 @@ const STATE_PRIORITY: Record<string, number> = {
 const TERMINAL_TITLE_STATES = ['matched', 'completed', 'review', 'failed'];
 
 /**
- * A WebSocket reconnect often follows a backend restart — notably after the
- * auto-updater applies a new build. If the backend now reports a different
- * version than the one THIS bundle was compiled from (`__APP_VERSION__`), the
- * open tab is stale, so hard-reload to pull the new UI. `index.html` is served
- * `no-cache`, so the reload fetches the new content-hashed bundles; the new
- * bundle's `__APP_VERSION__` then matches, so this fires exactly once.
+ * Normalize an update-status payload into the UpdateStatus snapshot stored in
+ * state. Shared by BOTH the WebSocket `update_status` handler and the REST seed
+ * so the two channels can never disagree on a field again — the original bug was
+ * that the WS push dropped `is_frozen`, so it silently defaulted to `false` and
+ * hid the "Restart now" button on frozen builds.
  */
-async function reloadIfVersionChanged(): Promise<void> {
-    try {
-        const status = await apiFetch<{ current_version?: string }>('/api/updates/status');
-        if (status.current_version && status.current_version !== __APP_VERSION__) {
-            window.location.reload();
-        }
-    } catch {
-        // Transient blip during reconnect — skip; we re-check on the next reconnect.
-    }
+function toUpdateStatus(raw: Omit<UpdateStatusMessage, 'type'>): UpdateStatus {
+    return {
+        state: raw.state,
+        current_version: raw.current_version,
+        latest_version: raw.latest_version ?? null,
+        release_notes: raw.release_notes ?? null,
+        release_url: raw.release_url ?? null,
+        download_progress: raw.download_progress ?? null,
+        error: raw.error ?? null,
+        is_frozen: raw.is_frozen ?? false,
+    };
 }
 
 export function useJobManagement(devMode: boolean = false) {
@@ -145,6 +146,26 @@ export function useJobManagement(devMode: boolean = false) {
         }, UNKNOWN_JOB_REFETCH_DEBOUNCE_MS);
     }, []);
 
+    // Seed the update banner from the authoritative REST status. The one-shot
+    // startup check broadcasts over WebSocket, so a tab that connects *after* it
+    // would otherwise never see the banner; this also pulls `is_frozen` from the
+    // source of truth. A reconnect may follow an update+restart, so if the running
+    // build no longer matches THIS bundle, hard-reload to pull the new UI (fires
+    // once: `index.html` is `no-cache`, so the reloaded bundle's __APP_VERSION__
+    // then matches).
+    const syncUpdateStatus = useCallback(async () => {
+        try {
+            const status = await apiFetch<Omit<UpdateStatusMessage, 'type'>>('/api/updates/status');
+            if (status.current_version && status.current_version !== __APP_VERSION__) {
+                window.location.reload();
+                return;
+            }
+            setUpdateStatus(toUpdateStatus(status));
+        } catch {
+            // Transient blip (e.g. during reconnect) — retry on the next sync.
+        }
+    }, []);
+
     // Resync on (re)connect so the UI recovers from any drift while disconnected.
     const handleSocketOpen = useCallback(() => {
         if (initialConnectRef.current) {
@@ -155,10 +176,9 @@ export function useJobManagement(devMode: boolean = false) {
         if (import.meta.env.DEV) {
             console.log('🔌 WebSocket reconnected — resyncing jobs');
         }
-        // The reconnect may follow an update+restart — reload if the build changed.
-        void reloadIfVersionChanged();
+        void syncUpdateStatus();
         fetchRef.current?.();
-    }, []);
+    }, [syncUpdateStatus]);
 
     const { isConnected, addMessageListener } = useWebSocket(wsUrl, { onOpen: handleSocketOpen });
 
@@ -173,8 +193,9 @@ export function useJobManagement(devMode: boolean = false) {
     useEffect(() => {
         if (!devMode) {
             fetchJobsAndTitles();
+            void syncUpdateStatus();
         }
-    }, [devMode, fetchJobsAndTitles]);
+    }, [devMode, fetchJobsAndTitles, syncUpdateStatus]);
 
     async function cancelJob(jobId: string) {
         try {
@@ -377,17 +398,7 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
 
                 case 'update_status': {
-                    const msg = message as import('../../types').UpdateStatusMessage;
-                    setUpdateStatus({
-                        state: msg.state,
-                        current_version: msg.current_version,
-                        latest_version: msg.latest_version ?? null,
-                        release_notes: msg.release_notes ?? null,
-                        release_url: msg.release_url ?? null,
-                        download_progress: msg.download_progress ?? null,
-                        error: msg.error ?? null,
-                        is_frozen: msg.is_frozen ?? false,
-                    });
+                    setUpdateStatus(toUpdateStatus(message as UpdateStatusMessage));
                     break;
                 }
 

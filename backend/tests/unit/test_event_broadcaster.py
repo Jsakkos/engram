@@ -379,3 +379,31 @@ class TestFingerprintDisclosureEvents:
         assert sent["pending_count"] == 3
         assert sent["pseudonym"] == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         assert sent["server_url"] == "https://fp.example.com/v1"
+
+
+@pytest.mark.asyncio
+class TestUpdateStatusEvents:
+    """Test auto-update status broadcasting."""
+
+    async def test_broadcast_update_status_carries_is_frozen(self, broadcaster, mock_ws_manager):
+        """The WS payload MUST carry is_frozen — the frontend gates the Restart button on it.
+
+        Regression for the dropped-field bug: broadcast_update_status() previously omitted
+        is_frozen, so the frontend defaulted it to false and hid "Restart now" even on frozen
+        builds that had already staged an update. is_frozen and current_version are build-level
+        facts injected by the broadcaster (same as current_version), so they ride every push.
+        """
+        await broadcaster.broadcast_update_status(
+            state="ready",
+            latest_version="99.0.0",
+            release_url="https://github.com/Jsakkos/engram/releases/tag/v99.0.0",
+        )
+
+        mock_ws_manager.broadcast.assert_called_once()
+        sent = mock_ws_manager.broadcast.call_args[0][0]
+        assert sent["type"] == "update_status"
+        assert sent["state"] == "ready"
+        assert sent["latest_version"] == "99.0.0"
+        assert "current_version" in sent
+        assert "is_frozen" in sent
+        assert isinstance(sent["is_frozen"], bool)

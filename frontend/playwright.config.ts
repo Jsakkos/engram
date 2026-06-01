@@ -72,6 +72,13 @@ export default defineConfig({
             env: {
                 ...process.env,
                 DEBUG: 'true',
+                // DEBUG enables the /api/simulate/* endpoints, but we explicitly
+                // keep SQLAlchemy echo OFF: echoing every statement during a
+                // simulated rip floods stdout and stalls the single-worker event
+                // loop, which caused flaky visibility-assertion timeouts. This is
+                // already the default (Settings.db_echo=False) — set here too so
+                // the intent is obvious at the E2E backend launch site.
+                DB_ECHO: 'false',
                 DATABASE_URL: E2E_DATABASE_URL,
             },
         },

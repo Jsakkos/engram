@@ -129,8 +129,20 @@ async def update_config(**kwargs) -> AppConfig:
             session.add(config)
 
         # Update provided fields
-        # Special handling for sensitive fields: don't overwrite with empty strings
-        sensitive_fields = {"makemkv_key", "tmdb_api_key"}
+        # Special handling for sensitive fields: don't overwrite with empty strings.
+        # The frontend already omits a blank secret (the `optional()` helper in
+        # ConfigWizard), but the backend must independently protect every secret
+        # so no client — or future code path — can blank a stored credential by
+        # sending "". Keep this set in sync with the redacted fields in
+        # GET /api/config.
+        sensitive_fields = {
+            "makemkv_key",
+            "tmdb_api_key",
+            "ai_api_key",
+            "opensubtitles_api_key",
+            "opensubtitles_password",
+            "discdb_api_key",
+        }
 
         _nullable_fields = {
             "import_watch_path",

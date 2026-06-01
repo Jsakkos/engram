@@ -2,7 +2,7 @@
 
 Covers I1.2: Full lifecycle integration test for the fingerprint contribution flow.
 Three scenarios:
-  1. Debug drain endpoint wires through to _process_batch successfully.
+  1. Debug drain endpoint wires through to _drain successfully.
   2. Full lifecycle: seed → upload (drain) → forget → pseudonym rotated.
   3. Disclosure gate: drain fires WS event and uploads nothing when consent absent.
 
@@ -50,7 +50,7 @@ async def client():
 
 @pytest.mark.asyncio
 async def test_debug_drain_endpoint_runs(client):
-    """POST /api/debug/uploader/drain calls _process_batch; seeded row → success."""
+    """POST /api/debug/uploader/drain calls _drain; seeded row → success."""
     app.dependency_overrides[require_localhost] = lambda: None
     app.dependency_overrides[require_debug] = lambda: None
     # ASGITransport does not trigger lifespan; attach uploader directly.

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { resetAllJobs } from './fixtures/api-helpers';
 import { SELECTORS } from './fixtures/selectors';
 
 /**
@@ -8,6 +9,19 @@ import { SELECTORS } from './fixtures/selectors';
 
 test.describe('Basic UI Verification - No Disc Simulation', () => {
   test.beforeEach(async ({ page }) => {
+    // Reset jobs first so the empty-state and footer-count assertions don't
+    // depend on leftover jobs from earlier specs. The E2E backend uses a single
+    // shared database for the whole run, and with workers:1 the full Chromium
+    // suite executes before the Firefox/WebKit projects reach this spec — that
+    // cross-spec contamination is exactly what made "Empty state displays when
+    // no discs present" flake on Firefox.
+    // Best-effort: don't block the test if the backend is momentarily
+    // unavailable, but surface a misconfiguration (e.g. DEBUG off -> 403,
+    // backend down -> network error) in the logs instead of failing later with
+    // a confusing assertion error.
+    await resetAllJobs().catch((e) =>
+      console.warn('[beforeEach] resetAllJobs failed (continuing):', e),
+    );
     await page.goto('/');
   });
 

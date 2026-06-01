@@ -215,6 +215,41 @@ class TestConfigEndpoints:
         assert config["makemkv_key"] == "***"
         assert config["tmdb_api_key"] == "***"
 
+    async def test_ai_api_key_persists_and_blank_does_not_clobber(self, client):
+        """Reproduces the user's report end-to-end through the real routes:
+
+        a saved AI key must read back as '***' (so the UI shows "Key saved"),
+        and re-saving must not wipe it — neither when the field is omitted (the
+        frontend's blank-save behavior) nor when an empty string is sent directly.
+        """
+        await _seed_config()
+        # User enters their Gemini key.
+        r = await client.put("/api/config", json={"ai_api_key": "AIzaSy-secret-123"})
+        assert r.status_code == 200
+        # Reopening settings: GET signals a saved key (the UI's "Key saved" cue).
+        assert (await client.get("/api/config")).json()["ai_api_key"] == "***"
+        # An unchanged save (frontend omits the blank field) must not clobber it.
+        r = await client.put("/api/config", json={"staging_path": "/some/where"})
+        assert r.status_code == 200
+        assert (await client.get("/api/config")).json()["ai_api_key"] == "***"
+        # Defense-in-depth: even a direct blank must not clobber the stored key.
+        r = await client.put("/api/config", json={"ai_api_key": ""})
+        assert r.status_code == 200
+        assert (await client.get("/api/config")).json()["ai_api_key"] == "***"
+
+    async def test_ai_episode_matching_enabled_roundtrips(self, client):
+        """The AI episode-matching toggle must persist AND read back.
+
+        It gates the no-subtitle AI fallback (and the post-match LLM suggestion),
+        so if the API can't save/return it the whole feature is unreachable from
+        the UI — the checkbox would silently reset to off on every reload.
+        """
+        await _seed_config()
+        r = await client.put("/api/config", json={"ai_episode_matching_enabled": True})
+        assert r.status_code == 200
+        config = (await client.get("/api/config")).json()
+        assert config["ai_episode_matching_enabled"] is True
+
 
 # ---------------------------------------------------------------------------
 # Network info

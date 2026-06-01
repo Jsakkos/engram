@@ -4,6 +4,59 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-06-01
+
+_Highlights: the in-app auto-update is fixed end to end on Windows — installed builds now actually show the **Restart now** button (it was hidden by a status flag that never reached the UI), and clicking it reliably swaps in the new version and relaunches instead of silently shutting Engram down._
+
+### Fixed
+
+- **The in-app "Restart now" update button never appeared on installed builds** — when a new version finished downloading in the background, the banner showed "ready to install — dev mode, manual download required" and hid the one-click restart button, even on real (frozen) installs that already had the update staged and ready. The build-type flag the button gates on was dropped from the live status push (it rode only the REST endpoint, not the WebSocket message), so the UI always read it as "dev mode." Installed builds now correctly show **Restart now**. The banner is also seeded from the authoritative status endpoint so it appears even if you open the dashboard after the update finished downloading, and stale downloaded versions are now pruned from `~/.engram/update/` instead of accumulating.
+- **Restarting to apply an update could shut Engram down without installing it (Windows)** — the helper that swaps in the new files after Engram exits was launched in a way that let Windows terminate it together with the closing app when Engram was running inside a process Job Object, so the app went down and the update was never applied. The helper now breaks away from the job (and uses a console-independent wait), so the restart reliably swaps in the new version and relaunches.
+
+## [0.13.0] - 2026-06-01
+
+_Highlights: a new opt-in AI episode-matching fallback for discs that have no reference subtitles — Engram transcribes the rip and matches it against the TMDB synopsis to suggest an episode in Review; the AI key and "AI-Powered Episode Matching" toggle now save and persist; and queued fingerprint contributions survive a sustained server outage instead of being permanently dropped._
+
+### Added
+
+- **AI episode-matching fallback when no subtitles are found** — for discs where no reference subtitles can be downloaded, the normal subtitle-based matcher has nothing to compare against. Engram can now transcribe the ripped file with on-device speech recognition (ASR) and match that transcript against each candidate episode's TMDB synopsis, surfacing a best-guess episode in the Review queue. It is opt-in via the **"AI-Powered Episode Matching"** setting and never auto-organizes — the suggestion is always presented for you to confirm. (#283)
+- **Force-delete a stuck fingerprint contribution** — a contribution retrying against a permanently unreachable server could stay queued indefinitely, and its in-flight guard blocked removal. The single-contribution delete now accepts a `force=true` option to retract such a row. It still refuses to delete anything already uploaded — use **Forget me** to recall data that has left your machine. (#280)
+
+### Fixed
+
+- **The AI API key and "AI-Powered Episode Matching" toggle didn't persist** — the AI/Gemini API key field always rendered blank with no sign a key was saved, and the episode-matching toggle could not be enabled at all, because the underlying config field was missing from the settings API models and was silently dropped on save. Settings now shows a **"Key saved"** indicator once a key is stored, and the toggle persists across restarts. (#283)
+- **Queued fingerprint contributions were permanently dropped during a sustained server outage** — the uploader's retry cap was a lifetime cap, so a prolonged upstream outage (for example 503s during a bulk library bootstrap) could exhaust a contribution's attempts in a single drain and mark it permanently failed, with no automatic recovery. Transient errors (5xx, network, and rate-limit 429) now keep the contribution queued and retry it on later drains; only genuine permanent failures (4xx or undecodable data) are marked failed. (#279)
+
+## [0.12.1] - 2026-05-31
+
+_Highlights: fingerprint-network contributions now upload far faster — a backlog drains in back-to-back batches instead of trickling out an hour at a time, and rate-limited uploads are retried instead of dropped. Plus a LAN-access fix so a dual-stack host no longer rejects its own requests._
+
+### Changed
+
+- **Faster fingerprint-contribution uploads** — the contribution uploader now drains its queue in back-to-back batches instead of sending one batch and then sleeping an hour, so a backlog (for example right after a bulk library bootstrap) clears promptly rather than over many hours. Rate-limit responses (HTTP 429) are now treated as transient and retried — honoring the server's `Retry-After`, capped so a misbehaving server can't stall uploads — instead of silently dropping the contribution. The steady-state idle poll interval also dropped from 60 to 15 minutes for quicker pickup of newly ripped episodes. (#276)
+
+### Fixed
+
+- **LAN access could reject the host's own requests on dual-stack (IPv6) binds** — with LAN access bound to all interfaces, the host's own loopback connection can arrive as the IPv4-mapped IPv6 address `::ffff:127.0.0.1`, which the localhost-only guard wrongly rejected with HTTP 403. Loopback is now classified via `ipaddress` (with an explicit IPv4-mapped fallback for Python < 3.13), so local requests are recognized correctly. (#273)
+
+## [0.12.0] - 2026-05-30
+
+_Highlights: a wider setup wizard with a dedicated Data Sharing tab and guided TMDB onboarding; the Import Watch Folder now handles libraries pointed straight at a show and flat folders with no season; and an ASR matcher fix that restores episode matches the new fingerprint-vector scale had started rejecting._
+
+### Added
+
+- **Data Sharing settings tab** — a dedicated tab in the setup/settings wizard now groups everything that sends data off your machine (the fingerprint network, AI assistance, and the gated TheDiscDB integration) in one place, separate from local Preferences. (#263)
+- **Guided TMDB onboarding** — the TMDB token field shows instructional text instead of a token-shaped placeholder, validates automatically when you leave the field (with inline ✓/✗ feedback), and first-run setup no longer advances past the TMDB step until you've entered a valid token or explicitly chosen to continue without one. (#243, #263)
+
+### Changed
+
+- **Wider, collapsible config wizard** — the setup/settings modal is wider (800 → 1040px) and Preferences plus the new Data Sharing tab are grouped into collapsible sections, so the page starts compact and you expand only what you need. Inline action buttons that previously rendered as bare text ("Forget me", "Contribute from existing library") are fixed. (#263)
+
+### Fixed
+
+- **Import Watch Folder missed shows it was pointed at directly** — pointing the watch folder straight at a single show's folder broke ingestion: `Season NN` subfolders sat one nesting level too shallow to be detected (jobs were mislabeled with no show or season), and flat folders with no season matched nothing because the matcher requires a season. Engram now recognizes `Season N` / `Season 01` folders when the watch root *is* the show, and searches every candidate season for flat imports so they match across all seasons. (#264)
+- **ASR episode matching rejected correct matches on known seasons** — a 30-second speech-recognition chunk scores a structurally low similarity against a full-episode reference vector, and the recent precomputed-vector migration lowered that scale further, so the old fixed similarity threshold rejected most correct chunks and returned no episode. Matching now uses a rank-and-margin vote (the top candidate must clear a low floor *and* lead the runner-up by a wide margin) and falls through to a full-file comparison when no chunk votes, restoring matches while still abstaining on out-of-corpus content. (#269)
+
 ## [0.11.0] - 2026-05-29
 
 ### Added

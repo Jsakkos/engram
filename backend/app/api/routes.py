@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import ipaddress
 import json
 import logging
 import platform
@@ -60,24 +61,41 @@ def require_debug() -> None:
         raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
-# Loopback addresses that count as "the user is querying their own machine".
-# Used by endpoints that surface privacy-sensitive data (e.g. ripping history)
-# so they remain reachable from the dashboard but not from LAN peers when
-# `allow_lan_access` binds 0.0.0.0. Tests should override the dependency via
-# `app.dependency_overrides[require_localhost] = lambda: None` rather than
-# widening this set with test-framework implementation details.
-_LOCALHOST_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost"})
+def _is_loopback(host: str | None) -> bool:
+    """True if ``host`` names the local machine.
+
+    Covers every loopback form a peer address can take — IPv4 (`127.0.0.0/8`),
+    IPv6 (`::1`), and the IPv4-mapped IPv6 loopback (`::ffff:127.0.0.1`) that
+    arrives on dual-stack binds (`HOST=::`). `localhost` is kept as an explicit
+    fallback: Starlette normally reports a numeric peer address, but a literal
+    hostname is accepted rather than silently rejected.
+    """
+    if not host:
+        return False
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return host == "localhost"
+    if addr.is_loopback:
+        return True
+    # Python < 3.13's is_loopback does not unwrap IPv4-mapped addresses, so
+    # check the mapped IPv4 explicitly for version-independent correctness.
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return bool(mapped and mapped.is_loopback)
 
 
 def require_localhost(request: Request) -> None:
     """FastAPI dependency: 403 unless the request came from the host machine.
 
-    Allowed: real loopback (`127.0.0.1`, `::1`) and the literal `localhost`.
-    Everything else — including LAN peers when `allow_lan_access=True` opens
-    the bind to all interfaces — is rejected.
+    Used by endpoints that surface or mutate privacy-sensitive local data
+    (e.g. ripping history, DiscDB/fingerprint contributions) so they stay
+    reachable from the dashboard but not from LAN peers when
+    `allow_lan_access=True` opens the bind to all interfaces. Tests should
+    override the dependency via
+    `app.dependency_overrides[require_localhost] = lambda: None` rather than
+    spoofing peer addresses.
     """
-    client = request.client.host if request.client else None
-    if client not in _LOCALHOST_CLIENTS:
+    if not _is_loopback(request.client.host if request.client else None):
         raise HTTPException(
             status_code=403, detail="This endpoint is only reachable from the host machine"
         )
@@ -273,6 +291,7 @@ class ConfigResponse(BaseModel):
     ai_identification_enabled: bool
     ai_provider: str
     ai_api_key: str
+    ai_episode_matching_enabled: bool
     # Staging watcher
     staging_watch_enabled: bool
     # TheDiscDB
@@ -350,6 +369,7 @@ class ConfigUpdate(BaseModel):
     ai_identification_enabled: bool | None = None
     ai_provider: str | None = None
     ai_api_key: str | None = None
+    ai_episode_matching_enabled: bool | None = None
     # Staging watcher
     staging_watch_enabled: bool | None = None
     # TheDiscDB
@@ -1120,6 +1140,7 @@ async def get_config() -> ConfigResponse:
         ai_identification_enabled=config.ai_identification_enabled,
         ai_provider=config.ai_provider,
         ai_api_key="***" if config.ai_api_key else "",  # Redacted
+        ai_episode_matching_enabled=config.ai_episode_matching_enabled,
         # Staging watcher
         staging_watch_enabled=config.staging_watch_enabled,
         # TheDiscDB
@@ -1464,12 +1485,21 @@ async def list_fingerprint_contributions(
 @router.delete("/fingerprint/contributions/{contrib_id}", dependencies=[Depends(require_localhost)])
 async def forget_fingerprint_contribution(
     contrib_id: int,
+    force: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Delete a locally-queued fingerprint contribution (forget).
 
     Returns 400 if the contribution was already uploaded — the data already
-    exists on the server and cannot be recalled from here.
+    exists on the server and cannot be recalled from here (use /fingerprint/forget
+    to recall server-side data). Returns 409 if the row has been attempted and is
+    still retrying, unless `force=true` is passed.
+
+    `force=true` is the escape hatch for the resilience behavior: transient upload
+    failures keep a row pending (`upload_status=None`, `upload_attempts>0`) and
+    retry across drains indefinitely, so without force a row stuck against a dead
+    server could never be deleted individually. force overrides ONLY that retry
+    guard — it never bypasses the already-uploaded (400) guard.
     """
     from app.models.fingerprint import FingerprintContribution
 
@@ -1477,21 +1507,28 @@ async def forget_fingerprint_contribution(
     if contrib is None:
         raise HTTPException(status_code=404, detail="Contribution not found")
     if contrib.upload_status == "success":
+        # Never bypassed, even with force — the data is already on the server.
         raise HTTPException(
             status_code=400,
             detail="Cannot delete an already-uploaded contribution; the data is already on the server.",
         )
-    if contrib.upload_status is None and contrib.upload_attempts > 0:
-        # upload_attempts > 0 means the background uploader has already tried
-        # this row at least once and may be holding it in an active HTTP call.
-        # Deleting now would cause a silent no-op UPDATE on a ghost row.
+    if not force and contrib.upload_status is None and contrib.upload_attempts > 0:
+        # upload_attempts > 0 means the background uploader has already tried this
+        # row at least once and may be holding it in an active HTTP call; deleting
+        # now could be a silent no-op UPDATE on a ghost row. Transient failures keep
+        # the row pending (status=None) and retry across drains rather than reaching
+        # a terminal "failed", so this guard holds until the row eventually uploads.
         raise HTTPException(
             status_code=409,
-            detail="Contribution may be in-flight (upload already attempted). Try again after the next poll cycle or wait for it to succeed or fail.",
+            detail=(
+                "Contribution upload already attempted; it will keep retrying on "
+                "later drains until it succeeds. To retract it now, retry with "
+                "force=true, or opt out / use the forget action."
+            ),
         )
     await session.delete(contrib)
     await session.commit()
-    return {"status": "deleted", "contrib_id": contrib_id}
+    return {"status": "deleted", "contrib_id": contrib_id, "forced": force}
 
 
 @router.post(
@@ -2147,15 +2184,15 @@ async def simulate_insert_disc_from_staging(
     dependencies=[Depends(require_localhost), Depends(require_debug)],
 )
 async def debug_drain_uploader(request: Request) -> dict:
-    """Force one uploader drain tick (DEBUG only).
+    """Force a full uploader drain (DEBUG only).
 
-    The uploader normally ticks on a long poll interval; tests call this to
-    trigger a drain immediately. Returns {"ok": true}.
+    The uploader normally drains on a long poll interval; tests call this to
+    drain the pending queue immediately. Returns {"ok": true}.
     """
     uploader = getattr(request.app.state, "contribution_uploader", None)
     if uploader is None:
         raise HTTPException(status_code=503, detail="uploader not running")
-    await uploader._process_batch()
+    await uploader._drain()
     return {"ok": True}
 
 
@@ -2816,7 +2853,11 @@ class ReleaseGroupAssignRequest(BaseModel):
     release_group_id: str | None = None
 
 
-@router.get("/contributions", response_model=list[ContributionJobResponse])
+@router.get(
+    "/contributions",
+    response_model=list[ContributionJobResponse],
+    dependencies=[Depends(require_localhost)],
+)
 async def list_contributions(session: AsyncSession = Depends(get_session)):
     """List completed jobs with their export status."""
     result = await session.execute(
@@ -2856,7 +2897,11 @@ async def list_contributions(session: AsyncSession = Depends(get_session)):
     return responses
 
 
-@router.get("/contributions/stats", response_model=ContributionStatsResponse)
+@router.get(
+    "/contributions/stats",
+    response_model=ContributionStatsResponse,
+    dependencies=[Depends(require_localhost)],
+)
 async def contribution_stats(session: AsyncSession = Depends(get_session)):
     """Get contribution counts for nav badge."""
     result = await session.execute(select(DiscJob).where(DiscJob.state == JobState.COMPLETED))
@@ -2872,17 +2917,24 @@ async def contribution_stats(session: AsyncSession = Depends(get_session)):
     )
 
 
-@router.post("/contributions/{job_id}/export")
+@router.post("/contributions/{job_id}/export", dependencies=[Depends(require_localhost)])
 async def export_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Manually trigger export for a specific job."""
     from app.core.discdb_exporter import generate_export, mark_exported
+    from app.core.discdb_submitter import ensure_release_group_id
     from app.services.config_service import get_config as get_db_config
 
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
+
+    if not job.release_group_id:
+        ensure_release_group_id(job)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
 
     config = await get_db_config()
     titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
@@ -2898,7 +2950,7 @@ async def export_contribution(
     return {"status": "exported", "export_path": str(export_dir)}
 
 
-@router.post("/contributions/{job_id}/skip")
+@router.post("/contributions/{job_id}/skip", dependencies=[Depends(require_localhost)])
 async def skip_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
@@ -2930,7 +2982,7 @@ class FetchCoverRequest(BaseModel):
     image_url: str
 
 
-@router.post("/contributions/{job_id}/upc-lookup")
+@router.post("/contributions/{job_id}/upc-lookup", dependencies=[Depends(require_localhost)])
 async def upc_lookup(
     request: UPCLookupRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -2955,13 +3007,18 @@ async def upc_lookup(
     }
 
 
-@router.post("/contributions/{job_id}/fetch-cover")
+@router.post("/contributions/{job_id}/fetch-cover", dependencies=[Depends(require_localhost)])
 async def fetch_cover(
     job_id: int,
     request: FetchCoverRequest,
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
+    # Lazy import (matches get_db_config below). Keep it inline: the fetch-cover
+    # test patches app.core.discdb_exporter.get_export_directory — the binding
+    # this resolves at call time — so hoisting it to module scope would bypass
+    # the patch and silently break that test.
+    from app.core.discdb_exporter import get_export_directory
     from app.services.config_service import get_config as get_db_config
 
     # SSRF guard runs BEFORE the DB lookup so a disallowed URL fails fast
@@ -2978,12 +3035,11 @@ async def fetch_cover(
     if not job.content_hash:
         raise HTTPException(status_code=400, detail="No content hash")
 
+    # Use the canonical export-dir helper (falls back to ~/.engram/discdb-exports/)
+    # rather than 400-ing on an unset discdb_export_path — matches every other
+    # call site, and an empty path is the default.
     config = await get_db_config()
-    export_base = Path(config.discdb_export_path) if config.discdb_export_path else None
-    if not export_base:
-        raise HTTPException(status_code=400, detail="No export path configured")
-
-    export_dir = export_base / job.content_hash
+    export_dir = get_export_directory(config) / job.content_hash
     export_dir.mkdir(parents=True, exist_ok=True)
 
     max_size = 10 * 1024 * 1024  # 10 MB
@@ -3032,7 +3088,7 @@ async def fetch_cover(
         raise HTTPException(status_code=502, detail=f"Failed to download image: {e}") from e
 
 
-@router.post("/contributions/{job_id}/enhance")
+@router.post("/contributions/{job_id}/enhance", dependencies=[Depends(require_localhost)])
 async def enhance_contribution(
     request: EnhanceRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -3087,7 +3143,7 @@ async def enhance_contribution(
     return {"status": "enhanced", "export_path": str(export_dir)}
 
 
-@router.post("/jobs/{job_id}/flag-discdb")
+@router.post("/jobs/{job_id}/flag-discdb", dependencies=[Depends(require_localhost)])
 async def flag_discdb(
     request: FlagDiscDBRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -3374,19 +3430,25 @@ async def llm_match_title(
     return {"suggestion": suggestion, "reason": None}
 
 
-@router.post("/contributions/{job_id}/submit")
+@router.post("/contributions/{job_id}/submit", dependencies=[Depends(require_localhost)])
 async def submit_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Submit a job's disc data to TheDiscDB API."""
-    from app.core.discdb_submitter import submit_job
+    from app.core.discdb_submitter import ensure_release_group_id, submit_job
     from app.services.config_service import get_config as get_db_config
 
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=400, detail="Job is not completed")
     if not job.exported_at or job.exported_at.year == 1970:
         raise HTTPException(status_code=400, detail="Job must be exported before submission")
+
+    if not job.release_group_id:
+        ensure_release_group_id(job)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
 
     config = await get_db_config()
 
@@ -3412,7 +3474,7 @@ async def submit_contribution(
     }
 
 
-@router.post("/contributions/release-group")
+@router.post("/contributions/release-group", dependencies=[Depends(require_localhost)])
 async def create_release_group(
     request: ReleaseGroupRequest,
     session: AsyncSession = Depends(get_session),
@@ -3442,7 +3504,7 @@ async def create_release_group(
     return {"release_group_id": release_group_id, "job_ids": request.job_ids}
 
 
-@router.put("/contributions/{job_id}/release-group")
+@router.put("/contributions/{job_id}/release-group", dependencies=[Depends(require_localhost)])
 async def assign_release_group(
     request: ReleaseGroupAssignRequest,
     job: DiscJob = Depends(get_job_or_404),
@@ -3467,7 +3529,10 @@ async def assign_release_group(
     return {"job_id": job.id, "release_group_id": request.release_group_id}
 
 
-@router.post("/contributions/release-group/{release_group_id}/submit")
+@router.post(
+    "/contributions/release-group/{release_group_id}/submit",
+    dependencies=[Depends(require_localhost)],
+)
 async def submit_release_group_endpoint(
     release_group_id: str,
     session: AsyncSession = Depends(get_session),

@@ -17,7 +17,7 @@ from app.api.websocket import manager as ws_manager
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
-from app.services.matching_coordinator import MatchingCoordinator
+from app.services.matching_coordinator import MatchingCoordinator, episode_curator
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -289,6 +289,140 @@ class TestDownloadSubtitlesMessaging:
             refreshed = await session.get(DiscJob, job_id)
             assert refreshed.subtitle_status == "partial"
             assert refreshed.subtitle_error_message is None
+
+
+@pytest.mark.unit
+class TestNoSubtitleAIFallback:
+    """When subtitle download fails, the AI episode matcher (ASR transcript +
+    TMDB synopsis) runs as a fallback — when enabled, keyed, and the season is
+    known — attaching an llm_suggestion to the REVIEW title instead of leaving it
+    a bare manual-assignment. Otherwise the existing manual-review path is kept.
+    """
+
+    def _patch_ai_config(self, monkeypatch, *, enabled: bool, key: str = "k"):
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(
+                return_value=SimpleNamespace(ai_episode_matching_enabled=enabled, ai_api_key=key)
+            ),
+        )
+
+    async def _seed_failed(self, session, **job_overrides):
+        job, title = await _seed(session)
+        job.subtitle_status = "failed"
+        for k, v in job_overrides.items():
+            setattr(job, k, v)
+        session.add(job)
+        await session.commit()
+        return job, title
+
+    async def test_runs_llm_fallback_and_attaches_suggestion(self, monkeypatch, tmp_path):
+        self._patch_ai_config(monkeypatch, enabled=True)
+        suggestion = {
+            "llm_suggestion": {
+                "episode": 9,
+                "confidence": 0.83,
+                "reasoning": "matched against the synopsis",
+                "runner_up": None,
+                "model": "gemini-2.5-flash-lite",
+            }
+        }
+        suggest = AsyncMock(return_value=suggestion)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session)
+            job_id, title_id = job.id, title.id
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        suggest.assert_awaited_once()
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            details = json.loads(t.match_details)
+            assert details["llm_suggestion"]["episode"] == 9
+            # Must NOT auto-organize — it's only a suggestion for the user.
+            assert t.organized_to is None
+        coord._check_job_completion.assert_awaited()
+
+    async def test_disabled_keeps_manual_review_path(self, monkeypatch, tmp_path):
+        self._patch_ai_config(monkeypatch, enabled=False)
+        suggest = AsyncMock()
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session)
+            job_id, title_id = job.id, title.id
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        suggest.assert_not_called()
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
+
+    async def test_unknown_season_keeps_manual_review_path(self, monkeypatch, tmp_path):
+        self._patch_ai_config(monkeypatch, enabled=True)
+        suggest = AsyncMock(return_value={"llm_suggestion": {"episode": 1}})
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session, detected_season=None)
+            job_id, title_id = job.id, title.id
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        suggest.assert_not_called()
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
+
+    async def test_no_suggestion_keeps_manual_review_path(self, monkeypatch, tmp_path):
+        self._patch_ai_config(monkeypatch, enabled=True)
+        # AI ran but couldn't produce a suggestion (e.g. LLM declined / TMDB miss).
+        suggest = AsyncMock(return_value=None)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session)
+            job_id, title_id = job.id, title.id
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        suggest.assert_awaited_once()
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
+
+    async def test_fallback_exception_does_not_strand_title(self, monkeypatch, tmp_path):
+        """An exception anywhere in the fallback must be swallowed so the title
+        still lands in REVIEW — never stuck in MATCHING with no completion check.
+        """
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session)
+            job_id, title_id = job.id, title.id
+
+        # Must not raise out of the match task.
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
+        coord._check_job_completion.assert_awaited()
 
 
 @pytest.mark.unit

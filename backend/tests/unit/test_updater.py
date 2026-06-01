@@ -4,6 +4,7 @@ Patches async_session so no test touches engram.db.
 httpx is mocked via unittest.mock so no real network calls are made.
 """
 
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -267,3 +268,68 @@ class TestUpdateCheckerStates:
         assert asset is not None
         assert asset["name"].endswith(".zip")
         assert "windows" in asset["name"]
+
+
+class TestPruneStaging:
+    """Staging holds only not-yet-installed updates; older ones are pruned."""
+
+    def test_prunes_installed_versions_keeps_newer(self, monkeypatch, tmp_path):
+        """Staged dirs <= current version are removed; strictly newer ones kept."""
+        monkeypatch.setattr("app.core.updater.STAGING_BASE", tmp_path)
+        for v in ("0.11.0", "0.12.1", "0.13.0"):
+            (tmp_path / v).mkdir()
+
+        checker = UpdateChecker()
+        checker._current_version = "0.12.1"
+        checker._prune_staging()
+
+        remaining = sorted(p.name for p in tmp_path.iterdir())
+        assert remaining == ["0.13.0"]
+
+    def test_prune_missing_base_is_noop(self, monkeypatch, tmp_path):
+        """No staging dir yet → prune does nothing and doesn't raise."""
+        monkeypatch.setattr("app.core.updater.STAGING_BASE", tmp_path / "nope")
+        checker = UpdateChecker()
+        checker._current_version = "0.12.1"
+        checker._prune_staging()  # must not raise
+
+
+class TestSpawnDetachedHelper:
+    """The Windows update helper must escape a kill-on-close Job Object."""
+
+    def _breakaway_flag(self):
+        # app.core.updater calls subprocess.Popen (module-qualified), so the stdlib
+        # subprocess module here is the same object it uses.
+        return getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+
+    def test_spawns_with_breakaway_from_job(self, monkeypatch):
+        """First attempt must include CREATE_BREAKAWAY_FROM_JOB so a job can't kill it."""
+        flags_seen = []
+        monkeypatch.setattr(
+            subprocess,
+            "Popen",
+            lambda *a, **kw: flags_seen.append(kw.get("creationflags", 0)) or MagicMock(),
+        )
+        UpdateChecker._spawn_detached_helper(["cmd", "/c", "x.bat"])
+
+        assert flags_seen, "Popen was never called"
+        assert flags_seen[0] & self._breakaway_flag()
+
+    def test_falls_back_without_breakaway_on_oserror(self, monkeypatch):
+        """If the job forbids breakaway (CreateProcess raises), retry plain-detached."""
+        breakaway = self._breakaway_flag()
+        flags_seen = []
+
+        def fake_popen(*a, **kw):
+            flags = kw.get("creationflags", 0)
+            flags_seen.append(flags)
+            if flags & breakaway:
+                raise OSError("Access is denied")
+            return MagicMock()
+
+        monkeypatch.setattr(subprocess, "Popen", fake_popen)
+        UpdateChecker._spawn_detached_helper(["cmd", "/c", "x.bat"])
+
+        assert len(flags_seen) == 2
+        assert flags_seen[0] & breakaway  # tried with breakaway
+        assert not (flags_seen[1] & breakaway)  # then fell back without
