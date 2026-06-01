@@ -4,6 +4,20 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-01
+
+_Highlights: a new opt-in AI episode-matching fallback for discs that have no reference subtitles — Engram transcribes the rip and matches it against the TMDB synopsis to suggest an episode in Review; the AI key and "AI-Powered Episode Matching" toggle now save and persist; and queued fingerprint contributions survive a sustained server outage instead of being permanently dropped._
+
+### Added
+
+- **AI episode-matching fallback when no subtitles are found** — for discs where no reference subtitles can be downloaded, the normal subtitle-based matcher has nothing to compare against. Engram can now transcribe the ripped file with on-device speech recognition (ASR) and match that transcript against each candidate episode's TMDB synopsis, surfacing a best-guess episode in the Review queue. It is opt-in via the **"AI-Powered Episode Matching"** setting and never auto-organizes — the suggestion is always presented for you to confirm. (#283)
+- **Force-delete a stuck fingerprint contribution** — a contribution retrying against a permanently unreachable server could stay queued indefinitely, and its in-flight guard blocked removal. The single-contribution delete now accepts a `force=true` option to retract such a row. It still refuses to delete anything already uploaded — use **Forget me** to recall data that has left your machine. (#280)
+
+### Fixed
+
+- **The AI API key and "AI-Powered Episode Matching" toggle didn't persist** — the AI/Gemini API key field always rendered blank with no sign a key was saved, and the episode-matching toggle could not be enabled at all, because the underlying config field was missing from the settings API models and was silently dropped on save. Settings now shows a **"Key saved"** indicator once a key is stored, and the toggle persists across restarts. (#283)
+- **Queued fingerprint contributions were permanently dropped during a sustained server outage** — the uploader's retry cap was a lifetime cap, so a prolonged upstream outage (for example 503s during a bulk library bootstrap) could exhaust a contribution's attempts in a single drain and mark it permanently failed, with no automatic recovery. Transient errors (5xx, network, and rate-limit 429) now keep the contribution queued and retry it on later drains; only genuine permanent failures (4xx or undecodable data) are marked failed. (#279)
+
 ## [0.12.1] - 2026-05-31
 
 _Highlights: fingerprint-network contributions now upload far faster — a backlog drains in back-to-back batches instead of trickling out an hour at a time, and rate-limited uploads are retried instead of dropped. Plus a LAN-access fix so a dual-stack host no longer rejects its own requests._
