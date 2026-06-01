@@ -345,7 +345,7 @@ class EpisodeCurator:
         if series_name:
             try:
                 cp = await self._chromaprint_prepass(
-                    file_path=file_path, series_name=series_name, season=season
+                    file_path=file_path, series_name=series_name, season=season, tmdb_id=tmdb_id
                 )
             except Exception as e:  # noqa: BLE001 — never block matching
                 logger.warning(f"chromaprint prepass failed: {e}", exc_info=True)
@@ -369,9 +369,16 @@ class EpisodeCurator:
                     match_details=details,
                 )
 
-        # Fall through to ASR (the legacy path).
+        # Fall through to ASR (the legacy path). Pass tmdb_id by keyword so it can't be
+        # misrouted if a positional parameter is ever inserted before it.
         asr = await self._run_asr_identify(
-            file_path, series_name, season, progress_callback, num_points, min_vote_count
+            file_path,
+            series_name,
+            season,
+            progress_callback,
+            num_points,
+            min_vote_count,
+            tmdb_id=tmdb_id,
         )
 
         # Cross-validate when BOTH produced an episode.
@@ -410,8 +417,13 @@ class EpisodeCurator:
         progress_callback: Callable[..., None] | None = None,
         num_points: int | None = None,
         min_vote_count: int | None = None,
+        tmdb_id: int | None = None,
     ) -> MatchResult:
-        """Run the ASR/subtitle matching path — the original match_single_file try/except body."""
+        """Run the ASR/subtitle matching path — the original match_single_file try/except body.
+
+        ``tmdb_id`` is forwarded to the LLM fallback so it builds context from the
+        known show identity rather than re-resolving by name (collision-safe).
+        """
         try:
             # Run the matcher in a thread to not block async loop
             logger.debug(f"[Curator] Starting identifying_episode in thread for {file_path.name}")
@@ -453,6 +465,7 @@ class EpisodeCurator:
                         season=season,
                         match_details=details,
                         existing_transcript=existing_transcript,
+                        tmdb_id=tmdb_id,
                     )
                     if enriched is not None:
                         details = enriched
@@ -477,6 +490,7 @@ class EpisodeCurator:
                         season=season,
                         match_details=fallback.match_details or {},
                         existing_transcript=existing_transcript,
+                        tmdb_id=tmdb_id,
                     )
                     if enriched is not None:
                         fallback.match_details = enriched
@@ -493,8 +507,15 @@ class EpisodeCurator:
         file_path: Path,
         series_name: str,
         season: int,
+        tmdb_id: int | None = None,
     ) -> dict | None:
-        """Run chromaprint identification; return its result dict or None if unavailable/empty."""
+        """Run chromaprint identification; return its result dict or None if unavailable/empty.
+
+        When ``tmdb_id`` is known (e.g. the user disambiguated a same-name show), it is
+        used directly to fetch the fingerprint pack — skipping ``fetch_show_id``, which
+        resolves by NAME and cannot tell apart same-name collisions (Frasier 1993 #3452
+        vs the 2023 revival #195241).
+        """
         from app.services.config_service import get_config
 
         cfg = await get_config()
@@ -518,10 +539,13 @@ class EpisodeCurator:
             detected_ffmpeg = detect_ffmpeg()
             ffmpeg = detected_ffmpeg.path if detected_ffmpeg.found else None
 
-        from app.matcher.tmdb_client import fetch_show_id
+        if tmdb_id is not None:
+            show_id = tmdb_id
+        else:
+            from app.matcher.tmdb_client import fetch_show_id
 
-        tmdb_id = await asyncio.to_thread(fetch_show_id, series_name)
-        if not tmdb_id:
+            show_id = await asyncio.to_thread(fetch_show_id, series_name)
+        if not show_id:
             return None
 
         from app.matcher.chromaprint_extractor import ChromaprintExtractor
@@ -532,11 +556,11 @@ class EpisodeCurator:
         pack_cache = getattr(self, "_pack_cache", None)
         if pack_cache is not None:
             try:
-                await pack_cache.ensure(int(tmdb_id), server_url)
+                await pack_cache.ensure(int(show_id), server_url)
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"pack ensure failed: {e}")
 
-        cm = ChromaprintMatcher(tmdb_id=int(tmdb_id), server_url=server_url, pack_cache=pack_cache)
+        cm = ChromaprintMatcher(tmdb_id=int(show_id), server_url=server_url, pack_cache=pack_cache)
         extractor = ChromaprintExtractor(fpcalc_path=fpcalc, ffmpeg_path=ffmpeg)
         try:
             video_duration = await asyncio.to_thread(get_video_duration, str(file_path))
@@ -560,6 +584,7 @@ class EpisodeCurator:
         season: int,
         match_details: dict | None = None,
         existing_transcript: str | None = None,
+        tmdb_id: int | None = None,
     ) -> dict | None:
         """Run the LLM matcher when enabled and attach the suggestion to match_details.
 
@@ -568,6 +593,9 @@ class EpisodeCurator:
         ``existing_transcript`` lets callers pass through a transcript the
         primary matcher already produced (via the full-file fallback path),
         avoiding a duplicate Whisper run when the matcher just transcribed.
+
+        ``tmdb_id``, when known, is used directly instead of ``fetch_show_id`` so the
+        LLM gets context for the correct show even when another show shares its name.
         """
         from app.services.config_service import get_config
 
@@ -577,10 +605,13 @@ class EpisodeCurator:
         if not config.ai_api_key:
             return None
 
-        # Resolve TMDB show id (synchronous, run in thread)
-        from app.matcher.tmdb_client import fetch_show_id
+        # Resolve TMDB show id — prefer the known id; otherwise resolve by name.
+        if tmdb_id is not None:
+            tmdb_show_id = tmdb_id
+        else:
+            from app.matcher.tmdb_client import fetch_show_id
 
-        tmdb_show_id = await asyncio.to_thread(fetch_show_id, series_name)
+            tmdb_show_id = await asyncio.to_thread(fetch_show_id, series_name)
         if not tmdb_show_id:
             logger.info(f"LLM fallback: no TMDB show_id for {series_name!r}")
             return None
