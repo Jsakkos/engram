@@ -435,56 +435,65 @@ class MatchingCoordinator:
         ``match_details`` carrying an ``llm_suggestion`` for the Review UI, or
         ``None`` when AI matching is disabled/unconfigured, the show/season is
         unknown, or no suggestion was produced (the caller then keeps the plain
-        manual-review path). Never raises — a fallback failure must not break the
-        review hand-off.
+        manual-review path). Never raises — the whole body is guarded so a
+        fallback failure can't leave the title stuck; control always falls
+        through to the caller's manual-review hand-off.
         """
         if not series_name or not season:
             return None
 
-        from app.services.config_service import get_config
-
-        config = await get_config()
-        if not config or not getattr(config, "ai_episode_matching_enabled", False):
-            return None
-        if not getattr(config, "ai_api_key", None):
-            return None
-
-        logger.info(
-            f"[MATCH] Title {title_id} (Job {job_id}): no reference subtitles — attempting AI "
-            f"episode-matching fallback (ASR transcript + TMDB synopsis)."
-        )
-
-        # Surface activity while the (slow) full-file transcription runs.
-        async with async_session() as session:
-            title = await session.get(DiscTitle, title_id)
-            if title:
-                title.state = TitleState.MATCHING
-                session.add(title)
-                await session.commit()
-                await ws_manager.broadcast_title_update(job_id, title_id, TitleState.MATCHING.value)
-
-        # Bound concurrent Whisper runs the same way the main matcher does — this
-        # gate sits *before* the normal semaphore acquire, so failed titles would
-        # otherwise transcribe unbounded.
-        acquired = False
+        # The entire body is wrapped: get_config() and the MATCHING-transition
+        # commit/broadcast sit above the LLM call, and an exception in any of
+        # them must not escape to _run_match_single_file (whose failed-subtitle
+        # branch has no handler) — that would leave the title stuck in MATCHING
+        # with REVIEW never set and _check_job_completion never called.
         try:
-            if self._match_semaphore is not None:
-                await self._match_semaphore.acquire()
-                acquired = True
-            enriched = await episode_curator.suggest_episode_via_llm(
-                file_path=file_path,
-                series_name=series_name,
-                season=season,
+            from app.services.config_service import get_config
+
+            config = await get_config()
+            if not config or not config.ai_episode_matching_enabled:
+                return None
+            if not config.ai_api_key:
+                return None
+
+            logger.info(
+                f"[MATCH] Title {title_id} (Job {job_id}): no reference subtitles — attempting AI "
+                f"episode-matching fallback (ASR transcript + TMDB synopsis)."
             )
+
+            # Surface activity while the (slow) full-file transcription runs.
+            async with async_session() as session:
+                title = await session.get(DiscTitle, title_id)
+                if title:
+                    title.state = TitleState.MATCHING
+                    session.add(title)
+                    await session.commit()
+                    await ws_manager.broadcast_title_update(
+                        job_id, title_id, TitleState.MATCHING.value
+                    )
+
+            # Bound concurrent Whisper runs the same way the main matcher does —
+            # this gate sits *before* the normal semaphore acquire, so failed
+            # titles would otherwise transcribe unbounded.
+            acquired = False
+            try:
+                if self._match_semaphore is not None:
+                    await self._match_semaphore.acquire()
+                    acquired = True
+                enriched = await episode_curator.suggest_episode_via_llm(
+                    file_path=file_path,
+                    series_name=series_name,
+                    season=season,
+                )
+            finally:
+                if acquired and self._match_semaphore is not None:
+                    self._match_semaphore.release()
         except Exception as e:  # never let the fallback break the review hand-off
             logger.warning(
                 f"[MATCH] Title {title_id} (Job {job_id}): AI fallback failed: {e}",
                 exc_info=True,
             )
-            enriched = None
-        finally:
-            if acquired and self._match_semaphore is not None:
-                self._match_semaphore.release()
+            return None
 
         if enriched and enriched.get("llm_suggestion"):
             logger.info(

@@ -402,6 +402,28 @@ class TestNoSubtitleAIFallback:
             assert t.state == TitleState.REVIEW
             assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
 
+    async def test_fallback_exception_does_not_strand_title(self, monkeypatch, tmp_path):
+        """An exception anywhere in the fallback must be swallowed so the title
+        still lands in REVIEW — never stuck in MATCHING with no completion check.
+        """
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session)
+            job_id, title_id = job.id, title.id
+
+        # Must not raise out of the match task.
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert json.loads(t.match_details)["error"] == "subtitle_download_failed"
+        coord._check_job_completion.assert_awaited()
+
 
 @pytest.mark.unit
 class TestDownloadSubtitlesAllSeasons:

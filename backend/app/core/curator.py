@@ -537,7 +537,7 @@ class EpisodeCurator:
         file_path: Path,
         series_name: str,
         season: int,
-        match_details: dict,
+        match_details: dict | None = None,
         existing_transcript: str | None = None,
     ) -> dict | None:
         """Run the LLM matcher when enabled and attach the suggestion to match_details.
@@ -621,17 +621,19 @@ class EpisodeCurator:
         Returns ``match_details`` carrying an ``llm_suggestion`` for the Review UI,
         or ``None`` when the matcher can't initialize or AI matching is
         disabled/unconfigured/produces nothing (the caller then falls back to
-        plain manual review). Initialization (``_ensure_initialized``) does
-        blocking TMDB lookups, so it runs in a thread.
+        plain manual review).
         """
-        initialized = await asyncio.to_thread(self._ensure_initialized, series_name)
-        if not initialized:
+        # Initialize in the event loop, NOT a worker thread: _ensure_initialized
+        # mutates singleton state (_matcher/_current_show/...) and the regular
+        # match path also calls it from the loop, so a thread dispatch could race
+        # with a concurrent job for a different show and clobber the active
+        # matcher. The blocking TMDB lookups inside are cached.
+        if not self._ensure_initialized(series_name):
             return None
         return await self._maybe_add_llm_suggestion(
             file_path=file_path,
             series_name=series_name,
             season=season,
-            match_details={},
         )
 
     def _parse_episode_from_filename(self, filename: str) -> str | None:
