@@ -70,6 +70,7 @@ interface ConfigData {
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
     namingMovieFormat: string;
+    namingTvShowFormat: string;
     discdbEnabled: boolean;
     enableFingerprintContributions: boolean;
     fingerprintServerUrl: string;
@@ -139,6 +140,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
+        namingTvShowFormat: '{show}',
         discdbEnabled: true,
         enableFingerprintContributions: true,
         fingerprintServerUrl: '',
@@ -244,6 +246,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
+                    namingTvShowFormat: data.naming_tv_show_format || '{show}',
                     discdbEnabled: data.discdb_enabled ?? true,
                     enableFingerprintContributions: data.enable_fingerprint_contributions ?? true,
                     fingerprintServerUrl: data.fingerprint_server_url || '',
@@ -384,6 +387,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
+                    naming_tv_show_format: config.namingTvShowFormat,
                     discdb_enabled: config.discdbEnabled,
                     enable_fingerprint_contributions: config.enableFingerprintContributions,
                     fingerprint_server_url: config.fingerprintServerUrl || null,
@@ -1449,6 +1453,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             />
                             <span className="form-hint">
                                 Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="namingTvShowFormat">Show Folder Format</label>
+                            <input
+                                id="namingTvShowFormat"
+                                type="text"
+                                value={config.namingTvShowFormat}
+                                onChange={(e) => handleInputChange('namingTvShowFormat', e.target.value)}
+                                placeholder="{show}"
+                            />
+                            <span className="form-hint">
+                                Placeholders: {'{show}'}, {'{year}'}, {'{tmdb_id}'}. Default{' '}
+                                {'{show}'} keeps your current folders. To let same-name shows
+                                coexist (e.g. Frasier 1993 vs 2023), use Plex{' '}
+                                &quot;{'{show} ({year}) {{tmdb-{tmdb_id}}}'}&quot; or Jellyfin{' '}
+                                &quot;{'{show} ({year}) [tmdbid-{tmdb_id}]'}&quot;.
                             </span>
                         </div>
 
