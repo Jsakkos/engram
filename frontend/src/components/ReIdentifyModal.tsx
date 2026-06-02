@@ -101,9 +101,13 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
     const candidateLabel = (c: Candidate) => (c.year ? `${c.name} (${c.year})` : c.name);
 
     const selectCandidate = (c: Candidate) => {
-        // Same-name collisions are always TV; reuse the disc's detected season so
-        // the user doesn't have to re-enter it. Mirrors handleSubmit's tmdb path.
-        onSubmit(c.name, 'tv', job.detected_season, c.tmdb_id);
+        // Reuse the disc's detected content type (collisions are TV today, but
+        // don't hardcode it — a future movie collision must not be forced to TV)
+        // and detected season so the user doesn't re-enter them. The `?? 1`
+        // mirrors the manual form's `|| 1`: a null season serializes to null,
+        // which the backend skips, silently disabling subtitle re-download.
+        const type = job.content_type === 'tv' ? 'tv' : 'movie';
+        onSubmit(c.name, type, job.detected_season ?? 1, c.tmdb_id);
     };
 
     const handleSubmit = () => {
@@ -265,14 +269,26 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                         {candidates.length >= 2 && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 <SvLabel size={10}>Did you mean?</SvLabel>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {/* Cap height + scroll so an unexpectedly long candidate
+                                    list never pushes the search/action buttons off-screen
+                                    (matches the TMDB search-results container below). */}
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: 8,
+                                        maxHeight: 192,
+                                        overflowY: 'auto',
+                                    }}
+                                >
                                     {candidates.map((cand) => (
-                                        <motion.button
+                                        // Plain button (not motion.button): the color hover is
+                                        // driven imperatively here, so a competing whileHover
+                                        // would be a second style owner. Matches the search rows.
+                                        <button
                                             key={cand.tmdb_id}
                                             type="button"
                                             onClick={() => selectCandidate(cand)}
-                                            whileHover={{ scale: 1.01 }}
-                                            whileTap={{ scale: 0.99 }}
                                             style={{
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -308,7 +324,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                             >
                                                 {candidateLabel(cand)}
                                             </span>
-                                        </motion.button>
+                                        </button>
                                     ))}
                                 </div>
                             </div>

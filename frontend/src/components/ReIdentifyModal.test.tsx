@@ -61,6 +61,25 @@ describe('ReIdentifyModal quick-pick candidates', () => {
         expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 2, 195241);
     });
 
+    it('falls back to season 1 when the job has no detected_season', async () => {
+        // A null season serializes to `season: null`, the backend skips updating
+        // detected_season, and subtitle re-download is then silently skipped for
+        // the TV disc. Mirror the manual form's `|| 1` fallback.
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        render(
+            <ReIdentifyModal
+                job={makeJob({ candidates_json: FRASIER_CANDIDATES, detected_season: undefined })}
+                onSubmit={onSubmit}
+                onCancel={vi.fn()}
+            />,
+        );
+
+        await user.click(screen.getByRole('button', { name: /frasier \(2023\)/i }));
+
+        expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 1, 195241);
+    });
+
     it('does not render a quick-pick section when candidates_json is absent', () => {
         render(
             <ReIdentifyModal job={makeJob()} onSubmit={vi.fn()} onCancel={vi.fn()} />,
