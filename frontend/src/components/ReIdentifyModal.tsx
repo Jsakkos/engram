@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { IcoDisc, IcoMovie, IcoTv, IcoSearch, IcoRetry } from '../app/components/icons';
 import type { Job } from '../types';
@@ -11,6 +11,14 @@ interface TmdbResult {
     year: string;
     poster_path: string | null;
     popularity: number;
+}
+
+/** A same-name TMDB candidate persisted on the job at identify time. */
+interface Candidate {
+    tmdb_id: number;
+    name: string;
+    year?: string;
+    popularity?: number;
 }
 
 interface ReIdentifyModalProps {
@@ -71,6 +79,31 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
         setTmdbId(result.tmdb_id);
         setSearchResults([]);
         setSearchQuery('');
+    };
+
+    // Same-name twins recorded at identify time (e.g. Frasier 1993 + 2023). When
+    // present, they drive a one-click "Did you mean?" picker so the user skips the
+    // re-search. The API ships this as a raw JSON string, so parse defensively.
+    const candidates = useMemo<Candidate[]>(() => {
+        if (!job.candidates_json) return [];
+        try {
+            const parsed = JSON.parse(job.candidates_json);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter(
+                (c): c is Candidate =>
+                    !!c && typeof c.tmdb_id === 'number' && typeof c.name === 'string',
+            );
+        } catch {
+            return [];
+        }
+    }, [job.candidates_json]);
+
+    const candidateLabel = (c: Candidate) => (c.year ? `${c.name} (${c.year})` : c.name);
+
+    const selectCandidate = (c: Candidate) => {
+        // Same-name collisions are always TV; reuse the disc's detected season so
+        // the user doesn't have to re-enter it. Mirrors handleSubmit's tmdb path.
+        onSubmit(c.name, 'tv', job.detected_season, c.tmdb_id);
     };
 
     const handleSubmit = () => {
@@ -227,6 +260,59 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                 )}
                             </div>
                         </div>
+
+                        {/* Same-name quick-pick — one click resolves the collision */}
+                        {candidates.length >= 2 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <SvLabel size={10}>Did you mean?</SvLabel>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {candidates.map((cand) => (
+                                        <motion.button
+                                            key={cand.tmdb_id}
+                                            type="button"
+                                            onClick={() => selectCandidate(cand)}
+                                            whileHover={{ scale: 1.01 }}
+                                            whileTap={{ scale: 0.99 }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 10,
+                                                padding: '10px 12px',
+                                                border: `1px solid ${sv.cyan}4d`,
+                                                background: `${sv.cyan}0d`,
+                                                cursor: 'pointer',
+                                                textAlign: 'left',
+                                                transition: 'background 0.18s, border-color 0.18s',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = `${sv.cyan}1f`;
+                                                e.currentTarget.style.borderColor = sv.cyan;
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = `${sv.cyan}0d`;
+                                                e.currentTarget.style.borderColor = `${sv.cyan}4d`;
+                                            }}
+                                        >
+                                            <IcoTv size={14} color={sv.cyan} style={{ flexShrink: 0 }} />
+                                            <span
+                                                style={{
+                                                    fontFamily: sv.mono,
+                                                    fontSize: 13,
+                                                    color: sv.cyanHi,
+                                                    flex: 1,
+                                                    minWidth: 0,
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                }}
+                                            >
+                                                {candidateLabel(cand)}
+                                            </span>
+                                        </motion.button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div style={{ height: 1, background: sv.line }} />
 
