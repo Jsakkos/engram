@@ -458,6 +458,10 @@ class TestExtractionIntegrity:
         with pytest.raises(UpdateError, match="incomplete"):
             await checker.apply_update()
         assert called["restart"] is False
+        # A failed pre-apply re-verify must drop out of READY and clear the staged
+        # path, so the UI stops offering a broken update and retries don't loop.
+        assert checker.state == UpdateStatus.ERROR
+        assert checker.staging_path is None
 
     async def test_apply_update_complete_build_reaches_restart(self, monkeypatch, tmp_path):
         """A complete staged build passes re-verification and proceeds to restart."""

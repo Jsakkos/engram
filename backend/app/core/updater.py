@@ -249,11 +249,12 @@ class UpdateChecker:
                 raise UpdateError(f"Archive did not contain an 'engram' directory: {asset['name']}")
             self._verify_extracted(extracted, manifest_text)
 
-            # Promote: the verified build replaces any previously staged build.
-            # os.replace() is an atomic rename within the same filesystem, so once it
-            # succeeds the staged dir has either the old build or the new one. (A crash
-            # between the rmtree and os.replace leaves staging without an engram/ dir;
-            # the next run re-downloads, since state never reached READY.)
+            # Promote the verified build. On POSIX os.replace() is an atomic rename(2);
+            # on Windows it uses MoveFileEx, which is not POSIX-atomic. Either way there
+            # is a brief window after rmtree(final) and before os.replace() where neither
+            # dir exists — a crash there leaves staging without an engram/ dir (apply
+            # refuses, the next run re-downloads, since state never reached READY). The
+            # live install is never touched, so the consequence is tolerable.
             final = staging_dir / "engram"
             shutil.rmtree(final, ignore_errors=True)
             os.replace(extracted, final)
@@ -489,7 +490,18 @@ class UpdateChecker:
         manifest_text = (
             manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else None
         )
-        self._verify_extracted(self.staging_path / "engram", manifest_text)
+        try:
+            self._verify_extracted(self.staging_path / "engram", manifest_text)
+        except UpdateError as exc:
+            # The build was complete at download time but isn't now (e.g. AV quarantine).
+            # Drop out of READY and clear the staged path so the UI stops offering a
+            # broken update and a fresh download is required, then re-raise for the API.
+            logger.warning(f"Pre-apply verification failed: {exc}", exc_info=True)
+            self.state = UpdateStatus.ERROR
+            self.error = "Staged build is incomplete (possibly quarantined); re-download required."
+            self.staging_path = None
+            await self._broadcast()
+            raise
 
         if sys.platform == "win32":
             self._restart_windows()
