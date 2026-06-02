@@ -90,17 +90,63 @@ def _get_makemkv_search_paths() -> list[str]:
 
 
 def _get_ffmpeg_search_paths() -> list[str]:
-    """Return platform-specific common FFmpeg installation paths."""
-    if sys.platform == "win32":
+    """Return platform-specific common FFmpeg installation paths.
+
+    On Windows this covers manual extracts (``C:\\ffmpeg\\bin``) plus the
+    install layouts of the common package managers (Chocolatey, scoop) and a
+    user-home extract. These often aren't on the *running* process's PATH —
+    e.g. PATH was updated after Engram launched, so a restart-less install is
+    invisible to ``shutil.which`` — yet the binary is sitting in a predictable
+    spot. winget's version-stamped layout needs globbing and is handled
+    separately by ``_iter_winget_ffmpeg_paths``.
+    """
+    if sys.platform != "win32":
         return [
-            r"C:\tools\ffmpeg\bin\ffmpeg.exe",
-            r"C:\ffmpeg\bin\ffmpeg.exe",
-            r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+            "/usr/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
         ]
-    return [
-        "/usr/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
+
+    paths = [
+        r"C:\tools\ffmpeg\bin\ffmpeg.exe",
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+        # Chocolatey drops a shim here; its bin dir is usually (but not always) on PATH.
+        r"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
     ]
+    userprofile = os.environ.get("USERPROFILE")
+    if userprofile:
+        home = Path(userprofile)
+        paths.extend(
+            [
+                # scoop (per-user): shim + the real binary under the app dir
+                str(home / "scoop" / "shims" / "ffmpeg.exe"),
+                str(home / "scoop" / "apps" / "ffmpeg" / "current" / "bin" / "ffmpeg.exe"),
+                # common manual extract under the home directory
+                str(home / "ffmpeg" / "bin" / "ffmpeg.exe"),
+            ]
+        )
+    return paths
+
+
+def _iter_winget_ffmpeg_paths() -> list[str]:
+    """Resolve FFmpeg installed via ``winget install Gyan.FFmpeg``.
+
+    winget is the install hint Engram shows in the Config Wizard, but it lays
+    the build down under a version-stamped path —
+    ``%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_*\\ffmpeg-*\\bin\\ffmpeg.exe``
+    — that can't be hardcoded, so glob for it. Returns an empty list off
+    Windows, when ``LOCALAPPDATA`` is unset, or when nothing matches.
+    """
+    if sys.platform != "win32":
+        return []
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    if not local_appdata:
+        return []
+    packages = Path(local_appdata) / "Microsoft" / "WinGet" / "Packages"
+    try:
+        return [str(p) for p in packages.glob("Gyan.FFmpeg*/**/bin/ffmpeg.exe")]
+    except OSError:
+        return []
 
 
 _VERSION_NOT_DETECTABLE = "MakeMKV (version not detectable)"
@@ -345,8 +391,10 @@ def detect_ffmpeg() -> ToolDetectionResult:
         if result.found:
             return result
 
-    # 2. Check platform-specific common locations
-    for path_str in _get_ffmpeg_search_paths():
+    # 2. Check platform-specific common locations (package managers, manual
+    #    extracts, and winget's version-stamped layout). Each candidate is still
+    #    verified by _validate_ffmpeg_binary before it's accepted.
+    for path_str in (*_get_ffmpeg_search_paths(), *_iter_winget_ffmpeg_paths()):
         if Path(path_str).is_file():
             logger.info(f"Found FFmpeg at: {path_str}")
             result = _validate_ffmpeg_binary(path_str)

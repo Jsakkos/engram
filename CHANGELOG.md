@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- FFmpeg is now documented as a prerequisite, with per-platform install steps (including `winget install Gyan.FFmpeg` on Windows) and a dedicated [Troubleshooting](https://jsakkos.github.io/engram/troubleshooting/) page led by the common "FFmpeg not detected" case.
+- The Config Wizard now validates a manually-entered MakeMKV or FFmpeg path against the backend and shows the detected version inline (or the specific error), so a hand-typed override is no longer saved blind. The FFmpeg "not found" card also links to the download page.
+
+### Changed
+
+- Windows FFmpeg auto-detection now also searches the Chocolatey, scoop, winget (`Gyan.FFmpeg`), and user-home install locations, so a freshly-installed FFmpeg is found even when it isn't yet on the running process's `PATH`. The in-app install hint now names the exact winget package.
+
 ## [0.14.1] - 2026-06-02
 
 _Highlights: a hardening fix for the in-app auto-updater — it can no longer install an incomplete or corrupted download over your working copy, and builds now always include the TLS certificate bundle whose absence silently broke all networking in some 0.14.0 installs._

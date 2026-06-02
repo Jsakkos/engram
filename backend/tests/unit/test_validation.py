@@ -756,6 +756,110 @@ class TestSearchPaths:
         assert any("makemkvcon64.exe" in p for p in mk)
         assert any("ffmpeg.exe" in p for p in ff)
 
+    def test_windows_ffmpeg_includes_package_manager_paths(self):
+        """Windows FFmpeg search covers Chocolatey + scoop + a home extract."""
+        from app.api import validation
+
+        with (
+            patch.object(validation.sys, "platform", "win32"),
+            patch.dict(validation.os.environ, {"USERPROFILE": r"C:\Users\tester"}, clear=False),
+        ):
+            ff = validation._get_ffmpeg_search_paths()
+
+        joined = "\n".join(ff).lower()
+        assert "chocolatey" in joined
+        assert "scoop" in joined
+        # The user-home extract is built from the expanded USERPROFILE.
+        assert any(p.lower() == r"c:\users\tester\ffmpeg\bin\ffmpeg.exe" for p in ff)
+
+    def test_windows_ffmpeg_paths_without_userprofile(self):
+        """Missing USERPROFILE degrades to the machine-wide paths, no crash."""
+        from app.api import validation
+
+        with (
+            patch.object(validation.sys, "platform", "win32"),
+            patch.dict(validation.os.environ, {}, clear=True),
+        ):
+            ff = validation._get_ffmpeg_search_paths()
+        assert any("ffmpeg.exe" in p for p in ff)
+        # No per-user paths get appended when USERPROFILE is absent.
+        assert not any("scoop" in p.lower() for p in ff)
+
+
+class TestWingetFfmpegDetection:
+    """winget's version-stamped FFmpeg layout is resolved via globbing.
+
+    ``winget install Gyan.FFmpeg`` (the in-app install hint) unpacks the build
+    under ``%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_*\\ffmpeg-*\\bin``.
+    That path is version-stamped, so it can't be hardcoded like the other
+    search paths — it has to be globbed.
+    """
+
+    @staticmethod
+    def _make_winget_layout(root: Path) -> Path:
+        bin_dir = (
+            root
+            / "Microsoft"
+            / "WinGet"
+            / "Packages"
+            / "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
+            / "ffmpeg-8.1.1-full_build"
+            / "bin"
+        )
+        bin_dir.mkdir(parents=True)
+        exe = bin_dir / "ffmpeg.exe"
+        exe.write_text("")
+        return exe
+
+    def test_winget_glob_resolves_versioned_path(self, tmp_path):
+        from app.api import validation
+
+        exe = self._make_winget_layout(tmp_path)
+        with (
+            patch.object(validation.sys, "platform", "win32"),
+            patch.dict(validation.os.environ, {"LOCALAPPDATA": str(tmp_path)}, clear=False),
+        ):
+            matches = validation._iter_winget_ffmpeg_paths()
+        assert str(exe) in matches
+
+    def test_winget_glob_empty_when_no_localappdata(self):
+        from app.api import validation
+
+        with (
+            patch.object(validation.sys, "platform", "win32"),
+            patch.dict(validation.os.environ, {}, clear=True),
+        ):
+            assert validation._iter_winget_ffmpeg_paths() == []
+
+    def test_winget_glob_empty_off_windows(self):
+        from app.api import validation
+
+        with patch.object(validation.sys, "platform", "linux"):
+            assert validation._iter_winget_ffmpeg_paths() == []
+
+    def test_detect_ffmpeg_finds_winget_install(self, tmp_path):
+        """detect_ffmpeg resolves a winget binary when PATH + fixed paths miss it."""
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult
+
+        exe = self._make_winget_layout(tmp_path)
+        with (
+            patch.object(validation.sys, "platform", "win32"),
+            patch.object(validation.shutil, "which", return_value=None),
+            patch.object(validation, "_get_ffmpeg_search_paths", return_value=[]),
+            patch.dict(validation.os.environ, {"LOCALAPPDATA": str(tmp_path)}, clear=False),
+            patch.object(
+                validation,
+                "_validate_ffmpeg_binary",
+                return_value=ToolDetectionResult(
+                    found=True, path=str(exe), version="ffmpeg version 8.1.1"
+                ),
+            ),
+        ):
+            result = validation.detect_ffmpeg()
+        assert result.found is True
+        assert result.version == "ffmpeg version 8.1.1"
+
 
 class TestValidateMakemkvEndpoint:
     """The /validate/makemkv endpoint's existence + relabel branches."""
