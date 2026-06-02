@@ -63,6 +63,10 @@ class DiscJob(SQLModel, table=True):
     )
     tmdb_id: int | None = Field(default=None)
     tmdb_name: str | None = Field(default=None)
+    # First-air year for the resolved show; persisted at identify time so the
+    # organizer can build a disambiguated library folder (Frasier 1993 vs 2023)
+    # deterministically and offline. Nullable — degrades to id-only/bare folder.
+    tmdb_year: int | None = Field(default=None)
     # Same-name TMDB collision candidates (JSON list of {tmdb_id, name, year,
     # popularity}). Recorded at identify time whenever >=2 same-name shows exist
     # (e.g. Frasier 1993 #3452 vs 2023 revival #195241) so the downstream

@@ -71,6 +71,32 @@ def _candidates_json_from_signal(signal) -> str | None:
     return json.dumps(cands) if cands else None
 
 
+def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
+    """First-air year for a show, for library-folder disambiguation.
+
+    No-network fast path: same-name candidates already carry a 'year' string
+    (Frasier 1993 vs 2023). Universal fallback: cached TMDB details. Returns
+    None when unknown — the organizer then degrades to an id-only/bare folder.
+    Sync (blocking on the fallback) — call via ``asyncio.to_thread``.
+    """
+    if not tmdb_id:
+        return None
+    cands = getattr(signal, "all_candidates", None) if signal else None
+    for c in cands or []:
+        if c.get("tmdb_id") == tmdb_id:
+            y = (c.get("year") or "").strip()
+            if y.isdigit():
+                return int(y)
+    from app.matcher.tmdb_client import fetch_show_details
+
+    details = fetch_show_details(tmdb_id)
+    if details:
+        fa = (details.get("first_air_date") or "")[:4]
+        if fa.isdigit():
+            return int(fa)
+    return None
+
+
 class IdentificationCoordinator:
     """Coordinates disc identification: scanning, classification, and metadata lookup."""
 
@@ -200,6 +226,9 @@ class IdentificationCoordinator:
                 job.tmdb_id = analysis.tmdb_id
                 job.tmdb_name = analysis.tmdb_name
                 job.candidates_json = _candidates_json_from_signal(tmdb_signal)
+                job.tmdb_year = await asyncio.to_thread(
+                    _resolve_show_year, analysis.tmdb_id, tmdb_signal
+                )
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
                     job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
@@ -554,8 +583,10 @@ class IdentificationCoordinator:
                 job.classification_source = analysis.classification_source or "staging_import"
                 job.tmdb_id = analysis.tmdb_id
                 job.tmdb_name = analysis.tmdb_name
-                job.candidates_json = _candidates_json_from_signal(
-                    getattr(analysis, "_tmdb_signal", None)
+                _signal = getattr(analysis, "_tmdb_signal", None)
+                job.candidates_json = _candidates_json_from_signal(_signal)
+                job.tmdb_year = await asyncio.to_thread(
+                    _resolve_show_year, analysis.tmdb_id, _signal
                 )
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
@@ -831,6 +862,7 @@ class IdentificationCoordinator:
             job.candidates_json = None
 
             # Optionally re-run TMDB lookup with corrected title
+            _signal = None
             if tmdb_id is not None:
                 job.tmdb_id = tmdb_id
             else:
@@ -841,16 +873,20 @@ class IdentificationCoordinator:
 
                     config = await get_config()
                     if config.tmdb_api_key:
-                        signal = classify_from_tmdb(title, config.tmdb_api_key)
-                        if signal and signal.tmdb_id:
-                            job.tmdb_id = signal.tmdb_id
-                            if signal.tmdb_name:
-                                job.detected_title = signal.tmdb_name
+                        _signal = classify_from_tmdb(title, config.tmdb_api_key)
+                        if _signal and _signal.tmdb_id:
+                            job.tmdb_id = _signal.tmdb_id
+                            if _signal.tmdb_name:
+                                job.detected_title = _signal.tmdb_name
                 except Exception:
                     logger.warning(
                         f"Job {job_id}: TMDB re-lookup failed for '{title}', "
                         f"continuing with user-provided title"
                     )
+
+            # Re-derive the year for the (possibly changed) show so the library
+            # folder stays correct after re-identification.
+            job.tmdb_year = await asyncio.to_thread(_resolve_show_year, job.tmdb_id, _signal)
 
             if has_ripped:
                 # Post-rip: go to MATCHING to re-run episode matching
