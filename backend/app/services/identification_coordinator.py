@@ -79,7 +79,7 @@ def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
     None when unknown — the organizer then degrades to an id-only/bare folder.
     Sync (blocking on the fallback) — call via ``asyncio.to_thread``.
     """
-    if not tmdb_id:
+    if tmdb_id is None:
         return None
     cands = getattr(signal, "all_candidates", None) if signal else None
     for c in cands or []:
