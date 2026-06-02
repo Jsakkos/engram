@@ -17,6 +17,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError
+from app.core.tmdb_classifier import should_flag_no_year
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -25,6 +26,49 @@ from app.services.job_state_machine import JobStateMachine
 from app.services.ripping_helpers import build_title_list
 
 logger = logging.getLogger(__name__)
+
+
+# Digit-boundary (not \b) so underscores/parens count as separators:
+# FRASIER_2023 and FRASIER (2023) match; a longer number like 20231 does not.
+_YEAR_RE = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+
+
+def _label_has_year(*texts: str | None) -> bool:
+    """True when any of the disc label/name strings contains a 19xx/20xx year.
+
+    A year lets popularity+year disambiguate same-name twins, so the no-year
+    proactive review flag is suppressed. Season-disc labels like ``FRASIER_S1D1``
+    have no 4-digit year and return False.
+    """
+    return any(t and _YEAR_RE.search(t) for t in texts)
+
+
+def _no_year_collision_reason(name, candidates) -> str:
+    """Review reason for a no-year disc with same-name twins — lists every twin.
+
+    Uses ``.get()`` so a candidate list deserialized from a DB value with a
+    missing key degrades gracefully instead of raising (matches the access style
+    in the finalization-side wrong-show helpers).
+    """
+    listed = "; ".join(
+        f"{c.get('name', '?')} ({c.get('year') or '?'}, #{c.get('tmdb_id', '?')})"
+        for c in (candidates or [])
+    )
+    return (
+        f'"{name}" has multiple same-name shows on TMDB and the disc label has no '
+        f"year to tell them apart: {listed}. Pick the correct one."
+    )
+
+
+def _candidates_json_from_signal(signal) -> str | None:
+    """Serialize a TMDB signal's same-name twins for persistence on the job, else None.
+
+    Records EVERY same-name twin (>=2) — e.g. Frasier 1993 #3452 + 2023 revival
+    #195241 — regardless of whether the materiality gate flagged the job, so the
+    downstream wrong-show detector can suggest the right one without re-querying TMDB.
+    """
+    cands = getattr(signal, "all_candidates", None) if signal else None
+    return json.dumps(cands) if cands else None
 
 
 class IdentificationCoordinator:
@@ -155,6 +199,7 @@ class IdentificationCoordinator:
                 job.classification_source = analysis.classification_source
                 job.tmdb_id = analysis.tmdb_id
                 job.tmdb_name = analysis.tmdb_name
+                job.candidates_json = _candidates_json_from_signal(tmdb_signal)
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
                     job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
@@ -278,18 +323,39 @@ class IdentificationCoordinator:
                 _signal = getattr(analysis, "_tmdb_signal", None)
                 _amb = bool(_signal and _signal.ambiguous_identity)
 
+                # No-year backstop (Frasier 1993 vs 2023): a label with no year can't
+                # pick between same-name twins, so flag for review BEFORE ripping rather
+                # than silently matching the popularity-best show's subtitles. The
+                # popularity-best tmdb_id stays as the pre-selected guess; the user
+                # confirms or switches via the existing re-identify UI.
+                _noyear = bool(
+                    _signal
+                    and not _amb
+                    and job.content_type == ContentType.TV
+                    and should_flag_no_year(
+                        _signal.all_candidates, _label_has_year(job.volume_label, disc_name)
+                    )
+                )
+                if _noyear:
+                    analysis.needs_review = True
+                    analysis.review_reason = _no_year_collision_reason(
+                        job.detected_title, _signal.all_candidates
+                    )
+                # Either form of same-name collision skips auto subtitle download and the
+                # words-merged guard below.
+                _collision = _amb or _noyear
+
                 # TV show detected but TMDB lookup failed — name cannot be trusted for episode
                 # matching. Block ripping until the user confirms the correct show name.
                 # (Disc-name fallback already ran in _run_classification; if we reach here,
                 # neither the volume label nor the DINFO name resolved on TMDB.)
-                # Exclude ambiguous-identity jobs: they have tmdb_id=None by design and
-                # carry a candidate-naming review_reason that the needs_review branch below
-                # will surface.
+                # Exclude collision jobs: they carry a candidate-naming review_reason that
+                # the needs_review branch below will surface.
                 if (
                     job.content_type == ContentType.TV
                     and not job.tmdb_id
                     and job.detected_title
-                    and not _amb
+                    and not _collision
                 ):
                     reason = (
                         f'Could not find "{job.detected_title}" on TMDB — the disc label '
@@ -318,13 +384,14 @@ class IdentificationCoordinator:
                     return
 
                 # Start subtitle download for ALL TV content — except when identity is
-                # ambiguous (same-name collision). Downloading by the tentative name would
-                # fetch the wrong show's subtitles before the user disambiguates.
+                # ambiguous (same-name collision) or a no-year twin needs disambiguation.
+                # Downloading by the tentative name would fetch the wrong show's subtitles
+                # before the user disambiguates.
                 if (
                     job.content_type == ContentType.TV
                     and job.detected_title
                     and job.detected_season
-                    and not _amb
+                    and not _collision
                 ):
                     self._start_subtitle_download(
                         job_id, job.detected_title, job.detected_season, job.tmdb_id
@@ -487,6 +554,9 @@ class IdentificationCoordinator:
                 job.classification_source = analysis.classification_source or "staging_import"
                 job.tmdb_id = analysis.tmdb_id
                 job.tmdb_name = analysis.tmdb_name
+                job.candidates_json = _candidates_json_from_signal(
+                    getattr(analysis, "_tmdb_signal", None)
+                )
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
                     job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
@@ -541,12 +611,30 @@ class IdentificationCoordinator:
                     )
                     return
 
-                # Same-name collision (item 1): route to review with the candidate list
-                # instead of matching against the wrong same-named show's corpus by name.
+                # Same-name collision: route to review with the candidate list instead of
+                # matching against the wrong same-named show's corpus by name. Covers both
+                # the materiality-gate case (item 1) and the no-year backstop (Frasier
+                # 1993 vs 2023) where the folder name has no year to disambiguate twins.
                 _amb_signal = getattr(analysis, "_tmdb_signal", None)
-                if _amb_signal and _amb_signal.ambiguous_identity:
+                _amb = bool(_amb_signal and _amb_signal.ambiguous_identity)
+                _noyear = bool(
+                    _amb_signal
+                    and not _amb
+                    and job.content_type == ContentType.TV
+                    and should_flag_no_year(
+                        _amb_signal.all_candidates, _label_has_year(job.volume_label)
+                    )
+                )
+                if _amb or _noyear:
+                    reason = (
+                        analysis.review_reason
+                        if _amb
+                        else _no_year_collision_reason(
+                            job.detected_title, _amb_signal.all_candidates
+                        )
+                    )
                     await self._state_machine.transition_to_review(
-                        job, session, reason=analysis.review_reason, broadcast=False
+                        job, session, reason=reason, broadcast=False
                     )
                     await ws_manager.broadcast_job_update(
                         job_id,
@@ -555,11 +643,11 @@ class IdentificationCoordinator:
                         detected_title=job.detected_title,
                         detected_season=job.detected_season,
                         total_titles=job.total_titles,
-                        review_reason=analysis.review_reason,
+                        review_reason=reason,
                     )
                     logger.info(
-                        f"Job {job_id}: ambiguous identity for '{job.detected_title}', "
-                        f"routing to REVIEW_NEEDED"
+                        f"Job {job_id}: same-name collision for '{job.detected_title}' "
+                        f"(ambiguous={_amb}, no_year={_noyear}), routing to REVIEW_NEEDED"
                     )
                     return
 
@@ -736,6 +824,11 @@ class IdentificationCoordinator:
             if season is not None:
                 job.detected_season = season
             job.review_reason = None
+            # Clear same-name candidates recorded for the PREVIOUS identification
+            # attempt: the user has now made an explicit choice, so they're stale.
+            # Leaving them would let the ReIdentifyModal quick-pick and the
+            # wrong-show backstop (_detect_wrong_show) resurface the rejected twin.
+            job.candidates_json = None
 
             # Optionally re-run TMDB lookup with corrected title
             if tmdb_id is not None:

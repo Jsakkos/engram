@@ -22,7 +22,7 @@ from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
-from app.matcher.subtitle_utils import is_valid_srt_file, sanitize_filename
+from app.matcher.subtitle_utils import corpus_dir_name, is_valid_srt_file, sanitize_filename
 from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
 from app.matcher.tvsubtitles_client import TVSubtitlesClient
 
@@ -250,7 +250,9 @@ def _precomputed_skip_result(
     ):
         return None
 
-    codes = precomputed_episode_codes(cache_path, show_name, season)
+    codes = precomputed_episode_codes(
+        cache_path, show_name, season, expected_tmdb_id=expected_tmdb_id
+    )
     if not codes:
         return None
 
@@ -258,7 +260,10 @@ def _precomputed_skip_result(
         f"{show_name} S{season:02d}: covered by precomputed vector cache; "
         f"skipping subtitle download"
     )
-    series_cache_dir = cache_path / "data" / sanitize_filename(show_name)
+    # Keyed by tmdb_id (fallback: sanitized name) to match the runtime SRT cache,
+    # so two same-named shows never collide. Informational here — precomputed mode
+    # reads vectors, not these SRTs — but kept consistent with the live cache key.
+    series_cache_dir = cache_path / "data" / corpus_dir_name(expected_tmdb_id, show_name)
     return {
         "show_name": show_name,
         "season": season,
@@ -343,9 +348,15 @@ def download_subtitles(
     if episode_count == 0:
         raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on TMDB")
 
-    # Use canonical name for cache directory
+    # Cache DIR is keyed by tmdb_id (fallback: sanitized canonical name) so two
+    # same-named shows (e.g. Frasier 1993 #3452 vs the 2023 revival #195241) never
+    # collide. Key by the SUPPLIED tmdb_id, not the internally-resolved show_id:
+    # the matcher reads back via corpus_dir_name(expected_tmdb_id, ...) with the
+    # same id, and an unresolved (None) id must map both sides to the name. The
+    # filenames stay name-prefixed (safe_show_name) so find_existing_subtitle and
+    # human inspection still work inside the id-keyed dir.
     safe_show_name = sanitize_filename(canonical_show_name)
-    series_cache_dir = cache_path / "data" / safe_show_name
+    series_cache_dir = cache_path / "data" / corpus_dir_name(tmdb_id, canonical_show_name)
     series_cache_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Downloading subtitles for '{canonical_show_name}' to: {series_cache_dir}")

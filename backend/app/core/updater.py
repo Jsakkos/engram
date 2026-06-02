@@ -187,6 +187,15 @@ class UpdateChecker:
             await self._broadcast()
             return
 
+        manifest_asset = next(
+            (
+                a
+                for a in release_data.get("assets", [])
+                if a["name"] == self._manifest_name(asset["name"])
+            ),
+            None,
+        )
+
         version = self.latest_version or "unknown"
         staging_dir = STAGING_BASE / version
         staging_dir.mkdir(parents=True, exist_ok=True)
@@ -194,12 +203,19 @@ class UpdateChecker:
 
         try:
             checksums_text: str | None = None
+            manifest_text: str | None = None
             async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
                 # Download checksum file first (small — ~200 bytes)
                 if checksum_asset:
                     resp = await client.get(checksum_asset["browser_download_url"])
                     resp.raise_for_status()
                     checksums_text = resp.text
+
+                # Download the per-build file manifest if the release ships one (small).
+                if manifest_asset:
+                    resp = await client.get(manifest_asset["browser_download_url"])
+                    resp.raise_for_status()
+                    manifest_text = resp.text
 
                 # Stream-download the platform asset
                 async with client.stream("GET", asset["browser_download_url"]) as resp:
@@ -218,9 +234,40 @@ class UpdateChecker:
             if checksums_text:
                 self._verify_checksum(archive_path, asset["name"], checksums_text)
 
-            # Extract archive
-            self._extract(archive_path, staging_dir)
+            # Extract into a temp dir, verify completeness, then atomically promote.
+            # A partially-extracted tree must never become the staged engram/ dir that
+            # apply_update() swaps over the install — that is how a truncated build
+            # (missing certifi/cacert.pem and ~640 other files) reached the user.
+            incoming = staging_dir / ".incoming"
+            shutil.rmtree(incoming, ignore_errors=True)
+            incoming.mkdir(parents=True, exist_ok=True)
+            self._extract(archive_path, incoming)
             archive_path.unlink(missing_ok=True)  # Remove the archive; keep extracted dir
+
+            extracted = incoming / "engram"
+            if not extracted.is_dir():
+                raise UpdateError(f"Archive did not contain an 'engram' directory: {asset['name']}")
+            self._verify_extracted(extracted, manifest_text)
+
+            # Promote the verified build. On POSIX os.replace() is an atomic rename(2);
+            # on Windows it uses MoveFileEx, which is not POSIX-atomic. Either way there
+            # is a brief window after rmtree(final) and before os.replace() where neither
+            # dir exists — a crash there leaves staging without an engram/ dir (apply
+            # refuses, the next run re-downloads, since state never reached READY). The
+            # live install is never touched, so the consequence is tolerable.
+            final = staging_dir / "engram"
+            shutil.rmtree(final, ignore_errors=True)
+            os.replace(extracted, final)
+            shutil.rmtree(incoming, ignore_errors=True)
+
+            # Persist the manifest beside the staged build so apply_update() can
+            # re-verify completeness right before the swap (catches post-stage loss,
+            # e.g. AV quarantine).
+            manifest_path = staging_dir / "engram.manifest.sha256"
+            if manifest_text is not None:
+                manifest_path.write_text(manifest_text, encoding="utf-8")
+            else:
+                manifest_path.unlink(missing_ok=True)
 
             self.staging_path = staging_dir
             self.state = UpdateStatus.READY
@@ -229,6 +276,9 @@ class UpdateChecker:
             await self._broadcast()
 
         except UpdateError as exc:
+            # A rejection here (checksum/integrity failure) is the main guard against
+            # staging a bad build — leave a trace so a support case has something to grep.
+            logger.warning(f"Staged update rejected: {exc}", exc_info=True)
             shutil.rmtree(staging_dir, ignore_errors=True)
             self.state = UpdateStatus.ERROR
             self.error = str(exc)
@@ -303,6 +353,78 @@ class UpdateChecker:
         else:
             raise UpdateError(f"Unknown archive format: {name}")
 
+    @staticmethod
+    def _manifest_name(asset_name: str) -> str:
+        """Map a platform asset name to its file-manifest asset name.
+
+        ``engram-windows-x64.zip`` -> ``engram-windows-x64.manifest.sha256``
+        ``engram-linux-x64.tar.gz`` -> ``engram-linux-x64.manifest.sha256``
+        """
+        base = asset_name
+        for suffix in (".tar.gz", ".zip"):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+                break
+        return f"{base}.manifest.sha256"
+
+    @staticmethod
+    def _manifest_paths(manifest_text: str) -> list[str]:
+        """Parse relative file paths from a ``sha256sum``-style manifest.
+
+        Each line is ``<64-hex-hash>  <relative/path>`` (two spaces; binary-mode
+        entries prefix the path with ``*``). Paths are relative to the build's
+        ``engram/`` directory. Blank/garbage lines are skipped.
+        """
+        paths: list[str] = []
+        for line in manifest_text.strip().splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) != 2:
+                continue
+            rel = parts[1].lstrip("*").strip()
+            if rel.startswith("./"):
+                rel = rel[2:]  # tolerate sha256sum's leading ./ (BSD find output)
+            if rel:
+                paths.append(rel.replace("/", os.sep))
+        return paths
+
+    def _verify_extracted(self, engram_dir: Path, manifest_text: str | None) -> None:
+        """Verify the extracted build is complete. Raises UpdateError if not.
+
+        Two layers:
+          * Always: sentinel files every healthy onedir build must contain. This
+            catches a grossly truncated extraction even for releases that ship no
+            manifest (the failure that delivered a build with no certifi/cacert.pem).
+          * If a manifest is present: every file it lists must exist, which catches
+            arbitrary missing files (e.g. 181 of 825 extracted).
+        """
+        binary = "engram.exe" if sys.platform == "win32" else "engram"
+        sentinels = [
+            engram_dir / binary,
+            engram_dir / "_internal" / "base_library.zip",
+            engram_dir / "_internal" / "certifi" / "cacert.pem",
+        ]
+        missing_sentinels = [str(p.relative_to(engram_dir)) for p in sentinels if not p.exists()]
+        if missing_sentinels:
+            raise UpdateError(
+                f"Staged build is incomplete (missing {', '.join(missing_sentinels)}); "
+                "refusing to apply."
+            )
+
+        if not manifest_text:
+            logger.debug("No manifest for staged build — sentinel check only")
+            return
+
+        missing = [
+            rel for rel in self._manifest_paths(manifest_text) if not (engram_dir / rel).exists()
+        ]
+        if missing:
+            sample = ", ".join(missing[:5])
+            raise UpdateError(
+                f"Staged build is missing {len(missing)} manifest file(s) (e.g. {sample}); "
+                "refusing to apply."
+            )
+        logger.debug("Staged build verified complete against manifest")
+
     def get_status(self) -> dict:
         """Return a JSON-serialisable status dict for GET /api/updates/status."""
         return {
@@ -356,6 +478,30 @@ class UpdateChecker:
             raise UpdateError("No staged update is ready to apply.")
 
         await self._check_no_active_jobs()
+
+        # Re-verify the staged build is still complete right before the swap. It
+        # passed verification at download time, but files can disappear afterwards
+        # (AV quarantine, partial deletion). Never swap an incomplete build over a
+        # working install. staging_path is always set once state == READY, so a None
+        # here is a bug, not a "skip verification" case — fail loudly.
+        if self.staging_path is None:
+            raise UpdateError("staging_path is unset despite READY state — refusing to apply.")
+        manifest_path = self.staging_path / "engram.manifest.sha256"
+        manifest_text = (
+            manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else None
+        )
+        try:
+            self._verify_extracted(self.staging_path / "engram", manifest_text)
+        except UpdateError as exc:
+            # The build was complete at download time but isn't now (e.g. AV quarantine).
+            # Drop out of READY and clear the staged path so the UI stops offering a
+            # broken update and a fresh download is required, then re-raise for the API.
+            logger.warning(f"Pre-apply verification failed: {exc}", exc_info=True)
+            self.state = UpdateStatus.ERROR
+            self.error = "Staged build is incomplete (possibly quarantined); re-download required."
+            self.staging_path = None
+            await self._broadcast()
+            raise
 
         if sys.platform == "win32":
             self._restart_windows()

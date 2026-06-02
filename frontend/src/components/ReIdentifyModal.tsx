@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { IcoDisc, IcoMovie, IcoTv, IcoSearch, IcoRetry } from '../app/components/icons';
 import type { Job } from '../types';
@@ -11,6 +11,14 @@ interface TmdbResult {
     year: string;
     poster_path: string | null;
     popularity: number;
+}
+
+/** A same-name TMDB candidate persisted on the job at identify time. */
+interface Candidate {
+    tmdb_id: number;
+    name: string;
+    year?: string;
+    popularity?: number;
 }
 
 interface ReIdentifyModalProps {
@@ -71,6 +79,35 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
         setTmdbId(result.tmdb_id);
         setSearchResults([]);
         setSearchQuery('');
+    };
+
+    // Same-name twins recorded at identify time (e.g. Frasier 1993 + 2023). When
+    // present, they drive a one-click "Did you mean?" picker so the user skips the
+    // re-search. The API ships this as a raw JSON string, so parse defensively.
+    const candidates = useMemo<Candidate[]>(() => {
+        if (!job.candidates_json) return [];
+        try {
+            const parsed = JSON.parse(job.candidates_json);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter(
+                (c): c is Candidate =>
+                    !!c && typeof c.tmdb_id === 'number' && typeof c.name === 'string',
+            );
+        } catch {
+            return [];
+        }
+    }, [job.candidates_json]);
+
+    const candidateLabel = (c: Candidate) => (c.year ? `${c.name} (${c.year})` : c.name);
+
+    const selectCandidate = (c: Candidate) => {
+        // Reuse the disc's detected content type (collisions are TV today, but
+        // don't hardcode it — a future movie collision must not be forced to TV)
+        // and detected season so the user doesn't re-enter them. The `?? 1`
+        // mirrors the manual form's `|| 1`: a null season serializes to null,
+        // which the backend skips, silently disabling subtitle re-download.
+        const type = job.content_type === 'tv' ? 'tv' : 'movie';
+        onSubmit(c.name, type, job.detected_season ?? 1, c.tmdb_id);
     };
 
     const handleSubmit = () => {
@@ -227,6 +264,71 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                 )}
                             </div>
                         </div>
+
+                        {/* Same-name quick-pick — one click resolves the collision */}
+                        {candidates.length >= 2 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <SvLabel size={10}>Did you mean?</SvLabel>
+                                {/* Cap height + scroll so an unexpectedly long candidate
+                                    list never pushes the search/action buttons off-screen
+                                    (matches the TMDB search-results container below). */}
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: 8,
+                                        maxHeight: 192,
+                                        overflowY: 'auto',
+                                    }}
+                                >
+                                    {candidates.map((cand) => (
+                                        // Plain button (not motion.button): the color hover is
+                                        // driven imperatively here, so a competing whileHover
+                                        // would be a second style owner. Matches the search rows.
+                                        <button
+                                            key={cand.tmdb_id}
+                                            type="button"
+                                            onClick={() => selectCandidate(cand)}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 10,
+                                                padding: '10px 12px',
+                                                border: `1px solid ${sv.cyan}4d`,
+                                                background: `${sv.cyan}0d`,
+                                                cursor: 'pointer',
+                                                textAlign: 'left',
+                                                transition: 'background 0.18s, border-color 0.18s',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = `${sv.cyan}1f`;
+                                                e.currentTarget.style.borderColor = sv.cyan;
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = `${sv.cyan}0d`;
+                                                e.currentTarget.style.borderColor = `${sv.cyan}4d`;
+                                            }}
+                                        >
+                                            <IcoTv size={14} color={sv.cyan} style={{ flexShrink: 0 }} />
+                                            <span
+                                                style={{
+                                                    fontFamily: sv.mono,
+                                                    fontSize: 13,
+                                                    color: sv.cyanHi,
+                                                    flex: 1,
+                                                    minWidth: 0,
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                }}
+                                            >
+                                                {candidateLabel(cand)}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div style={{ height: 1, background: sv.line }} />
 

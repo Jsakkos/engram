@@ -437,3 +437,38 @@ class TestSchemaMigration:
             assert "legacy_plain" not in actual
         finally:
             db_mod.engine = original_engine
+
+    async def test_candidates_json_round_trips(self, migration_engine, migration_factory):
+        """disc_jobs must persist candidates_json so the downstream wrong-show
+        detector can suggest the same-name twin without re-querying TMDB.
+
+        Regression guard for the same-name collision fix (Frasier 1993 vs 2023):
+        same-name TMDB candidates are recorded at identify time and read at
+        finalization. The column must exist in the model (so frozen-build
+        _add_missing_columns adds it) and round-trip a JSON string.
+        """
+        async with migration_engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        # The model must expose candidates_json for the frozen-build reconciler
+        # (_get_expected_columns derives from model metadata).
+        import app.database as db_mod
+
+        assert "candidates_json" in db_mod._get_expected_columns("disc_jobs")
+
+        payload = (
+            '[{"tmdb_id": 3452, "name": "Frasier", "year": "1993"}, '
+            '{"tmdb_id": 195241, "name": "Frasier", "year": "2023"}]'
+        )
+        async with migration_factory() as session:
+            session.add(
+                DiscJob(drive_id="E:", volume_label="FRASIER_S1D1", candidates_json=payload)
+            )
+            await session.commit()
+
+        async with migration_factory() as session:
+            row = (
+                await session.execute(text("SELECT candidates_json FROM disc_jobs LIMIT 1"))
+            ).fetchone()
+            assert row is not None
+            assert row[0] == payload

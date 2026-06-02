@@ -67,6 +67,7 @@ On all platforms, Engram supports a **staging folder workflow**: drop a folder o
 ## Prerequisites
 
 - [MakeMKV](https://www.makemkv.com/) with a valid license
+- [FFmpeg](https://ffmpeg.org/download.html) for episode matching (audio fingerprinting). Engram auto-detects it on your `PATH` — see [installing FFmpeg](docs/getting-started/installation.md#installing-ffmpeg), or [Troubleshooting](docs/troubleshooting.md#ffmpeg-not-detected-windows) if it isn't found
 - A TMDB API Read Access Token (v4) from [TMDB](https://www.themoviedb.org/settings/api)
 - If running from source: Python 3.11–3.13 with [uv](https://docs.astral.sh/uv/), and Node.js 24 (Python 3.14 is not yet supported — some ML dependencies have no 3.14 wheels)
 
@@ -83,6 +84,8 @@ No Python or Node.js required — the Config Wizard opens in your browser on fir
 | macOS | `engram-macos-arm64.tar.gz` | `./engram/engram` |
 
 On macOS, download `engram-macos-arm64.tar.gz`. It runs natively on Apple Silicon (M1/M2/M3/M4) and transparently on Intel Macs via Rosetta 2. macOS has no automatic optical-drive detection — use the staging-folder workflow (see [Linux / macOS setup](docs/guide/linux-setup.md)).
+
+> **FFmpeg is required for episode matching.** Engram auto-detects it on your `PATH` (Windows: `winget install Gyan.FFmpeg`, then restart Engram). If the Config Wizard reports FFmpeg missing, see [installing FFmpeg](docs/getting-started/installation.md#installing-ffmpeg) and [Troubleshooting](docs/troubleshooting.md#ffmpeg-not-detected-windows).
 
 ### Option B: From source (all platforms)
 
@@ -162,7 +165,7 @@ See the [configuration guide](docs/getting-started/configuration.md) for the ful
 
 Full documentation is published at **[jsakkos.github.io/engram](https://jsakkos.github.io/engram/)**.
 
-- **Getting started** — [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md) · [Simulation](docs/getting-started/simulation.md)
+- **Getting started** — [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md) · [Simulation](docs/getting-started/simulation.md) · [Troubleshooting](docs/troubleshooting.md)
 - **User guide** — [Dashboard](docs/guide/dashboard.md) · [Review Queue](docs/guide/review-queue.md) · [Job History](docs/guide/history.md) · [Linux / macOS setup](docs/guide/linux-setup.md)
 - **Architecture** — [Overview](docs/architecture/overview.md) · [State Machine](docs/architecture/state-machine.md) · [WebSocket Protocol](docs/architecture/websocket.md)
 - **API reference** — [REST Endpoints](docs/api/rest.md) · [Data Models](docs/api/models.md)

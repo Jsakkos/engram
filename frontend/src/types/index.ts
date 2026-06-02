@@ -39,6 +39,13 @@ export interface Job {
     conflict_status?: string | null;
     destination_mode?: string;
     created_at?: string;
+    /**
+     * Raw JSON string (from the API) of same-name TMDB candidates recorded at
+     * identify time when >=2 shows share a name, e.g. Frasier 1993 + 2023 revival.
+     * Each entry: `{ tmdb_id, name, year, popularity }`. Drives the quick-pick in
+     * ReIdentifyModal. Null/absent when there was no same-name collision.
+     */
+    candidates_json?: string | null;
 }
 
 export interface DiscTitle {

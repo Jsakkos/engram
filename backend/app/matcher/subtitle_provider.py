@@ -11,7 +11,7 @@ from app import __version__
 from app.matcher.config_manager import get_config_manager
 from app.matcher.models import EpisodeInfo, SubtitleFile
 from app.matcher.os_api_retry import os_api_call
-from app.matcher.subtitle_utils import parse_season_episode_numbers, sanitize_filename
+from app.matcher.subtitle_utils import corpus_dir_name, parse_season_episode_numbers
 
 # CompositeSubtitleProvider returns early once it has at least this many
 # cached subtitles, skipping slower download providers.
@@ -84,7 +84,10 @@ class LocalSubtitleProvider(SubtitleProvider):
         tmdb_id: int | None = None,
     ) -> list[SubtitleFile]:
         """Get all subtitle files for a specific show and season."""
-        show_dir = self.cache_dir / sanitize_filename(show_name)
+        # Keyed by tmdb_id (fallback: sanitized name) so two same-named shows
+        # never share a directory. Mirrors where download_subtitles / the
+        # scrapers write, keyed by the same expected id.
+        show_dir = self.cache_dir / corpus_dir_name(tmdb_id, show_name)
         if not show_dir.exists():
             return []
 
@@ -163,6 +166,7 @@ class Addic7edProvider(SubtitleProvider):
                 seasons={season},
                 cache_dir=self.config.cache_dir,
                 max_retries=2,
+                tmdb_id=tmdb_id,
             )
 
             subtitles = _convert_downloads_to_subtitle_files(downloaded, show_name)
@@ -357,8 +361,9 @@ class OpenSubtitlesProvider(SubtitleProvider):
 
         logger.info(f"Searching OpenSubtitles for {search_show_name} S{season:02d}")
 
-        # Prepare cache directory
-        cache_dir = self.config.cache_dir / "data" / sanitize_filename(show_name)
+        # Prepare cache directory — keyed by tmdb_id (fallback: sanitized name)
+        # so same-named shows never collide. Filenames below stay name-prefixed.
+        cache_dir = self.config.cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         downloaded_subtitles = []

@@ -28,6 +28,13 @@ HIGH_POPULARITY_THRESHOLD = 50
 AMBIGUOUS_POPULARITY_FLOOR = 10.0
 AMBIGUOUS_POPULARITY_RATIO = 4.0
 
+# No-year backstop (item-3 layering). When the disc label carries NO year it
+# cannot self-disambiguate same-name twins, so we proactively flag for review
+# even for dominant-twin cases the materiality gate lets through — provided the
+# runner-up clears this LOW floor (excludes the pop<3 noise tier). With a year in
+# the label, popularity+year already disambiguate and this does not apply. Tunable.
+AMBIGUOUS_NO_YEAR_FLOOR = 3.0
+
 
 def _confidence_from_popularity(popularity: float, ambiguous: bool) -> float:
     """Map a TMDB popularity score to a classification confidence value."""
@@ -80,6 +87,7 @@ class TmdbSignal:
         "tmdb_name",
         "ambiguous_identity",
         "candidates",
+        "all_candidates",
     )
 
     def __init__(
@@ -90,20 +98,27 @@ class TmdbSignal:
         tmdb_name: str | None = None,
         ambiguous_identity: bool = False,
         candidates: list[dict] | None = None,
+        all_candidates: list[dict] | None = None,
     ):
         self.content_type = content_type
         self.confidence = confidence
         self.tmdb_id = tmdb_id
         self.tmdb_name = tmdb_name
         self.ambiguous_identity = ambiguous_identity
+        # `candidates`: same-name twins that tripped the materiality gate (a
+        # proactive, identify-time review prompt). `all_candidates`: EVERY
+        # same-name twin (>=2), recorded regardless of the gate so a downstream
+        # wrong-show detector can suggest the right one even for dominant twins
+        # (e.g. Frasier 1993 vs 2023) that the gate intentionally lets through.
         self.candidates = candidates
+        self.all_candidates = all_candidates
 
     def __repr__(self) -> str:
         return (
             f"TmdbSignal(content_type={self.content_type.value}, "
             f"confidence={self.confidence:.0%}, tmdb_id={self.tmdb_id}, "
             f"tmdb_name={self.tmdb_name!r}, ambiguous_identity={self.ambiguous_identity}, "
-            f"candidates={self.candidates!r})"
+            f"candidates={self.candidates!r}, all_candidates={self.all_candidates!r})"
         )
 
 
@@ -157,13 +172,14 @@ def _search_tmdb(
     return None, []
 
 
-def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] | None:
-    """Return same-name collision candidates when the materiality gate fires, else None.
+def _collect_same_name_candidates(query: str, results: list[dict]) -> list[dict] | None:
+    """Return ALL distinct same-name shows (>= 2), popularity-sorted, else None.
 
-    "Same-name" = normalized name equals the query's (>= 0.95 similarity). The gate
-    fires only when the top two distinct same-name shows are BOTH plausibly real:
-    runner-up popularity >= AMBIGUOUS_POPULARITY_FLOOR AND
-    top/second popularity ratio <= AMBIGUOUS_POPULARITY_RATIO.
+    "Same-name" = normalized name equals the query's (>= 0.95 similarity). This is
+    pure collection with NO materiality gate — it records the ambiguity (e.g.
+    Frasier 1993 #3452 + 2023 revival #195241) so downstream consumers can suggest
+    the right twin even for dominant-twin cases the gate intentionally lets pass.
+    A franchise like Doctor Who legitimately has 3+ same-name shows; all appear.
     """
     same = []
     seen_ids = set()
@@ -178,16 +194,6 @@ def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] 
     if len(same) < 2:
         return None
     same.sort(key=lambda r: r.get("popularity", 0.0), reverse=True)
-    top, second = same[0].get("popularity", 0.0), same[1].get("popularity", 0.0)
-    if second < AMBIGUOUS_POPULARITY_FLOOR:
-        return None
-    # `second <= 0` is a division-by-zero rail kept intentionally: the floor check
-    # above covers it for the default floor, but the constants are tunable.
-    if second <= 0 or (top / second) > AMBIGUOUS_POPULARITY_RATIO:
-        return None
-    # Return ALL same-name candidates (not just the gated top two): a franchise like
-    # Doctor Who has 3+ legitimate same-name shows, and the user may own any of them.
-    # The gate decides whether to flag; the list shows every show they pick between.
     return [
         {
             "tmdb_id": r["id"],
@@ -199,10 +205,48 @@ def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] 
     ]
 
 
+def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] | None:
+    """Return same-name collision candidates when the materiality gate fires, else None.
+
+    The gate fires only when the top two distinct same-name shows are BOTH plausibly
+    real: runner-up popularity >= AMBIGUOUS_POPULARITY_FLOOR AND top/second popularity
+    ratio <= AMBIGUOUS_POPULARITY_RATIO. Dominant-twin cases (e.g. Frasier 1993 vs the
+    2023 revival) intentionally fall through here — they're caught downstream.
+    """
+    candidates = _collect_same_name_candidates(query, results)
+    if not candidates:
+        return None
+    top, second = candidates[0]["popularity"], candidates[1]["popularity"]
+    if second < AMBIGUOUS_POPULARITY_FLOOR:
+        return None
+    # `second <= 0` is a division-by-zero rail kept intentionally: the floor check
+    # above covers it for the default floor, but the constants are tunable.
+    if second <= 0 or (top / second) > AMBIGUOUS_POPULARITY_RATIO:
+        return None
+    return candidates
+
+
+def should_flag_no_year(candidates: list[dict] | None, has_year: bool) -> bool:
+    """Whether a no-year disc with a real same-name twin should be flagged for review.
+
+    Backstop to the materiality gate: a label with no year can't pick between
+    same-name twins (e.g. Frasier 1993 vs the 2023 revival), so flag when a twin
+    exists and the runner-up clears the low no-year floor. ``candidates`` is the
+    popularity-sorted same-name list (TmdbSignal.all_candidates); index 1 is the
+    runner-up. Suppressed when a year is present (popularity+year disambiguate).
+    """
+    if has_year or not candidates or len(candidates) < 2:
+        return False
+    return candidates[1].get("popularity", 0.0) >= AMBIGUOUS_NO_YEAR_FLOOR
+
+
 def _maybe_flag_tv_ambiguity(signal: TmdbSignal, query: str, tv_results: list[dict]) -> TmdbSignal:
-    """Attach same-name collision info to a TV signal when the gate fires."""
+    """Record same-name twins on a TV signal; flag for review only when the gate fires."""
     if signal.content_type != ContentType.TV:
         return signal
+    # Always record the full twin list (used by the downstream wrong-show detector),
+    # independent of whether the materiality gate decides to flag proactively.
+    signal.all_candidates = _collect_same_name_candidates(query, tv_results)
     candidates = _detect_same_name_candidates(query, tv_results)
     if candidates:
         signal.ambiguous_identity = True

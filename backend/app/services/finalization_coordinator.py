@@ -23,6 +23,64 @@ from app.services.job_state_machine import JobStateMachine
 logger = logging.getLogger(__name__)
 
 
+def _detect_wrong_show(job, titles) -> dict | None:
+    """Detect a same-name wrong-show pick from a wholesale match failure.
+
+    Frasier-class bug: a disc identified as the dominant same-name twin (e.g. the
+    1993 original #3452) when it's actually the other twin (the 2023 revival
+    #195241). Every episode then matches the wrong reference corpus at noise floor,
+    so the WHOLE disc returns ``matched_episode is None``. Combined with a persisted
+    same-name twin (``candidates_json``), that is a confident wrong-show signal.
+
+    Returns ``{"current", "twin", "unmatched"}`` (candidate dicts) when detected,
+    else None. Pure — no DB/IO. The signal is AGGREGATE (all episode candidates
+    matched nothing), never an absolute per-chunk score, so it's robust to the
+    structurally-low chunk-cosine scale. A merely low-confidence disc still carries
+    an episode code, so it is excluded here and handled by the normal review path.
+    """
+    if job.content_type != ContentType.TV:
+        return None
+
+    try:
+        candidates = json.loads(job.candidates_json) if job.candidates_json else []
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(candidates, list) or len(candidates) < 2:
+        return None
+
+    # Episode-candidate titles = the selected, non-extra tracks we tried to match.
+    episode_candidates = [t for t in titles if t.is_selected and not t.is_extra]
+    if len(episode_candidates) < 2:
+        return None
+    if not all(t.matched_episode is None for t in episode_candidates):
+        return None
+
+    twin = next((c for c in candidates if str(c.get("tmdb_id")) != str(job.tmdb_id)), None)
+    if not twin:
+        return None
+    current = next((c for c in candidates if str(c.get("tmdb_id")) == str(job.tmdb_id)), None)
+    return {"current": current, "twin": twin, "unmatched": len(episode_candidates)}
+
+
+def _wrong_show_review_reason(detection: dict, job) -> str:
+    """Human-readable, actionable review reason naming the suspected correct twin."""
+
+    def _label(cand, fallback_name):
+        if not cand:
+            return fallback_name
+        year = cand.get("year")
+        name = cand.get("name") or fallback_name
+        return f"{name} ({year})" if year else name
+
+    current = _label(detection.get("current"), job.tmdb_name or job.detected_title or "this show")
+    twin = _label(detection.get("twin"), "another same-named show")
+    return (
+        f"Content doesn't resemble {current} — none of the "
+        f"{detection['unmatched']} episodes matched its subtitles. This is likely a "
+        f"different same-named show; did you mean {twin}? Re-identify to fix."
+    )
+
+
 def _library_path_for_job(job, content_type: str) -> "Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
     if job.destination_mode != "in_place":
@@ -330,7 +388,9 @@ class FinalizationCoordinator:
         )
         return True
 
-    async def _maybe_escalate_reviews(self, session, job, titles) -> bool:
+    async def _maybe_escalate_reviews(
+        self, session, job, titles, *, wrong_show_suspected: bool = False
+    ) -> bool:
         """Deep re-match low-confidence REVIEW titles, escalating scan depth.
 
         Complements :meth:`_maybe_escalate_conflicts`: where that breaks same-
@@ -338,6 +398,11 @@ class FinalizationCoordinator:
         progressively deeper matcher passes before handing it to manual review.
         Depth-only ladder, capped at full coverage; a per-job pass counter
         (separate from the conflict counter) guarantees termination.
+
+        ``wrong_show_suspected`` collapses the ladder to a SINGLE full-coverage
+        confirming pass (see below) — the caller passes the pre-escalation
+        :func:`_detect_wrong_show` verdict so a probable wrong-show disc doesn't
+        burn the whole 25→50→full ladder against the wrong reference corpus.
 
         Returns ``True`` if a re-match was dispatched (job held in MATCHING; the
         caller should return and let completion re-entry pick it back up).
@@ -353,7 +418,22 @@ class FinalizationCoordinator:
             await self._clear_review_state(session, job)
             return False
 
-        ladder = _conflict_scan_ladder(review_titles)
+        if wrong_show_suspected:
+            # Suspected same-name wrong-show pick: every episode candidate matched
+            # nothing AND a same-name twin is persisted. Don't climb the gradual
+            # 25→50→full ladder against a corpus that's probably the wrong show —
+            # that's up to 3 wasted ASR passes. Do ONE full-coverage confirming
+            # pass instead: it's the strongest possible evidence, so a still-empty
+            # result lets the wrong-show branch fire with confidence, while a
+            # legitimately hard twin-having disc gets its densest matching shot in
+            # a single pass rather than being flagged prematurely. The confirming
+            # pass MUST be full coverage — a sparse tier matching nothing cannot
+            # distinguish a wrong corpus from a disc that just needed denser
+            # sampling, which is exactly the false positive we must avoid.
+            full = _full_coverage_points(review_titles)
+            ladder = [full] if full > 1 else []
+        else:
+            ladder = _conflict_scan_ladder(review_titles)
         last_depth = self._review_passes.get(job_id, 0)
         next_depth = next((d for d in ladder if d > last_depth), None)
 
@@ -471,6 +551,14 @@ class FinalizationCoordinator:
         has_completed = any(t.state == TitleState.COMPLETED for t in titles)
         all_failed = all(t.state == TitleState.FAILED for t in titles)
 
+        # Detect a same-name wrong-show pick up front (pure, no IO): EVERY episode
+        # candidate matched nothing AND a same-name twin is persisted. Computed
+        # before escalation so it can both (a) collapse review-escalation to a
+        # single confirming pass and (b) route to the re-identify review once that
+        # pass also comes back empty. Titles aren't mutated within this call, so
+        # the verdict stays valid down to the branch below.
+        wrong_show = _detect_wrong_show(job, titles)
+
         # Auto-resolve same-episode collisions before any manual review: deep
         # re-match contested titles at escalating scan density until the tie
         # breaks or the whole track has been transcribed. Runs BEFORE the
@@ -480,8 +568,29 @@ class FinalizationCoordinator:
             return
 
         # Then give plain low-confidence reviews (no collision) escalating deep
-        # re-match passes before surfacing them for manual assignment.
-        if await self._maybe_escalate_reviews(session, job, titles):
+        # re-match passes before surfacing them for manual assignment. When a
+        # wrong-show pick is suspected, escalation collapses to ONE full-coverage
+        # confirming pass instead of the full ladder — so a disc identified as the
+        # wrong same-named show doesn't burn 3 ASR passes against the wrong corpus.
+        if await self._maybe_escalate_reviews(
+            session, job, titles, wrong_show_suspected=bool(wrong_show)
+        ):
+            return
+
+        # Wrong-show detector (Frasier 1993 vs 2023): if the full-coverage
+        # confirming pass STILL left every episode candidate unmatched, the disc
+        # was identified as the wrong same-named show. Surface an actionable
+        # re-identify review instead of the generic "assign episodes" message.
+        if wrong_show:
+            reason = _wrong_show_review_reason(wrong_show, job)
+            logger.warning(f"Job {job_id}: wrong-show suspected — {reason}")
+            # We only get here after _maybe_escalate_reviews exhausted its (now
+            # single-pass) ladder, so _review_passes is pinned at full coverage.
+            # REVIEW_NEEDED isn't terminal, so reset_conflict_passes never fires —
+            # clear it now or a re-identify to the correct show would skip deep
+            # re-match for its low-confidence titles.
+            await self._clear_review_state(session, job)
+            await self._state_machine.transition_to_review(job, session, reason=reason)
             return
 
         # Review takes priority: while ANY title still needs manual review, do

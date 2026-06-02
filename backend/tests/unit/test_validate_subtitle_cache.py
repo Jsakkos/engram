@@ -52,7 +52,10 @@ def _make_assets(
     )  # in-tar manifest; validator only checks members
 
     # Default manifest used to drive vector-file placement; tests can override.
-    default_shows = {"Some Show": {"tmdb_id": 1, "seasons": [1], "episode_counts": {"1": 3}}}
+    # v3: keyed by str(tmdb_id), with the required "name" field.
+    default_shows = {
+        "1": {"tmdb_id": 1, "name": "Some Show", "seasons": [1], "episode_counts": {"1": 3}}
+    }
     effective_shows = (manifest_overrides or {}).get("shows", default_shows) or {}
     if tarball_members is None:
         for show_name, entry in effective_shows.items():
@@ -84,7 +87,9 @@ def _make_assets(
         "cache_format_version": CACHE_FORMAT_VERSION,
         "vectorizer_config_hash": vectorizer_config_hash(),
         "n_features": HASHING_N_FEATURES,
-        "shows": {"Some Show": {"tmdb_id": 1, "seasons": [1], "episode_counts": {"1": 3}}},
+        "shows": {
+            "1": {"tmdb_id": 1, "name": "Some Show", "seasons": [1], "episode_counts": {"1": 3}}
+        },
     }
     manifest.update(manifest_overrides or {})
     (assets_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -126,6 +131,19 @@ class TestValidate:
         _make_assets(vsc, tmp_path, manifest_overrides={"shows": {}})
         failures = vsc.validate(tmp_path).failures
         assert any("shows dict in manifest is empty" in f for f in failures)
+
+    def test_missing_name_field_reported(self, vsc, tmp_path):
+        # v3 invariant: a show entry without "name" strands the runtime
+        # name-fallback (jobs with no resolved tmdb_id can't find the corpus).
+        _make_assets(
+            vsc,
+            tmp_path,
+            manifest_overrides={
+                "shows": {"1": {"tmdb_id": 1, "seasons": [1], "episode_counts": {"1": 3}}}
+            },
+        )
+        failures = vsc.validate(tmp_path).failures
+        assert any("missing the required 'name'" in f for f in failures)
 
     def test_consistency_check_records_failure_when_helper_unavailable(
         self, vsc, tmp_path, monkeypatch

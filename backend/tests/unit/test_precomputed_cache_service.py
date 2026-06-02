@@ -40,7 +40,8 @@ from app.services.precomputed_cache_service import (
     ensure_precomputed_cache,
 )
 
-_SHOW = "Test Show"  # sanitize_filename("Test Show") == "Test Show"
+_SHOW = "Test Show"
+_TMDB_ID = 1  # v3 corpus is keyed by str(tmdb_id), not the show name
 _CODES = ["S01E01", "S01E02", "S01E03"]
 _DOCS = [
     "detective solves the murder in the old mansion at midnight",
@@ -80,7 +81,7 @@ def _free_port() -> int:
 def _build_precomputed_tree(root) -> dict:
     """Write a valid ``precomputed/`` tree under ``root``; return its in-tar manifest."""
     precomputed = root / "precomputed"
-    show_dir = precomputed / _SHOW
+    show_dir = precomputed / str(_TMDB_ID)  # v3: dir keyed by str(tmdb_id)
     show_dir.mkdir(parents=True)
 
     counts = build_hashing_vectorizer().transform(_DOCS)
@@ -102,7 +103,14 @@ def _build_precomputed_tree(root) -> dict:
         "vectorizer_config_hash": vectorizer_config_hash(),
         "content_version": _CONTENT_VERSION,
         "n_features": HASHING_N_FEATURES,
-        "shows": {_SHOW: {"tmdb_id": 1, "seasons": [1], "episode_counts": {"1": 3}}},
+        "shows": {
+            str(_TMDB_ID): {
+                "tmdb_id": _TMDB_ID,
+                "name": _SHOW,
+                "seasons": [1],
+                "episode_counts": {"1": 3},
+            }
+        },
     }
     (precomputed / _MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
     return manifest
@@ -191,11 +199,13 @@ async def test_happy_path_installs_and_matches(tmp_path, monkeypatch, patched_co
     precomputed = cache_dir / "precomputed"
     assert (precomputed / _MANIFEST_NAME).exists()
     assert (precomputed / "idf.npy").exists()
-    assert (precomputed / _SHOW / "S01.npz").exists()
+    assert (precomputed / str(_TMDB_ID) / "S01.npz").exists()
     assert updates.get("precomputed_cache_version") == _CONTENT_VERSION
 
     # End to end: the installed cache loads and matches through the matcher.
-    matcher = EpisodeMatcher(cache_dir=cache_dir, show_name=_SHOW)
+    # Pass the id so the v3 id-keyed lookup (str(tmdb_id) in shows) is exercised,
+    # not just the name-fallback path.
+    matcher = EpisodeMatcher(cache_dir=cache_dir, show_name=_SHOW, expected_tmdb_id=_TMDB_ID)
     loaded = matcher._load_precomputed_season(1)
     assert loaded is not None
     tfidf = TfidfMatcher()

@@ -15,9 +15,20 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
-from app.services.finalization_coordinator import FinalizationCoordinator
+from app.services.finalization_coordinator import (
+    FinalizationCoordinator,
+    _detect_wrong_show,
+    _full_coverage_points,
+)
 from app.services.job_state_machine import JobStateMachine
 from tests.unit.conftest import _unit_session_factory
+
+FRASIER_CANDS = json.dumps(
+    [
+        {"tmdb_id": 3452, "name": "Frasier", "year": "1993", "popularity": 75.6},
+        {"tmdb_id": 195241, "name": "Frasier", "year": "2023", "popularity": 5.7},
+    ]
+)
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +71,8 @@ async def _seed_job(
     state=JobState.MATCHING,
     match_details_by_idx=None,
     tmdb_id=None,
+    candidates_json=None,
+    duration=1380,
 ) -> int:
     """Seed a job with the given (title_index, episode, output_filename, title_state) titles."""
     md = match_details_by_idx or {}
@@ -73,6 +86,7 @@ async def _seed_job(
             detected_season=1,
             staging_path=staging,
             tmdb_id=tmdb_id,
+            candidates_json=candidates_json,
         )
         session.add(job)
         await session.commit()
@@ -82,7 +96,7 @@ async def _seed_job(
                 DiscTitle(
                     job_id=job.id,
                     title_index=idx,
-                    duration_seconds=1380,
+                    duration_seconds=duration,
                     matched_episode=ep,
                     match_confidence=0.8,
                     state=tstate,
@@ -454,6 +468,263 @@ class TestCheckJobCompletion:
         # Escalation dispatched a re-match, so finalization is deferred.
         coord.finalize_disc_job.assert_not_called()
         assert coord._conflict_passes.get(job_id) == 25
+
+
+@pytest.mark.unit
+class TestDetectWrongShow:
+    """The pure wrong-show signal: a whole TV disc that matched NOTHING against
+    its reference, plus a same-name twin, means the disc was identified as the
+    wrong same-named show (e.g. Frasier 1993 corpus vs a 2023-revival disc)."""
+
+    def _job(self, **kw):
+        base = dict(
+            drive_id="E:",
+            volume_label="FRASIER_S1D1",
+            content_type=ContentType.TV,
+            tmdb_id=3452,
+            tmdb_name="Frasier",
+            candidates_json=FRASIER_CANDS,
+        )
+        base.update(kw)
+        return DiscJob(**base)
+
+    def _ttl(self, idx, matched_episode=None, is_extra=False, is_selected=True):
+        return DiscTitle(
+            job_id=1,
+            title_index=idx,
+            duration_seconds=1380,
+            matched_episode=matched_episode,
+            is_extra=is_extra,
+            is_selected=is_selected,
+            state=TitleState.REVIEW,
+        )
+
+    def test_all_zero_match_with_twin_detects_and_names_twin(self):
+        titles = [self._ttl(0), self._ttl(1), self._ttl(2)]
+        res = _detect_wrong_show(self._job(), titles)
+        assert res is not None
+        assert res["twin"]["tmdb_id"] == 195241
+        assert res["twin"]["year"] == "2023"
+        assert res["unmatched"] == 3
+
+    def test_none_when_any_title_matched(self):
+        titles = [self._ttl(0), self._ttl(1, matched_episode="S01E02"), self._ttl(2)]
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_none_without_persisted_twin(self):
+        titles = [self._ttl(0), self._ttl(1)]
+        assert _detect_wrong_show(self._job(candidates_json=None), titles) is None
+
+    def test_none_when_only_one_episode_candidate(self):
+        titles = [self._ttl(0)]
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_excludes_extras_from_candidate_count(self):
+        # 1 real episode candidate + 2 extras -> below the >=2 episode floor.
+        titles = [self._ttl(0), self._ttl(1, is_extra=True), self._ttl(2, is_extra=True)]
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_none_for_movie(self):
+        titles = [self._ttl(0), self._ttl(1)]
+        assert _detect_wrong_show(self._job(content_type=ContentType.MOVIE), titles) is None
+
+
+@pytest.mark.unit
+class TestWrongShowRoutingInCompletion:
+    """check_job_completion must surface the wrong-show review (naming the twin)
+    instead of the generic "needs manual episode assignment" message."""
+
+    async def test_all_zero_match_with_twin_routes_to_wrong_show_review(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+                (2, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "Frasier" in job.review_reason
+        assert "2023" in job.review_reason
+        assert "re-identify" in job.review_reason.lower()
+        coord.finalize_disc_job.assert_not_called()
+
+    async def test_wrong_show_clears_review_pass_counter(self, tmp_path):
+        # The wrong-show branch fires only after the review-escalation ladder is
+        # EXHAUSTED, where _maybe_escalate_reviews intentionally leaves
+        # _review_passes pinned at max (so re-entries bail). REVIEW_NEEDED isn't
+        # terminal, so reset_conflict_passes never fires — the wrong-show block
+        # must clear it, else a re-identify to the right show skips deep re-match.
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        # A non-None rematch callback so _maybe_escalate_reviews doesn't take its
+        # early "no callback" branch (which clears the counter itself); a pinned
+        # counter forces the exhausted-ladder branch that LEAVES it set.
+        coord._rematch_title = AsyncMock()
+        coord._review_passes[job_id] = 999
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        coord._rematch_title.assert_not_awaited()  # ladder exhausted, no dispatch
+        assert job_id not in coord._review_passes
+
+    async def test_partial_match_keeps_generic_review_reason(self, tmp_path):
+        # One title matched -> not a wrong-show disc; keep the generic message.
+        job_id = await _seed_job(
+            [
+                (0, "S01E01", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "manual episode assignment" in job.review_reason
+
+    async def test_true_wrong_show_does_single_full_pass_not_three(self, tmp_path):
+        # A genuine same-name wrong-show disc: every selected episode candidate
+        # matched NOTHING (wrong reference corpus) and a same-name twin is
+        # persisted. The old flow burned the whole 25→50→full review-escalation
+        # ladder against that wrong corpus before the wrong-show branch fired —
+        # up to 3 wasted ASR passes. The new flow does ONE decisive full-coverage
+        # confirming pass; if it STILL matches nothing, wrong-show fires.
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+            duration=3000,  # full coverage = 101 scan points, distinct from 25/50
+        )
+        _, seeded = await _load(job_id)
+        full = _full_coverage_points(list(seeded.values()))
+
+        depths: list[int] = []
+
+        async def fake_rematch(
+            jid, tid, source_preference=None, num_points=None, min_vote_count=None
+        ):
+            # Wrong corpus: the re-match finds nothing, so the title stays
+            # unmatched in REVIEW (we deliberately don't resolve it).
+            depths.append(num_points)
+
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        coord._rematch_title = fake_rematch
+
+        # Pass 1: a single full-coverage confirming dispatch, NOT the shallow
+        # 25/50 tiers the old ladder would have wasted first.
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+        job, _ = await _load(job_id)
+        assert job.state == JobState.MATCHING  # held for the confirming pass
+        assert depths == [full, full]
+
+        # Re-entry: the confirming pass still matched nothing → wrong-show fires.
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "2023" in job.review_reason
+        assert "re-identify" in job.review_reason.lower()
+        # No further escalation, and never the wasteful shallow tiers.
+        assert depths == [full, full]
+        assert 25 not in depths and 50 not in depths
+        coord.finalize_disc_job.assert_not_called()
+
+    async def test_legit_hard_twin_disc_resolves_on_confirming_pass(self, tmp_path):
+        # The false-positive the after-escalation placement guards against: a
+        # LEGITIMATE but hard disc of a twin-having show whose initial match left
+        # every episode unmatched. The confirming full-coverage pass DOES match
+        # (it really is this show, just hard), so wrong-show must NOT fire — and
+        # the disc must still get its deep re-match (approaches that simply skip
+        # escalation would deny it).
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+            duration=3000,
+        )
+        _, seeded = await _load(job_id)
+        full = _full_coverage_points(list(seeded.values()))
+
+        depths: list[int] = []
+
+        async def fake_rematch(
+            jid, tid, source_preference=None, num_points=None, min_vote_count=None
+        ):
+            depths.append(num_points)
+
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        coord._rematch_title = fake_rematch
+
+        # Pass 1: single full-coverage confirming dispatch (deep re-match, not denied).
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+        job, _ = await _load(job_id)
+        assert job.state == JobState.MATCHING
+        assert depths == [full, full]
+        coord.finalize_disc_job.assert_not_called()
+
+        # The confirming pass found the right episodes (it really is this show).
+        async with _unit_session_factory() as session:
+            titles = (
+                (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                .scalars()
+                .all()
+            )
+            for i, t in enumerate(titles):
+                t.state = TitleState.MATCHED
+                t.matched_episode = f"S01E0{i + 1}"
+            await session.commit()
+
+        # Re-entry: no longer all-None → wrong-show must NOT fire; disc finalizes.
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+        job, titles = await _load(job_id)
+        assert job.state != JobState.REVIEW_NEEDED
+        coord.finalize_disc_job.assert_awaited()
+        # It got exactly its one deep pass — never re-escalated, never the
+        # shallow tiers.
+        assert depths == [full, full]
+        assert 25 not in depths and 50 not in depths
+        assert all(t.state == TitleState.MATCHED for t in titles.values())
 
 
 @pytest.mark.unit

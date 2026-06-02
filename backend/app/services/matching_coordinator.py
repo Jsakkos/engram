@@ -631,24 +631,7 @@ class MatchingCoordinator:
             title = await session.get(DiscTitle, title_id)
             if job and title and job.detected_season:
                 try:
-                    if job_id not in self._episode_runtimes:
-                        from app.matcher.tmdb_client import (
-                            fetch_season_episode_runtimes,
-                            fetch_show_id,
-                        )
-
-                        show_id = await asyncio.to_thread(fetch_show_id, job.detected_title)
-                        if show_id:
-                            runtimes = await asyncio.to_thread(
-                                fetch_season_episode_runtimes,
-                                show_id,
-                                job.detected_season,
-                            )
-                            self._episode_runtimes[job_id] = runtimes
-                        else:
-                            self._episode_runtimes[job_id] = []
-
-                    runtimes = self._episode_runtimes.get(job_id, [])
+                    runtimes = await self._episode_runtimes_for_job(job)
                     if runtimes and title.duration_seconds:
                         title_minutes = title.duration_seconds / 60
                         tolerance = 5  # minutes
@@ -712,6 +695,40 @@ class MatchingCoordinator:
             if self._match_semaphore is not None:
                 self._match_semaphore.release()
                 logger.info(f"[MATCH] Title {title_id} (Job {job_id}): released match semaphore")
+
+    async def _episode_runtimes_for_job(self, job: DiscJob) -> list[int]:
+        """Episode runtimes (minutes) for the job's season, cached per job.
+
+        Backs the duration pre-filter that flags non-episode bonus tracks as
+        extras before the matcher tries to force them onto an episode.
+        """
+        if job.id in self._episode_runtimes:
+            return self._episode_runtimes[job.id]
+
+        from app.matcher.tmdb_client import (
+            fetch_season_episode_runtimes,
+            fetch_show_id,
+        )
+
+        # Prefer the job's authoritative tmdb_id (e.g. set when the user
+        # re-identified a same-name collision in review). Re-resolving by name
+        # here would return the dominant same-name twin (Frasier 1993 #3452,
+        # 24×23min) instead of the re-identified revival (#195241, 10 eps),
+        # whose real episodes would then fail the duration filter and be
+        # misclassified as extras. Sibling to PR #282's curator/chromaprint/LLM
+        # threading.
+        if job.tmdb_id:
+            show_id = str(job.tmdb_id)
+        else:
+            show_id = await asyncio.to_thread(fetch_show_id, job.detected_title)
+        if show_id:
+            runtimes = await asyncio.to_thread(
+                fetch_season_episode_runtimes, show_id, job.detected_season
+            )
+        else:
+            runtimes = []
+        self._episode_runtimes[job.id] = runtimes
+        return runtimes
 
     async def _match_single_file_inner(
         self,

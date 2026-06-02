@@ -6,6 +6,7 @@ DiscDB supplements, and the AI re-query fallback. The method does not touch the
 DB session, so a transient DiscJob and session=None are sufficient.
 """
 
+import json
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -13,9 +14,14 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from app.core.analyst import DiscAnalysisResult
+from app.core.tmdb_classifier import TmdbSignal
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType
-from app.services.identification_coordinator import IdentificationCoordinator
+from app.services.identification_coordinator import (
+    IdentificationCoordinator,
+    _candidates_json_from_signal,
+    _label_has_year,
+)
 
 
 def _make_coord(analyst):
@@ -59,6 +65,54 @@ def _job(volume_label="THE_OFFICE_S1D1"):
 
 def _patch_config(monkeypatch, config):
     monkeypatch.setattr("app.services.config_service.get_config", AsyncMock(return_value=config))
+
+
+@pytest.mark.unit
+class TestCandidatesJsonFromSignal:
+    """The persisted candidates_json must capture all same-name twins so the
+    downstream wrong-show detector can suggest the right one (e.g. Frasier 2023)."""
+
+    def test_serializes_all_candidates(self):
+        sig = TmdbSignal(
+            content_type=ContentType.TV,
+            confidence=0.85,
+            tmdb_id=3452,
+            tmdb_name="Frasier",
+            all_candidates=[
+                {"tmdb_id": 3452, "name": "Frasier", "year": "1993", "popularity": 75.6},
+                {"tmdb_id": 195241, "name": "Frasier", "year": "2023", "popularity": 5.7},
+            ],
+        )
+        out = _candidates_json_from_signal(sig)
+        assert {c["tmdb_id"] for c in json.loads(out)} == {3452, 195241}
+
+    def test_none_when_no_twins(self):
+        sig = TmdbSignal(
+            content_type=ContentType.TV, confidence=0.85, tmdb_id=1396, tmdb_name="Breaking Bad"
+        )
+        assert _candidates_json_from_signal(sig) is None
+
+    def test_none_for_missing_signal(self):
+        assert _candidates_json_from_signal(None) is None
+
+
+@pytest.mark.unit
+class TestLabelHasYear:
+    """A 4-digit 19xx/20xx in the disc label/name lets popularity+year
+    disambiguate same-name twins, so the no-year proactive flag is suppressed."""
+
+    def test_detects_year_in_various_forms(self):
+        assert _label_has_year("FRASIER_2023") is True
+        assert _label_has_year("FRASIER (2023)") is True
+        assert _label_has_year("THE_OFFICE_2005") is True
+        assert _label_has_year("", "Frasier 1993") is True  # second arg carries it
+
+    def test_no_year_for_season_disc_labels(self):
+        assert _label_has_year("FRASIER_S1D1") is False
+        assert _label_has_year("FRASIER") is False
+        assert _label_has_year("2_BROKE_GIRLS_S1D1") is False
+        assert _label_has_year("") is False
+        assert _label_has_year(None) is False
 
 
 @pytest.mark.unit

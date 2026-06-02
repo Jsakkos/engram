@@ -133,6 +133,24 @@ class TestJobEndpoints:
         response = await client.get("/api/jobs/999")
         assert response.status_code == 404
 
+    async def test_candidates_json_exposed_in_job_and_detail(self, client):
+        """Same-name twin candidates must survive the serializers in both the
+        job response and the detail response, or the UI can't surface the
+        "did you mean Frasier (2023)?" disambiguation (three-way-sync rule)."""
+        payload = (
+            '[{"tmdb_id": 3452, "name": "Frasier", "year": "1993"}, '
+            '{"tmdb_id": 195241, "name": "Frasier", "year": "2023"}]'
+        )
+        job = await _seed_job(candidates_json=payload)
+
+        resp = await client.get(f"/api/jobs/{job.id}")
+        assert resp.status_code == 200
+        assert resp.json()["candidates_json"] == payload
+
+        detail = await client.get(f"/api/jobs/{job.id}/detail")
+        assert detail.status_code == 200
+        assert detail.json()["candidates_json"] == payload
+
     async def test_get_job_titles(self, client):
         job = await _seed_job()
         await _seed_titles(job.id, count=3)

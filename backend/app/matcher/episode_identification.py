@@ -17,7 +17,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from app.matcher.asr_models import get_cached_model
-from app.matcher.subtitle_utils import sanitize_filename
+from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
 
@@ -64,12 +64,45 @@ def load_precomputed_manifest(cache_dir) -> dict | None:
 def _tmdb_id_mismatch(expected, entry_id) -> bool:
     """True when both ids are known and disagree (string-compared).
 
-    Shared by the corpus guard's two call sites (this module's
-    ``precomputed_covers_season`` and ``EpisodeMatcher._load_precomputed_season``)
-    so the comparison can't silently diverge. Returns False when either id is
-    unknown — backward-compatible with name-only matching.
+    A safety rail for the name-resolution fallback in ``_resolve_corpus_entry``:
+    when a corpus entry is found by NAME (tmdb_id unknown at lookup) but its id
+    contradicts a later-known expected id, refuse it. Returns False when either id
+    is unknown — backward-compatible with name-only matching.
     """
     return expected is not None and entry_id is not None and str(entry_id) != str(expected)
+
+
+def _resolve_corpus_entry(manifest, show_name: str, tmdb_id):
+    """Return ``(key, entry)`` for a show in a v3 id-keyed manifest, else ``(None, None)``.
+
+    Prefers an exact ``tmdb_id`` match (the manifest is keyed by ``str(tmdb_id)``),
+    falling back to the first entry whose stored ``name`` matches when the id is
+    unknown (e.g. a flat import that never resolved a TMDB id). ``key`` is also the
+    on-disk corpus dir name (see ``corpus_dir_name``).
+    """
+    shows = (manifest or {}).get("shows", {})
+    if not shows:
+        return None, None
+    if tmdb_id is not None and str(tmdb_id) in shows:
+        return str(tmdb_id), shows[str(tmdb_id)]
+    # No (or unknown) tmdb_id: fall back to matching the stored name. A v3 corpus
+    # can legitimately hold two same-named shows (Frasier 1993 + 2023 revival), so
+    # warn when the name is ambiguous — we can only return the first match.
+    name_matches = [(key, entry) for key, entry in shows.items() if entry.get("name") == show_name]
+    if not name_matches:
+        return None, None
+    if len(name_matches) > 1:
+        logger.warning(
+            f"Corpus name-fallback for {show_name!r} is ambiguous across keys "
+            f"{[k for k, _ in name_matches]} (no tmdb_id supplied); using the first. "
+            f"Supply tmdb_id to pick the right same-named show."
+        )
+    return name_matches[0]
+
+
+def _corpus_show_dir(cache_dir, key: str) -> Path:
+    """On-disk precomputed dir for a resolved manifest ``key`` (a tmdb_id string)."""
+    return Path(cache_dir) / "precomputed" / sanitize_filename(str(key))
 
 
 def precomputed_covers_season(
@@ -86,46 +119,49 @@ def precomputed_covers_season(
     re-validating manifest.json (callers holding a cached copy pass it in).
 
     ``expected_tmdb_id`` is the TMDB id the calling job has resolved for the
-    show. When supplied, it is compared against the manifest entry's ``tmdb_id``
-    (string comparison); a mismatch means the corpus is for a *different*
-    same-named show (e.g. Frasier 1993 vs 2023 revival) and this function
-    returns False before inspecting any on-disk files. When either id is
-    unknown the guard is skipped (backward-compatible).
+    show. The manifest is keyed by tmdb_id (v3), so a known id resolves the right
+    same-named show directly; when unknown, the entry is found by name. A
+    name-resolved entry whose id contradicts ``expected_tmdb_id`` is refused.
     """
     if manifest is None:
         manifest = load_precomputed_manifest(cache_dir)
     if not manifest:
         return False
 
-    show_entry = manifest.get("shows", {}).get(show_name)
+    key, show_entry = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
     if not show_entry or season not in show_entry.get("seasons", []):
         return False
 
-    # Corpus guard: if the job knows its TMDB id and it contradicts the
-    # manifest entry's id, this precomputed corpus is for a DIFFERENT same-named
-    # show — refuse it so we never match e.g. the Frasier 2023 revival against the
-    # 1993 corpus. Skipped when either id is unknown (backward-compatible).
+    # Safety rail for the name-resolution fallback: a found-by-name entry whose
+    # id contradicts a known expected id is a DIFFERENT same-named show — refuse.
     if _tmdb_id_mismatch(expected_tmdb_id, show_entry.get("tmdb_id")):
         return False
 
-    show_dir = Path(cache_dir) / "precomputed" / sanitize_filename(show_name)
+    show_dir = _corpus_show_dir(cache_dir, key)
     npz_path = show_dir / f"S{season:02d}.npz"
     index_path = show_dir / f"S{season:02d}.index.json"
     return npz_path.exists() and index_path.exists()
 
 
-def precomputed_episode_codes(cache_dir, show_name: str, season: int) -> list[str] | None:
+def precomputed_episode_codes(
+    cache_dir, show_name: str, season: int, *, expected_tmdb_id=None
+) -> list[str] | None:
     """Episode codes the precomputed cache holds for show+season, else None.
 
     None means the cache doesn't cover it (caller should download/scrape).
     Lets callers size a result from the cache itself without a TMDB round-trip.
+
+    ``expected_tmdb_id`` resolves the right same-named show's corpus (the manifest
+    is keyed by tmdb_id); without it the show is found by name.
     """
-    if not precomputed_covers_season(cache_dir, show_name, season):
+    manifest = load_precomputed_manifest(cache_dir)
+    if not precomputed_covers_season(
+        cache_dir, show_name, season, manifest=manifest, expected_tmdb_id=expected_tmdb_id
+    ):
         return None
 
-    index_path = (
-        Path(cache_dir) / "precomputed" / sanitize_filename(show_name) / f"S{season:02d}.index.json"
-    )
+    key, _ = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
+    index_path = _corpus_show_dir(cache_dir, key) / f"S{season:02d}.index.json"
     try:
         with open(index_path, encoding="utf-8") as fh:
             codes = json.load(fh)
@@ -935,10 +971,11 @@ class EpisodeMatcher:
         # reuse it for the coverage gate so we read+validate manifest.json at most
         # once per matcher instance instead of once per title.
         manifest = self._load_precomputed_manifest()
-        # Corpus guard: a positive tmdb_id mismatch means the manifest entry is a
-        # different same-named show. Bail BEFORE the stale-prune branch so we don't
-        # wrongly drop a valid entry whose files are present.
-        show_entry = (manifest or {}).get("shows", {}).get(self.show_name)
+        # Resolve the show by tmdb_id (manifest is id-keyed in v3), falling back to
+        # name when the id is unknown. A name-resolved entry whose id contradicts a
+        # known expected id is a different same-named show — refuse it BEFORE the
+        # stale-prune branch so we don't wrongly drop a valid entry.
+        key, show_entry = _resolve_corpus_entry(manifest, self.show_name, self.expected_tmdb_id)
         entry_id = show_entry.get("tmdb_id") if show_entry else None
         if _tmdb_id_mismatch(self.expected_tmdb_id, entry_id):
             logger.warning(
@@ -961,11 +998,11 @@ class EpisodeMatcher:
                 )
                 show_entry["seasons"] = [s for s in show_entry["seasons"] if s != season_number]
                 if not show_entry["seasons"]:
-                    manifest["shows"].pop(self.show_name, None)
+                    manifest["shows"].pop(key, None)
             return None
 
         precomputed_dir = self.cache_dir / "precomputed"
-        show_dir = precomputed_dir / sanitize_filename(self.show_name)
+        show_dir = _corpus_show_dir(self.cache_dir, key)
         npz_path = show_dir / f"S{season_number:02d}.npz"
         index_path = show_dir / f"S{season_number:02d}.index.json"
 
@@ -1006,7 +1043,12 @@ class EpisodeMatcher:
             logger.debug("Returning cached reference files")
             return self.reference_files_cache[cache_key]
 
-        reference_dir = self.cache_dir / "data" / sanitize_filename(self.show_name)
+        # Keyed by tmdb_id (fallback: sanitized name) so two same-named shows
+        # never read each other's downloaded subtitles. Same key the downloader
+        # and scrapers write under, given the same expected id.
+        reference_dir = (
+            self.cache_dir / "data" / corpus_dir_name(self.expected_tmdb_id, self.show_name)
+        )
         patterns = [
             f"S{season_number:02d}E",
             f"S{season_number}E",
@@ -1181,7 +1223,11 @@ class EpisodeMatcher:
             else:
                 reference_files = self.get_reference_files(season_number)
                 if not reference_files:
-                    reference_dir = self.cache_dir / "data" / sanitize_filename(self.show_name)
+                    reference_dir = (
+                        self.cache_dir
+                        / "data"
+                        / corpus_dir_name(self.expected_tmdb_id, self.show_name)
+                    )
                     logger.error(
                         f"No reference subtitle files found for '{self.show_name}' "
                         f"season {season_number}. Expected directory: {reference_dir}. "

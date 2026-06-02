@@ -183,3 +183,16 @@ def sanitize_filename(filename: str) -> str:
     filename = re.sub(r'[<>:"/\\|?*]', "", filename)
 
     return filename.strip()
+
+
+def corpus_dir_name(tmdb_id, show_name: str) -> str:
+    """On-disk dir name / manifest key for a show's precomputed corpus + subtitle cache.
+
+    Keyed by ``tmdb_id`` so two same-named shows (e.g. Frasier 1993 #3452 vs the
+    2023 revival #195241) never collide into one directory. Falls back to the
+    sanitized show name only when no tmdb_id is known (legacy caches, or a flat
+    import that never resolved an id).
+    """
+    if tmdb_id is not None and str(tmdb_id).strip():
+        return str(tmdb_id)
+    return sanitize_filename(show_name)

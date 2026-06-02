@@ -52,8 +52,8 @@ from rich.progress import (
 from scipy import sparse
 
 from app.matcher import coverage_tracker
-from app.matcher.episode_identification import SubtitleCache
-from app.matcher.subtitle_utils import discover_season_srts, sanitize_filename
+from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
+from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts
 from app.matcher.testing_service import download_subtitles, get_last_quota, probe_os_quota
 from app.matcher.tmdb_client import (
     fetch_show_details,
@@ -260,7 +260,11 @@ def _harvest_show(
     """
     harvested: list[tuple[int, str, Path]] = []
     canonical = show["name"]
-    season_data_dir = cache_dir / "data" / sanitize_filename(canonical)
+    # The data/ SRT scrape cache is keyed by tmdb_id (fallback: sanitized name),
+    # matching where download_subtitles writes (we pass tmdb_id below) and what
+    # the runtime matcher reads — two same-named shows never collide on disk.
+    # Filenames inside stay name-prefixed.
+    season_data_dir = cache_dir / "data" / corpus_dir_name(show["tmdb_id"], canonical)
     for season in range(1, show["seasons"] + 1):
         # Complete-on-disk fast path: a season that previously reached the
         # coverage threshold is shipped straight from the SRTs already on disk
@@ -326,8 +330,12 @@ def _harvest_show(
 
         try:
             # Always re-harvest when building the cache, even if a prior
-            # precomputed build already covers this season.
-            result = download_subtitles(canonical, season, use_precomputed=False)
+            # precomputed build already covers this season. Pass tmdb_id so the
+            # download writes under the SAME id-keyed dir as season_data_dir above
+            # (and the runtime matcher reads) — never a name-resolved divergent id.
+            result = download_subtitles(
+                canonical, season, tmdb_id=show["tmdb_id"], use_precomputed=False
+            )
         except Exception as e:
             # exc_info=True per CLAUDE.md: the warning string alone (often
             # just "429 Too Many Requests") doesn't say which provider in
@@ -515,8 +523,8 @@ def main() -> int:
 
     # --- Harvest SRT + extract cleaned full text per episode -------------------
     subtitle_cache = SubtitleCache()
-    # blocks: list of (show_name, season, [episode_codes], count_csr)
-    blocks: list[tuple[str, int, list[str], object]] = []
+    # blocks: list of (tmdb_id, show_name, season, [episode_codes], count_csr)
+    blocks: list[tuple[int, str, int, list[str], object]] = []
     hv = build_hashing_vectorizer()
     manifest_shows: dict[str, dict] = {}
     tally = RunTally()
@@ -610,13 +618,16 @@ def main() -> int:
                 if not texts:
                     continue
                 counts = hv.transform(texts)  # raw hashed term counts
-                blocks.append((show["name"], season, codes, counts))
+                blocks.append((show["tmdb_id"], show["name"], season, codes, counts))
                 show_seasons.append(season)
                 episode_counts[str(season)] = len(codes)
 
             if show_seasons:
-                manifest_shows[show["name"]] = {
+                # v3: keyed by tmdb_id so same-named shows don't collide; the name
+                # is stored so the runtime can still resolve when no id is known.
+                manifest_shows[str(show["tmdb_id"])] = {
                     "tmdb_id": show["tmdb_id"],
+                    "name": show["name"],
                     "seasons": show_seasons,
                     "episode_counts": episode_counts,
                 }
@@ -626,7 +637,7 @@ def main() -> int:
         return 1
 
     # --- Fit one global IDF across the whole corpus ----------------------------
-    all_counts = sparse.vstack([b[3] for b in blocks], format="csr")
+    all_counts = sparse.vstack([b[4] for b in blocks], format="csr")
     idf = compute_idf(all_counts)
     np.save(precomputed_dir / "idf.npy", idf)
     logger.info(f"Global IDF fit over {all_counts.shape[0]} episodes")
@@ -639,8 +650,10 @@ def main() -> int:
     # .npz collapses the long runs of 1s much better than it ever could on
     # floats — measured ~85% reduction (~8 KB/episode vs. ~66 KB for v1).
     u16_max = np.iinfo(np.uint16).max
-    for show_name, season, codes, counts in blocks:
-        show_dir = precomputed_dir / sanitize_filename(show_name)
+    for tmdb_id_b, _show_name, season, codes, counts in blocks:
+        # Write to the runtime's canonical id-keyed dir (matches the str(tmdb_id)
+        # manifest key) via the shared formula so write/read can't drift.
+        show_dir = _corpus_show_dir(cache_dir, str(tmdb_id_b))
         show_dir.mkdir(parents=True, exist_ok=True)
         # HashingVectorizer emits float64 counts even with alternate_sign=False;
         # cast to uint16 (clipped defensively — real per-episode token counts
@@ -691,7 +704,7 @@ def main() -> int:
             shutil.rmtree(data_dir)
             logger.info("Deleted harvested SRT files (--clean-srt)")
 
-    total_episodes = sum(len(c) for _, _, c, _ in blocks)
+    total_episodes = sum(len(c) for _, _, _, c, _ in blocks)
     size_mb = output_path.stat().st_size / (1024 * 1024)
     logger.info(
         f"Built cache: {len(manifest_shows)} shows, {total_episodes} episodes, "

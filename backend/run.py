@@ -16,9 +16,44 @@ opens an endless stream of browser tabs until the machine gives out.
 """
 
 import multiprocessing
+import os
 import socket
 import sys
 import traceback
+
+
+def _selftest() -> int:
+    """Verify the bundled runtime can complete a TLS handshake (`engram --selftest`).
+
+    Catches the packaging defect where certifi's ``cacert.pem`` is absent, which makes
+    ``ssl.create_default_context()`` raise ``FileNotFoundError`` and kills every HTTPS
+    call. Returns 0 on success. A missing/unloadable CA bundle is a build defect
+    (non-zero); a transient network error is tolerated (0) so CI never flakes on it.
+    """
+    import ssl
+
+    import certifi
+
+    ca = certifi.where()
+    if not os.path.exists(ca):
+        print(f"SELFTEST FAIL: CA bundle not bundled at {ca}")
+        return 2
+    try:
+        import httpx
+
+        httpx.get("https://api.github.com", timeout=10.0)
+        print("SELFTEST OK: HTTPS request succeeded with bundled CA bundle")
+        return 0
+    except Exception as exc:  # noqa: BLE001 — classify, then re-decide exit code
+        # A missing/unloadable CA bundle surfaces as FileNotFoundError or ssl.SSLError
+        # (directly or as the __cause__/__context__). That's a build defect -> fail.
+        # Pure connect/timeout errors are tolerated so CI isn't flaky.
+        chain = [exc, exc.__cause__, exc.__context__]
+        if any(isinstance(e, (FileNotFoundError, ssl.SSLError)) for e in chain if e):
+            print(f"SELFTEST FAIL: TLS/CA error: {exc!r}")
+            return 3
+        print(f"SELFTEST WARN: tolerated network error: {exc!r}")
+        return 0
 
 
 def _find_free_port(host: str, preferred: int, max_attempts: int = 20) -> int:
@@ -104,4 +139,8 @@ if __name__ == "__main__":
     # Must run before any multiprocessing work and before main() so that
     # spawn-relaunched worker processes exit here instead of re-running startup.
     multiprocessing.freeze_support()
+    if "--selftest" in sys.argv[1:]:
+        # CI build guard: prove the frozen bundle can do TLS, then exit without
+        # starting the server.
+        sys.exit(_selftest())
     main()

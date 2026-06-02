@@ -34,7 +34,7 @@ def _write_precomputed_cache(cache_dir, show_name, season=1, episode_codes=None)
                 "cache_format_version": CACHE_FORMAT_VERSION,
                 "vectorizer_config_hash": vectorizer_config_hash(),
                 "content_version": "test",
-                "shows": {show_name: {"tmdb_id": 1, "seasons": [season]}},
+                "shows": {show_name: {"tmdb_id": 1, "name": show_name, "seasons": [season]}},
             }
         )
     )

@@ -23,7 +23,10 @@ from sklearn.preprocessing import normalize as _sk_normalize
 # and a cache manifest invalidates the cache (runtime falls back to scraping).
 # v2: on-disk format switched to uint16 hashed counts; the loader applies
 # apply_tfidf at startup. Cuts tarball size ~57% vs v1's float64 TF-IDF rows.
-CACHE_FORMAT_VERSION = "2"
+# v3: corpus dirs + manifest keyed by tmdb_id (was sanitized show name) so two
+# same-named shows (Frasier 1993 #3452 vs 2023 revival #195241) don't collide.
+# The bump invalidates v2 caches; the id-keyed v3 cache auto-downloads on startup.
+CACHE_FORMAT_VERSION = "3"
 
 HASHING_N_FEATURES = 2**18
 

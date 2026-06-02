@@ -1,5 +1,6 @@
 """Integration tests for disc re-identification endpoint."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from app.database import async_session, init_db
 from app.main import app
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType
+from app.services.identification_coordinator import IdentificationCoordinator
 from app.services.job_manager import job_manager
 
 
@@ -89,6 +91,51 @@ async def test_re_identify_with_tmdb_id(client):
 
     assert response.status_code == 200
     mock_re_id.assert_called_once_with(job_id, "WandaVision", "tv", 1, 85271)
+
+
+@pytest.mark.asyncio
+async def test_re_identify_clears_stale_candidates(client):
+    """Resolving a same-name collision must clear the persisted candidates.
+
+    After the user picks the correct twin (e.g. Frasier 2023 #195241), the
+    candidates recorded for the PREVIOUS identification attempt are stale. If
+    they survive, a later re-entry into REVIEW_NEEDED would re-show the quick-pick
+    buttons AND let the wrong-show backstop suggest the rejected twin again.
+    """
+    cands = json.dumps(
+        [
+            {"tmdb_id": 3452, "name": "Frasier", "year": "1993", "popularity": 75.6},
+            {"tmdb_id": 195241, "name": "Frasier", "year": "2023", "popularity": 5.7},
+        ]
+    )
+    async with async_session() as session:
+        job = DiscJob(
+            volume_label="FRASIER_S1D1",
+            drive_id="E:",
+            state=JobState.REVIEW_NEEDED,
+            content_type=ContentType.TV,
+            detected_title="Frasier",
+            detected_season=1,
+            tmdb_id=3452,
+            candidates_json=cands,
+            needs_review=True,
+            review_reason="Content doesn't resemble Frasier (1993); did you mean Frasier (2023)?",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    # Call the coordinator directly. With no subtitle-restart callback wired,
+    # re_identify performs no provider/network I/O.
+    coordinator = IdentificationCoordinator(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    result = await coordinator.re_identify(job_id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+    assert result["job_id"] == job_id
+    async with async_session() as session:
+        refreshed = await session.get(DiscJob, job_id)
+        assert refreshed.tmdb_id == 195241  # user's pick applied
+        assert refreshed.candidates_json is None  # stale twins cleared
 
 
 @pytest.mark.asyncio
