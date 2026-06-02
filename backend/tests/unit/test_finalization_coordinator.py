@@ -556,6 +556,37 @@ class TestWrongShowRoutingInCompletion:
         assert "re-identify" in job.review_reason.lower()
         coord.finalize_disc_job.assert_not_called()
 
+    async def test_wrong_show_clears_review_pass_counter(self, tmp_path):
+        # The wrong-show branch fires only after the review-escalation ladder is
+        # EXHAUSTED, where _maybe_escalate_reviews intentionally leaves
+        # _review_passes pinned at max (so re-entries bail). REVIEW_NEEDED isn't
+        # terminal, so reset_conflict_passes never fires — the wrong-show block
+        # must clear it, else a re-identify to the right show skips deep re-match.
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        # A non-None rematch callback so _maybe_escalate_reviews doesn't take its
+        # early "no callback" branch (which clears the counter itself); a pinned
+        # counter forces the exhausted-ladder branch that LEAVES it set.
+        coord._rematch_title = AsyncMock()
+        coord._review_passes[job_id] = 999
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        coord._rematch_title.assert_not_awaited()  # ladder exhausted, no dispatch
+        assert job_id not in coord._review_passes
+
     async def test_partial_match_keeps_generic_review_reason(self, tmp_path):
         # One title matched -> not a wrong-show disc; keep the generic message.
         job_id = await _seed_job(

@@ -550,6 +550,11 @@ class FinalizationCoordinator:
         if wrong_show:
             reason = _wrong_show_review_reason(wrong_show, job)
             logger.warning(f"Job {job_id}: wrong-show suspected — {reason}")
+            # We only get here after _maybe_escalate_reviews exhausted the ladder,
+            # so _review_passes is pinned at max. REVIEW_NEEDED isn't terminal, so
+            # reset_conflict_passes never fires — clear it now or a re-identify to
+            # the correct show would skip deep re-match for its low-confidence titles.
+            await self._clear_review_state(session, job)
             await self._state_machine.transition_to_review(job, session, reason=reason)
             return
 

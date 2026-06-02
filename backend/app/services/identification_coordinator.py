@@ -17,7 +17,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError
-from app.core.tmdb_classifier import _should_flag_no_year
+from app.core.tmdb_classifier import should_flag_no_year
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -44,8 +44,16 @@ def _label_has_year(*texts: str | None) -> bool:
 
 
 def _no_year_collision_reason(name, candidates) -> str:
-    """Review reason for a no-year disc with same-name twins — lists every twin."""
-    listed = "; ".join(f"{c['name']} ({c['year']}, #{c['tmdb_id']})" for c in (candidates or []))
+    """Review reason for a no-year disc with same-name twins — lists every twin.
+
+    Uses ``.get()`` so a candidate list deserialized from a DB value with a
+    missing key degrades gracefully instead of raising (matches the access style
+    in the finalization-side wrong-show helpers).
+    """
+    listed = "; ".join(
+        f"{c.get('name', '?')} ({c.get('year') or '?'}, #{c.get('tmdb_id', '?')})"
+        for c in (candidates or [])
+    )
     return (
         f'"{name}" has multiple same-name shows on TMDB and the disc label has no '
         f"year to tell them apart: {listed}. Pick the correct one."
@@ -324,7 +332,7 @@ class IdentificationCoordinator:
                     _signal
                     and not _amb
                     and job.content_type == ContentType.TV
-                    and _should_flag_no_year(
+                    and should_flag_no_year(
                         _signal.all_candidates, _label_has_year(job.volume_label, disc_name)
                     )
                 )
@@ -613,7 +621,7 @@ class IdentificationCoordinator:
                     _amb_signal
                     and not _amb
                     and job.content_type == ContentType.TV
-                    and _should_flag_no_year(
+                    and should_flag_no_year(
                         _amb_signal.all_candidates, _label_has_year(job.volume_label)
                     )
                 )

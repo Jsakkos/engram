@@ -226,7 +226,7 @@ def _detect_same_name_candidates(query: str, results: list[dict]) -> list[dict] 
     return candidates
 
 
-def _should_flag_no_year(candidates: list[dict] | None, has_year: bool) -> bool:
+def should_flag_no_year(candidates: list[dict] | None, has_year: bool) -> bool:
     """Whether a no-year disc with a real same-name twin should be flagged for review.
 
     Backstop to the materiality gate: a label with no year can't pick between

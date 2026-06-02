@@ -43,12 +43,12 @@ _FRASIER_CANDS = [
 
 def test_should_flag_no_year_flags_dominant_twin_without_year():
     # No year on the disc label + a real twin (runner-up 5.7 >= floor 3.0) -> flag.
-    assert tc._should_flag_no_year(_FRASIER_CANDS, has_year=False) is True
+    assert tc.should_flag_no_year(_FRASIER_CANDS, has_year=False) is True
 
 
 def test_should_flag_no_year_skips_when_year_present():
     # A year disambiguates via popularity+year, so no proactive flag.
-    assert tc._should_flag_no_year(_FRASIER_CANDS, has_year=True) is False
+    assert tc.should_flag_no_year(_FRASIER_CANDS, has_year=True) is False
 
 
 def test_should_flag_no_year_skips_noise_runner_up():
@@ -56,12 +56,12 @@ def test_should_flag_no_year_skips_noise_runner_up():
         {"tmdb_id": 73586, "name": "Yellowstone", "year": "2018", "popularity": 159.7},
         {"tmdb_id": 19355, "name": "Yellowstone", "year": "2009", "popularity": 1.2},
     ]
-    assert tc._should_flag_no_year(noise, has_year=False) is False
+    assert tc.should_flag_no_year(noise, has_year=False) is False
 
 
 def test_should_flag_no_year_skips_without_twin():
-    assert tc._should_flag_no_year(None, has_year=False) is False
-    assert tc._should_flag_no_year([_FRASIER_CANDS[0]], has_year=False) is False
+    assert tc.should_flag_no_year(None, has_year=False) is False
+    assert tc.should_flag_no_year([_FRASIER_CANDS[0]], has_year=False) is False
 
 
 def _resp(results):
