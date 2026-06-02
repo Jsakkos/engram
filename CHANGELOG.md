@@ -4,13 +4,19 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
-_Highlights: discs for a revival or reboot that shares its name with an older show (for example the 2023 **Frasier** vs the 1993 original) are no longer silently matched against the wrong show's subtitles — Engram now flags them for review and suggests the right one._
+## [0.14.0] - 2026-06-02
+
+_Highlights: a one-click "Did you mean?" candidate picker for discs that share a name with another show (for example the 2023 **Frasier** vs the 1993 original) — pick the right show in the Re-Identify dialog without re-typing a TMDB search — plus matching fixes so a re-identified revival's episodes match and file correctly instead of being shunted to Extras or matched against the wrong show's subtitles._
+
+### Added
+
+- **One-click "Did you mean?" candidate picker when re-identifying a same-name disc** — when a disc is flagged for a same-name collision (for example a 2023 **Frasier** disc that was identified as the 1993 original), the Re-Identify dialog now shows the matching shows as quick-pick buttons. One click on _Frasier (2023)_ re-identifies the disc with the correct show, instead of having to re-type a TMDB search to find it. The free-text search remains as a fallback. (#291)
 
 ### Fixed
 
 - **Same-name shows could be silently identified as the wrong one** — a disc whose label has no year (e.g. `FRASIER_S1D1`) was matched to the more popular same-named show on TMDB, so a 2023 revival disc was treated as the 1993 original and every episode matched the wrong subtitles at random, landing in Review with an unhelpful "assign episodes manually" message. Engram now (1) flags a no-year disc that has a real same-name twin for review *before* ripping, suggesting which show to pick, and (2) as a backstop, when a whole TV disc matches no episodes at all and a same-name twin exists, surfaces a clear "this doesn't resemble *Show (year)* — did you mean *Show (other year)*? Re-identify to fix" review instead of the generic message — and it now reaches that review after a single full-coverage confirming match pass, instead of re-transcribing the disc three times over against the wrong show's subtitles first. Re-identifying to the correct show now reliably downloads that show's subtitles. (#287)
 - **Re-identifying a same-name revival could still misfile its episodes as "extras"** — after correcting a no-year disc to the right show in Review (e.g. the 2023 **Frasier** revival), the length check that separates real episodes from bonus features still looked up expected episode runtimes for the *original* same-named show. The revival's episodes didn't match any of the wrong show's runtimes, so they were treated as bonus material, filed into `Extras/`, and never episode-matched. That runtime check now uses the show you re-identified to, so the correct episodes are matched instead of being shunted to `Extras/`. (#292)
-- **Two same-name shows shared one subtitle cache folder** — downloaded reference subtitles were stored on disk by show *name* (`…/cache/data/Frasier/`), so if both a 1993 and a 2023 *Frasier* were ever processed their episodes landed in the same folder and the matcher could read one show's subtitles while identifying the other. The runtime subtitle cache is now keyed by the show's TMDB id (`…/cache/data/3452/` vs `…/cache/data/195241/`), completing the same-name isolation already applied to the shipped reference cache — the two shows can no longer cross-contaminate. Existing name-keyed caches still work (a show with no resolved id falls back to its name) and no cache rebuild is required.
+- **Two same-name shows shared one subtitle cache folder** — downloaded reference subtitles were stored on disk by show *name* (`…/cache/data/Frasier/`), so if both a 1993 and a 2023 *Frasier* were ever processed their episodes landed in the same folder and the matcher could read one show's subtitles while identifying the other. The runtime subtitle cache is now keyed by the show's TMDB id (`…/cache/data/3452/` vs `…/cache/data/195241/`), completing the same-name isolation already applied to the shipped reference cache — the two shows can no longer cross-contaminate. Existing name-keyed caches still work (a show with no resolved id falls back to its name) and no cache rebuild is required. (#288, #293)
 
 ## [0.13.2] - 2026-06-01
 
