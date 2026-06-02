@@ -80,12 +80,18 @@ class TestUpdateCheckerStates:
         import io
         import tarfile
 
+        # A realistic complete onedir layout: launcher + the sentinel files the
+        # extraction-integrity check requires (base_library.zip + certifi/cacert.pem).
         fake_archive = io.BytesIO()
         with tarfile.open(fileobj=fake_archive, mode="w:gz") as tar:
-            content = b"fake binary"
-            info = tarfile.TarInfo(name="engram/engram")
-            info.size = len(content)
-            tar.addfile(info, io.BytesIO(content))
+            for name, content in (
+                ("engram/engram", b"fake binary"),
+                ("engram/_internal/base_library.zip", b"fake zip"),
+                ("engram/_internal/certifi/cacert.pem", b"fake ca bundle"),
+            ):
+                info = tarfile.TarInfo(name=name)
+                info.size = len(content)
+                tar.addfile(info, io.BytesIO(content))
         fake_archive.seek(0)
         archive_bytes = fake_archive.read()
 
@@ -118,6 +124,9 @@ class TestUpdateCheckerStates:
         assert checker.state == UpdateStatus.READY
         assert checker.staging_path is not None
         assert checker.staging_path.exists()
+        # Atomic promote left a complete engram/ dir and cleaned up the temp dir.
+        assert (checker.staging_path / "engram" / "engram").exists()
+        assert not (checker.staging_path / ".incoming").exists()
 
     async def test_skipped_version_stays_skipped(self):
         """When GitHub returns a version the user previously skipped, state = SKIPPED."""
@@ -268,6 +277,271 @@ class TestUpdateCheckerStates:
         assert asset is not None
         assert asset["name"].endswith(".zip")
         assert "windows" in asset["name"]
+
+
+def _make_build(root: Path, *, complete: bool = True) -> Path:
+    """Create a fake extracted onedir build at root/engram. Returns the engram dir.
+
+    A complete build has the launcher + base_library.zip + certifi/cacert.pem
+    (the sentinels _verify_extracted requires). complete=False omits cacert.pem to
+    model the truncated 0.14.0 extraction.
+    """
+    eng = root / "engram"
+    (eng / "_internal" / "certifi").mkdir(parents=True, exist_ok=True)
+    (eng / "engram").write_bytes(b"bin")
+    (eng / "_internal" / "base_library.zip").write_bytes(b"z")
+    if complete:
+        (eng / "_internal" / "certifi" / "cacert.pem").write_bytes(b"ca")
+    return eng
+
+
+def _streaming_client(archive_bytes: bytes, sums_text: str = ""):
+    """An httpx.AsyncClient mock: .get returns sums_text, .stream yields archive_bytes."""
+    mock_sums = MagicMock()
+    mock_sums.raise_for_status = MagicMock()
+    mock_sums.text = sums_text
+
+    class FakeStream:
+        headers = {"content-length": str(len(archive_bytes))}
+
+        async def aiter_bytes(self, chunk_size=65536):
+            yield archive_bytes
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        def raise_for_status(self):
+            pass
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_sums)
+    mock_client.stream = MagicMock(return_value=FakeStream())
+    return mock_client
+
+
+def _manifest_client(
+    archive_bytes: bytes, manifest_url: str, manifest_text: str, sums_text: str = ""
+):
+    """Like _streaming_client, but .get routes by URL: manifest_url -> manifest_text,
+    anything else (the checksum file) -> sums_text. Used to exercise the manifest
+    fetch + enforcement path inside _download."""
+
+    def _resp(text):
+        r = MagicMock()
+        r.raise_for_status = MagicMock()
+        r.text = text
+        return r
+
+    async def _get(url, *args, **kwargs):
+        return _resp(manifest_text if url == manifest_url else sums_text)
+
+    class FakeStream:
+        headers = {"content-length": str(len(archive_bytes))}
+
+        async def aiter_bytes(self, chunk_size=65536):
+            yield archive_bytes
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        def raise_for_status(self):
+            pass
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(side_effect=_get)
+    mock_client.stream = MagicMock(return_value=FakeStream())
+    return mock_client
+
+
+class TestExtractionIntegrity:
+    """Atomic extraction + completeness verification (regression: truncated 0.14.0)."""
+
+    def test_verify_extracted_ok_with_sentinels(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sys, "platform", "linux")
+        eng = _make_build(tmp_path, complete=True)
+        UpdateChecker()._verify_extracted(eng, None)  # must not raise
+
+    def test_verify_extracted_missing_certifi_raises(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sys, "platform", "linux")
+        eng = _make_build(tmp_path, complete=False)  # no cacert.pem
+        with pytest.raises(UpdateError, match="incomplete"):
+            UpdateChecker()._verify_extracted(eng, None)
+
+    def test_verify_extracted_manifest_missing_file_raises(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sys, "platform", "linux")
+        eng = _make_build(tmp_path, complete=True)
+        # Manifest lists a file (onnxruntime) that wasn't extracted.
+        manifest = (
+            "aaaa  engram\n"
+            "bbbb  _internal/base_library.zip\n"
+            "cccc  _internal/certifi/cacert.pem\n"
+            "dddd  _internal/onnxruntime/onnxruntime.dll\n"
+        )
+        with pytest.raises(UpdateError, match="manifest file"):
+            UpdateChecker()._verify_extracted(eng, manifest)
+
+    def test_verify_extracted_manifest_all_present_ok(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sys, "platform", "linux")
+        eng = _make_build(tmp_path, complete=True)
+        manifest = (
+            "aaaa  engram\n"
+            "bbbb  _internal/base_library.zip\n"
+            "cccc *_internal/certifi/cacert.pem\n"  # binary-mode '*' prefix tolerated
+        )
+        UpdateChecker()._verify_extracted(eng, manifest)  # must not raise
+
+    async def test_partial_extraction_does_not_become_ready(self, monkeypatch, tmp_path):
+        """An incomplete extraction must end ERROR (never READY) and promote nothing."""
+        checker = UpdateChecker()
+        monkeypatch.setattr(checker, "_is_frozen", True)
+        monkeypatch.setattr("app.core.updater.STAGING_BASE", tmp_path)
+        monkeypatch.setattr(sys, "platform", "linux")
+
+        # Extraction yields a launcher-only tree (no _internal) -> incomplete.
+        def fake_extract(archive_path, dest_dir):
+            eng = dest_dir / "engram"
+            eng.mkdir(parents=True, exist_ok=True)
+            (eng / "engram").write_bytes(b"bin")
+
+        monkeypatch.setattr(checker, "_extract", fake_extract)
+
+        mock_client = _streaming_client(b"archive-bytes")
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            with patch.object(checker, "_broadcast", AsyncMock()):
+                await checker._download(FAKE_RELEASE)
+
+        assert checker.state == UpdateStatus.ERROR
+        assert checker.staging_path is None
+        # No half-extracted build was promoted under the staging base.
+        assert not any(p.name == "engram" for p in tmp_path.rglob("engram") if p.is_dir())
+
+    async def test_apply_update_reverifies_and_refuses_incomplete(self, monkeypatch, tmp_path):
+        """apply_update re-checks the staged dir and refuses to swap an incomplete build."""
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from sqlmodel import SQLModel
+
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        monkeypatch.setattr("app.core.updater.async_session", factory)
+        monkeypatch.setattr(sys, "platform", "linux")
+
+        staged = tmp_path / "staged"
+        _make_build(staged, complete=False)  # missing cacert.pem
+
+        checker = UpdateChecker()
+        checker._is_frozen = True
+        checker.state = UpdateStatus.READY
+        checker.staging_path = staged
+
+        called = {"restart": False}
+        monkeypatch.setattr(checker, "_restart_linux_macos", lambda: called.update(restart=True))
+        monkeypatch.setattr(checker, "_restart_windows", lambda: called.update(restart=True))
+
+        with pytest.raises(UpdateError, match="incomplete"):
+            await checker.apply_update()
+        assert called["restart"] is False
+
+    async def test_apply_update_complete_build_reaches_restart(self, monkeypatch, tmp_path):
+        """A complete staged build passes re-verification and proceeds to restart."""
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from sqlmodel import SQLModel
+
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        monkeypatch.setattr("app.core.updater.async_session", factory)
+        monkeypatch.setattr(sys, "platform", "linux")
+
+        staged = tmp_path / "staged"
+        _make_build(staged, complete=True)
+
+        checker = UpdateChecker()
+        checker._is_frozen = True
+        checker.state = UpdateStatus.READY
+        checker.staging_path = staged
+
+        called = {"restart": False}
+        monkeypatch.setattr(checker, "_restart_linux_macos", lambda: called.update(restart=True))
+
+        await checker.apply_update()
+        assert called["restart"] is True
+
+    async def test_download_fetches_and_enforces_manifest(self, monkeypatch, tmp_path):
+        """A release that ships a manifest: _download fetches it and rejects a build
+        missing a listed file — proving the manifest path is wired end to end."""
+        import io
+        import tarfile
+
+        checker = UpdateChecker()
+        monkeypatch.setattr(checker, "_is_frozen", True)
+        monkeypatch.setattr("app.core.updater.STAGING_BASE", tmp_path)
+        monkeypatch.setattr(sys, "platform", "linux")
+
+        # Complete-sentinel archive, but the manifest lists an extra file it lacks.
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, content in (
+                ("engram/engram", b"bin"),
+                ("engram/_internal/base_library.zip", b"z"),
+                ("engram/_internal/certifi/cacert.pem", b"ca"),
+            ):
+                info = tarfile.TarInfo(name=name)
+                info.size = len(content)
+                tar.addfile(info, io.BytesIO(content))
+        buf.seek(0)
+        archive_bytes = buf.read()
+
+        manifest_url = "https://example.com/engram-linux-x64.manifest.sha256"
+        manifest_text = (
+            "aaaa  engram\n"
+            "bbbb  _internal/base_library.zip\n"
+            "cccc  _internal/certifi/cacert.pem\n"
+            "dddd  _internal/onnxruntime/onnxruntime.dll\n"  # not in the archive
+        )
+        release = {
+            **FAKE_RELEASE,
+            "assets": FAKE_RELEASE["assets"]
+            + [{"name": "engram-linux-x64.manifest.sha256", "browser_download_url": manifest_url}],
+        }
+        mock_client = _manifest_client(archive_bytes, manifest_url, manifest_text)
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            with patch.object(checker, "_broadcast", AsyncMock()):
+                await checker._download(release)
+
+        # The manifest was fetched ...
+        assert any(
+            call.args and call.args[0] == manifest_url for call in mock_client.get.call_args_list
+        )
+        # ... and enforced: the sentinel files all exist, so the only thing that can
+        # fail is the manifest's missing onnxruntime entry -> rejected, never READY.
+        assert checker.state == UpdateStatus.ERROR
+        assert checker.staging_path is None
 
 
 class TestPruneStaging:

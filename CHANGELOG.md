@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The auto-updater could stage and apply an incomplete build, breaking the app** — if an update's extraction was interrupted (or files were removed afterward, e.g. by antivirus), Engram could leave a half-unpacked build that still looked "ready to install": the integrity check only validated the downloaded archive, never the unpacked files. Applying it would copy a broken build over your working install — in one case a build missing its TLS certificate bundle, which silently breaks every network request (update checks, TMDB, subtitle downloads). The updater now unpacks to a temporary location and only swaps it into place once the build is verified complete (against a per-release file manifest plus required-file sentinels), then re-checks completeness one more time immediately before applying — so a truncated or tampered update is refused instead of installed. As extra safeguards the TLS certificate bundle is now always bundled, the build toolchain is pinned, and the release smoke test fails if a build can't complete an HTTPS request.
+
 ## [0.14.0] - 2026-06-02
 
 _Highlights: a one-click "Did you mean?" candidate picker for discs that share a name with another show (for example the 2023 **Frasier** vs the 1993 original) — pick the right show in the Re-Identify dialog without re-typing a TMDB search — plus matching fixes so a re-identified revival's episodes match and file correctly instead of being shunted to Extras or matched against the wrong show's subtitles._
