@@ -47,7 +47,11 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
         run: |
-          title="${PR_TITLE:-$HEAD_MSG}"
+          # Clamp to the first line: head_commit.message carries the full body,
+          # and `grep '^'` matches the start of EVERY line, so a body line that
+          # begins `chore: release v` could false-positive. We only want to key
+          # on the commit subject (PR titles are already single-line).
+          title=$(printf '%s' "${PR_TITLE:-$HEAD_MSG}" | head -n1)
           echo "event=$EVENT_NAME title=$title"
           is_release=false
           if printf '%s' "$title" | grep -qE '^chore: release v[0-9]'; then

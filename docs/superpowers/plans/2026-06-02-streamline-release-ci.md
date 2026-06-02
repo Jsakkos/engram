@@ -139,6 +139,16 @@ If anything looks wrong between steps 2 and 3, the legacy contexts still exist a
 still report on normal PRs, so leaving protection on the 9 contexts (i.e. not
 running step 3) is a safe no-op fallback while the workflow change bakes.
 
+> **⚠️ Flip-window hazard — do NOT open a release PR between step 2 (merge) and
+> step 3 (PATCH).** In that window, branch protection still requires the 9 legacy
+> contexts, but a release-only PR (`is_release=true`) drops the Windows unit leg
+> via the dynamic matrix, so `Backend Tests (unit) (windows-latest)` never reports
+> → the release PR is permanently BLOCKED until the PATCH lands. Mitigation: run
+> step 3 **immediately** after merge (the agent/maintainer owns this), and don't
+> cut a release until `gh api .../required_status_checks` shows only `CI Gate`.
+> The repo is currently solo (no other contributors opening PRs), so the window is
+> safe in practice — this warning guards the "forgot to flip" scenario.
+
 ## Rollback story
 
 - **Protection only:** run the rollback PATCH (restores the 9 contexts).
