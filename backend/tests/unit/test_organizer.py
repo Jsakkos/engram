@@ -347,6 +347,13 @@ class TestNamingHelpers:
 
         assert format_tv_show_folder("", "Frasier", 1993, "3452") == "Frasier"
 
+    def test_show_folder_default_preserves_internal_double_space(self):
+        # Default "{show}" must be byte-identical to pre-feature behavior: a show
+        # name that sanitizes to a double space is NOT collapsed (no silent reloc).
+        from app.core.organizer import format_tv_show_folder
+
+        assert format_tv_show_folder("{show}", "Tom  Jerry", 1993, "3452") == "Tom  Jerry"
+
     def test_episode_filename_with_year(self):
         from app.core.organizer import format_episode_filename
 

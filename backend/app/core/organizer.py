@@ -77,15 +77,19 @@ def format_movie_folder(fmt: str, title: str, year: int | None) -> str:
 
 
 def _strip_empty_name_groups(name: str) -> str:
-    """Remove empty (), {..-}, [..-] groups left when year/tmdb_id are absent.
+    """Remove empty (), {..-}, [..-] groups left when year/tmdb_id are absent,
+    consuming the whitespace that preceded each removed group so no double space
+    is left behind. Does NOT collapse other internal whitespace — so a bare
+    default format ("{show}") yields a byte-identical folder to pre-feature
+    behavior (e.g. a sanitized "Tom  Jerry" double space is preserved).
 
-    e.g. "Frasier () {tmdb-}" -> "Frasier". A populated tag like "{tmdb-3452}"
-    is preserved (the char before '}' is a digit, not '-').
+    A populated tag like "{tmdb-3452}" is preserved (the char before '}' is a
+    digit, not '-'); genuinely non-empty parens like "(US)" are preserved too.
     """
-    name = re.sub(r"\(\s*\)", "", name)  # empty parens
-    name = re.sub(r"\{[^{}]*-\s*\}", "", name)  # empty Plex tag, e.g. {tmdb-}
-    name = re.sub(r"\[[^\[\]]*-\s*\]", "", name)  # empty Jellyfin tag, e.g. [tmdbid-]
-    return re.sub(r"\s+", " ", name).strip()
+    name = re.sub(r"\s*\(\s*\)", "", name)  # empty parens (+ leading ws)
+    name = re.sub(r"\s*\{[^{}]*-\s*\}", "", name)  # empty Plex tag, e.g. {tmdb-}
+    name = re.sub(r"\s*\[[^\[\]]*-\s*\]", "", name)  # empty Jellyfin tag, e.g. [tmdbid-]
+    return name.strip()
 
 
 def format_tv_show_folder(fmt: str, show: str, year: int | None, tmdb_id: str | int | None) -> str:
