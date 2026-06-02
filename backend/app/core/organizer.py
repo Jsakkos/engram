@@ -430,6 +430,7 @@ def organize_tv_episode(
     tmdb_id: str | None = None,
     ordering: str = "aired",
     episode_group_id: str | None = None,
+    year: int | None = None,
 ) -> dict:
     """Organize a ripped TV episode into the library.
 
@@ -447,6 +448,9 @@ def organize_tv_episode(
             canonical (#200).
         episode_group_id: Resolved TMDB group id for ``ordering`` (unused here;
             accepted so callers can pass the resolver's full result for audit).
+        year: First-air year used for same-name show disambiguation in the folder
+            name (e.g. Frasier 1993 vs 2023). Only affects the show folder when
+            the configured ``naming_tv_show_format`` includes ``{year}``.
 
     Returns:
         dict with 'success', 'final_path', 'error' keys
@@ -495,15 +499,22 @@ def organize_tv_episode(
 
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
+    show_folder = format_tv_show_folder(cfg.naming_tv_show_format, clean_show, year, tmdb_id)
     season_folder = format_season_folder(cfg.naming_season_format, out_season)
     ep_stem = format_episode_filename(
-        cfg.naming_episode_format, clean_show, out_season, out_episode
+        cfg.naming_episode_format,
+        clean_show,
+        out_season,
+        out_episode,
+        year=year,
+        tmdb_id=tmdb_id,
     )
     filename = f"{ep_stem}.mkv"
 
-    # Build destination path
+    # Build destination path. The show folder may carry year/tmdb-id so same-name
+    # shows (Frasier 1993 vs 2023) coexist; default "{show}" == bare clean_show.
     library_path = Path(library_path)
-    dest_dir = library_path / clean_show / season_folder
+    dest_dir = library_path / show_folder / season_folder
     dest_file = dest_dir / filename
 
     logger.info(f"Organizing TV episode: {source_file.name} -> {dest_file}")
@@ -537,6 +548,9 @@ def organize_tv_extras(
     disc_number: int = 1,
     extra_index: int = 1,
     title_index: int | None = None,
+    *,
+    year: int | None = None,
+    tmdb_id: str | int | None = None,
 ) -> dict:
     """Organize a ripped TV extra/bonus content into the library Extras folder.
 
@@ -571,6 +585,9 @@ def organize_tv_extras(
 
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
+    # Use the SAME disambiguated show folder as organize_tv_episode so an extra
+    # and its episodes land under one show folder (TV-organize-paths-sync hazard).
+    show_folder = format_tv_show_folder(cfg.naming_tv_show_format, clean_show, year, tmdb_id)
     season_folder = format_season_folder(cfg.naming_season_format, season)
 
     if title_index is not None:
@@ -580,7 +597,7 @@ def organize_tv_extras(
 
     # Build destination path
     library_path = Path(library_path)
-    dest_dir = library_path / clean_show / season_folder / "Extras"
+    dest_dir = library_path / show_folder / season_folder / "Extras"
     dest_file = dest_dir / extra_name
 
     logger.info(f"Organizing TV extra: {source_file.name} -> {dest_file}")
@@ -615,12 +632,13 @@ class TVOrganizer:
         tmdb_id: str | None = None,
         ordering: str = "aired",
         episode_group_id: str | None = None,
+        year: int | None = None,
     ) -> dict:
         """Organize a TV episode from staging to library.
 
-        Forwards the output-ordering controls to organize_tv_episode so the
-        library-mode path (no explicit library_path) also honors the chosen
-        ordering. episode_code stays canonical; only the filename is projected.
+        Forwards the output-ordering controls AND show disambiguation (year/tmdb_id)
+        to organize_tv_episode so the library-mode path (no explicit library_path)
+        also honors them. episode_code stays canonical; only the filename is projected.
         """
         return organize_tv_episode(
             source_file,
@@ -629,6 +647,7 @@ class TVOrganizer:
             tmdb_id=tmdb_id,
             ordering=ordering,
             episode_group_id=episode_group_id,
+            year=year,
         )
 
     def organize_batch(
