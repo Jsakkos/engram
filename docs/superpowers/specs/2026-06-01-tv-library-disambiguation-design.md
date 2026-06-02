@@ -114,15 +114,44 @@ tmdb_year: int | None = Field(default=None)
 Auto-migrated for existing/end-user DBs by `database.py` `_add_missing_columns` (frozen builds
 skip Alembic — the reconciler is what reaches users; see memory note on frozen-build migrations).
 
-Population:
-- Add `year: int | None` to `DiscAnalysisResult` (`analyst.py:96`). The Analyst sets it from the
-  chosen candidate's `first_air_date` (the `TmdbSignal.candidates`/`all_candidates` dicts already
-  carry `year`, classifier.py:201), with `fetch_show_details(tmdb_id)["first_air_date"][:4]` as
-  the fallback for the unambiguous single-match path.
-- Persist `job.tmdb_year = analysis.year` at the same sites that set `tmdb_id`/`tmdb_name`
-  (`identification_coordinator.py` ~156, ~465, and the DiscDB-signal path ~697/~708 where year is
-  resolved from the signal/details).
-- Re-identify already computes `tmdb_year` (`routes.py:1854`); also write it onto the job there.
+Population — a single helper in `identification_coordinator.py`, no analyst/classifier changes:
+
+```python
+def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
+    """First-air year for a show. No-network fast path via same-name candidates
+    (each carries a 'year' string), else cached TMDB details."""
+    if not tmdb_id:
+        return None
+    cands = getattr(signal, "all_candidates", None) if signal else None
+    for c in cands or []:
+        if c.get("tmdb_id") == tmdb_id:
+            y = (c.get("year") or "").strip()
+            if y.isdigit():
+                return int(y)
+    from app.matcher.tmdb_client import fetch_show_details
+    details = fetch_show_details(tmdb_id)
+    if details:
+        fa = (details.get("first_air_date") or "")[:4]
+        if fa.isdigit():
+            return int(fa)
+    return None
+```
+
+Call it (wrapped in `asyncio.to_thread`, since `fetch_show_details` blocks) right after each
+`job.tmdb_id = …` assignment:
+- main identify flow — `identification_coordinator.py:200` (signal = local `tmdb_signal`)
+- staging-import flow — `:555` (signal = `getattr(analysis, "_tmdb_signal", None)`)
+- re-identify / name-correction — `:830` (manual id, no signal → details fallback) and `:841`
+  (re-search `signal`). This is the path `POST /jobs/{id}/re-identify` →
+  `job_manager.re_identify_job` reaches, so re-identify is covered here — **no routes.py change**.
+
+> **Correction (vs. earlier draft):** `candidates_json` *does* exist — it was added by the
+> #287/#288 same-name-collision work and persists `{tmdb_id, name, year, popularity}` for every
+> same-name twin (classifier.py builds the dict at ~199-203; `identification_coordinator` sets the
+> column at `:202` / `:557`). So the Frasier case resolves its year with **zero extra network** via
+> the fast path. No `DiscAnalysisResult`/Analyst/classifier change is needed. (The earlier draft's
+> claim that `candidates_json` didn't exist and that re-identify lived in `routes.py:1854` was based
+> on a stale checkout; `routes.py:1851` is the unrelated bootstrap-library response builder.)
 
 Reading directly off the persisted `job.tmdb_year` at organize time means **no per-sweep TMDB
 fetch** and a stable folder name.
@@ -163,13 +192,13 @@ gains `tmdb_id`. `TVOrganizer.organize` forwards `year` (and `tmdb_id`, already 
 
 ### 4. finalization_coordinator — three call sites in sync
 
-All three TV-organize sites pass `year=job.tmdb_year`; the two `organize_tv_extras` calls also
-gain `tmdb_id=` so the Extras folder matches the episode folder:
-- auto-flow `finalize_disc_job` (~727 extras, ~741 episode, ~752 `tv_organizer.organize`)
-- `process_matched_titles` (~1083 extras, ~1096 episode, ~1107 `tv_organizer.organize`)
-- `_finalize_tv_if_resolved` review path (~1269 extras, ~1282 episode, ~1293 `tv_organizer.organize`)
+All three TV-organize sites pass `year=_tmdb_year`; the two `organize_tv_extras` calls also gain
+`tmdb_id=_tmdb_id_str` so the Extras folder matches the episode folder. Worktree line numbers:
+- auto-flow `finalize_disc_job` — preamble `:814-815`; extras `:839`, episode `:850`, `tv_organizer.organize` `:861`
+- `_finalize_tv_if_resolved` review path — preamble `:1173-1174`; extras `:1192`, episode `:1205`, `tv_organizer.organize` `:1216`
+- `process_matched_titles` — preamble `:1359-1360`; extras `:1378`, episode `:1391`, `tv_organizer.organize` `:1402`
 
-(`_tmdb_id_str` is already computed per sweep at these sites; add the analogous `job.tmdb_year` read.)
+(`_tmdb_id_str` is already computed at each preamble; add `_tmdb_year = job.tmdb_year` beside it.)
 
 ## Testing
 
