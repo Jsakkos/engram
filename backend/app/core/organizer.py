@@ -13,7 +13,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Allowed placeholders for naming format strings
-ALLOWED_TV_PLACEHOLDERS = {"show", "season", "episode"}
+ALLOWED_TV_PLACEHOLDERS = {"show", "season", "episode"}  # season folder format
+# Show *folder* format — adds year/tmdb_id for same-name disambiguation
+# (Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]").
+ALLOWED_TV_SHOW_PLACEHOLDERS = {"show", "year", "tmdb_id"}
+# Episode *filename* format — widened so the year can opt into the filename too.
+ALLOWED_EPISODE_PLACEHOLDERS = {"show", "season", "episode", "year", "tmdb_id"}
 ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year"}
 
 
@@ -26,12 +31,34 @@ def format_season_folder(fmt: str, season: int) -> str:
     return sanitize_filename(result)
 
 
-def format_episode_filename(fmt: str, show: str, season: int, episode: int) -> str:
-    """Format an episode filename from a config format string."""
+def format_episode_filename(
+    fmt: str,
+    show: str,
+    season: int,
+    episode: int,
+    *,
+    year: int | None = None,
+    tmdb_id: str | int | None = None,
+) -> str:
+    """Format an episode filename from a config format string.
+
+    ``year``/``tmdb_id`` are optional placeholders ({year}, {tmdb_id}). When the
+    chosen format omits them they are ignored; when year is missing, an empty
+    ``()`` left behind is stripped (mirrors ``format_movie_folder``). The default
+    format ("{show} - SxxExx") is unaffected.
+    """
     try:
-        result = fmt.format(show=show, season=season, episode=episode)
+        result = fmt.format(
+            show=show,
+            season=season,
+            episode=episode,
+            year=year or "",
+            tmdb_id=tmdb_id or "",
+        )
     except (KeyError, ValueError, IndexError):
         result = f"{show} - S{season:02d}E{episode:02d}"
+    result = re.sub(r"\(\s*\)", "", result)
+    result = re.sub(r"\s+", " ", result).strip()
     return sanitize_filename(result)
 
 
@@ -44,6 +71,36 @@ def format_movie_folder(fmt: str, title: str, year: int | None) -> str:
     # Clean up trailing empty parens if year is None
     result = re.sub(r"\s*\(\s*\)\s*$", "", result).strip()
     return sanitize_filename(result)
+
+
+def _strip_empty_name_groups(name: str) -> str:
+    """Remove empty (), {..-}, [..-] groups left when year/tmdb_id are absent.
+
+    e.g. "Frasier () {tmdb-}" -> "Frasier". A populated tag like "{tmdb-3452}"
+    is preserved (the char before '}' is a digit, not '-').
+    """
+    name = re.sub(r"\(\s*\)", "", name)  # empty parens
+    name = re.sub(r"\{[^{}]*-\s*\}", "", name)  # empty Plex tag, e.g. {tmdb-}
+    name = re.sub(r"\[[^\[\]]*-\s*\]", "", name)  # empty Jellyfin tag, e.g. [tmdbid-]
+    return re.sub(r"\s+", " ", name).strip()
+
+
+def format_tv_show_folder(fmt: str, show: str, year: int | None, tmdb_id: str | int | None) -> str:
+    """Format the show *directory* name from a config format string.
+
+    Mirrors ``format_movie_folder`` but adds a ``{tmdb_id}`` placeholder for
+    media-server disambiguation (Plex ``{tmdb-NNNN}`` / Jellyfin ``[tmdbid-NNNN]``).
+    Empty groups are stripped when year/id are missing, so the stable id tag never
+    degrades to ``Frasier {tmdb-}``. A falsy/empty ``fmt`` (e.g. an existing DB that
+    backfilled '') falls back to the bare show name == current behavior.
+    """
+    if not fmt:
+        return sanitize_filename(show)
+    try:
+        result = fmt.format(show=show, year=year or "", tmdb_id=tmdb_id or "")
+    except (KeyError, ValueError, IndexError):
+        result = show
+    return sanitize_filename(_strip_empty_name_groups(result))
 
 
 def validate_naming_format(fmt: str, allowed: set[str]) -> str | None:

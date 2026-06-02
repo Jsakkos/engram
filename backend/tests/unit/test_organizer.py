@@ -297,3 +297,103 @@ class TestTVOrderingProjection:
                 ordering="dvd",
             )
         assert result["final_path"].name == "Firefly - S01E11.mkv"
+
+
+class TestNamingHelpers:
+    """format_tv_show_folder, widened placeholders, episode-filename year."""
+
+    def test_show_folder_plex_full(self):
+        from app.core.organizer import format_tv_show_folder
+
+        fmt = "{show} ({year}) {{tmdb-{tmdb_id}}}"
+        assert format_tv_show_folder(fmt, "Frasier", 1993, "3452") == "Frasier (1993) {tmdb-3452}"
+
+    def test_show_folder_jellyfin_full(self):
+        from app.core.organizer import format_tv_show_folder
+
+        fmt = "{show} ({year}) [tmdbid-{tmdb_id}]"
+        assert (
+            format_tv_show_folder(fmt, "Frasier", 2023, "195241")
+            == "Frasier (2023) [tmdbid-195241]"
+        )
+
+    def test_show_folder_missing_year_keeps_id(self):
+        from app.core.organizer import format_tv_show_folder
+
+        fmt = "{show} ({year}) {{tmdb-{tmdb_id}}}"
+        assert format_tv_show_folder(fmt, "Frasier", None, "3452") == "Frasier {tmdb-3452}"
+
+    def test_show_folder_jellyfin_missing_id_strips_tag(self):
+        from app.core.organizer import format_tv_show_folder
+
+        fmt = "{show} ({year}) [tmdbid-{tmdb_id}]"
+        assert format_tv_show_folder(fmt, "Frasier", 1993, None) == "Frasier (1993)"
+
+    def test_show_folder_missing_both_is_bare(self):
+        from app.core.organizer import format_tv_show_folder
+
+        fmt = "{show} ({year}) {{tmdb-{tmdb_id}}}"
+        assert format_tv_show_folder(fmt, "Frasier", None, None) == "Frasier"
+
+    def test_show_folder_default_is_bare(self):
+        from app.core.organizer import format_tv_show_folder
+
+        assert format_tv_show_folder("{show}", "Frasier", 1993, "3452") == "Frasier"
+
+    def test_show_folder_empty_format_falls_back_to_bare(self):
+        # Existing DBs may have backfilled '' for this column; degrade, don't break.
+        from app.core.organizer import format_tv_show_folder
+
+        assert format_tv_show_folder("", "Frasier", 1993, "3452") == "Frasier"
+
+    def test_episode_filename_with_year(self):
+        from app.core.organizer import format_episode_filename
+
+        out = format_episode_filename(
+            "{show} ({year}) - S{season:02d}E{episode:02d}", "Frasier", 1, 2, year=1993
+        )
+        assert out == "Frasier (1993) - S01E02"
+
+    def test_episode_filename_year_missing_strips_parens(self):
+        from app.core.organizer import format_episode_filename
+
+        out = format_episode_filename(
+            "{show} ({year}) - S{season:02d}E{episode:02d}", "Frasier", 1, 2, year=None
+        )
+        assert out == "Frasier - S01E02"
+
+    def test_episode_filename_default_unchanged(self):
+        from app.core.organizer import format_episode_filename
+
+        out = format_episode_filename("{show} - S{season:02d}E{episode:02d}", "Frasier", 1, 2)
+        assert out == "Frasier - S01E02"
+
+    def test_placeholder_sets_validate(self):
+        from app.core.organizer import (
+            ALLOWED_EPISODE_PLACEHOLDERS,
+            ALLOWED_TV_SHOW_PLACEHOLDERS,
+            validate_naming_format,
+        )
+
+        assert ALLOWED_TV_SHOW_PLACEHOLDERS == {"show", "year", "tmdb_id"}
+        assert {"year", "tmdb_id"} <= ALLOWED_EPISODE_PLACEHOLDERS
+        assert (
+            validate_naming_format(
+                "{show} ({year}) {{tmdb-{tmdb_id}}}", ALLOWED_TV_SHOW_PLACEHOLDERS
+            )
+            is None
+        )
+        assert (
+            validate_naming_format(
+                "{show} ({year}) [tmdbid-{tmdb_id}]", ALLOWED_TV_SHOW_PLACEHOLDERS
+            )
+            is None
+        )
+        assert (
+            validate_naming_format(
+                "{show} ({year}) - S{season:02d}E{episode:02d}", ALLOWED_EPISODE_PLACEHOLDERS
+            )
+            is None
+        )
+        # Unknown placeholder still rejected.
+        assert validate_naming_format("{bogus}", ALLOWED_TV_SHOW_PLACEHOLDERS) is not None
