@@ -355,10 +355,13 @@ class TestPrecomputedCache:
 
         precomputed = cache_dir / "precomputed"
         precomputed.mkdir(parents=True, exist_ok=True)
+        # v3 manifest entries carry a "name" used to resolve a show when no
+        # tmdb_id is supplied; inject it from the key for these minimal fixtures.
+        shows = {k: ({"name": k, **v}) for k, v in (shows or {}).items()}
         manifest = {
             "cache_format_version": CACHE_FORMAT_VERSION if valid else "BOGUS",
             "vectorizer_config_hash": vectorizer_config_hash(),
-            "shows": shows or {},
+            "shows": shows,
         }
         (precomputed / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         return manifest
@@ -429,6 +432,9 @@ class TestStaleManifestPruning:
 
         precomputed = cache_dir / "precomputed"
         precomputed.mkdir(parents=True, exist_ok=True)
+        # v3 manifest entries carry a "name" used to resolve a show when no
+        # tmdb_id is supplied; inject it from the key for these minimal fixtures.
+        shows = {k: ({"name": k, **v}) for k, v in shows.items()}
         manifest = {
             "cache_format_version": CACHE_FORMAT_VERSION,
             "vectorizer_config_hash": vectorizer_config_hash(),

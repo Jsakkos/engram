@@ -102,7 +102,7 @@ def _build_precomputed_tree(root) -> dict:
         "vectorizer_config_hash": vectorizer_config_hash(),
         "content_version": _CONTENT_VERSION,
         "n_features": HASHING_N_FEATURES,
-        "shows": {_SHOW: {"tmdb_id": 1, "seasons": [1], "episode_counts": {"1": 3}}},
+        "shows": {_SHOW: {"tmdb_id": 1, "name": _SHOW, "seasons": [1], "episode_counts": {"1": 3}}},
     }
     (precomputed / _MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
     return manifest

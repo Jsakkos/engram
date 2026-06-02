@@ -2,19 +2,18 @@
 
 Unlike ``scripts/build_subtitle_cache.py``, this NEVER downloads subtitles. It
 walks the local subtitle cache (``<cache>/data/<show>/<show> - SxxExx.srt``),
-reduces every episode to the shared v2 hashed-TF-IDF vector format, verifies the
-artifact, and optionally publishes it to the rolling GitHub release. Use it to
-ship whatever is already on disk -- including shows added manually that
+reduces every episode to the shared hashed-TF-IDF vector format (cache v3),
+verifies the artifact, and optionally publishes it to the rolling GitHub release.
+Use it to ship whatever is already on disk -- including shows added manually that
 popularity-mode selection in ``build_subtitle_cache.py`` would never pick.
 
-Show directories are stored under *sanitized* names (``sanitize_filename`` maps
-``:`` -> `` -``, ``/`` -> ``-``, ...), but the runtime matcher looks the cache up
-by the *canonical* TMDB show name (``manifest["shows"][show_name]``). By default
-each show dir is resolved to its canonical name via TMDB (cache-first; this is
-metadata only, never a subtitle download) and accepted only if it sanitizes back
-to the dir name -- guaranteeing the runtime lookup + on-disk subdir handshake.
-``--offline`` skips TMDB entirely and keys the manifest by the dir name; shows
-whose real title contains ``:`` or ``/`` then won't be matched at runtime.
+Show directories on disk are stored under *sanitized* names, but the published
+cache (v3) is keyed by ``tmdb_id`` so two same-named shows (Frasier 1993 vs the
+2023 revival) never collide. Each dir is resolved to its canonical TMDB
+title+id (cache-first; metadata only, never a subtitle download); the precomputed
+subdir + manifest key become ``str(tmdb_id)`` and the canonical name is stored in
+the entry for runtime name resolution. ``--offline`` skips TMDB and falls back to
+keying by the sanitized dir name (so same-named shows can still collide offline).
 
 Usage (from backend/):
     uv run python scripts/pack_subtitle_cache.py            # build + verify
@@ -55,7 +54,7 @@ from app.matcher.subtitle_utils import (
 from app.matcher.subtitle_utils import (
     SINGLE_EP_RE as _SINGLE_EP_RE,
 )
-from app.matcher.subtitle_utils import sanitize_filename
+from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
@@ -173,9 +172,13 @@ def _verify(precomputed_dir: Path, output_path: Path, manifest: dict) -> None:
                 raise SystemExit(f"verify: row/index mismatch for {key} S{season:02d}")
 
     # End-to-end consumer round-trip: extract the tarball and load it through the
-    # exact runtime path. Prefer a colon-titled show -- that's the case a dir-name
-    # key would silently break.
-    sample_keys = [k for k in manifest["shows"] if ":" in k or "/" in k][:1]
+    # exact runtime path. v3 keys by tmdb_id, so prefer a show whose NAME has
+    # special characters (a name-resolution edge) plus a couple of others.
+    sample_keys = [
+        k
+        for k, e in manifest["shows"].items()
+        if ":" in e.get("name", "") or "/" in e.get("name", "")
+    ][:1]
     sample_keys += [k for k in manifest["shows"] if k not in sample_keys][:2]
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -186,8 +189,15 @@ def _verify(precomputed_dir: Path, output_path: Path, manifest: dict) -> None:
             # project already standardizes on 3.11.4+ for tarball extraction.
             tar.extractall(tmp_path, filter="data")
         for key in sample_keys:
-            matcher = EpisodeMatcher(cache_dir=tmp_path, show_name=key)
-            season = manifest["shows"][key]["seasons"][0]
+            entry = manifest["shows"][key]
+            # v3: load via the runtime path keyed by tmdb_id (the manifest key),
+            # passing the canonical name as the matcher's show_name.
+            matcher = EpisodeMatcher(
+                cache_dir=tmp_path,
+                show_name=entry.get("name", key),
+                expected_tmdb_id=entry.get("tmdb_id"),
+            )
+            season = entry["seasons"][0]
             loaded = matcher.load_precomputed_season(season)
             if loaded is None or loaded[0].shape[0] == 0:
                 raise SystemExit(f"verify: consumer round-trip failed for {key} S{season:02d}")
@@ -256,9 +266,12 @@ def main() -> int:
     fallbacks: list[str] = []
 
     for dir_name, by_season in discovered.items():
-        key, tmdb_id, resolved = _resolve_canonical(dir_name, args.offline)
+        canonical, tmdb_id, resolved = _resolve_canonical(dir_name, args.offline)
         if not args.offline and not resolved:
             fallbacks.append(dir_name)
+        # v3: dir + manifest key by tmdb_id (falls back to the sanitized name when
+        # offline / unresolved). The canonical name is stored for name resolution.
+        corpus_key = corpus_dir_name(tmdb_id, canonical)
 
         show_seasons: list[int] = []
         episode_counts: dict[str, int] = {}
@@ -273,13 +286,14 @@ def main() -> int:
             if not texts:
                 continue
             counts = hv.transform(texts)  # raw hashed term counts
-            blocks.append((key, season, codes, counts))
+            blocks.append((corpus_key, season, codes, counts))
             show_seasons.append(season)
             episode_counts[str(season)] = len(codes)
 
         if show_seasons:
-            manifest_shows[key] = {
+            manifest_shows[corpus_key] = {
                 "tmdb_id": tmdb_id,
+                "name": canonical,
                 "seasons": show_seasons,
                 "episode_counts": episode_counts,
             }
@@ -296,8 +310,8 @@ def main() -> int:
 
     # --- Write per-(show, season) uint16 hashed-count matrices (cache v2) -----
     u16_max = np.iinfo(np.uint16).max
-    for show_name, season, codes, counts in blocks:
-        show_dir = precomputed_dir / sanitize_filename(show_name)
+    for corpus_key, season, codes, counts in blocks:
+        show_dir = precomputed_dir / sanitize_filename(corpus_key)
         show_dir.mkdir(parents=True, exist_ok=True)
         counts_u16 = sparse.csr_matrix(
             (

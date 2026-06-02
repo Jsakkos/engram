@@ -97,8 +97,9 @@ class TestEpisodeMatcherCacheLoader:
     def _write_cache(self, tmp_path, manifest_overrides=None):
         """Write a minimal valid precomputed cache under tmp_path. Returns the show name."""
         show = "Test Show"
+        tmdb_id = 1
         precomputed = tmp_path / "precomputed"
-        show_dir = precomputed / show  # sanitize_filename("Test Show") == "Test Show"
+        show_dir = precomputed / str(tmdb_id)  # v3: dirs keyed by tmdb_id
         show_dir.mkdir(parents=True)
 
         counts, idf = _build_counts()
@@ -110,7 +111,7 @@ class TestEpisodeMatcherCacheLoader:
             "cache_format_version": CACHE_FORMAT_VERSION,
             "vectorizer_config_hash": vectorizer_config_hash(),
             "content_version": "test",
-            "shows": {show: {"tmdb_id": 1, "seasons": [1]}},
+            "shows": {str(tmdb_id): {"tmdb_id": tmdb_id, "name": show, "seasons": [1]}},
         }
         manifest.update(manifest_overrides or {})
         (precomputed / "manifest.json").write_text(json.dumps(manifest))
@@ -157,8 +158,9 @@ class TestPrecomputedCoversSeason:
 
     def _write_cache(self, tmp_path, manifest_overrides=None, write_files=True):
         show = "Test Show"
+        tmdb_id = 1
         precomputed = tmp_path / "precomputed"
-        show_dir = precomputed / show  # sanitize_filename("Test Show") == "Test Show"
+        show_dir = precomputed / str(tmdb_id)  # v3: dirs keyed by tmdb_id
         show_dir.mkdir(parents=True)
 
         if write_files:
@@ -171,7 +173,7 @@ class TestPrecomputedCoversSeason:
             "cache_format_version": CACHE_FORMAT_VERSION,
             "vectorizer_config_hash": vectorizer_config_hash(),
             "content_version": "test",
-            "shows": {show: {"tmdb_id": 1, "seasons": [1]}},
+            "shows": {str(tmdb_id): {"tmdb_id": tmdb_id, "name": show, "seasons": [1]}},
         }
         manifest.update(manifest_overrides or {})
         (precomputed / "manifest.json").write_text(json.dumps(manifest))
