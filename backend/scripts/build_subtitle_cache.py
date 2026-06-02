@@ -52,8 +52,8 @@ from rich.progress import (
 from scipy import sparse
 
 from app.matcher import coverage_tracker
-from app.matcher.episode_identification import SubtitleCache
-from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts, sanitize_filename
+from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
+from app.matcher.subtitle_utils import discover_season_srts, sanitize_filename
 from app.matcher.testing_service import download_subtitles, get_last_quota, probe_os_quota
 from app.matcher.tmdb_client import (
     fetch_show_details,
@@ -646,8 +646,10 @@ def main() -> int:
     # .npz collapses the long runs of 1s much better than it ever could on
     # floats — measured ~85% reduction (~8 KB/episode vs. ~66 KB for v1).
     u16_max = np.iinfo(np.uint16).max
-    for tmdb_id_b, show_name, season, codes, counts in blocks:
-        show_dir = precomputed_dir / corpus_dir_name(tmdb_id_b, show_name)
+    for tmdb_id_b, _show_name, season, codes, counts in blocks:
+        # Write to the runtime's canonical id-keyed dir (matches the str(tmdb_id)
+        # manifest key) via the shared formula so write/read can't drift.
+        show_dir = _corpus_show_dir(cache_dir, str(tmdb_id_b))
         show_dir.mkdir(parents=True, exist_ok=True)
         # HashingVectorizer emits float64 counts even with alternate_sign=False;
         # cast to uint16 (clipped defensively — real per-episode token counts

@@ -85,10 +85,19 @@ def _resolve_corpus_entry(manifest, show_name: str, tmdb_id):
         return None, None
     if tmdb_id is not None and str(tmdb_id) in shows:
         return str(tmdb_id), shows[str(tmdb_id)]
-    for key, entry in shows.items():
-        if entry.get("name") == show_name:
-            return key, entry
-    return None, None
+    # No (or unknown) tmdb_id: fall back to matching the stored name. A v3 corpus
+    # can legitimately hold two same-named shows (Frasier 1993 + 2023 revival), so
+    # warn when the name is ambiguous — we can only return the first match.
+    name_matches = [(key, entry) for key, entry in shows.items() if entry.get("name") == show_name]
+    if not name_matches:
+        return None, None
+    if len(name_matches) > 1:
+        logger.warning(
+            f"Corpus name-fallback for {show_name!r} is ambiguous across keys "
+            f"{[k for k, _ in name_matches]} (no tmdb_id supplied); using the first. "
+            f"Supply tmdb_id to pick the right same-named show."
+        )
+    return name_matches[0]
 
 
 def _corpus_show_dir(cache_dir, key: str) -> Path:

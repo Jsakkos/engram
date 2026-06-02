@@ -166,16 +166,28 @@ def validate(assets_dir: Path) -> ValidationResult:
             sanitize_filename = None  # type: ignore[assignment]
 
         if sanitize_filename is not None:
-            for show_name, entry in shows.items():
-                seasons = (entry or {}).get("seasons", []) if isinstance(entry, dict) else []
-                show_slug = sanitize_filename(show_name)
+            # v3: shows is keyed by str(tmdb_id); each entry must carry a "name"
+            # so the runtime's name-fallback (when a job has no resolved tmdb_id)
+            # can still find the corpus. A missing name silently strands the show.
+            for corpus_key, entry in shows.items():
+                if not isinstance(entry, dict):
+                    failures.append(f"manifest shows entry {corpus_key!r} is not a dict")
+                    continue
+                show_display = entry.get("name") or corpus_key
+                if not entry.get("name"):
+                    failures.append(
+                        f"manifest shows entry {corpus_key!r} is missing the required "
+                        f"'name' field (runtime name-fallback would never find it)"
+                    )
+                seasons = entry.get("seasons", [])
+                show_slug = sanitize_filename(corpus_key)
                 for season in seasons:
                     npz_member = f"precomputed/{show_slug}/S{season:02d}.npz"
                     idx_member = f"precomputed/{show_slug}/S{season:02d}.index.json"
                     missing_files = [m for m in (npz_member, idx_member) if m not in members]
                     if missing_files:
                         failures.append(
-                            f"manifest lists {show_name!r} S{season:02d} but the tarball "
+                            f"manifest lists {show_display!r} S{season:02d} but the tarball "
                             f"is missing {missing_files}"
                         )
 

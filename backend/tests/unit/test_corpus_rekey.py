@@ -68,6 +68,42 @@ def test_resolve_corpus_entry_by_id_and_by_name():
     assert _resolve_corpus_entry(manifest, "Cheers", 999) == (None, None)
 
 
+def test_name_fallback_warns_on_ambiguity():
+    # Two same-named shows in a v3 corpus + no tmdb_id: we can only return the
+    # first, so a warning must fire (silently picking the wrong twin's vectors
+    # would produce confident-but-wrong episode codes).
+    from loguru import logger as loguru_logger
+
+    manifest = {
+        "shows": {
+            "3452": {"tmdb_id": 3452, "name": "Frasier", "seasons": [1]},
+            "195241": {"tmdb_id": 195241, "name": "Frasier", "seasons": [1]},
+        }
+    }
+    msgs: list[str] = []
+    sink = loguru_logger.add(lambda m: msgs.append(str(m)), level="WARNING")
+    try:
+        key, entry = _resolve_corpus_entry(manifest, "Frasier", None)
+    finally:
+        loguru_logger.remove(sink)
+    assert key in ("3452", "195241") and entry is not None
+    assert any("ambiguous" in m.lower() for m in msgs)
+
+
+def test_name_fallback_silent_when_unambiguous():
+    from loguru import logger as loguru_logger
+
+    manifest = {"shows": {"3452": {"tmdb_id": 3452, "name": "Frasier", "seasons": [1]}}}
+    msgs: list[str] = []
+    sink = loguru_logger.add(lambda m: msgs.append(str(m)), level="WARNING")
+    try:
+        key, _ = _resolve_corpus_entry(manifest, "Frasier", None)
+    finally:
+        loguru_logger.remove(sink)
+    assert key == "3452"
+    assert not any("ambiguous" in m.lower() for m in msgs)
+
+
 def test_same_name_shows_get_distinct_corpora(tmp_path):
     _write_corpus(
         tmp_path,

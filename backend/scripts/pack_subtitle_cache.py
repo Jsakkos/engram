@@ -47,7 +47,11 @@ from build_subtitle_cache import _bootstrap_config_from_env, _ensure_db_schema
 from loguru import logger
 from scipy import sparse
 
-from app.matcher.episode_identification import EpisodeMatcher, SubtitleCache
+from app.matcher.episode_identification import (
+    EpisodeMatcher,
+    SubtitleCache,
+    _corpus_show_dir,
+)
 from app.matcher.subtitle_utils import (
     MULTI_EP_RE as _MULTI_EP_RE,
 )
@@ -308,10 +312,12 @@ def main() -> int:
     np.save(precomputed_dir / "idf.npy", idf)
     logger.info(f"Global IDF fit over {all_counts.shape[0]} episodes")
 
-    # --- Write per-(show, season) uint16 hashed-count matrices (cache v2) -----
+    # --- Write per-(show, season) uint16 hashed-count matrices (cache v3) -----
     u16_max = np.iinfo(np.uint16).max
     for corpus_key, season, codes, counts in blocks:
-        show_dir = precomputed_dir / sanitize_filename(corpus_key)
+        # Use the runtime's canonical dir formula so the write path can never
+        # drift from where the matcher looks (_corpus_show_dir).
+        show_dir = _corpus_show_dir(cache_dir, corpus_key)
         show_dir.mkdir(parents=True, exist_ok=True)
         counts_u16 = sparse.csr_matrix(
             (
