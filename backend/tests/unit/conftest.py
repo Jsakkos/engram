@@ -64,6 +64,24 @@ def ecl():
     return _load_script_module("extract_changelog")
 
 
+@pytest.fixture(scope="session")
+def nsc():
+    """The normalize_subtitle_cache.py module, loaded once per pytest session."""
+    return _load_script_module("normalize_subtitle_cache")
+
+
+@pytest.fixture(scope="session")
+def psc(bsc):
+    """The pack_subtitle_cache.py module, loaded once per pytest session.
+
+    Depends on ``bsc`` so ``build_subtitle_cache`` is already in ``sys.modules``
+    when pack's module-level ``from build_subtitle_cache import ...`` runs —
+    importlib spec-loading doesn't put ``scripts/`` on ``sys.path`` the way
+    running the script directly does.
+    """
+    return _load_script_module("pack_subtitle_cache")
+
+
 _unit_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
     connect_args={"check_same_thread": False},

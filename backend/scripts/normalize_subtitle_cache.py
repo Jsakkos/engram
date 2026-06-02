@@ -1,8 +1,11 @@
 """Normalize and deduplicate SRT filenames in the subtitle cache.
 
-Walks ``<subtitles_cache_path>/data/<show>/`` and rewrites every ``.srt`` file
-to the canonical ``{show} - S{SS}E{EE}.srt`` form used by the matcher and the
-build pipeline. When two or more files in the same show dir parse to the same
+Walks ``<subtitles_cache_path>/data/<dir>/`` and rewrites every ``.srt`` file to
+the canonical ``{show} - S{SS}E{EE}.srt`` form used by the matcher and the build
+pipeline. The cache is keyed by tmdb_id (``data/195241/``), so the show-name
+prefix for filenames is resolved from the id via TMDB; legacy name-keyed dirs
+(``data/Frasier/``) use their own name. When two or more files in the same dir
+parse to the same
 (season, episode) pair (e.g. a manually downloaded ``... - 1x02 - Title.srt``
 sitting next to ``... - S01E02.srt``), the script keeps the best candidate and
 deletes the duplicates.
@@ -36,7 +39,11 @@ if _backend_dir not in sys.path:
 
 from loguru import logger
 
-from app.matcher.subtitle_utils import parse_season_episode_numbers, sanitize_filename
+from app.matcher.subtitle_utils import (
+    corpus_dir_name,
+    parse_season_episode_numbers,
+    sanitize_filename,
+)
 from app.matcher.testing_service import is_valid_srt_file
 
 
@@ -75,8 +82,42 @@ def _rank_candidate(path: Path, canonical: str) -> tuple[int, int]:
     return (1 if path.name == canonical else 0, size)
 
 
-def _normalize_show_dir(show_dir: Path, *, dry_run: bool, tally: Tally) -> None:
-    """Normalize a single ``<cache>/data/<show>/`` directory in place."""
+def _resolve_prefix(dir_name: str) -> str | None:
+    """Return the show-name prefix to use for canonical filenames in this dir.
+
+    The cache is keyed by tmdb_id now, so a numeric dir name (``data/195241/``)
+    is a tmdb_id, not a show name. Files inside must still be NAME-prefixed
+    (``Frasier - S01E02.srt``) because ``find_existing_subtitle`` (used by the
+    downloader's cache-hit check) looks them up by the sanitized show name — so
+    resolve the id back to its canonical title via TMDB. A non-numeric dir is a
+    legacy name-keyed dir whose own name IS the prefix.
+
+    Returns None when a numeric dir can't be resolved (offline / TMDB miss); the
+    caller then SKIPS the dir rather than rewrite filenames to an id prefix,
+    which would make the downloader's cache-hit check miss every episode.
+    """
+    if not dir_name.isdigit():
+        return dir_name
+    try:
+        from app.matcher.tmdb_client import fetch_show_details
+
+        details = fetch_show_details(int(dir_name))
+        name = (details or {}).get("name")
+        if name:
+            return sanitize_filename(name)
+        logger.warning(f"  {dir_name}: numeric dir but TMDB had no show for that id")
+    except Exception as e:  # noqa: BLE001 - resolution is best-effort
+        logger.warning(f"  {dir_name}: TMDB id resolution failed ({e})")
+    return None
+
+
+def _normalize_show_dir(show_dir: Path, prefix: str, *, dry_run: bool, tally: Tally) -> None:
+    """Normalize a single ``<cache>/data/<dir>/`` directory in place.
+
+    ``prefix`` is the show NAME used in canonical filenames (``{prefix} -
+    S01E02.srt``). It is distinct from ``show_dir.name`` because the dir may be
+    keyed by tmdb_id while the files stay name-prefixed.
+    """
     # Group by parsed (season, episode); unparseable files surface as a
     # warning at the end and are not touched.
     groups: dict[tuple[int, int], list[Path]] = defaultdict(list)
@@ -87,7 +128,7 @@ def _normalize_show_dir(show_dir: Path, *, dry_run: bool, tally: Tally) -> None:
             continue
         groups[parsed].append(srt)
 
-    show_dir_name = show_dir.name
+    show_dir_name = prefix
     for (season, episode), candidates in sorted(groups.items()):
         canonical = _canonical_name(show_dir_name, season, episode)
 
@@ -148,6 +189,37 @@ def _resolve_cache_dir(override: str | None) -> Path:
     return Path(config.subtitles_cache_path).expanduser() / "data"
 
 
+def _resolve_show_dir(data_dir: Path, show: str) -> Path | None:
+    """Locate the on-disk dir for a ``--show`` argument under the id-keyed cache.
+
+    Accepts either a numeric tmdb_id (``--show 195241`` → ``data/195241/``) or a
+    show name (``--show Frasier``). For a name, resolve it to a tmdb_id via TMDB
+    and prefer the id-keyed dir; fall back to the legacy sanitized-name dir when
+    the id can't be resolved or that dir doesn't exist. Returns None if neither
+    candidate directory exists.
+    """
+    if show.isdigit():
+        return data_dir / show
+
+    tmdb_id = None
+    try:
+        from app.matcher.tmdb_client import fetch_show_id
+
+        tmdb_id = fetch_show_id(show)
+    except Exception as e:  # noqa: BLE001 - resolution is best-effort
+        logger.warning(f"TMDB lookup failed for {show!r} ({e}); trying legacy name dir")
+
+    if tmdb_id is not None:
+        id_dir = data_dir / corpus_dir_name(tmdb_id, show)
+        if id_dir.is_dir():
+            return id_dir
+
+    # Apply the same sanitizer the writer uses so users can pass the raw show
+    # name and still land on a legacy name-keyed directory.
+    legacy_dir = data_dir / sanitize_filename(show)
+    return legacy_dir if legacy_dir.is_dir() else None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Normalize and deduplicate SRT filenames in the subtitle cache"
@@ -177,11 +249,9 @@ def main() -> int:
         return 1
 
     if args.show:
-        # Apply the same sanitizer the writer uses so users can pass the
-        # raw show name and still land on the right directory.
-        target_dir = data_dir / sanitize_filename(args.show)
-        if not target_dir.is_dir():
-            logger.error(f"Show dir not found: {target_dir}")
+        target_dir = _resolve_show_dir(data_dir, args.show)
+        if target_dir is None or not target_dir.is_dir():
+            logger.error(f"Show dir not found for {args.show!r} under {data_dir}")
             return 1
         show_dirs = [target_dir]
     else:
@@ -192,8 +262,15 @@ def main() -> int:
     logger.info(f"[{mode}] Normalizing {len(show_dirs)} show dir(s) under {data_dir}")
 
     for show_dir in show_dirs:
+        prefix = _resolve_prefix(show_dir.name)
+        if prefix is None:
+            logger.warning(
+                f"{show_dir.name}/: id-keyed dir with no resolvable TMDB name; "
+                f"skipping (can't choose a name prefix for filenames)"
+            )
+            continue
         logger.info(f"{show_dir.name}/")
-        _normalize_show_dir(show_dir, dry_run=args.dry_run, tally=tally)
+        _normalize_show_dir(show_dir, prefix, dry_run=args.dry_run, tally=tally)
         tally.shows_processed += 1
 
     logger.info(

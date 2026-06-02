@@ -361,7 +361,11 @@ class Addic7edClient:
 
 
 def get_subtitles_addic7ed(
-    show_name: str, seasons: set[int], cache_dir: Path, max_retries: int = 3
+    show_name: str,
+    seasons: set[int],
+    cache_dir: Path,
+    max_retries: int = 3,
+    tmdb_id: int | None = None,
 ) -> dict[str, Path]:
     """Download subtitles for a TV show from Addic7ed.
 
@@ -370,25 +374,32 @@ def get_subtitles_addic7ed(
         seasons: Set of season numbers to download
         cache_dir: Directory to cache downloaded subtitles
         max_retries: Number of retry attempts per episode
+        tmdb_id: TMDB id of the show when known. Used to (a) key the on-disk
+            cache dir as ``<cache>/data/<tmdb_id>/`` so two same-named shows
+            never collide, and (b) fetch episode counts directly instead of
+            resolving by name (which can't tell two same-named shows apart).
+            Falls back to the sanitized show name when None.
 
     Returns:
         Dict mapping "S{season:02d}E{episode:02d}" to subtitle file paths
     """
-    from app.matcher.subtitle_utils import sanitize_filename
+    from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
     from app.matcher.tmdb_client import fetch_season_details, fetch_show_id
 
     client = Addic7edClient()
     downloaded = {}
 
-    # Get TMDB show ID to fetch episode counts
-    show_id = fetch_show_id(show_name)
+    # Get TMDB show ID to fetch episode counts. Prefer the caller-supplied id —
+    # fetch_show_id resolves by NAME and can't disambiguate same-named shows.
+    show_id = str(tmdb_id) if tmdb_id is not None else fetch_show_id(show_name)
     if not show_id:
         logger.error(f"Could not find show '{show_name}' on TMDB")
         return downloaded
 
-    # Sanitize show name for filenames
+    # DIR keyed by tmdb_id (fallback: sanitized name) so same-named shows don't
+    # collide; FILENAMES stay name-prefixed (safe_show_name) for human/find lookup.
     safe_show_name = sanitize_filename(show_name)
-    series_cache_dir = cache_dir / "data" / safe_show_name
+    series_cache_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
     series_cache_dir.mkdir(parents=True, exist_ok=True)
 
     for season in sorted(seasons):

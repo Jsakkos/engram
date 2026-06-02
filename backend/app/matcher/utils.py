@@ -195,8 +195,14 @@ def get_subtitles(show_id, seasons: set[int], config=None, max_retries=3):
     cache_dir = config.cache_dir
 
     logger.info(f"Downloading subtitles for '{series_name}' from Addic7ed")
+    # show_id is the TMDB id; thread it so the cache dir is keyed by id (matching
+    # the matcher's reader) rather than by the name, isolating same-named shows.
     downloaded = get_subtitles_addic7ed(
-        show_name=series_name, seasons=seasons, cache_dir=cache_dir, max_retries=max_retries
+        show_name=series_name,
+        seasons=seasons,
+        cache_dir=cache_dir,
+        max_retries=max_retries,
+        tmdb_id=show_id,
     )
 
     logger.info(f"Downloaded {len(downloaded)} subtitles from Addic7ed for {series_name}")

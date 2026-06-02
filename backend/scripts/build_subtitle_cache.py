@@ -53,7 +53,7 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
-from app.matcher.subtitle_utils import discover_season_srts, sanitize_filename
+from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts
 from app.matcher.testing_service import download_subtitles, get_last_quota, probe_os_quota
 from app.matcher.tmdb_client import (
     fetch_show_details,
@@ -260,11 +260,11 @@ def _harvest_show(
     """
     harvested: list[tuple[int, str, Path]] = []
     canonical = show["name"]
-    # The data/ SRT scrape cache stays NAME-keyed (it must match where
-    # download_subtitles writes and what normalize_subtitle_cache processes —
-    # re-keying data/ by tmdb_id is a separate follow-up). Only the precomputed
-    # OUTPUT below is keyed by tmdb_id.
-    season_data_dir = cache_dir / "data" / sanitize_filename(canonical)
+    # The data/ SRT scrape cache is keyed by tmdb_id (fallback: sanitized name),
+    # matching where download_subtitles writes (we pass tmdb_id below) and what
+    # the runtime matcher reads — two same-named shows never collide on disk.
+    # Filenames inside stay name-prefixed.
+    season_data_dir = cache_dir / "data" / corpus_dir_name(show["tmdb_id"], canonical)
     for season in range(1, show["seasons"] + 1):
         # Complete-on-disk fast path: a season that previously reached the
         # coverage threshold is shipped straight from the SRTs already on disk
@@ -330,8 +330,12 @@ def _harvest_show(
 
         try:
             # Always re-harvest when building the cache, even if a prior
-            # precomputed build already covers this season.
-            result = download_subtitles(canonical, season, use_precomputed=False)
+            # precomputed build already covers this season. Pass tmdb_id so the
+            # download writes under the SAME id-keyed dir as season_data_dir above
+            # (and the runtime matcher reads) — never a name-resolved divergent id.
+            result = download_subtitles(
+                canonical, season, tmdb_id=show["tmdb_id"], use_precomputed=False
+            )
         except Exception as e:
             # exc_info=True per CLAUDE.md: the warning string alone (often
             # just "429 Too Many Requests") doesn't say which provider in
