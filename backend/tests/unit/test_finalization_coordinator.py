@@ -15,9 +15,19 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
-from app.services.finalization_coordinator import FinalizationCoordinator
+from app.services.finalization_coordinator import (
+    FinalizationCoordinator,
+    _detect_wrong_show,
+)
 from app.services.job_state_machine import JobStateMachine
 from tests.unit.conftest import _unit_session_factory
+
+FRASIER_CANDS = json.dumps(
+    [
+        {"tmdb_id": 3452, "name": "Frasier", "year": "1993", "popularity": 75.6},
+        {"tmdb_id": 195241, "name": "Frasier", "year": "2023", "popularity": 5.7},
+    ]
+)
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +70,7 @@ async def _seed_job(
     state=JobState.MATCHING,
     match_details_by_idx=None,
     tmdb_id=None,
+    candidates_json=None,
 ) -> int:
     """Seed a job with the given (title_index, episode, output_filename, title_state) titles."""
     md = match_details_by_idx or {}
@@ -73,6 +84,7 @@ async def _seed_job(
             detected_season=1,
             staging_path=staging,
             tmdb_id=tmdb_id,
+            candidates_json=candidates_json,
         )
         session.add(job)
         await session.commit()
@@ -454,6 +466,116 @@ class TestCheckJobCompletion:
         # Escalation dispatched a re-match, so finalization is deferred.
         coord.finalize_disc_job.assert_not_called()
         assert coord._conflict_passes.get(job_id) == 25
+
+
+@pytest.mark.unit
+class TestDetectWrongShow:
+    """The pure wrong-show signal: a whole TV disc that matched NOTHING against
+    its reference, plus a same-name twin, means the disc was identified as the
+    wrong same-named show (e.g. Frasier 1993 corpus vs a 2023-revival disc)."""
+
+    def _job(self, **kw):
+        base = dict(
+            drive_id="E:",
+            volume_label="FRASIER_S1D1",
+            content_type=ContentType.TV,
+            tmdb_id=3452,
+            tmdb_name="Frasier",
+            candidates_json=FRASIER_CANDS,
+        )
+        base.update(kw)
+        return DiscJob(**base)
+
+    def _ttl(self, idx, matched_episode=None, is_extra=False, is_selected=True):
+        return DiscTitle(
+            job_id=1,
+            title_index=idx,
+            duration_seconds=1380,
+            matched_episode=matched_episode,
+            is_extra=is_extra,
+            is_selected=is_selected,
+            state=TitleState.REVIEW,
+        )
+
+    def test_all_zero_match_with_twin_detects_and_names_twin(self):
+        titles = [self._ttl(0), self._ttl(1), self._ttl(2)]
+        res = _detect_wrong_show(self._job(), titles)
+        assert res is not None
+        assert res["twin"]["tmdb_id"] == 195241
+        assert res["twin"]["year"] == "2023"
+        assert res["unmatched"] == 3
+
+    def test_none_when_any_title_matched(self):
+        titles = [self._ttl(0), self._ttl(1, matched_episode="S01E02"), self._ttl(2)]
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_none_without_persisted_twin(self):
+        titles = [self._ttl(0), self._ttl(1)]
+        assert _detect_wrong_show(self._job(candidates_json=None), titles) is None
+
+    def test_none_when_only_one_episode_candidate(self):
+        titles = [self._ttl(0)]
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_excludes_extras_from_candidate_count(self):
+        # 1 real episode candidate + 2 extras -> below the >=2 episode floor.
+        titles = [self._ttl(0), self._ttl(1, is_extra=True), self._ttl(2, is_extra=True)]
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_none_for_movie(self):
+        titles = [self._ttl(0), self._ttl(1)]
+        assert _detect_wrong_show(self._job(content_type=ContentType.MOVIE), titles) is None
+
+
+@pytest.mark.unit
+class TestWrongShowRoutingInCompletion:
+    """check_job_completion must surface the wrong-show review (naming the twin)
+    instead of the generic "needs manual episode assignment" message."""
+
+    async def test_all_zero_match_with_twin_routes_to_wrong_show_review(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+                (2, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "Frasier" in job.review_reason
+        assert "2023" in job.review_reason
+        assert "re-identify" in job.review_reason.lower()
+        coord.finalize_disc_job.assert_not_called()
+
+    async def test_partial_match_keeps_generic_review_reason(self, tmp_path):
+        # One title matched -> not a wrong-show disc; keep the generic message.
+        job_id = await _seed_job(
+            [
+                (0, "S01E01", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "manual episode assignment" in job.review_reason
 
 
 @pytest.mark.unit

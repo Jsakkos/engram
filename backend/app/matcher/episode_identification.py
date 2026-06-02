@@ -114,13 +114,22 @@ def precomputed_covers_season(
     return npz_path.exists() and index_path.exists()
 
 
-def precomputed_episode_codes(cache_dir, show_name: str, season: int) -> list[str] | None:
+def precomputed_episode_codes(
+    cache_dir, show_name: str, season: int, *, expected_tmdb_id=None
+) -> list[str] | None:
     """Episode codes the precomputed cache holds for show+season, else None.
 
     None means the cache doesn't cover it (caller should download/scrape).
     Lets callers size a result from the cache itself without a TMDB round-trip.
+
+    ``expected_tmdb_id`` is forwarded to the corpus guard so a same-named but
+    different show's corpus (e.g. Frasier 1993 vs the 2023 revival) is refused
+    here too — otherwise a "skip download" result would be sized from the wrong
+    show's episode list. Skipped when the id is unknown (backward-compatible).
     """
-    if not precomputed_covers_season(cache_dir, show_name, season):
+    if not precomputed_covers_season(
+        cache_dir, show_name, season, expected_tmdb_id=expected_tmdb_id
+    ):
         return None
 
     index_path = (

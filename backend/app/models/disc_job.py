@@ -63,6 +63,11 @@ class DiscJob(SQLModel, table=True):
     )
     tmdb_id: int | None = Field(default=None)
     tmdb_name: str | None = Field(default=None)
+    # Same-name TMDB collision candidates (JSON list of {tmdb_id, name, year,
+    # popularity}). Recorded at identify time whenever >=2 same-name shows exist
+    # (e.g. Frasier 1993 #3452 vs 2023 revival #195241) so the downstream
+    # wrong-show detector can suggest the right twin without re-querying TMDB.
+    candidates_json: str | None = Field(default=None)
     play_all_indices_json: str | None = Field(default=None)
     is_ambiguous_movie: bool = Field(default=False, sa_column_kwargs={"server_default": "0"})
 

@@ -23,6 +23,64 @@ from app.services.job_state_machine import JobStateMachine
 logger = logging.getLogger(__name__)
 
 
+def _detect_wrong_show(job, titles) -> dict | None:
+    """Detect a same-name wrong-show pick from a wholesale match failure.
+
+    Frasier-class bug: a disc identified as the dominant same-name twin (e.g. the
+    1993 original #3452) when it's actually the other twin (the 2023 revival
+    #195241). Every episode then matches the wrong reference corpus at noise floor,
+    so the WHOLE disc returns ``matched_episode is None``. Combined with a persisted
+    same-name twin (``candidates_json``), that is a confident wrong-show signal.
+
+    Returns ``{"current", "twin", "unmatched"}`` (candidate dicts) when detected,
+    else None. Pure — no DB/IO. The signal is AGGREGATE (all episode candidates
+    matched nothing), never an absolute per-chunk score, so it's robust to the
+    structurally-low chunk-cosine scale. A merely low-confidence disc still carries
+    an episode code, so it is excluded here and handled by the normal review path.
+    """
+    if job.content_type != ContentType.TV:
+        return None
+
+    try:
+        candidates = json.loads(job.candidates_json) if job.candidates_json else []
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(candidates, list) or len(candidates) < 2:
+        return None
+
+    # Episode-candidate titles = the selected, non-extra tracks we tried to match.
+    episode_candidates = [t for t in titles if t.is_selected and not t.is_extra]
+    if len(episode_candidates) < 2:
+        return None
+    if not all(t.matched_episode is None for t in episode_candidates):
+        return None
+
+    twin = next((c for c in candidates if str(c.get("tmdb_id")) != str(job.tmdb_id)), None)
+    if not twin:
+        return None
+    current = next((c for c in candidates if str(c.get("tmdb_id")) == str(job.tmdb_id)), None)
+    return {"current": current, "twin": twin, "unmatched": len(episode_candidates)}
+
+
+def _wrong_show_review_reason(detection: dict, job) -> str:
+    """Human-readable, actionable review reason naming the suspected correct twin."""
+
+    def _label(cand, fallback_name):
+        if not cand:
+            return fallback_name
+        year = cand.get("year")
+        name = cand.get("name") or fallback_name
+        return f"{name} ({year})" if year else name
+
+    current = _label(detection.get("current"), job.tmdb_name or job.detected_title or "this show")
+    twin = _label(detection.get("twin"), "another same-named show")
+    return (
+        f"Content doesn't resemble {current} — none of the "
+        f"{detection['unmatched']} episodes matched its subtitles. This is likely a "
+        f"different same-named show; did you mean {twin}? Re-identify to fix."
+    )
+
+
 def _library_path_for_job(job, content_type: str) -> "Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
     if job.destination_mode != "in_place":
@@ -482,6 +540,17 @@ class FinalizationCoordinator:
         # Then give plain low-confidence reviews (no collision) escalating deep
         # re-match passes before surfacing them for manual assignment.
         if await self._maybe_escalate_reviews(session, job, titles):
+            return
+
+        # Wrong-show detector (Frasier 1993 vs 2023): if deep re-match still left
+        # EVERY episode candidate unmatched and a same-name twin exists, the disc
+        # was identified as the wrong same-named show. Surface an actionable
+        # re-identify review instead of the generic "assign episodes" message.
+        wrong_show = _detect_wrong_show(job, titles)
+        if wrong_show:
+            reason = _wrong_show_review_reason(wrong_show, job)
+            logger.warning(f"Job {job_id}: wrong-show suspected — {reason}")
+            await self._state_machine.transition_to_review(job, session, reason=reason)
             return
 
         # Review takes priority: while ANY title still needs manual review, do

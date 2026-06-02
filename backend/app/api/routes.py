@@ -123,6 +123,9 @@ class JobResponse(BaseModel):
     subtitles_total: int | None = None
     subtitles_failed: int | None = None
     review_reason: str | None = None
+    # JSON list of same-name TMDB twins (e.g. Frasier 1993 + 2023) recorded at
+    # identify time; lets the UI offer "did you mean ...?" on a wrong-show review.
+    candidates_json: str | None = None
     # Transient auto-resolution note set during conflict / review escalation
     # (e.g. "Resolving episode conflicts — pass 2 of 3"). Cleared on resolution.
     conflict_status: str | None = None
@@ -197,6 +200,9 @@ class JobDetailResponse(BaseModel):
     disc_number: int = 1
     error_message: str | None = None
     review_reason: str | None = None
+    # JSON list of same-name TMDB twins (e.g. Frasier 1993 + 2023) recorded at
+    # identify time; lets the UI offer "did you mean ...?" on a wrong-show review.
+    candidates_json: str | None = None
     # Transient auto-resolution note (e.g. "Resolving episode conflicts — pass 2 of 3"
     # / "Deep re-matching low-confidence titles — pass 1 of 3"). Set while the
     # finalization coordinator is auto-escalating; cleared on resolution.
@@ -770,6 +776,7 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "disc_number": job.disc_number,
         "error_message": job.error_message,
         "review_reason": job.review_reason,
+        "candidates_json": job.candidates_json,
         "conflict_status": job.conflict_status,
         "classification_source": job.classification_source,
         "classification_confidence": job.classification_confidence,

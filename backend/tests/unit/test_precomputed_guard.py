@@ -1,8 +1,30 @@
-from app.matcher.episode_identification import EpisodeMatcher, precomputed_covers_season
+import json
+
+from app.matcher.episode_identification import (
+    EpisodeMatcher,
+    precomputed_covers_season,
+    precomputed_episode_codes,
+)
+from app.matcher.vectorizer_config import CACHE_FORMAT_VERSION, vectorizer_config_hash
 
 
 def _manifest(tmdb_id):
     return {"shows": {"Frasier": {"tmdb_id": tmdb_id, "seasons": [1], "episode_counts": {"1": 24}}}}
+
+
+def _write_corpus(tmp_path, tmdb_id, codes=("S01E01",)):
+    """Write a valid on-disk precomputed corpus for Frasier S1 keyed to ``tmdb_id``."""
+    pre = tmp_path / "precomputed"
+    show_dir = pre / "Frasier"
+    show_dir.mkdir(parents=True)
+    (show_dir / "S01.npz").write_bytes(b"x")
+    (show_dir / "S01.index.json").write_text(json.dumps(list(codes)))
+    manifest = {
+        "cache_format_version": CACHE_FORMAT_VERSION,
+        "vectorizer_config_hash": vectorizer_config_hash(),
+        "shows": {"Frasier": {"tmdb_id": tmdb_id, "seasons": [1], "episode_counts": {}}},
+    }
+    (pre / "manifest.json").write_text(json.dumps(manifest))
 
 
 def test_guard_rejects_mismatched_tmdb_id(tmp_path):
@@ -47,6 +69,28 @@ def test_guard_passes_on_matching_id_then_checks_files(tmp_path):
         )
         is True
     )
+
+
+def test_episode_codes_guard_rejects_mismatched_tmdb_id(tmp_path):
+    # Corpus is the 1993 original (3452); the job is the 2023 revival (195241).
+    # precomputed_episode_codes must forward the guard and refuse, else it would
+    # size a "skip download" result from the WRONG show's episode list.
+    _write_corpus(tmp_path, "3452", codes=["S01E01", "S01E02"])
+    assert precomputed_episode_codes(tmp_path, "Frasier", 1, expected_tmdb_id=195241) is None
+
+
+def test_episode_codes_returned_on_matching_id(tmp_path):
+    _write_corpus(tmp_path, "3452", codes=["S01E01", "S01E02"])
+    assert precomputed_episode_codes(tmp_path, "Frasier", 1, expected_tmdb_id=3452) == [
+        "S01E01",
+        "S01E02",
+    ]
+
+
+def test_episode_codes_backward_compatible_without_id(tmp_path):
+    # No expected id -> guard skipped (backward compatible name-only matching).
+    _write_corpus(tmp_path, "3452", codes=["S01E01"])
+    assert precomputed_episode_codes(tmp_path, "Frasier", 1) == ["S01E01"]
 
 
 def test_matcher_stores_expected_tmdb_id(tmp_path):

@@ -250,7 +250,9 @@ def _precomputed_skip_result(
     ):
         return None
 
-    codes = precomputed_episode_codes(cache_path, show_name, season)
+    codes = precomputed_episode_codes(
+        cache_path, show_name, season, expected_tmdb_id=expected_tmdb_id
+    )
     if not codes:
         return None
 
