@@ -74,34 +74,32 @@ function MainDashboard() {
   const DEV_MODE = window.location.search.includes('mock=true');
 
   // Check if first-run setup is needed + fetch contribution badge count
-  useEffect(() => {
-    const checkSetup = async () => {
-      try {
-        const response = await fetch('/api/config');
-        if (!response.ok) return;
-        const data = await response.json();
-        if (!data.setup_complete) {
-          setShowOnboarding(true);
-        }
-        setTmdbConfigured(!!data.tmdb_api_key);
-        // Fetch contribution stats for nav badge
-        if (FEATURES.DISCDB && data.discdb_contributions_enabled) {
-          try {
-            const statsRes = await fetch('/api/contributions/stats');
-            if (statsRes.ok) {
-              const stats = await statsRes.json();
-              setContributionPending(stats.pending);
-            }
-          } catch {
-            // Non-critical
-          }
-        }
-      } catch {
-        // Backend not reachable — don't block the UI
+  const checkSetup = async () => {
+    try {
+      const response = await fetch('/api/config');
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!data.setup_complete) {
+        setShowOnboarding(true);
       }
-    };
-    checkSetup();
-  }, []);
+      setTmdbConfigured(!!data.tmdb_api_key);
+      // Fetch contribution stats for nav badge
+      if (FEATURES.DISCDB && data.discdb_contributions_enabled) {
+        try {
+          const statsRes = await fetch('/api/contributions/stats');
+          if (statsRes.ok) {
+            const stats = await statsRes.json();
+            setContributionPending(stats.pending);
+          }
+        } catch {
+          // Non-critical
+        }
+      }
+    } catch {
+      // Backend not reachable — don't block the UI
+    }
+  };
+  useEffect(() => { checkSetup(); }, []);
 
   // Detect platform for non-Windows guidance banner
   useEffect(() => {
@@ -745,6 +743,7 @@ function MainDashboard() {
             onClose={() => setShowSettings(false)}
             onComplete={() => {
               setShowSettings(false);
+              checkSetup();
             }}
             isOnboarding={false}
           />
