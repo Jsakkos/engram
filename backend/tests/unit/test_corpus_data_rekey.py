@@ -182,8 +182,9 @@ class TestGetSubtitlesAddic7edTmdbKeying:
         from app.matcher import addic7ed_client as ac
         from app.matcher import tmdb_client as tmdb
 
-        # Client is never used (0 episodes), but must be constructible.
-        monkeypatch.setattr(ac, "Addic7edClient", lambda: object())
+        # Client is never used (0 episodes), but must be constructible. `object`
+        # is itself a no-arg callable returning a bare instance, so use it directly.
+        monkeypatch.setattr(ac, "Addic7edClient", object)
         monkeypatch.setattr(tmdb, "fetch_season_details", lambda sid, season: 0)
 
         def _no_name_lookup(name):
