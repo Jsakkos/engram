@@ -501,3 +501,75 @@ class TestDownloadSubtitlesAllSeasons:
         await coord.download_subtitles_all_seasons(job_id, "Show", [1])
 
         assert coord._subtitle_ready[job_id].is_set()
+
+
+@pytest.mark.unit
+class TestEpisodeRuntimesShowIdentity:
+    """The duration pre-filter fetches episode runtimes to flag non-episode tracks
+    as extras. It must resolve the show by the job's authoritative ``tmdb_id`` — not
+    by re-resolving the name, which returns the dominant same-name twin (Frasier 1993
+    #3452, 24×23min) instead of a re-identified revival (#195241, 10 eps) and
+    misclassifies real episodes as extras (the live PR #287/#288 Frasier regression:
+    runtimes were fetched for show 3452, so the revival's ~28min episodes looked like
+    bonus tracks and landed in Season 1/Extras/ instead of being matched).
+    """
+
+    async def test_uses_job_tmdb_id_and_skips_name_lookup(self, monkeypatch):
+        coord = _make_coord()
+        captured: dict = {}
+
+        def fake_runtimes(show_id, season):
+            captured["show_id"] = show_id
+            captured["season"] = season
+            return [22, 22, 22]
+
+        # Resolves to the WRONG same-name twin if (incorrectly) consulted.
+        fake_fetch_id = MagicMock(return_value="3452")
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_season_episode_runtimes", fake_runtimes)
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", fake_fetch_id)
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job.detected_title = "Frasier"
+            job.detected_season = 1
+            job.tmdb_id = 195241  # user re-identified to the 2023 revival
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+
+            runtimes = await coord._episode_runtimes_for_job(job)
+
+        assert runtimes == [22, 22, 22]
+        # The known id flowed straight through — NOT the name-resolved twin (3452).
+        assert captured["show_id"] == "195241"
+        assert captured["season"] == 1
+        fake_fetch_id.assert_not_called()
+
+    async def test_falls_back_to_name_lookup_without_tmdb_id(self, monkeypatch):
+        """Without a known id (legacy / not-yet-identified job), the pre-filter must
+        still resolve by name so the common non-collision case keeps working."""
+        coord = _make_coord()
+        captured: dict = {}
+
+        def fake_runtimes(show_id, season):
+            captured["show_id"] = show_id
+            return [23, 23]
+
+        fake_fetch_id = MagicMock(return_value="3452")
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_season_episode_runtimes", fake_runtimes)
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", fake_fetch_id)
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job.detected_title = "Frasier"
+            job.detected_season = 1
+            job.tmdb_id = None  # not yet resolved to a tmdb_id
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+
+            runtimes = await coord._episode_runtimes_for_job(job)
+
+        assert runtimes == [23, 23]
+        fake_fetch_id.assert_called_once_with("Frasier")
+        assert captured["show_id"] == "3452"
