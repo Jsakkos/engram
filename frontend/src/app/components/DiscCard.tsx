@@ -408,48 +408,48 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
 
               {/* TMDB not-configured warning — shown on active jobs only */}
               {tmdbConfigured === false && isActive && (
-              <div
-                role="alert"
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  marginBottom: 16,
-                  padding: "10px 12px",
-                  border: `1px solid ${sv.amber}`,
-                  borderLeft: `3px solid ${sv.amber}`,
-                  background: "rgba(252, 211, 77, 0.08)",
-                  fontFamily: sv.mono,
-                  fontSize: 12,
-                  lineHeight: 1.45,
-                  letterSpacing: "0.02em",
-                  color: sv.amber,
-                }}
-              >
-                <span aria-hidden style={{ flexShrink: 0 }}>⚠</span>
-                <span>
-                  TMDB not configured — classification is heuristic-only.{" "}
-                  {onOpenSettings && (
-                    <button
-                      onClick={onOpenSettings}
-                      style={{
-                        fontFamily: "inherit",
-                        fontSize: "inherit",
-                        color: sv.amber,
-                        textDecoration: "underline",
-                        textUnderlineOffset: 2,
-                        background: "none",
-                        border: 0,
-                        padding: 0,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Configure token
-                    </button>
-                  )}
-                </span>
-              </div>
-            )}
+                <div
+                  role="alert"
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    marginBottom: 16,
+                    padding: "10px 12px",
+                    border: `1px solid ${sv.amber}`,
+                    borderLeft: `3px solid ${sv.amber}`,
+                    background: "rgba(252, 211, 77, 0.08)",
+                    fontFamily: sv.mono,
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    letterSpacing: "0.02em",
+                    color: sv.amber,
+                  }}
+                >
+                  <span aria-hidden style={{ flexShrink: 0 }}>⚠</span>
+                  <span>
+                    TMDB not configured — classification is heuristic-only.{" "}
+                    {onOpenSettings && (
+                      <button
+                        onClick={onOpenSettings}
+                        style={{
+                          fontFamily: "inherit",
+                          fontSize: "inherit",
+                          color: sv.amber,
+                          textDecoration: "underline",
+                          textUnderlineOffset: 2,
+                          background: "none",
+                          border: 0,
+                          padding: 0,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Configure token
+                      </button>
+                    )}
+                  </span>
+                </div>
+              )}
 
               {/* Scanning / identifying — full disc-insert visualization */}
               {disc.state === "scanning" && (() => {
