@@ -10,6 +10,13 @@ def test_none_tmdb_id_returns_none():
     assert _resolve_show_year(None) is None
 
 
+def test_zero_tmdb_id_short_circuits_without_network():
+    # Falsy id (0) short-circuits — no pointless fetch_show_details(0) call.
+    with patch("app.matcher.tmdb_client.fetch_show_details") as m:
+        assert _resolve_show_year(0, None) is None
+        m.assert_not_called()
+
+
 def test_fast_path_reads_year_from_candidates():
     sig = SimpleNamespace(
         all_candidates=[

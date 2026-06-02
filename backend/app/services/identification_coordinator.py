@@ -79,7 +79,9 @@ def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
     None when unknown — the organizer then degrades to an id-only/bare folder.
     Sync (blocking on the fallback) — call via ``asyncio.to_thread``.
     """
-    if tmdb_id is None:
+    # Falsy guard (not ``is None``) so a 0/empty id short-circuits instead of
+    # making a pointless fetch_show_details(0) call for a non-existent id.
+    if not tmdb_id:
         return None
     cands = getattr(signal, "all_candidates", None) if signal else None
     for c in cands or []:
@@ -862,6 +864,8 @@ class IdentificationCoordinator:
             job.candidates_json = None
 
             # Optionally re-run TMDB lookup with corrected title
+            _old_tmdb_id = job.tmdb_id
+            _old_year = job.tmdb_year
             _signal = None
             if tmdb_id is not None:
                 job.tmdb_id = tmdb_id
@@ -881,12 +885,20 @@ class IdentificationCoordinator:
                 except Exception:
                     logger.warning(
                         f"Job {job_id}: TMDB re-lookup failed for '{title}', "
-                        f"continuing with user-provided title"
+                        f"continuing with user-provided title",
+                        exc_info=True,
                     )
 
             # Re-derive the year for the (possibly changed) show so the library
-            # folder stays correct after re-identification.
-            job.tmdb_year = await asyncio.to_thread(_resolve_show_year, job.tmdb_id, _signal)
+            # folder stays correct after re-identification. Preserve a previously
+            # resolved year ONLY when the show identity is unchanged and the
+            # (cache-miss + offline) lookup fails — so a transient TMDB outage
+            # can't blank a good year, but a stale year isn't carried across an
+            # identity change to a different show.
+            _year = await asyncio.to_thread(_resolve_show_year, job.tmdb_id, _signal)
+            if _year is None and job.tmdb_id == _old_tmdb_id:
+                _year = _old_year
+            job.tmdb_year = _year
 
             if has_ripped:
                 # Post-rip: go to MATCHING to re-run episode matching

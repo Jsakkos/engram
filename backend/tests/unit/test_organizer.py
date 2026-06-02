@@ -324,6 +324,13 @@ class TestNamingHelpers:
         fmt = "{show} ({year}) {{tmdb-{tmdb_id}}}"
         assert format_tv_show_folder(fmt, "Frasier", None, "3452") == "Frasier {tmdb-3452}"
 
+    def test_show_folder_whitespace_only_format_falls_back_to_bare(self):
+        # A whitespace-only format must NOT collapse the show-folder level
+        # (would file every show flat under the TV root).
+        from app.core.organizer import format_tv_show_folder
+
+        assert format_tv_show_folder("   ", "Frasier", 1993, "3452") == "Frasier"
+
     def test_show_folder_jellyfin_missing_id_strips_tag(self):
         from app.core.organizer import format_tv_show_folder
 

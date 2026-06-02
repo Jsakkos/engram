@@ -64,8 +64,8 @@ def format_episode_filename(
                 "show": show,
                 "season": season,
                 "episode": episode,
-                "year": year or "",
-                "tmdb_id": tmdb_id or "",
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
             }
         )
     except (KeyError, ValueError, IndexError):
@@ -107,13 +107,21 @@ def format_tv_show_folder(fmt: str, show: str, year: int | None, tmdb_id: str | 
     Mirrors ``format_movie_folder`` but adds a ``{tmdb_id}`` placeholder for
     media-server disambiguation (Plex ``{tmdb-NNNN}`` / Jellyfin ``[tmdbid-NNNN]``).
     Empty groups are stripped when year/id are missing, so the stable id tag never
-    degrades to ``Frasier {tmdb-}``. A falsy/empty ``fmt`` (e.g. an existing DB that
-    backfilled '') falls back to the bare show name == current behavior.
+    degrades to ``Frasier {tmdb-}``. A falsy/empty/whitespace-only ``fmt`` (e.g. an
+    existing DB that backfilled '') falls back to the bare show name == current
+    behavior — a whitespace-only format must NOT collapse the show-folder level.
     """
+    fmt = (fmt or "").strip()
     if not fmt:
         return sanitize_filename(show)
     try:
-        result = fmt.format_map({"show": show, "year": year or "", "tmdb_id": tmdb_id or ""})
+        result = fmt.format_map(
+            {
+                "show": show,
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
+            }
+        )
     except (KeyError, ValueError, IndexError):
         result = show
     return sanitize_filename(_strip_empty_name_groups(result))
@@ -671,19 +679,24 @@ class TVOrganizer:
         self,
         files: list[tuple[Path, str]],
         show_name: str,
+        *,
+        year: int | None = None,
+        tmdb_id: str | None = None,
     ) -> list[dict]:
         """Organize multiple TV episodes.
 
         Args:
             files: List of (file_path, episode_code) tuples
             show_name: Name of the TV show
+            year: First-air year for show-folder disambiguation (threaded to organize).
+            tmdb_id: Show's TMDB id for show-folder disambiguation.
 
         Returns:
             List of result dicts for each file
         """
         results = []
         for source_file, episode_code in files:
-            result = self.organize(source_file, show_name, episode_code)
+            result = self.organize(source_file, show_name, episode_code, year=year, tmdb_id=tmdb_id)
             results.append(result)
         return results
 
