@@ -249,9 +249,11 @@ class UpdateChecker:
                 raise UpdateError(f"Archive did not contain an 'engram' directory: {asset['name']}")
             self._verify_extracted(extracted, manifest_text)
 
-            # Atomic promote: only once the new build is fully extracted and verified
-            # does it replace any previously staged build. os.replace() on a directory
-            # is an atomic rename within the same filesystem.
+            # Promote: the verified build replaces any previously staged build.
+            # os.replace() is an atomic rename within the same filesystem, so once it
+            # succeeds the staged dir has either the old build or the new one. (A crash
+            # between the rmtree and os.replace leaves staging without an engram/ dir;
+            # the next run re-downloads, since state never reached READY.)
             final = staging_dir / "engram"
             shutil.rmtree(final, ignore_errors=True)
             os.replace(extracted, final)
@@ -273,6 +275,9 @@ class UpdateChecker:
             await self._broadcast()
 
         except UpdateError as exc:
+            # A rejection here (checksum/integrity failure) is the main guard against
+            # staging a bad build — leave a trace so a support case has something to grep.
+            logger.warning(f"Staged update rejected: {exc}", exc_info=True)
             shutil.rmtree(staging_dir, ignore_errors=True)
             self.state = UpdateStatus.ERROR
             self.error = str(exc)
@@ -476,13 +481,15 @@ class UpdateChecker:
         # Re-verify the staged build is still complete right before the swap. It
         # passed verification at download time, but files can disappear afterwards
         # (AV quarantine, partial deletion). Never swap an incomplete build over a
-        # working install.
-        if self.staging_path is not None:
-            manifest_path = self.staging_path / "engram.manifest.sha256"
-            manifest_text = (
-                manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else None
-            )
-            self._verify_extracted(self.staging_path / "engram", manifest_text)
+        # working install. staging_path is always set once state == READY, so a None
+        # here is a bug, not a "skip verification" case — fail loudly.
+        if self.staging_path is None:
+            raise UpdateError("staging_path is unset despite READY state — refusing to apply.")
+        manifest_path = self.staging_path / "engram.manifest.sha256"
+        manifest_text = (
+            manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else None
+        )
+        self._verify_extracted(self.staging_path / "engram", manifest_text)
 
         if sys.platform == "win32":
             self._restart_windows()
