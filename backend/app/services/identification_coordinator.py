@@ -824,6 +824,11 @@ class IdentificationCoordinator:
             if season is not None:
                 job.detected_season = season
             job.review_reason = None
+            # Clear same-name candidates recorded for the PREVIOUS identification
+            # attempt: the user has now made an explicit choice, so they're stale.
+            # Leaving them would let the ReIdentifyModal quick-pick and the
+            # wrong-show backstop (_detect_wrong_show) resurface the rejected twin.
+            job.candidates_json = None
 
             # Optionally re-run TMDB lookup with corrected title
             if tmdb_id is not None:
