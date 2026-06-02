@@ -3,6 +3,7 @@
 ## Prerequisites
 
 - [MakeMKV](https://www.makemkv.com/) with a valid license key
+- [FFmpeg](https://ffmpeg.org/download.html) for episode matching (audio fingerprinting) — see [Installing FFmpeg](#installing-ffmpeg)
 - A [TMDB Read Access Token](https://www.themoviedb.org/settings/api) (v4 auth) for media metadata and poster art
 - If running from source: **Python 3.11+** with [uv](https://docs.astral.sh/uv/), and **Node.js 24**
 
@@ -30,6 +31,44 @@ On Fedora/RHEL:
 ```bash
 sudo dnf install ffmpeg eject
 # Install MakeMKV from https://www.makemkv.com/
+```
+
+## Installing FFmpeg
+
+Engram uses FFmpeg for episode matching — audio fingerprinting and the speech-recognition fallback both decode audio with it. On first launch Engram auto-detects FFmpeg on your `PATH` and in common install locations; if it can't find it, install it as below and restart Engram.
+
+!!! note "The version doesn't matter"
+    Engram only needs to be able to run FFmpeg — any recent build works. A "not detected" result almost always means FFmpeg isn't on your `PATH`, not that the version is wrong.
+
+### Windows
+
+The simplest option is [winget](https://learn.microsoft.com/windows/package-manager/winget/):
+
+```powershell
+winget install Gyan.FFmpeg
+```
+
+Then **fully close and reopen Engram** so it picks up the updated `PATH` — a running process keeps the `PATH` it started with.
+
+Prefer a manual install? Download a build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) or [BtbN](https://github.com/BtbN/FFmpeg-Builds/releases), extract it, and do **one** of:
+
+- Add the extracted `...\bin` folder to your **system PATH** (Settings → *Edit the system environment variables* → *Environment Variables*), then restart Engram.
+- Drop `ffmpeg.exe` at `C:\ffmpeg\bin\ffmpeg.exe` — one of the locations Engram scans automatically.
+- Point Engram at it directly: in the Config Wizard (or **Settings → Tools**), use **Override path manually** and enter the full path to `ffmpeg.exe`. The path is validated immediately and shows the detected version.
+
+Still not detected? See [Troubleshooting → FFmpeg not detected (Windows)](../troubleshooting.md#ffmpeg-not-detected-windows).
+
+### Linux / macOS
+
+```bash
+# Debian/Ubuntu
+sudo apt install ffmpeg
+
+# Fedora
+sudo dnf install ffmpeg
+
+# macOS (Homebrew)
+brew install ffmpeg
 ```
 
 ## Option A: Standalone Executable (Windows)
@@ -98,7 +137,7 @@ Once both servers are running:
 
 1. The browser should show the Engram dashboard at `localhost:5173`.
 2. The Config Wizard will prompt you to configure MakeMKV path, library paths, and your TMDB token.
-3. Engram will auto-detect MakeMKV and FFmpeg if they are on your system PATH.
+3. Engram will auto-detect MakeMKV and FFmpeg if they are on your system PATH. If FFmpeg isn't detected, see [Installing FFmpeg](#installing-ffmpeg) or [Troubleshooting](../troubleshooting.md#ffmpeg-not-detected-windows).
 
 !!! tip "No physical disc drive?"
     You can test the full workflow without hardware using simulation mode.

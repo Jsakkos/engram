@@ -4,6 +4,23 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- FFmpeg is now documented as a prerequisite, with per-platform install steps (including `winget install Gyan.FFmpeg` on Windows) and a dedicated [Troubleshooting](https://jsakkos.github.io/engram/troubleshooting/) page led by the common "FFmpeg not detected" case.
+- The Config Wizard now validates a manually-entered MakeMKV or FFmpeg path against the backend and shows the detected version inline (or the specific error), so a hand-typed override is no longer saved blind. The FFmpeg "not found" card also links to the download page.
+
+### Changed
+
+- Windows FFmpeg auto-detection now also searches the Chocolatey, scoop, winget (`Gyan.FFmpeg`), and user-home install locations, so a freshly-installed FFmpeg is found even when it isn't yet on the running process's `PATH`. The in-app install hint now names the exact winget package.
+
+## [0.14.1] - 2026-06-02
+
+_Highlights: a hardening fix for the in-app auto-updater — it can no longer install an incomplete or corrupted download over your working copy, and builds now always include the TLS certificate bundle whose absence silently broke all networking in some 0.14.0 installs._
+
+### Fixed
+
+- **The auto-updater could stage and apply an incomplete build, breaking the app** — if an update's extraction was interrupted (or files were removed afterward, e.g. by antivirus), Engram could leave a half-unpacked build that still looked "ready to install": the integrity check only validated the downloaded archive, never the unpacked files. Applying it would copy a broken build over your working install — in one case a build missing its TLS certificate bundle, which silently breaks every network request (update checks, TMDB, subtitle downloads). The updater now unpacks to a temporary location and only swaps it into place once the build is verified complete (against a per-release file manifest plus required-file sentinels), then re-checks completeness one more time immediately before applying — and if that final check fails it drops the staged update instead of leaving a dead "ready to install" offer. As extra safeguards the TLS certificate bundle is now always bundled, the build toolchain is pinned, and the release smoke test fails if a build can't complete an HTTPS request. (#296, #298)
+
 ## [0.14.0] - 2026-06-02
 
 _Highlights: a one-click "Did you mean?" candidate picker for discs that share a name with another show (for example the 2023 **Frasier** vs the 1993 original) — pick the right show in the Re-Identify dialog without re-typing a TMDB search — plus matching fixes so a re-identified revival's episodes match and file correctly instead of being shunted to Extras or matched against the wrong show's subtitles._
