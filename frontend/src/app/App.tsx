@@ -66,6 +66,8 @@ function MainDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("expanded");
   const [platform, setPlatform] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [tmdbConfigured, setTmdbConfigured] = useState(true);
+  const [tmdbBannerDismissed, setTmdbBannerDismissed] = useState(false);
   const [contributionPending, setContributionPending] = useState(0);
 
   // Check for development mock mode
@@ -81,6 +83,7 @@ function MainDashboard() {
         if (!data.setup_complete) {
           setShowOnboarding(true);
         }
+        setTmdbConfigured(!!data.tmdb_api_key);
         // Fetch contribution stats for nav badge
         if (FEATURES.DISCDB && data.discdb_contributions_enabled) {
           try {
