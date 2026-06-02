@@ -292,6 +292,17 @@ class DriveMonitor:
 
         logger.info("Drive monitor stopped")
 
+    def notify_ejected(self, drive: str) -> None:
+        """Reset drive state after a programmatic eject.
+
+        eject_disc() only issues the OS command; it doesn't update _drive_states.
+        Without this reset, if a new disc is inserted before the poll detects the
+        removal, the sentinel sees True → True and fires no 'inserted' event,
+        leaving the new disc permanently stranded.
+        """
+        self._drive_states[drive] = False
+        self._pending_changes.pop(drive, None)
+
     async def _poll_loop(self) -> None:
         """Poll for drive changes."""
         # Load poll interval from config

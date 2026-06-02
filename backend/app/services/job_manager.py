@@ -1533,11 +1533,12 @@ class JobManager:
                                 )
                     await stall_session.commit()
 
-            # Eject disc
+            # Eject disc and reset sentinel state so a new disc insert is detected
             try:
                 from app.core.sentinel import eject_disc
 
                 await asyncio.to_thread(eject_disc, drive_id)
+                self._drive_monitor.notify_ejected(drive_id)
             except (OSError, RuntimeError) as e:
                 logger.warning(f"Could not eject disc from {drive_id}: {e}")
 
