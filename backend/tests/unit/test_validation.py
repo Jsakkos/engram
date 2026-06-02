@@ -766,11 +766,15 @@ class TestSearchPaths:
         ):
             ff = validation._get_ffmpeg_search_paths()
 
-        joined = "\n".join(ff).lower()
+        # pathlib joins with "\" on Windows but "/" on the Linux CI runner, so
+        # normalise separators before comparing — the production guard only ever
+        # runs this branch on Windows.
+        normalized = [p.replace("\\", "/").lower() for p in ff]
+        joined = "\n".join(normalized)
         assert "chocolatey" in joined
         assert "scoop" in joined
         # The user-home extract is built from the expanded USERPROFILE.
-        assert any(p.lower() == r"c:\users\tester\ffmpeg\bin\ffmpeg.exe" for p in ff)
+        assert "c:/users/tester/ffmpeg/bin/ffmpeg.exe" in normalized
 
     def test_windows_ffmpeg_paths_without_userprofile(self):
         """Missing USERPROFILE degrades to the machine-wide paths, no crash."""
