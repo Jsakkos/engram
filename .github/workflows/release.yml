@@ -58,7 +58,10 @@ jobs:
         working-directory: backend
         run: |
           uv sync --no-install-project
-          uv pip install pyinstaller
+          # Pin the build toolchain so release artifacts are reproducible and a
+          # PyInstaller / hooks-contrib release can't silently change what gets
+          # bundled (a hooks-contrib change is what dropped certifi from 0.14.0).
+          uv pip install "pyinstaller==6.20.0" "pyinstaller-hooks-contrib==2026.5"
       - name: Fetch fpcalc (bundled audio fingerprinter)
         working-directory: backend
         run: uv run python scripts/fetch_fpcalc.py
@@ -105,13 +108,42 @@ jobs:
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }
 
+      - name: Verify CA bundle + TLS self-test
+        shell: pwsh
+        run: |
+          # Deterministic guard: the build MUST contain certifi's CA bundle. Its
+          # absence is what broke 0.14.0 (every HTTPS call -> FileNotFoundError).
+          $ca = "backend/dist/engram/_internal/certifi/cacert.pem"
+          if (-not (Test-Path $ca)) { throw "certifi CA bundle missing from build ($ca)" }
+          if ((Get-Item $ca).Length -lt 50000) { throw "certifi CA bundle suspiciously small" }
+          Write-Host "certifi CA bundle present: $((Get-Item $ca).Length) bytes"
+          # Prove the frozen runtime can actually complete a TLS handshake.
+          & "backend/dist/engram/engram.exe" --selftest
+          if ($LASTEXITCODE -ne 0) { throw "TLS self-test failed (exit $LASTEXITCODE)" }
+
+      - name: Generate file manifest
+        shell: pwsh
+        run: |
+          # sha256sum-style manifest, paths relative to the engram/ dir. The updater
+          # verifies every listed path exists after extraction -> catches a truncated
+          # download/extract (the 181-of-825-files failure) before it can be applied.
+          $root = (Resolve-Path "backend/dist/engram").Path
+          Get-ChildItem -Recurse -File $root | ForEach-Object {
+            $rel = $_.FullName.Substring($root.Length + 1) -replace '\\','/'
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            "$hash  $rel"
+          } | Set-Content -Encoding ascii engram-windows-x64.manifest.sha256
+          Write-Host "manifest entries: $((Get-Content engram-windows-x64.manifest.sha256).Count)"
+
       - name: Package
         run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-windows-x64.zip
         shell: pwsh
       - uses: actions/upload-artifact@v7
         with:
           name: engram-windows-x64
-          path: engram-windows-x64.zip
+          path: |
+            engram-windows-x64.zip
+            engram-windows-x64.manifest.sha256
 
   build-linux:
     name: Build Linux Executable
@@ -148,7 +180,10 @@ jobs:
         working-directory: backend
         run: |
           uv sync --no-install-project
-          uv pip install pyinstaller
+          # Pin the build toolchain so release artifacts are reproducible and a
+          # PyInstaller / hooks-contrib release can't silently change what gets
+          # bundled (a hooks-contrib change is what dropped certifi from 0.14.0).
+          uv pip install "pyinstaller==6.20.0" "pyinstaller-hooks-contrib==2026.5"
       - name: Fetch fpcalc (bundled audio fingerprinter)
         working-directory: backend
         run: uv run python scripts/fetch_fpcalc.py
@@ -205,12 +240,31 @@ jobs:
           fi
           echo "smoke test passed"
 
+      - name: Verify CA bundle + TLS self-test
+        run: |
+          ca="backend/dist/engram/_internal/certifi/cacert.pem"
+          test -f "$ca" || { echo "certifi CA bundle missing from build ($ca)"; exit 1; }
+          size=$(stat -c%s "$ca")
+          [ "$size" -ge 50000 ] || { echo "certifi CA bundle suspiciously small ($size)"; exit 1; }
+          echo "certifi CA bundle present: $size bytes"
+          ./backend/dist/engram/engram --selftest || { echo "TLS self-test failed"; exit 1; }
+
+      - name: Generate file manifest
+        run: |
+          # sha256sum-style manifest, paths relative to the engram/ dir (no leading
+          # ./). The updater verifies every listed path exists after extraction.
+          ( cd backend/dist/engram && find . -type f -printf '%P\0' | sort -z | xargs -0 sha256sum ) \
+            > engram-linux-x64.manifest.sha256
+          echo "manifest entries: $(wc -l < engram-linux-x64.manifest.sha256)"
+
       - name: Package
         run: tar -czf engram-linux-x64.tar.gz -C backend/dist engram
       - uses: actions/upload-artifact@v7
         with:
           name: engram-linux-x64
-          path: engram-linux-x64.tar.gz
+          path: |
+            engram-linux-x64.tar.gz
+            engram-linux-x64.manifest.sha256
 
   build-macos:
     name: Build macOS Executable (${{ matrix.arch }})
@@ -252,7 +306,10 @@ jobs:
         working-directory: backend
         run: |
           uv sync --no-install-project
-          uv pip install pyinstaller
+          # Pin the build toolchain so release artifacts are reproducible and a
+          # PyInstaller / hooks-contrib release can't silently change what gets
+          # bundled (a hooks-contrib change is what dropped certifi from 0.14.0).
+          uv pip install "pyinstaller==6.20.0" "pyinstaller-hooks-contrib==2026.5"
       - name: Fetch fpcalc (bundled audio fingerprinter)
         working-directory: backend
         run: uv run python scripts/fetch_fpcalc.py
@@ -309,12 +366,31 @@ jobs:
           fi
           echo "smoke test passed"
 
+      - name: Verify CA bundle + TLS self-test
+        run: |
+          ca="backend/dist/engram/_internal/certifi/cacert.pem"
+          test -f "$ca" || { echo "certifi CA bundle missing from build ($ca)"; exit 1; }
+          size=$(stat -f%z "$ca")
+          [ "$size" -ge 50000 ] || { echo "certifi CA bundle suspiciously small ($size)"; exit 1; }
+          echo "certifi CA bundle present: $size bytes"
+          ./backend/dist/engram/engram --selftest || { echo "TLS self-test failed"; exit 1; }
+
+      - name: Generate file manifest
+        run: |
+          # BSD find lacks -printf; strip the leading ./ with sed. shasum on macOS.
+          ( cd backend/dist/engram && find . -type f -print0 | sort -z \
+            | xargs -0 shasum -a 256 | sed 's#  \./#  #' ) \
+            > engram-macos-${{ matrix.arch }}.manifest.sha256
+          echo "manifest entries: $(wc -l < engram-macos-${{ matrix.arch }}.manifest.sha256)"
+
       - name: Package
         run: tar -czf engram-macos-${{ matrix.arch }}.tar.gz -C backend/dist engram
       - uses: actions/upload-artifact@v7
         with:
           name: engram-macos-${{ matrix.arch }}
-          path: engram-macos-${{ matrix.arch }}.tar.gz
+          path: |
+            engram-macos-${{ matrix.arch }}.tar.gz
+            engram-macos-${{ matrix.arch }}.manifest.sha256
 
   create-release:
     name: Create GitHub Release
@@ -368,6 +444,9 @@ jobs:
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
             engram-windows-x64.zip
+            engram-windows-x64.manifest.sha256
             engram-linux-x64.tar.gz
+            engram-linux-x64.manifest.sha256
             engram-macos-arm64.tar.gz
+            engram-macos-arm64.manifest.sha256
             sha256sums.txt

@@ -87,6 +87,12 @@ if os.path.isdir(static_dir):
 datas += collect_data_files("faster_whisper")
 datas += collect_data_files("ctranslate2")
 
+# TLS CA bundle. httpx/requests load certifi.where() (-> certifi/cacert.pem) for
+# every HTTPS call. Collect it explicitly so the CA bundle can never silently drop
+# out from PyInstaller hook / certifi-version drift — a missing cacert.pem makes
+# ssl.create_default_context() raise FileNotFoundError and kills all networking.
+datas += collect_data_files("certifi")
+
 # Ship the third-party license notice (covers the bundled fpcalc) alongside the
 # binary it describes, satisfying Chromaprint's LGPL redistribution terms.
 _licenses = os.path.join("..", "THIRD_PARTY_LICENSES.md")
