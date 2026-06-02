@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
@@ -175,6 +175,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [pathValidation, setPathValidation] = useState<
         Partial<Record<keyof ConfigData, {status: 'idle' | 'validating' | 'valid' | 'invalid', version?: string, error?: string}>>
     >({});
+    // Monotonic per-field request counter. Each edit/validate bumps it; a response
+    // is applied only if its id is still current, so a slow earlier response can't
+    // overwrite a newer one (or clobber the user's in-progress edits).
+    const pathValidationSeq = useRef<Partial<Record<keyof ConfigData, number>>>({});
     // #243: first-run gate — require a validated TMDB token (or explicit skip) before leaving the TMDB step.
     const [tmdbContinueAnyway, setTmdbContinueAnyway] = useState(false);
     const [tmdbGatePrompted, setTmdbGatePrompted] = useState(false);
@@ -455,6 +459,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
             return;
         }
         const endpoint = toolName === 'MakeMKV' ? '/api/validate/makemkv' : '/api/validate/ffmpeg';
+        const requestId = (pathValidationSeq.current[configField] ?? 0) + 1;
+        pathValidationSeq.current[configField] = requestId;
+        const isStale = () => pathValidationSeq.current[configField] !== requestId;
         setPathValidation(prev => ({ ...prev, [configField]: { status: 'validating' } }));
         try {
             const response = await fetch(endpoint, {
@@ -462,6 +469,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path }),
             });
+            if (isStale()) return; // a newer request for this field superseded us
             const result = await response.json();
             if (result.valid) {
                 setPathValidation(prev => ({
@@ -475,6 +483,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 }));
             }
         } catch {
+            if (isStale()) return;
             setPathValidation(prev => ({
                 ...prev,
                 [configField]: { status: 'invalid', error: 'Failed to reach validation endpoint' },
@@ -552,13 +561,18 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             value={config[configField] as string}
                             onChange={(e) => {
                                 handleInputChange(configField, e.target.value);
-                                // Editing invalidates the previous result; re-check on blur.
+                                // Editing invalidates the previous result and any in-flight
+                                // validation; re-check on blur.
+                                pathValidationSeq.current[configField] =
+                                    (pathValidationSeq.current[configField] ?? 0) + 1;
                                 setPathValidation(prev => ({ ...prev, [configField]: { status: 'idle' } }));
                             }}
                             onBlur={(e) => validateToolPath(toolName, configField, e.target.value)}
                             placeholder={
                                 toolName === 'FFmpeg'
-                                    ? 'C:\\Users\\You\\ffmpeg\\bin\\ffmpeg.exe'
+                                    ? (toolDetection?.platform === 'win32'
+                                        ? 'C:\\Users\\You\\ffmpeg\\bin\\ffmpeg.exe'
+                                        : '/usr/local/bin/ffmpeg')
                                     : `Path to ${toolName.toLowerCase()} executable`
                             }
                         />

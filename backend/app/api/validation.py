@@ -236,6 +236,11 @@ def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
 
 def _validate_ffmpeg_binary(path_str: str) -> ToolDetectionResult:
     """Validate an FFmpeg binary and extract version info."""
+    # Self-guard the subprocess sink: never execute a path whose basename isn't a
+    # known FFmpeg executable, independent of the caller (py/command-line-injection).
+    # Mirrors _validate_makemkv_binary and the endpoint-level guard.
+    if not executable_basename_allowed(path_str, _FFMPEG_EXE_NAMES):
+        return ToolDetectionResult(found=False, error="Not a valid FFmpeg executable")
     try:
         result = subprocess.run(
             [path_str, "-version"],

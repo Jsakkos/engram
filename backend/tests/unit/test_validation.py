@@ -638,6 +638,17 @@ class TestFfmpegBinaryValidation:
         assert result.found is False
         assert "Execution failed" in result.error
 
+    def test_refuses_non_ffmpeg_path(self):
+        """The binary validator self-guards: a non-FFmpeg basename never reaches subprocess."""
+        from app.api.validation import _validate_ffmpeg_binary
+
+        with patch("app.api.validation.subprocess.run") as mock_run:
+            result = _validate_ffmpeg_binary("/usr/bin/python3")
+
+        assert result.found is False
+        assert "FFmpeg executable" in result.error
+        mock_run.assert_not_called()
+
 
 class TestToolDetection:
     """Auto-detection across PATH and common install locations."""
