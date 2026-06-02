@@ -33,6 +33,12 @@ jobs:
   docker:
     name: Build and publish image
     runs-on: ubuntu-latest
+    # Skip the redundant PR-time image build for a release-only PR. The real
+    # release image is built when tag-release.yml dispatches this workflow on the
+    # tag (workflow_dispatch / tag push), which is not a pull_request event and so
+    # is unaffected. Normal PRs and tag builds still build as before.
+    if: >-
+      !(github.event_name == 'pull_request' && startsWith(github.event.pull_request.title, 'chore: release v'))
     steps:
       - uses: actions/checkout@v6
         with:
