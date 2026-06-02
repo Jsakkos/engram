@@ -4,6 +4,12 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+_Highlights: discs for a revival or reboot that shares its name with an older show (for example the 2023 **Frasier** vs the 1993 original) are no longer silently matched against the wrong show's subtitles — Engram now flags them for review and suggests the right one._
+
+### Fixed
+
+- **Same-name shows could be silently identified as the wrong one** — a disc whose label has no year (e.g. `FRASIER_S1D1`) was matched to the more popular same-named show on TMDB, so a 2023 revival disc was treated as the 1993 original and every episode matched the wrong subtitles at random, landing in Review with an unhelpful "assign episodes manually" message. Engram now (1) flags a no-year disc that has a real same-name twin for review *before* ripping, suggesting which show to pick, and (2) as a backstop, when a whole TV disc matches no episodes at all and a same-name twin exists, surfaces a clear "this doesn't resemble *Show (year)* — did you mean *Show (other year)*? Re-identify to fix" review instead of the generic message. Re-identifying to the correct show now reliably downloads that show's subtitles. (#287)
+
 ## [0.13.2] - 2026-06-01
 
 _Highlights: Engram can now tell apart two TV shows that share a name — for example **Frasier** (1993) and the 2023 revival. An ambiguous disc is sent to Review with both candidates to choose from, and once you pick one, that exact show drives subtitle download and episode matching instead of whichever same-named show happened to rank first._
