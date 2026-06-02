@@ -167,15 +167,17 @@ class EpisodeCurator:
             except Exception as e:  # noqa: BLE001 — best-effort enumeration
                 logger.debug(f"Precomputed manifest unavailable for '{show}': {e}")
 
-        # 2. Subtitles already downloaded to disk (cache_dir/data/<show>/*.srt).
+        # 2. Subtitles already downloaded to disk (cache_dir/data/<tmdb_id>/*.srt).
+        #    Keyed by the job's tmdb_id (fallback: sanitized name) to match where
+        #    download_subtitles wrote them — same-named shows must not collide.
         if self._cache_dir:
             try:
                 from app.matcher.subtitle_utils import (
+                    corpus_dir_name,
                     parse_season_episode_numbers,
-                    sanitize_filename,
                 )
 
-                data_dir = self._cache_dir / "data" / sanitize_filename(show)
+                data_dir = self._cache_dir / "data" / corpus_dir_name(self._current_tmdb_id, show)
                 if data_dir.is_dir():
                     for srt in list(data_dir.glob("*.srt")) + list(data_dir.glob("*.SRT")):
                         parsed = parse_season_episode_numbers(srt.name)

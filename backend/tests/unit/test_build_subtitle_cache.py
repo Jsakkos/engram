@@ -69,7 +69,7 @@ class TestHarvestShowAccumulatesTally:
         """One season with mixed cached / downloaded / not_found episodes —
         each must increment the matching tally field."""
 
-        def fake_download(show_name, season, *, use_precomputed=False):
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
             return {
                 "show_name": show_name,
                 "season": season,
@@ -128,7 +128,7 @@ class TestHarvestShowAccumulatesTally:
         """The progress-bar advance hook must fire for every season —
         otherwise the bar stalls on shows with mixed outcomes."""
 
-        def downloads(show_name, season, *, use_precomputed=False):
+        def downloads(show_name, season, *, tmdb_id=None, use_precomputed=False):
             # 3 seasons → success / below-threshold / exception
             if season == 1:
                 return {
@@ -203,11 +203,12 @@ class TestHarvestShowCompleteOnDisk:
         path.write_text("1\n00:00:01,000 --> 00:01:00,000\nhello\n", encoding="utf-8")
 
     def test_covered_season_shipped_from_disk_without_network(self, bsc, tmp_path):
-        from app.matcher.subtitle_utils import sanitize_filename
+        from app.matcher.subtitle_utils import corpus_dir_name
 
         show = {"name": "Disk Show", "tmdb_id": 555, "seasons": 1}
-        # The data/ scrape cache stays name-keyed (only precomputed/ is id-keyed).
-        data_dir = tmp_path / "data" / sanitize_filename(show["name"])
+        # The data/ scrape cache is keyed by tmdb_id (matching where the runtime
+        # matcher reads); the complete-on-disk fast path globs that id-keyed dir.
+        data_dir = tmp_path / "data" / corpus_dir_name(show["tmdb_id"], show["name"])
         for code in ("S01E01", "S01E02"):
             self._write_min_srt(data_dir / f"{show['name']} - {code}.srt")
         # Prior attempt at full coverage → is_done() returns True.
@@ -260,7 +261,7 @@ class TestHarvestShowCompleteOnDisk:
         tally = bsc.RunTally()
         called = []
 
-        def fake_download(show_name, season, *, use_precomputed=False):
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
             called.append((show_name, season))
             return {
                 "show_name": show_name,
@@ -301,7 +302,7 @@ class TestHarvestShowCompleteOnDisk:
         tally = bsc.RunTally()
         called = []
 
-        def fake_download(show_name, season, *, use_precomputed=False):
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
             called.append((show_name, season))
             return {
                 "show_name": show_name,
@@ -362,7 +363,7 @@ class TestMainRoundTrip:
             _write_srt(srt_path, text)
             srt_paths[code] = srt_path
 
-        def fake_download(show_name, season, *, use_precomputed=False):
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
             return {
                 "show_name": show_name,
                 "season": season,

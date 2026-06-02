@@ -110,20 +110,36 @@ def _discover_shows(data_dir: Path) -> dict[str, dict[int, list[tuple[int, str, 
 
 
 def _resolve_canonical(dir_name: str, offline: bool) -> tuple[str, int | None, bool]:
-    """Map a sanitized show dir name to ``(manifest_key, tmdb_id, resolved)``.
+    """Map a show dir name to ``(canonical_name, tmdb_id, resolved)``.
 
-    Search TMDB for the dir name and accept its canonical title when it matches
-    the dir -- either exactly via ``sanitize_filename`` or, failing that, via
-    ``_norm_title`` (which tolerates cosmetic differences). The returned key is
-    always the canonical title, and the cache subdir/manifest key are both
-    derived from it (``sanitize_filename(key)``), so runtime lookup works
-    regardless of the on-disk dir name. On any miss -- offline, no TMDB hit, or a
-    non-matching title -- fall back to the dir name with no tmdb_id, so
-    non-punctuated titles still work.
+    Two on-disk dir shapes exist now that the SRT cache is keyed by tmdb_id:
+
+    1. **Numeric dir** (``data/195241/``) — the dir name *is* the tmdb_id, so
+       resolve it directly via ``fetch_show_details`` to recover the canonical
+       title. No name search, so same-named shows never get confused.
+    2. **Legacy name dir** (``data/Frasier/``) — search TMDB for the dir name and
+       accept its canonical title when it matches (exactly via
+       ``sanitize_filename`` or, failing that, via ``_norm_title`` for cosmetic
+       differences).
+
+    The manifest key + precomputed subdir are both derived from the returned
+    ``(tmdb_id, canonical_name)`` via ``corpus_dir_name`` in the caller. On any
+    miss -- offline, no TMDB hit, or a non-matching title -- fall back to the dir
+    name with no tmdb_id, so non-punctuated legacy titles still work.
     """
     if offline:
         return dir_name, None, False
     try:
+        # Numeric dir name == tmdb_id: resolve straight to the canonical title.
+        if dir_name.isdigit():
+            details = fetch_show_details(int(dir_name))
+            canonical = (details or {}).get("name")
+            if canonical:
+                return canonical, int(dir_name), True
+            logger.warning(
+                f"  {dir_name}: numeric dir but TMDB had no show for that id; keying by dir name"
+            )
+            return dir_name, None, False
         cid = fetch_show_id(dir_name)
         if not cid:
             logger.warning(f"  {dir_name}: no TMDB match; keying by dir name")

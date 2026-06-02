@@ -388,7 +388,9 @@ class FinalizationCoordinator:
         )
         return True
 
-    async def _maybe_escalate_reviews(self, session, job, titles) -> bool:
+    async def _maybe_escalate_reviews(
+        self, session, job, titles, *, wrong_show_suspected: bool = False
+    ) -> bool:
         """Deep re-match low-confidence REVIEW titles, escalating scan depth.
 
         Complements :meth:`_maybe_escalate_conflicts`: where that breaks same-
@@ -396,6 +398,11 @@ class FinalizationCoordinator:
         progressively deeper matcher passes before handing it to manual review.
         Depth-only ladder, capped at full coverage; a per-job pass counter
         (separate from the conflict counter) guarantees termination.
+
+        ``wrong_show_suspected`` collapses the ladder to a SINGLE full-coverage
+        confirming pass (see below) — the caller passes the pre-escalation
+        :func:`_detect_wrong_show` verdict so a probable wrong-show disc doesn't
+        burn the whole 25→50→full ladder against the wrong reference corpus.
 
         Returns ``True`` if a re-match was dispatched (job held in MATCHING; the
         caller should return and let completion re-entry pick it back up).
@@ -411,7 +418,22 @@ class FinalizationCoordinator:
             await self._clear_review_state(session, job)
             return False
 
-        ladder = _conflict_scan_ladder(review_titles)
+        if wrong_show_suspected:
+            # Suspected same-name wrong-show pick: every episode candidate matched
+            # nothing AND a same-name twin is persisted. Don't climb the gradual
+            # 25→50→full ladder against a corpus that's probably the wrong show —
+            # that's up to 3 wasted ASR passes. Do ONE full-coverage confirming
+            # pass instead: it's the strongest possible evidence, so a still-empty
+            # result lets the wrong-show branch fire with confidence, while a
+            # legitimately hard twin-having disc gets its densest matching shot in
+            # a single pass rather than being flagged prematurely. The confirming
+            # pass MUST be full coverage — a sparse tier matching nothing cannot
+            # distinguish a wrong corpus from a disc that just needed denser
+            # sampling, which is exactly the false positive we must avoid.
+            full = _full_coverage_points(review_titles)
+            ladder = [full] if full > 1 else []
+        else:
+            ladder = _conflict_scan_ladder(review_titles)
         last_depth = self._review_passes.get(job_id, 0)
         next_depth = next((d for d in ladder if d > last_depth), None)
 
@@ -529,6 +551,14 @@ class FinalizationCoordinator:
         has_completed = any(t.state == TitleState.COMPLETED for t in titles)
         all_failed = all(t.state == TitleState.FAILED for t in titles)
 
+        # Detect a same-name wrong-show pick up front (pure, no IO): EVERY episode
+        # candidate matched nothing AND a same-name twin is persisted. Computed
+        # before escalation so it can both (a) collapse review-escalation to a
+        # single confirming pass and (b) route to the re-identify review once that
+        # pass also comes back empty. Titles aren't mutated within this call, so
+        # the verdict stays valid down to the branch below.
+        wrong_show = _detect_wrong_show(job, titles)
+
         # Auto-resolve same-episode collisions before any manual review: deep
         # re-match contested titles at escalating scan density until the tie
         # breaks or the whole track has been transcribed. Runs BEFORE the
@@ -538,22 +568,27 @@ class FinalizationCoordinator:
             return
 
         # Then give plain low-confidence reviews (no collision) escalating deep
-        # re-match passes before surfacing them for manual assignment.
-        if await self._maybe_escalate_reviews(session, job, titles):
+        # re-match passes before surfacing them for manual assignment. When a
+        # wrong-show pick is suspected, escalation collapses to ONE full-coverage
+        # confirming pass instead of the full ladder — so a disc identified as the
+        # wrong same-named show doesn't burn 3 ASR passes against the wrong corpus.
+        if await self._maybe_escalate_reviews(
+            session, job, titles, wrong_show_suspected=bool(wrong_show)
+        ):
             return
 
-        # Wrong-show detector (Frasier 1993 vs 2023): if deep re-match still left
-        # EVERY episode candidate unmatched and a same-name twin exists, the disc
+        # Wrong-show detector (Frasier 1993 vs 2023): if the full-coverage
+        # confirming pass STILL left every episode candidate unmatched, the disc
         # was identified as the wrong same-named show. Surface an actionable
         # re-identify review instead of the generic "assign episodes" message.
-        wrong_show = _detect_wrong_show(job, titles)
         if wrong_show:
             reason = _wrong_show_review_reason(wrong_show, job)
             logger.warning(f"Job {job_id}: wrong-show suspected — {reason}")
-            # We only get here after _maybe_escalate_reviews exhausted the ladder,
-            # so _review_passes is pinned at max. REVIEW_NEEDED isn't terminal, so
-            # reset_conflict_passes never fires — clear it now or a re-identify to
-            # the correct show would skip deep re-match for its low-confidence titles.
+            # We only get here after _maybe_escalate_reviews exhausted its (now
+            # single-pass) ladder, so _review_passes is pinned at full coverage.
+            # REVIEW_NEEDED isn't terminal, so reset_conflict_passes never fires —
+            # clear it now or a re-identify to the correct show would skip deep
+            # re-match for its low-confidence titles.
             await self._clear_review_state(session, job)
             await self._state_machine.transition_to_review(job, session, reason=reason)
             return
