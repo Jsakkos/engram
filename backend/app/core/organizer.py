@@ -427,10 +427,10 @@ def organize_tv_episode(
     library_path: Path | None = None,
     conflict_resolution: str = "ask",
     *,
+    year: int | None = None,
     tmdb_id: str | None = None,
     ordering: str = "aired",
     episode_group_id: str | None = None,
-    year: int | None = None,
 ) -> dict:
     """Organize a ripped TV episode into the library.
 
@@ -550,7 +550,7 @@ def organize_tv_extras(
     title_index: int | None = None,
     *,
     year: int | None = None,
-    tmdb_id: str | int | None = None,
+    tmdb_id: str | None = None,
 ) -> dict:
     """Organize a ripped TV extra/bonus content into the library Extras folder.
 
@@ -562,6 +562,10 @@ def organize_tv_extras(
         disc_number: Disc number for multi-disc sets (default: 1)
         extra_index: Index of this extra on the disc (default: 1)
         title_index: MakeMKV title index for unique naming (e.g., t03)
+        year: First-air year for show-folder disambiguation (e.g. Frasier 1993 vs 2023).
+            Only affects the folder when ``naming_tv_show_format`` includes ``{year}``.
+        tmdb_id: Show's TMDB id for show-folder disambiguation. Only affects the folder
+            when ``naming_tv_show_format`` includes ``{tmdb_id}``.
 
     Returns:
         dict with 'success', 'final_path', 'error' keys

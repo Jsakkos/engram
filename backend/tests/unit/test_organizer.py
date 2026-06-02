@@ -476,7 +476,7 @@ class TestTVDisambiguation:
                 s, "Frasier", "S01E02", library_path=lib, tmdb_id="3452", year=None
             )
         assert r["success"]
-        assert "Frasier {tmdb-3452}" in str(r["final_path"])
+        assert r["final_path"] == lib / "Frasier {tmdb-3452}" / "Season 01" / "Frasier - S01E02.mkv"
         assert "()" not in str(r["final_path"])
 
     def test_episode_filename_year_opt_in(self, tmp_path):
