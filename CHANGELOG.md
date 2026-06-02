@@ -4,8 +4,11 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+_Highlights: same-name shows (for example the 2023 **Frasier** vs the 1993 original) can now coexist in your TV library, each in its own year/TMDB-tagged folder; plus FFmpeg is now a documented prerequisite with broader Windows auto-detection and inline path validation in the Config Wizard._
+
 ### Added
 
+- **Same-name TV shows can now coexist in the library** — TV episodes were filed under the bare show name (`Frasier/Season 01/…`), so ripping both the 1993 **Frasier** and the 2023 revival collided in one folder with identical filenames, and the second rip was skipped, overwritten, or bounced to Review. A new optional **Show Folder Format** setting disambiguates the show folder with the first-air year and TMDB id, matching the layout Plex (`Frasier (1993) {tmdb-3452}`) and Jellyfin (`Frasier (1993) [tmdbid-3452]`) parse for reliable matching. It is opt-in and defaults to the current bare-name layout, so existing libraries are untouched — set a format containing `{year}`/`{tmdb_id}` (and optionally add them to the episode filename format) to enable it. (#297)
 - FFmpeg is now documented as a prerequisite, with per-platform install steps (including `winget install Gyan.FFmpeg` on Windows) and a dedicated [Troubleshooting](https://jsakkos.github.io/engram/troubleshooting/) page led by the common "FFmpeg not detected" case.
 - The Config Wizard now validates a manually-entered MakeMKV or FFmpeg path against the backend and shows the detected version inline (or the specific error), so a hand-typed override is no longer saved blind. The FFmpeg "not found" card also links to the download page.
 
