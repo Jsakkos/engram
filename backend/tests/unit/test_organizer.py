@@ -335,7 +335,7 @@ class TestNamingHelpers:
         fmt = "{show} ({year}) {{tmdb-{tmdb_id}}}"
         assert format_tv_show_folder(fmt, "Frasier", None, None) == "Frasier"
 
-    def test_show_folder_default_is_bare(self):
+    def test_show_folder_show_only_format_ignores_extras(self):
         from app.core.organizer import format_tv_show_folder
 
         assert format_tv_show_folder("{show}", "Frasier", 1993, "3452") == "Frasier"
@@ -366,6 +366,30 @@ class TestNamingHelpers:
         from app.core.organizer import format_episode_filename
 
         out = format_episode_filename("{show} - S{season:02d}E{episode:02d}", "Frasier", 1, 2)
+        assert out == "Frasier - S01E02"
+
+    def test_episode_filename_plex_tag_with_id(self):
+        from app.core.organizer import format_episode_filename
+
+        out = format_episode_filename(
+            "{show} {{tmdb-{tmdb_id}}} - S{season:02d}E{episode:02d}",
+            "Frasier",
+            1,
+            2,
+            tmdb_id="3452",
+        )
+        assert out == "Frasier {tmdb-3452} - S01E02"
+
+    def test_episode_filename_plex_tag_missing_id_stripped(self):
+        from app.core.organizer import format_episode_filename
+
+        out = format_episode_filename(
+            "{show} {{tmdb-{tmdb_id}}} - S{season:02d}E{episode:02d}",
+            "Frasier",
+            1,
+            2,
+            tmdb_id=None,
+        )
         assert out == "Frasier - S01E02"
 
     def test_placeholder_sets_validate(self):

@@ -13,7 +13,11 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Allowed placeholders for naming format strings
-ALLOWED_TV_PLACEHOLDERS = {"show", "season", "episode"}  # season folder format
+ALLOWED_TV_PLACEHOLDERS = {
+    "show",
+    "season",
+    "episode",
+}  # season folder (episode validation uses ALLOWED_EPISODE_PLACEHOLDERS once routes are wired)
 # Show *folder* format — adds year/tmdb_id for same-name disambiguation
 # (Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]").
 ALLOWED_TV_SHOW_PLACEHOLDERS = {"show", "year", "tmdb_id"}
@@ -57,8 +61,7 @@ def format_episode_filename(
         )
     except (KeyError, ValueError, IndexError):
         result = f"{show} - S{season:02d}E{episode:02d}"
-    result = re.sub(r"\(\s*\)", "", result)
-    result = re.sub(r"\s+", " ", result).strip()
+    result = _strip_empty_name_groups(result)
     return sanitize_filename(result)
 
 
