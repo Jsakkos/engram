@@ -28,8 +28,12 @@ ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year"}
 
 def format_season_folder(fmt: str, season: int) -> str:
     """Format a season folder name from a config format string."""
+    # format_map (not format(**...)) so a user-supplied format with an unknown
+    # placeholder raises KeyError → caught below → safe fallback. Equivalent to
+    # format(**mapping) but keeps CodeQL's missing-named-argument check from
+    # flagging the intentionally-dynamic, user-controlled format string.
     try:
-        result = fmt.format(season=season)
+        result = fmt.format_map({"season": season})
     except (KeyError, ValueError, IndexError):
         result = f"Season {season:02d}"
     return sanitize_filename(result)
@@ -51,13 +55,18 @@ def format_episode_filename(
     ``()`` left behind is stripped (mirrors ``format_movie_folder``). The default
     format ("{show} - SxxExx") is unaffected.
     """
+    # format_map keeps an unknown placeholder raising KeyError → safe fallback,
+    # while avoiding CodeQL's missing-named-argument false positive on the
+    # user-controlled format string (see format_season_folder).
     try:
-        result = fmt.format(
-            show=show,
-            season=season,
-            episode=episode,
-            year=year or "",
-            tmdb_id=tmdb_id or "",
+        result = fmt.format_map(
+            {
+                "show": show,
+                "season": season,
+                "episode": episode,
+                "year": year or "",
+                "tmdb_id": tmdb_id or "",
+            }
         )
     except (KeyError, ValueError, IndexError):
         result = f"{show} - S{season:02d}E{episode:02d}"
@@ -68,7 +77,7 @@ def format_episode_filename(
 def format_movie_folder(fmt: str, title: str, year: int | None) -> str:
     """Format a movie folder name from a config format string."""
     try:
-        result = fmt.format(title=title, year=year or "")
+        result = fmt.format_map({"title": title, "year": year or ""})
     except (KeyError, ValueError, IndexError):
         result = f"{title} ({year})" if year else title
     # Clean up trailing empty parens if year is None
@@ -104,7 +113,7 @@ def format_tv_show_folder(fmt: str, show: str, year: int | None, tmdb_id: str | 
     if not fmt:
         return sanitize_filename(show)
     try:
-        result = fmt.format(show=show, year=year or "", tmdb_id=tmdb_id or "")
+        result = fmt.format_map({"show": show, "year": year or "", "tmdb_id": tmdb_id or ""})
     except (KeyError, ValueError, IndexError):
         result = show
     return sanitize_filename(_strip_empty_name_groups(result))
