@@ -53,7 +53,7 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache
-from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts
+from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts, sanitize_filename
 from app.matcher.testing_service import download_subtitles, get_last_quota, probe_os_quota
 from app.matcher.tmdb_client import (
     fetch_show_details,
@@ -260,10 +260,11 @@ def _harvest_show(
     """
     harvested: list[tuple[int, str, Path]] = []
     canonical = show["name"]
-    # Harvest dir keyed by tmdb_id so two same-named shows (Frasier 1993 vs the
-    # 2023 revival) don't share one scratch dir during a build. (Scratch only —
-    # the shipped tarball contains precomputed/ vectors, not data/ SRTs.)
-    season_data_dir = cache_dir / "data" / corpus_dir_name(show["tmdb_id"], canonical)
+    # The data/ SRT scrape cache stays NAME-keyed (it must match where
+    # download_subtitles writes and what normalize_subtitle_cache processes —
+    # re-keying data/ by tmdb_id is a separate follow-up). Only the precomputed
+    # OUTPUT below is keyed by tmdb_id.
+    season_data_dir = cache_dir / "data" / sanitize_filename(canonical)
     for season in range(1, show["seasons"] + 1):
         # Complete-on-disk fast path: a season that previously reached the
         # coverage threshold is shipped straight from the SRTs already on disk

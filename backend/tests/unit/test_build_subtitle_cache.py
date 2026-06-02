@@ -203,11 +203,11 @@ class TestHarvestShowCompleteOnDisk:
         path.write_text("1\n00:00:01,000 --> 00:01:00,000\nhello\n", encoding="utf-8")
 
     def test_covered_season_shipped_from_disk_without_network(self, bsc, tmp_path):
-        from app.matcher.subtitle_utils import corpus_dir_name
+        from app.matcher.subtitle_utils import sanitize_filename
 
         show = {"name": "Disk Show", "tmdb_id": 555, "seasons": 1}
-        # v3: the build harvests under a tmdb_id-keyed data dir.
-        data_dir = tmp_path / "data" / corpus_dir_name(show["tmdb_id"], show["name"])
+        # The data/ scrape cache stays name-keyed (only precomputed/ is id-keyed).
+        data_dir = tmp_path / "data" / sanitize_filename(show["name"])
         for code in ("S01E01", "S01E02"):
             self._write_min_srt(data_dir / f"{show['name']} - {code}.srt")
         # Prior attempt at full coverage → is_done() returns True.
