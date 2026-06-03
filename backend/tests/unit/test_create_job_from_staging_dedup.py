@@ -8,6 +8,7 @@ review-pending job for the path must still be deduped so a polling watcher
 cannot spawn duplicate jobs.
 """
 
+import asyncio
 import importlib
 from unittest.mock import AsyncMock
 
@@ -48,7 +49,9 @@ async def _drain(job_id: int) -> None:
     """Await and clear the background task create_job_from_staging spawned."""
     task = job_manager._active_jobs.pop(job_id, None)
     if task is not None:
-        await task
+        # gather() (not a bare `await task`) so the await is a call expression —
+        # avoids CodeQL py/ineffectual-statement misflagging the bare await.
+        await asyncio.gather(task)
 
 
 class TestCreateJobFromStagingDedup:
