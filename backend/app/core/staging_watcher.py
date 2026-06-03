@@ -224,26 +224,18 @@ class StagingWatcher:
         Returns list of (dir_path, mkv_count, total_size, metadata) tuples.
         """
         units = []
+        root_has_loose_mkv = False
         try:
             for entry in os.scandir(root):
                 if entry.is_file() and entry.name.lower().endswith(".mkv"):
-                    # Pattern C: MKVs directly in root — treat whole root as one unit
-                    mkv_count, total_size = self._count_mkvs(root)
-                    units.append(
-                        (
-                            root,
-                            mkv_count,
-                            total_size,
-                            {
-                                "structure": "flat",
-                                "show_name": None,
-                                "season": None,
-                                "destination_mode": self._import_destination_mode,
-                                "source": "import",
-                            },
-                        )
-                    )
-                    return units  # Whole root is one unit; stop scanning
+                    # Defer the flat (Pattern C) decision: a root that also
+                    # contains structured subfolders (Season/disc dirs) is a
+                    # container, not a flat dump. Returning here on the first
+                    # loose file (os.scandir order is arbitrary) would shadow
+                    # those subfolders and skip importing them — the data-loss
+                    # path that left un-imported Season folders to be deleted.
+                    root_has_loose_mkv = True
+                    continue
 
                 if not entry.is_dir():
                     continue
@@ -296,6 +288,37 @@ class StagingWatcher:
                     )
         except OSError as e:
             logger.debug(f"Could not scan import directory {root}: {e}")
+
+        # Pattern C (flat): treat the whole root as one unit ONLY when it has
+        # loose MKVs and no structured subfolder units were found. When both
+        # exist, the subfolders win and the loose top-level files are left
+        # untouched (they're ambiguous specials/strays — move them into a
+        # Season folder to import them).
+        if root_has_loose_mkv and not units:
+            mkv_count, total_size = self._count_mkvs(root)
+            units.append(
+                (
+                    root,
+                    mkv_count,
+                    total_size,
+                    {
+                        "structure": "flat",
+                        "show_name": None,
+                        "season": None,
+                        "destination_mode": self._import_destination_mode,
+                        "source": "import",
+                    },
+                )
+            )
+        elif root_has_loose_mkv and units:
+            loose_count, _ = self._count_mkvs(root)
+            logger.info(
+                "Import scan: %s has structured subfolders, so %d loose top-level "
+                "MKV file(s) were left un-imported (move them into a Season folder "
+                "to import them)",
+                root,
+                loose_count,
+            )
         return units
 
     def _try_pattern_b(self, show_dir: Path) -> list[tuple[Path, int, int, dict]]:
