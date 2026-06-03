@@ -138,6 +138,61 @@ async def test_re_identify_clears_stale_candidates(client):
         assert refreshed.candidates_json is None  # stale twins cleared
 
 
+async def _create_reident_year_job(tmdb_id=3452, tmdb_year=1993):
+    async with async_session() as session:
+        job = DiscJob(
+            volume_label="FRASIER_S1D1",
+            drive_id="E:",
+            state=JobState.REVIEW_NEEDED,
+            content_type=ContentType.TV,
+            detected_title="Frasier",
+            detected_season=1,
+            tmdb_id=tmdb_id,
+            tmdb_year=tmdb_year,
+            needs_review=True,
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        return job.id
+
+
+@pytest.mark.asyncio
+async def test_re_identify_preserves_year_on_tmdb_outage_same_show(client):
+    """A transient TMDB outage during re-identify must not blank a known year.
+
+    User re-picks the SAME show id while fetch_show_details is unreachable; the
+    previously-resolved tmdb_year must survive so the disambiguated library
+    folder (Frasier (1993) {tmdb-3452}) doesn't collapse to the bare name.
+    """
+    job_id = await _create_reident_year_job(tmdb_id=3452, tmdb_year=1993)
+
+    coordinator = IdentificationCoordinator(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    with patch("app.matcher.tmdb_client.fetch_show_details", return_value=None):
+        await coordinator.re_identify(job_id, "Frasier", "tv", season=1, tmdb_id=3452)
+
+    async with async_session() as session:
+        refreshed = await session.get(DiscJob, job_id)
+        assert refreshed.tmdb_id == 3452
+        assert refreshed.tmdb_year == 1993  # preserved across the outage
+
+
+@pytest.mark.asyncio
+async def test_re_identify_drops_stale_year_on_identity_change(client):
+    """Changing the show id (and the new year can't resolve) must NOT carry the
+    old show's year over — that would mislabel the new show's folder."""
+    job_id = await _create_reident_year_job(tmdb_id=3452, tmdb_year=1993)
+
+    coordinator = IdentificationCoordinator(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    with patch("app.matcher.tmdb_client.fetch_show_details", return_value=None):
+        await coordinator.re_identify(job_id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+    async with async_session() as session:
+        refreshed = await session.get(DiscJob, job_id)
+        assert refreshed.tmdb_id == 195241
+        assert refreshed.tmdb_year is None  # stale 1993 not carried across the change
+
+
 @pytest.mark.asyncio
 async def test_re_identify_rejects_wrong_state(client):
     """Re-identify should return 400 for jobs not in REVIEW_NEEDED state."""

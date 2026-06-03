@@ -208,3 +208,52 @@ class TestMovieExtrasMapping:
         assert result["success"]
         dest_names = {dest.name for dest in result["extras_mapping"].values()}
         assert dest_names == {"Extra 1.mkv", "Extra 2.mkv"}
+
+
+@pytest.mark.pipeline
+class TestTVSameNameCoexistence:
+    """Same-name shows coexist when disambiguation is enabled; default unchanged."""
+
+    @staticmethod
+    def _patch_cfg(**over):
+        from unittest.mock import patch
+
+        from app.models.app_config import AppConfig
+
+        return patch(
+            "app.services.config_service.get_config_sync",
+            return_value=AppConfig(**over),
+        )
+
+    def test_frasier_twins_coexist(self, tmp_path):
+        lib = tmp_path / "tv"
+        plex = "{show} ({year}) {{tmdb-{tmdb_id}}}"
+        with self._patch_cfg(naming_tv_show_format=plex):
+            a = tmp_path / "staging" / "a.mkv"
+            a.parent.mkdir(parents=True, exist_ok=True)
+            a.write_bytes(b"x" * 1024)
+            r1 = organize_tv_episode(
+                a, "Frasier", "S01E01", library_path=lib, tmdb_id="3452", year=1993
+            )
+            b = tmp_path / "staging" / "b.mkv"
+            b.write_bytes(b"x" * 1024)
+            r2 = organize_tv_episode(
+                b, "Frasier", "S01E01", library_path=lib, tmdb_id="195241", year=2023
+            )
+        assert r1["success"] and r2["success"]
+        assert r1["final_path"].parent.parent.name == "Frasier (1993) {tmdb-3452}"
+        assert r2["final_path"].parent.parent.name == "Frasier (2023) {tmdb-195241}"
+        assert r1["final_path"] != r2["final_path"]
+
+    def test_default_format_unchanged_bare_folder(self, tmp_path):
+        lib = tmp_path / "tv"
+        with self._patch_cfg():  # default naming_tv_show_format == "{show}"
+            s = tmp_path / "staging" / "c.mkv"
+            s.parent.mkdir(parents=True, exist_ok=True)
+            s.write_bytes(b"x" * 1024)
+            r = organize_tv_episode(
+                s, "Frasier", "S01E01", library_path=lib, tmdb_id="3452", year=1993
+            )
+        assert r["success"]
+        assert r["final_path"].parent.parent.name == "Frasier"
+        assert r["final_path"].name == "Frasier - S01E01.mkv"
