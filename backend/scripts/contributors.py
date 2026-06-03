@@ -216,6 +216,8 @@ def main(argv: list[str] | None = None, run: Callable[[list[str]], str] = _defau
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
+        # A capture/replacement stream (e.g. pytest) may lack reconfigure or
+        # reject a mid-stream encoding change; the default stdout is fine then.
         pass
 
     if args.release_section:
