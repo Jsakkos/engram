@@ -348,6 +348,17 @@ MIN_CONSENSUS_FOR_RATIO = 0.50
 CHUNK_VOTE_FLOOR = 0.06  # below this top-1 cosine, treat the chunk as noise
 CHUNK_VOTE_MARGIN_RATIO = 1.8  # top-1 must lead the runner-up by this ratio to vote
 
+# Calibrated-confidence acceptance floor for the ranked-voting gate. The raw
+# ranked_voting_score is a mean chunk cosine that sits structurally ~0.1 (see the
+# scale note above), so the absolute match_threshold gate rejects correct,
+# decisive matches (e.g. True Detective S1E5 raw=0.100/conf=0.810,
+# S1E7 raw=0.094/conf=0.745) and forces an expensive — sometimes worse — full-file
+# re-transcription. The calibrated 0-1 confidence already folds in separation +
+# vote consensus and is what the curator reads, so a match that clears this floor
+# with enough votes is accepted directly. 0.70 mirrors the curator's auto-organize
+# gate (EpisodeCurator.HIGH_CONFIDENCE_THRESHOLD).
+CONFIDENCE_ACCEPT_FLOOR = 0.70
+
 # Upper bound on the per-matcher ASR transcript cache (entries: chunks + full-file
 # transcripts, keyed by source+offset+duration). One season-unknown file needs
 # ~num_points + 1 entries; the bound just stops the long-lived singleton matcher
@@ -815,6 +826,7 @@ class EpisodeMatcher:
         use_ranked_voting=True,
         min_vote_count=2,
         match_threshold=0.10,
+        confidence_accept_floor=CONFIDENCE_ACCEPT_FLOOR,
         model_name="small",
         expected_tmdb_id=None,
     ):
@@ -851,6 +863,9 @@ class EpisodeMatcher:
         # Ranked voting parameters
         self.min_vote_count = min_vote_count
         self.match_threshold = match_threshold
+        # Accept a decisive, high-calibrated-confidence match even when the raw
+        # mean-cosine score sits at/below match_threshold (see CONFIDENCE_ACCEPT_FLOOR).
+        self.confidence_accept_floor = confidence_accept_floor
         # Rank+margin chunk-vote gate parameters (see select_chunk_vote).
         self.chunk_vote_floor = CHUNK_VOTE_FLOOR
         self.chunk_vote_margin_ratio = CHUNK_VOTE_MARGIN_RATIO
@@ -1572,31 +1587,47 @@ class EpisodeMatcher:
                     min_vote_count if min_vote_count is not None else self.min_vote_count
                 )
 
-                if best_match["score"] > self.match_threshold:
-                    vote_count = best_match["match_details"]["vote_count"]
+                # Accept when EITHER the raw mean-cosine clears match_threshold OR
+                # the calibrated confidence clears confidence_accept_floor — both
+                # with enough votes. The raw-score path is kept as an OR, so this
+                # only ever accepts MORE than before (never rejects a prior accept).
+                # The calibrated path rescues correct, decisive matches whose raw
+                # cosine sits structurally ~0.1 (e.g. True Detective S1E5/S1E7) from
+                # the expensive — and sometimes worse — full-file fallback.
+                vote_count = best_match["match_details"]["vote_count"]
+                calibrated = best_match.get("confidence", 0.0)
+                score_ok = best_match["score"] > self.match_threshold
+                confidence_ok = calibrated >= self.confidence_accept_floor
+                votes_ok = vote_count >= effective_min_votes
 
+                logger.info(
+                    f"Best match evaluation: "
+                    f"score {best_match['score']:.3f} vs threshold {self.match_threshold}, "
+                    f"calibrated {calibrated:.3f} vs floor {self.confidence_accept_floor}, "
+                    f"votes {vote_count} vs minimum {effective_min_votes}"
+                )
+
+                if (score_ok or confidence_ok) and votes_ok:
+                    accept_via = "raw score" if score_ok else "calibrated confidence"
                     logger.info(
-                        f"Best match evaluation: "
-                        f"score {best_match['score']:.3f} vs threshold {self.match_threshold}, "
-                        f"votes {vote_count} vs minimum {effective_min_votes}"
+                        f"Ranked voting match: S{best_match['season']:02d}E{best_match['episode']:02d} "
+                        f"(via {accept_via}; score={best_match['score']:.3f}, "
+                        f"confidence={calibrated:.3f}, votes={vote_count})"
                     )
+                    return best_match
 
-                    if vote_count < effective_min_votes:
-                        logger.warning(
-                            f"⚠ Match rejected: insufficient evidence. "
-                            f"Episode: {best_match['match_details']['episode']}, "
-                            f"score: {best_match['score']:.3f}, "
-                            f"votes: {vote_count}/{effective_min_votes}, "
-                            f"coverage: {best_match['match_details']['file_cov']:.1%}, "
-                            f"matched_at: {best_match['matched_at']}s"
-                        )
-                        # Fall through to fallback
-                    else:
-                        logger.info(
-                            f"Ranked voting match: S{best_match['season']:02d}E{best_match['episode']:02d} "
-                            f"(score: {best_match['score']:.3f}, votes: {vote_count})"
-                        )
-                        return best_match
+                if (score_ok or confidence_ok) and not votes_ok:
+                    logger.warning(
+                        f"⚠ Match rejected: insufficient evidence. "
+                        f"Episode: {best_match['match_details']['episode']}, "
+                        f"score: {best_match['score']:.3f}, confidence: {calibrated:.3f}, "
+                        f"votes: {vote_count}/{effective_min_votes}, "
+                        f"coverage: {best_match['match_details']['file_cov']:.1%}, "
+                        f"matched_at: {best_match['matched_at']}s"
+                    )
+                    # Fall through to fallback
+                # else: neither raw score nor calibrated confidence cleared —
+                # fall through to fallback.
             else:
                 # Zero chunks cleared the rank+margin vote gate. Crucially, do NOT
                 # early-return episode=None here: the chunk cosine scale is
@@ -1612,10 +1643,14 @@ class EpisodeMatcher:
             # --- FALLBACK ---
             # Full-file fallback when chunk voting produced no acceptable match
             # (no votes at all, score below threshold, or too few votes).
+            # Reached on any non-accept: low raw score, low calibrated confidence,
+            # too few votes, OR zero voting chunks (best_match is None here). State
+            # what an accept NEEDED rather than asserting which gate failed — the
+            # blocker may be votes alone even though score/confidence cleared.
             logger.info(
-                f"Ranked voting matching failed "
-                f"(best score: {best_score:.3f} < {self.match_threshold} threshold "
-                f"or insufficient votes). "
+                f"Ranked voting produced no acceptable match "
+                f"(best score {best_score:.3f}; needed raw score > {self.match_threshold} "
+                f"or calibrated confidence ≥ {self.confidence_accept_floor}, with enough votes). "
                 f"Attempting FULL FILE fallback..."
             )
             match = self._match_full_file(video_file, model_config, reference_files, video_duration)

@@ -603,3 +603,70 @@ class TestEpisodeRuntimesShowIdentity:
         assert runtimes == [23, 23]
         fake_fetch_id.assert_called_once_with("Frasier")
         assert captured["show_id"] == "3452"
+
+
+@pytest.mark.unit
+class TestConvergeJobToMatching:
+    """The matching coordinator converges the parent job to MATCHING the moment a
+    title starts matching — belt-and-suspenders so the import-folder dashboard can't
+    stay stuck on the scanning radar if the identify-time MATCHING broadcast is ever
+    missed (the PR #307 symptom). Only a job still in IDENTIFYING is moved; an
+    already-MATCHING or REVIEW_NEEDED (deep-rematch) job is left alone.
+    """
+
+    async def _seed_job(self, session, state: JobState) -> int:
+        job = DiscJob(
+            drive_id="import",
+            volume_label="TRUE_DETECTIVE_S1",
+            content_type=ContentType.TV,
+            state=state,
+            detected_title="True Detective",
+            detected_season=1,
+            staging_path="/tmp/staging",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        return job.id
+
+    async def test_identifying_job_converges_and_broadcasts(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job_id = await self._seed_job(session, JobState.IDENTIFYING)
+            await coord._converge_job_to_matching(session, job_id)
+
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            assert job.state == JobState.MATCHING
+        broadcast.assert_awaited_once_with(job_id, JobState.MATCHING.value)
+
+    async def test_already_matching_job_is_noop(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job_id = await self._seed_job(session, JobState.MATCHING)
+            await coord._converge_job_to_matching(session, job_id)
+
+        # Already MATCHING — no re-transition, no duplicate broadcast.
+        broadcast.assert_not_awaited()
+
+    async def test_review_needed_job_is_untouched(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job_id = await self._seed_job(session, JobState.REVIEW_NEEDED)
+            await coord._converge_job_to_matching(session, job_id)
+
+        # The deep-rematch path runs while the job is REVIEW_NEEDED; it must not be
+        # yanked back into MATCHING by the guard.
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            assert job.state == JobState.REVIEW_NEEDED
+        broadcast.assert_not_awaited()
