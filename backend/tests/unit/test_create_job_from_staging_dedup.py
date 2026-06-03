@@ -48,10 +48,12 @@ def stub_pipeline(monkeypatch):
 async def _drain(job_id: int) -> None:
     """Await and clear the background task create_job_from_staging spawned."""
     task = job_manager._active_jobs.pop(job_id, None)
-    if task is not None:
-        # gather() (not a bare `await task`) so the await is a call expression —
-        # avoids CodeQL py/ineffectual-statement misflagging the bare await.
-        await asyncio.gather(task)
+    # Assert rather than skip silently: if _active_jobs is ever renamed this
+    # helper would become a no-op (leaked task) while the test still passed.
+    assert task is not None, f"no active task tracked for job {job_id}"
+    # gather() (not a bare `await task`) so the await is a call expression —
+    # avoids CodeQL py/ineffectual-statement misflagging the bare await.
+    await asyncio.gather(task)
 
 
 class TestCreateJobFromStagingDedup:
@@ -89,3 +91,21 @@ class TestCreateJobFromStagingDedup:
         )
 
         assert result == -1, "review-pending job should still dedup"
+
+    async def test_completed_job_still_blocks_reimport(self, stub_pipeline):
+        """A COMPLETED job must still dedup.
+
+        Unlike the disc path (which excludes COMPLETED), a watch folder is polled
+        continuously, so a completed import must not re-spawn a duplicate job while
+        its files still sit in the watch folder. This is a deliberate policy — the
+        guard blocks every state except FAILED — and this test pins it so a future
+        change that mirrors the disc filter can't silently regress it.
+        """
+        path = r"X:\media\rips\Sopranos"
+        await _insert_job(path, JobState.COMPLETED)
+
+        result = await job_manager.create_job_from_staging(
+            staging_path=path, volume_label="SOPRANOS", drive_id="import"
+        )
+
+        assert result == -1, "completed import should still dedup"
