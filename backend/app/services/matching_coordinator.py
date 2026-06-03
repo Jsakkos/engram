@@ -1133,6 +1133,8 @@ class MatchingCoordinator:
             job.disc_number,
             extra_index,
             title.title_index,
+            tmdb_id=str(job.tmdb_id) if job.tmdb_id else None,
+            year=job.tmdb_year,
         )
         if org_result["success"]:
             title.state = TitleState.COMPLETED

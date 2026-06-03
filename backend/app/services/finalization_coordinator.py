@@ -813,6 +813,7 @@ class FinalizationCoordinator:
             # Canonical (aired) for the common case; projected to the filename only.
             ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
             _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
+            _tmdb_year = job.tmdb_year
 
             # Organize all MATCHED winners
             extra_index = 1
@@ -844,6 +845,8 @@ class FinalizationCoordinator:
                         disc_number=job.disc_number or 1,
                         extra_index=extra_index,
                         title_index=t.title_index,
+                        tmdb_id=_tmdb_id_str,
+                        year=_tmdb_year,
                     )
                 elif _lib_path:
                     org_result = await asyncio.to_thread(
@@ -855,6 +858,7 @@ class FinalizationCoordinator:
                         tmdb_id=_tmdb_id_str,
                         ordering=ordering,
                         episode_group_id=ordering_group_id,
+                        year=_tmdb_year,
                     )
                 else:
                     org_result = await asyncio.to_thread(
@@ -865,6 +869,7 @@ class FinalizationCoordinator:
                         tmdb_id=_tmdb_id_str,
                         ordering=ordering,
                         episode_group_id=ordering_group_id,
+                        year=_tmdb_year,
                     )
 
                 # Classification is independent of the file move: a failed extra
@@ -1172,6 +1177,7 @@ class FinalizationCoordinator:
         # Resolve output ordering once for this sweep (#200); filename-only projection.
         ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
         _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
+        _tmdb_year = job.tmdb_year
 
         success_count = 0
         conflict_count = 0
@@ -1197,6 +1203,8 @@ class FinalizationCoordinator:
                             disc_number=job.disc_number or 1,
                             extra_index=extra_index,
                             title_index=disc_title.title_index,
+                            tmdb_id=_tmdb_id_str,
+                            year=_tmdb_year,
                         )
                         extra_index += 1
                     else:
@@ -1210,6 +1218,7 @@ class FinalizationCoordinator:
                                 tmdb_id=_tmdb_id_str,
                                 ordering=ordering,
                                 episode_group_id=ordering_group_id,
+                                year=_tmdb_year,
                             )
                         else:
                             org_result = await asyncio.to_thread(
@@ -1220,6 +1229,7 @@ class FinalizationCoordinator:
                                 tmdb_id=_tmdb_id_str,
                                 ordering=ordering,
                                 episode_group_id=ordering_group_id,
+                                year=_tmdb_year,
                             )
                     if org_result["success"]:
                         success_count += 1
@@ -1358,6 +1368,7 @@ class FinalizationCoordinator:
             # Resolve output ordering once for this sweep (#200); filename-only projection.
             ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
             _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
+            _tmdb_year = job.tmdb_year
 
             success_count = 0
             conflict_count = 0
@@ -1383,6 +1394,8 @@ class FinalizationCoordinator:
                         disc_number=job.disc_number or 1,
                         extra_index=extra_index,
                         title_index=disc_title.title_index,
+                        tmdb_id=_tmdb_id_str,
+                        year=_tmdb_year,
                     )
                     extra_index += 1
                 else:
@@ -1396,6 +1409,7 @@ class FinalizationCoordinator:
                             tmdb_id=_tmdb_id_str,
                             ordering=ordering,
                             episode_group_id=ordering_group_id,
+                            year=_tmdb_year,
                         )
                     else:
                         org_result = await asyncio.to_thread(
@@ -1406,6 +1420,7 @@ class FinalizationCoordinator:
                             tmdb_id=_tmdb_id_str,
                             ordering=ordering,
                             episode_group_id=ordering_group_id,
+                            year=_tmdb_year,
                         )
 
                 if org_result["success"]:

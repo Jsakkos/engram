@@ -9,35 +9,35 @@ design tokens, and the small rules that keep the brand from drifting.
 
 | You want to render… | Use… | Lives in… |
 | --- | --- | --- |
-| The full mark (large hero / dashboard) | `<SvMark size={n} />` | [`SvMark.tsx`](../../frontend/src/app/components/synapse/SvMark.tsx) |
-| The monogram (no read-line, ≤32px) | `<MarkMono size={n} />` | [`MarkMono.tsx`](../../frontend/src/app/components/synapse/MarkMono.tsx) |
-| An animated mark (splash, reconnect) | `<MarkAnimated size={n} />` | [`MarkAnimated.tsx`](../../frontend/src/app/components/synapse/MarkAnimated.tsx) |
-| The wordmark "ENGRAM" | `<Wordmark size={n} />` | [`Wordmark.tsx`](../../frontend/src/app/components/synapse/Wordmark.tsx) |
-| One of four lockups (mark + wordmark) | `<LockupHorizontal>` / `<LockupStacked>` / `<LockupWithDescriptor>` / `<LockupMarkOnly>` | [`Lockup.tsx`](../../frontend/src/app/components/synapse/Lockup.tsx) |
-| A platform-style app icon | `<AppIcon size={128} edition="dark" />` | [`AppIcon.tsx`](../../frontend/src/app/components/synapse/AppIcon.tsx) |
-| Full-viewport splash | `<Splash label="INITIALIZING" />` | [`Splash.tsx`](../../frontend/src/app/components/synapse/Splash.tsx) |
-| A bordered panel with corner ticks | `<SvPanel>` (auto-wraps `<SvCorners>`) | [`SvPanel.tsx`](../../frontend/src/app/components/synapse/SvPanel.tsx) |
-| A status icon (idle / scan / ripping / …) | `<IcoIdle />` … `<IcoError />` | [`icons/status.tsx`](../../frontend/src/app/components/icons/status.tsx) |
-| A media-type icon (disc / movie / TV / …) | `<IcoDisc />` … `<IcoLibrary />` | [`icons/media.tsx`](../../frontend/src/app/components/icons/media.tsx) |
-| An action / nav icon (play / settings / …) | `<IcoPlay />` … `<IcoBytes />` | [`icons/action.tsx`](../../frontend/src/app/components/icons/action.tsx) |
+| The full mark (large hero / dashboard) | `<SvMark size={n} />` | [`SvMark.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/SvMark.tsx) |
+| The monogram (no read-line, ≤32px) | `<MarkMono size={n} />` | [`MarkMono.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/MarkMono.tsx) |
+| An animated mark (splash, reconnect) | `<MarkAnimated size={n} />` | [`MarkAnimated.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/MarkAnimated.tsx) |
+| The wordmark "ENGRAM" | `<Wordmark size={n} />` | [`Wordmark.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Wordmark.tsx) |
+| One of four lockups (mark + wordmark) | `<LockupHorizontal>` / `<LockupStacked>` / `<LockupWithDescriptor>` / `<LockupMarkOnly>` | [`Lockup.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Lockup.tsx) |
+| A platform-style app icon | `<AppIcon size={128} edition="dark" />` | [`AppIcon.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/AppIcon.tsx) |
+| Full-viewport splash | `<Splash label="INITIALIZING" />` | [`Splash.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Splash.tsx) |
+| A bordered panel with corner ticks | `<SvPanel>` (auto-wraps `<SvCorners>`) | [`SvPanel.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/SvPanel.tsx) |
+| A status icon (idle / scan / ripping / …) | `<IcoIdle />` … `<IcoError />` | [`icons/status.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/status.tsx) |
+| A media-type icon (disc / movie / TV / …) | `<IcoDisc />` … `<IcoLibrary />` | [`icons/media.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/media.tsx) |
+| An action / nav icon (play / settings / …) | `<IcoPlay />` … `<IcoBytes />` | [`icons/action.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/action.tsx) |
 
 Re-exports are aggregated in
-[`frontend/src/app/components/synapse/index.ts`](../../frontend/src/app/components/synapse/index.ts)
-and [`frontend/src/app/components/icons/index.ts`](../../frontend/src/app/components/icons/index.ts) — import from there.
+[`frontend/src/app/components/synapse/index.ts`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/index.ts)
+and [`frontend/src/app/components/icons/index.ts`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/index.ts) — import from there.
 
 ## Design tokens
 
 There are **two places** the tokens live, kept in lockstep:
 
-1. **TypeScript** — [`frontend/src/app/components/synapse/tokens.ts`](../../frontend/src/app/components/synapse/tokens.ts)
+1. **TypeScript** — [`frontend/src/app/components/synapse/tokens.ts`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/tokens.ts)
    exports `sv`, a plain object with color/typography constants. Use it
    for inline `style={{ … }}`, SVG `fill="…"`, or wherever a CSS variable
    doesn't reach (motion props, conditional gradients, etc.).
 
-2. **CSS custom properties** — [`frontend/src/styles/theme.css`](../../frontend/src/styles/theme.css)
+2. **CSS custom properties** — [`frontend/src/styles/theme.css`](https://github.com/Jsakkos/engram/blob/main/frontend/src/styles/theme.css)
    `@theme inline { … }` block defines `--color-sv-cyan`, `--color-sv-magenta`,
    `--color-sv-line-mid`, and so on. Use these from `.css` files and
-   external stylesheets like [`ConfigWizard.css`](../../frontend/src/components/ConfigWizard.css).
+   external stylesheets like [`ConfigWizard.css`](https://github.com/Jsakkos/engram/blob/main/frontend/src/components/ConfigWizard.css).
 
 **Never hardcode `#5eead4` or `#ff3d7f` in new code** — they always come
 from one of the two surfaces above. If you find yourself wanting a new
@@ -50,7 +50,7 @@ These are the rules you'll forget and accidentally break. Memorize them.
 - **Cyan is brand. Magenta is action.** Magenta only appears on actively
   ripping things, on the primary CTA in any flow, and on the read-line
   node of the mark. Don't decorate static chrome with magenta. (When
-  refactoring [`ConfigWizard.css`](../../frontend/src/components/ConfigWizard.css),
+  refactoring [`ConfigWizard.css`](https://github.com/Jsakkos/engram/blob/main/frontend/src/components/ConfigWizard.css),
   this is why the form `<label>` color was moved from magenta to cyan-dim.)
 - **Mono is for labels, not body.** Don't render running paragraphs in
   JetBrains Mono. Mono is for telemetry, paths, labels, code, and
@@ -77,7 +77,7 @@ Rule of thumb:
 
 | Glyph reads as… | Use |
 | --- | --- |
-| A state, a media type, a primary action, or a nav entry | `Ico*` from [`icons/`](../../frontend/src/app/components/icons/) |
+| A state, a media type, a primary action, or a nav entry | `Ico*` from [`icons/`](https://github.com/Jsakkos/engram/tree/main/frontend/src/app/components/icons/) |
 | A pure UI affordance (chevron, plus, save, trash, info) | Lucide |
 
 If you can describe the icon in the brand handoff's vocabulary
@@ -88,13 +88,13 @@ it's Lucide.
 ## Adding a new icon
 
 1. Confirm it's not already in the 30-icon set —
-   [`icons/index.ts`](../../frontend/src/app/components/icons/index.ts) is the full inventory.
+   [`icons/index.ts`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/index.ts) is the full inventory.
 2. If it's a true brand glyph, draft it on a 24×24 grid with 1.5px stroke,
    round caps + joins, no fill (except deliberately "lit" elements).
-3. Add the path data to the appropriate file ([`status.tsx`](../../frontend/src/app/components/icons/status.tsx)
-   / [`media.tsx`](../../frontend/src/app/components/icons/media.tsx) /
-   [`action.tsx`](../../frontend/src/app/components/icons/action.tsx)) wrapped in `<Ico>`.
-4. Re-export from [`icons/index.ts`](../../frontend/src/app/components/icons/index.ts).
+3. Add the path data to the appropriate file ([`status.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/status.tsx)
+   / [`media.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/media.tsx) /
+   [`action.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/action.tsx)) wrapped in `<Ico>`.
+4. Re-export from [`icons/index.ts`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/index.ts).
 5. If the new icon is brand-significant enough to ship as an external
    asset, add it to the canonical handoff
    [`docs/design_handoff_brand/brand/icons.jsx`](../design_handoff_brand/brand/icons.jsx) so
@@ -111,10 +111,10 @@ npm run brand:export
 
 This runs two scripts in sequence:
 
-1. [`scripts/render-svg-sources.mjs`](../../frontend/scripts/render-svg-sources.mjs)
+1. [`scripts/render-svg-sources.mjs`](https://github.com/Jsakkos/engram/blob/main/frontend/scripts/render-svg-sources.mjs)
    emits canonical SVG sources to `frontend/public/brand/sources/`:
    `mark.svg`, `mark-mono.svg`, `app-icon-dark.svg`, `app-icon-light.svg`.
-2. [`scripts/generate-brand-assets.mjs`](../../frontend/scripts/generate-brand-assets.mjs)
+2. [`scripts/generate-brand-assets.mjs`](https://github.com/Jsakkos/engram/blob/main/frontend/scripts/generate-brand-assets.mjs)
    rasterizes with `sharp` and packs `.ico` and `.icns` with `png2icons`.
 
 Outputs land under `frontend/public/brand/` in a structured layout:
@@ -135,7 +135,7 @@ both `.ico` and `.icns` on Windows/macOS/Linux dev machines. No
 `iconutil` or ImageMagick required.
 
 When the mark geometry changes (`SvMark.tsx`), mirror the change in
-[`render-svg-sources.mjs`](../../frontend/scripts/render-svg-sources.mjs) and
+[`render-svg-sources.mjs`](https://github.com/Jsakkos/engram/blob/main/frontend/scripts/render-svg-sources.mjs) and
 re-run `npm run brand:export`. Commit the regenerated assets.
 
 For PyInstaller-frozen Windows builds: point `--icon` at
@@ -145,14 +145,14 @@ For PyInstaller-frozen Windows builds: point `--icon` at
 
 There are two splashes, by design:
 
-- **HTML pre-React splash** in [`frontend/index.html`](../../frontend/index.html).
+- **HTML pre-React splash** in [`frontend/index.html`](https://github.com/Jsakkos/engram/blob/main/frontend/index.html).
   Renders before the bundle parses — uses only inline CSS + an inline
   SVG of the mark, no external fonts (system fallback until Chakra Petch
-  loads). [`main.tsx`](../../frontend/src/main.tsx) removes
+  loads). [`main.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/main.tsx) removes
   `<html class="pre-splash">` once React mounts; the splash fades over
   240ms via a CSS transition and stays in the DOM with `pointer-events:
   none`.
-- **React `<Splash />`** in [`Splash.tsx`](../../frontend/src/app/components/synapse/Splash.tsx).
+- **React `<Splash />`** in [`Splash.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Splash.tsx).
   Use this when you need to surface a "connecting" or "reconnecting"
   state in the running app — the WebSocket-disconnected case is the
   canonical example.
@@ -175,7 +175,7 @@ exact look and behavior — start there.
 
 ## Accepted deviations from the original plan
 
-Two items in the rollout plan ([`.claude/plans/take-a-look-at-deep-clarke.md`](../../.claude/plans/take-a-look-at-deep-clarke.md))
+Two items in the rollout plan ([`.claude/plans/take-a-look-at-deep-clarke.md`](https://github.com/Jsakkos/engram/blob/main/.claude/plans/take-a-look-at-deep-clarke.md))
 were scoped down during implementation. Both are deliberate and documented
 here so future maintainers don't re-litigate the choice.
 
@@ -205,12 +205,12 @@ revisit and complete the retirement.
 ### 2. `ConfigWizard.css` survives in tokenized form
 
 The plan said *"delete `ConfigWizard.css` entirely"* and rewrite
-[`ConfigWizard.tsx`](../../frontend/src/components/ConfigWizard.tsx)
+[`ConfigWizard.tsx`](https://github.com/Jsakkos/engram/blob/main/frontend/src/components/ConfigWizard.tsx)
 to consume `<SvPanel>` / `<SvBadge>` / `<SvLabel>` etc.
 
 The actual refactor stopped one step short of deletion: the `.css`
 file (~669 lines, now ~600 after cleanup) was retained but rewritten to
-consume CSS custom properties from [`theme.css`](../../frontend/src/styles/theme.css)
+consume CSS custom properties from [`theme.css`](https://github.com/Jsakkos/engram/blob/main/frontend/src/styles/theme.css)
 (`--color-sv-cyan`, `--color-sv-line-mid`, etc.) instead of hardcoded
 hexes. The visible-from-outside chrome (modal overlay, modal border,
 button styling, form labels, scanlines) was brought into brand

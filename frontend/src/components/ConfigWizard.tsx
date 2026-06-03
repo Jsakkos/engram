@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
@@ -70,6 +70,7 @@ interface ConfigData {
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
     namingMovieFormat: string;
+    namingTvShowFormat: string;
     discdbEnabled: boolean;
     enableFingerprintContributions: boolean;
     fingerprintServerUrl: string;
@@ -139,6 +140,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
+        namingTvShowFormat: '{show}',
         discdbEnabled: true,
         enableFingerprintContributions: true,
         fingerprintServerUrl: '',
@@ -169,6 +171,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
     const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, ai: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, ai: false});
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
+    // Inline validation for manually-entered tool paths (MakeMKV/FFmpeg), keyed by
+    // the config field. Without this, a hand-typed override was saved blind — no
+    // confirmation it actually points at a working binary.
+    const [pathValidation, setPathValidation] = useState<
+        Partial<Record<keyof ConfigData, {status: 'idle' | 'validating' | 'valid' | 'invalid', version?: string, error?: string}>>
+    >({});
+    // Monotonic per-field request counter. Each edit/validate bumps it; a response
+    // is applied only if its id is still current, so a slow earlier response can't
+    // overwrite a newer one (or clobber the user's in-progress edits).
+    const pathValidationSeq = useRef<Partial<Record<keyof ConfigData, number>>>({});
     // #243: first-run gate — require a validated TMDB token (or explicit skip) before leaving the TMDB step.
     const [tmdbContinueAnyway, setTmdbContinueAnyway] = useState(false);
     const [tmdbGatePrompted, setTmdbGatePrompted] = useState(false);
@@ -234,6 +246,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
+                    namingTvShowFormat: data.naming_tv_show_format || '{show}',
                     discdbEnabled: data.discdb_enabled ?? true,
                     enableFingerprintContributions: data.enable_fingerprint_contributions ?? true,
                     fingerprintServerUrl: data.fingerprint_server_url || '',
@@ -374,6 +387,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
+                    naming_tv_show_format: config.namingTvShowFormat,
                     discdb_enabled: config.discdbEnabled,
                     enable_fingerprint_contributions: config.enableFingerprintContributions,
                     fingerprint_server_url: config.fingerprintServerUrl || null,
@@ -433,6 +447,51 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
             }
         } catch {
             setTmdbValidation({status: 'invalid', error: 'Failed to reach validation endpoint'});
+        }
+    };
+
+    // Validate a manually-entered tool path against the backend, which actually
+    // runs the binary. Picks the endpoint by tool; an empty path resets to idle.
+    const validateToolPath = async (
+        toolName: string,
+        configField: keyof ConfigData,
+        rawPath: string,
+    ) => {
+        const path = rawPath.trim();
+        if (!path) {
+            setPathValidation(prev => ({ ...prev, [configField]: { status: 'idle' } }));
+            return;
+        }
+        const endpoint = toolName === 'MakeMKV' ? '/api/validate/makemkv' : '/api/validate/ffmpeg';
+        const requestId = (pathValidationSeq.current[configField] ?? 0) + 1;
+        pathValidationSeq.current[configField] = requestId;
+        const isStale = () => pathValidationSeq.current[configField] !== requestId;
+        setPathValidation(prev => ({ ...prev, [configField]: { status: 'validating' } }));
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            });
+            if (isStale()) return; // a newer request for this field superseded us
+            const result = await response.json();
+            if (result.valid) {
+                setPathValidation(prev => ({
+                    ...prev,
+                    [configField]: { status: 'valid', version: result.version },
+                }));
+            } else {
+                setPathValidation(prev => ({
+                    ...prev,
+                    [configField]: { status: 'invalid', error: result.error || 'Validation failed' },
+                }));
+            }
+        } catch {
+            if (isStale()) return;
+            setPathValidation(prev => ({
+                ...prev,
+                [configField]: { status: 'invalid', error: 'Failed to reach validation endpoint' },
+            }));
         }
     };
 
@@ -504,9 +563,39 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                         <input
                             type="text"
                             value={config[configField] as string}
-                            onChange={(e) => handleInputChange(configField, e.target.value)}
-                            placeholder={`Path to ${toolName.toLowerCase()} executable`}
+                            onChange={(e) => {
+                                handleInputChange(configField, e.target.value);
+                                // Editing invalidates the previous result and any in-flight
+                                // validation; re-check on blur.
+                                pathValidationSeq.current[configField] =
+                                    (pathValidationSeq.current[configField] ?? 0) + 1;
+                                setPathValidation(prev => ({ ...prev, [configField]: { status: 'idle' } }));
+                            }}
+                            onBlur={(e) => validateToolPath(toolName, configField, e.target.value)}
+                            placeholder={
+                                toolName === 'FFmpeg'
+                                    ? (toolDetection?.platform === 'win32'
+                                        ? 'C:\\Users\\You\\ffmpeg\\bin\\ffmpeg.exe'
+                                        : '/usr/local/bin/ffmpeg')
+                                    : `Path to ${toolName.toLowerCase()} executable`
+                            }
                         />
+                        <span className="form-hint">
+                            Point to the {toolName} executable file itself, not the folder it lives in.
+                        </span>
+                        {pathValidation[configField]?.status === 'validating' && (
+                            <span style={{ fontSize: '0.85rem' }}>Checking…</span>
+                        )}
+                        {pathValidation[configField]?.status === 'valid' && (
+                            <span style={{ color: '#22c55e', fontSize: '0.85rem' }}>
+                                ✓ {pathValidation[configField]?.version || 'Valid'}
+                            </span>
+                        )}
+                        {pathValidation[configField]?.status === 'invalid' && (
+                            <span style={{ color: '#ef4444', fontSize: '0.85rem' }}>
+                                ✗ {pathValidation[configField]?.error}
+                            </span>
+                        )}
                     </div>
                 )}
             </div>
@@ -634,7 +723,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     ? 'Download installer from makemkv.com'
                     : 'sudo apt install makemkv-bin makemkv-oss';
                 const ffmpegInstallHint = isWindows
-                    ? 'winget install ffmpeg'
+                    ? 'winget install Gyan.FFmpeg'
                     : 'sudo apt install ffmpeg';
 
                 return (
@@ -659,7 +748,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 toolDetection?.ffmpeg,
                                 'FFmpeg',
                                 ffmpegInstallHint,
-                                null,
+                                'https://ffmpeg.org/download.html',
                                 showFfmpegOverride,
                                 setShowFfmpegOverride,
                                 'ffmpegPath',
@@ -1364,6 +1453,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             />
                             <span className="form-hint">
                                 Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="namingTvShowFormat">Show Folder Format</label>
+                            <input
+                                id="namingTvShowFormat"
+                                type="text"
+                                value={config.namingTvShowFormat}
+                                onChange={(e) => handleInputChange('namingTvShowFormat', e.target.value)}
+                                placeholder="{show}"
+                            />
+                            <span className="form-hint">
+                                Placeholders: {'{show}'}, {'{year}'}, {'{tmdb_id}'}. Default{' '}
+                                {'{show}'} keeps your current folders. To let same-name shows
+                                coexist (e.g. Frasier 1993 vs 2023), use Plex{' '}
+                                &quot;{'{show} ({year}) {{tmdb-{tmdb_id}}}'}&quot; or Jellyfin{' '}
+                                &quot;{'{show} ({year}) [tmdbid-{tmdb_id}]'}&quot;.
                             </span>
                         </div>
 
