@@ -21,7 +21,6 @@ import app.services.identification_coordinator as idc_mod
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, TitleState
 from app.services.event_broadcaster import EventBroadcaster
-from app.services.identification_coordinator import IdentificationCoordinator
 from app.services.job_state_machine import JobStateMachine
 from tests.unit.conftest import _unit_session_factory
 
@@ -68,7 +67,7 @@ def _build_coordinator(content_type: ContentType, monkeypatch):
     broadcaster = EventBroadcaster(broadcaster_ws)
     state_machine = JobStateMachine(broadcaster)
 
-    coordinator = IdentificationCoordinator(
+    coordinator = idc_mod.IdentificationCoordinator(
         analyst=MagicMock(),
         extractor=MagicMock(),
         event_broadcaster=broadcaster,
@@ -151,3 +150,44 @@ async def test_movie_import_advances_to_organizing_via_state_machine(tmp_path, m
     # The transition observer fired for ORGANIZING — proves we went through the
     # state machine rather than assigning job.state directly.
     assert (job_id, JobState.ORGANIZING) in transitions
+
+
+@pytest.mark.asyncio
+async def test_tv_import_skips_matching_when_transition_rejected(tmp_path, monkeypatch):
+    """If the MATCHING transition is rejected (e.g. a concurrent cancel/fail), no per-title
+    matching work runs — no job/title MATCHING broadcasts, no match tasks — so the UI never
+    shows tracks matching on a job that didn't actually leave IDENTIFYING."""
+    staging_dir = _make_staging(tmp_path, count=3)
+    coordinator, broadcaster_ws, module_ws = _build_coordinator(ContentType.TV, monkeypatch)
+    coordinator._state_machine.transition = AsyncMock(return_value=False)
+
+    job_id = await _make_job(str(staging_dir), "BATTLESTAR_GALACTICA_S1D1")
+    await coordinator.identify_from_staging(job_id)
+
+    matching_job_calls = [
+        c
+        for c in module_ws.broadcast_job_update.await_args_list
+        if JobState.MATCHING.value in c.args
+    ]
+    assert matching_job_calls == []
+    matching_title_calls = [
+        c
+        for c in broadcaster_ws.broadcast_title_update.await_args_list
+        if c.kwargs.get("state") == TitleState.MATCHING.value
+    ]
+    assert matching_title_calls == []
+    coordinator._match_single_file.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_movie_import_skips_finalize_when_transition_rejected(tmp_path, monkeypatch):
+    """If the ORGANIZING transition is rejected, organization must not run on a job that
+    never entered ORGANIZING."""
+    staging_dir = _make_staging(tmp_path, count=1)
+    coordinator, _broadcaster_ws, _module_ws = _build_coordinator(ContentType.MOVIE, monkeypatch)
+    coordinator._state_machine.transition = AsyncMock(return_value=False)
+
+    job_id = await _make_job(str(staging_dir), "INCEPTION_2010")
+    await coordinator.identify_from_staging(job_id)
+
+    coordinator._finalize_disc_job.assert_not_awaited()

@@ -704,51 +704,68 @@ class IdentificationCoordinator:
                                 job_id, job.detected_title, all_seasons
                             )
 
-                    # Transition to MATCHING and kick off per-title matching
+                    # Transition to MATCHING and kick off per-title matching. Gate
+                    # all downstream work on the transition succeeding: if it was
+                    # rejected (e.g. a concurrent cancel/fail left the job in a
+                    # terminal state), broadcasting tracks as MATCHING and spawning
+                    # match tasks on a job that never left IDENTIFYING would desync
+                    # the dashboard from the backend.
                     succeeded = await self._state_machine.transition(
                         job, JobState.MATCHING, session, broadcast=False
                     )
                     if succeeded:
                         await ws_manager.broadcast_job_update(job_id, JobState.MATCHING.value)
 
-                    # Queue matching for each title
-                    db_titles = (
-                        (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
-                        .scalars()
-                        .all()
-                    )
-
-                    for dt in db_titles:
-                        dt.state = TitleState.MATCHING
-                        session.add(dt)
-                    await session.commit()
-
-                    # titles_discovered already populated the UI with the tracks,
-                    # but their state stays pre-matching until the matcher emits
-                    # per-title updates. Mirror the disc flow so tracks render as
-                    # "matching" immediately instead of after the first match.
-                    for dt in db_titles:
-                        await self._broadcaster.broadcast_title_matching_started(dt)
-
-                    for dt in db_titles:
-                        if dt.output_filename:
-                            file_path = Path(dt.output_filename)
-                            discdb_applied = await self._try_discdb_assignment(job_id, dt, session)
-                            if not discdb_applied:
-                                task = asyncio.create_task(
-                                    self._match_single_file(job_id, dt.id, file_path)
+                        # Queue matching for each title
+                        db_titles = (
+                            (
+                                await session.execute(
+                                    select(DiscTitle).where(DiscTitle.job_id == job_id)
                                 )
-                                task.add_done_callback(
-                                    lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
-                                        t, jid, tid
+                            )
+                            .scalars()
+                            .all()
+                        )
+
+                        for dt in db_titles:
+                            dt.state = TitleState.MATCHING
+                            session.add(dt)
+                        await session.commit()
+
+                        # titles_discovered already populated the UI with the tracks,
+                        # but their state stays pre-matching until the matcher emits
+                        # per-title updates. Mirror the disc flow so tracks render as
+                        # "matching" immediately instead of after the first match.
+                        for dt in db_titles:
+                            await self._broadcaster.broadcast_title_matching_started(dt)
+
+                        for dt in db_titles:
+                            if dt.output_filename:
+                                file_path = Path(dt.output_filename)
+                                discdb_applied = await self._try_discdb_assignment(
+                                    job_id, dt, session
+                                )
+                                if not discdb_applied:
+                                    task = asyncio.create_task(
+                                        self._match_single_file(job_id, dt.id, file_path)
                                     )
-                                )
+                                    task.add_done_callback(
+                                        lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
+                                            t, jid, tid
+                                        )
+                                    )
                 else:
                     # Movie: skip matching, go straight to organization. Route
                     # through the state machine (now a legal IDENTIFYING ->
                     # ORGANIZING edge) so it persists, broadcasts, and fires
-                    # transition observers like every other transition.
-                    await self._state_machine.transition(job, JobState.ORGANIZING, session)
+                    # transition observers like every other transition. Bail if the
+                    # transition was rejected — finalizing a job that never entered
+                    # ORGANIZING would organize on an inconsistent state.
+                    succeeded = await self._state_machine.transition(
+                        job, JobState.ORGANIZING, session
+                    )
+                    if not succeeded:
+                        return
 
                     # Mark titles as MATCHED
                     db_titles = (
