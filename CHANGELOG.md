@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clearer disc card when two shows share a name** — a disc that matches more than one same-name show (for example the 1993 vs 2023 **Frasier**) is flagged for review before ripping, but its card showed a "Review needed" button that opened an empty review screen — there's nothing to review until the disc is ripped — right next to an identical "Review needed" status badge. The card now hides that dead-end button until the disc actually has ripped tracks, emphasizes the **Wrong title?** action as the thing to click, and adds a short banner explaining the same-name ambiguity and how to resolve it. (#308)
+
 ## [0.15.0] - 2026-06-03
 
 _Highlights: same-name shows (for example the 2023 **Frasier** vs the 1993 original) can now coexist in your TV library, each in its own year/TMDB-tagged folder; the dashboard now warns you up front when no TMDB key is configured; and FFmpeg is now a documented prerequisite with broader Windows auto-detection and inline path validation in the Config Wizard._
@@ -23,6 +27,7 @@ _Highlights: same-name shows (for example the 2023 **Frasier** vs the 1993 origi
 
 - **A TV disc named like "Show Season 11 Disc 2" could match the wrong episodes for hours, then fail** — when a disc had no readable volume label, Engram fell back to the drive's display name (e.g. `Supernatural Season 11 Disc 2`), but the parser only recognized a season when the disc number was in parentheses (`(Disc 2)`). A space-separated `Disc 2` left the season undetected, so no subtitles were downloaded for that season and matching fell back to brute-forcing every previously-seen season's subtitles with speech recognition — a run that could churn for many hours scoring the audio against the wrong seasons before failing. Engram now reads the season from these names (with or without parentheses or a dash), so the correct season is detected, its subtitles download, and episodes match on the first pass. (#303)
 - **Matching a disc whose season couldn't be determined was needlessly slow** — when a TV disc's season is unknown, Engram matches the file against every candidate season in turn. Each attempt re-ran speech recognition over the *same* audio from scratch, so a show with many seasons could spend hours re-transcribing identical audio before giving up. Transcriptions are now cached and reused across season attempts, so only the first attempt does the expensive transcription work and the rest are near-instant. (#303)
+- **Import watch-folder jobs didn't show their tracks or matching progress** — a job created from the import watch folder (pre-ripped MKVs in a watched directory) ran to completion on the backend, but the dashboard stayed frozen on the "scanning" radar for the entire matching phase and then jumped straight to organizing/completed, never showing the track grid or live per-track matching. Because these jobs skip ripping, they advance `identifying → matching` directly — a transition the job state machine rejected, so the card never learned it had left identifying. Engram now allows that shortcut (and the movie equivalent), broadcasts each track's matching state immediately, and routes the movie import branch through the state machine, so import jobs show their tracks and matching progress just like a disc rip. (#307)
 
 ## [0.14.1] - 2026-06-02
 

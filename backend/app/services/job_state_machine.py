@@ -22,6 +22,8 @@ class JobStateMachine:
         JobState.IDLE: {JobState.IDENTIFYING, JobState.FAILED},
         JobState.IDENTIFYING: {
             JobState.RIPPING,
+            JobState.MATCHING,  # import/staging path skips RIPPING (files already exist)
+            JobState.ORGANIZING,  # import/staging movie path skips RIPPING + matching
             JobState.REVIEW_NEEDED,
             JobState.FAILED,
         },

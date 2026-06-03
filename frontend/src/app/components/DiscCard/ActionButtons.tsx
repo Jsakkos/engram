@@ -10,6 +10,11 @@
  *   Cancel       — 30×30 square, icon-only, red    → quiet/destructive
  *   Re-Identify  — 30 tall, icon + 10px label, cyan → tertiary action
  *   Review       — 30 tall, icon + 11px label, yellow → primary callout
+ *
+ * Exception: when a disc needs review but hasn't ripped yet, the Review button
+ * is suppressed (the review queue is empty), so Re-Identify ("Wrong title?")
+ * becomes the only useful action — `emphasizeReIdentify` renders it filled to
+ * promote it to the primary callout in that state.
  */
 
 import { useState, type CSSProperties, type ReactNode, type MouseEvent } from "react";
@@ -27,6 +32,9 @@ interface ActionButtonsProps {
     onReIdentify?: () => void;
     onAdvance?: () => void;
     onReportBug?: () => void;
+    /** Render the "Wrong title?" button filled — it's the primary action when
+     *  the review queue is suppressed pre-rip. */
+    emphasizeReIdentify?: boolean;
 }
 
 // States where Force-advance makes sense (job is actively processing).
@@ -105,9 +113,12 @@ interface ToneButtonProps {
     /** Horizontal padding in px. 0 means render as a square icon-only button. */
     paddingX?: number;
     testId?: string;
+    /** Render the resting state as if hovered (filled bg, stronger border + glow)
+     *  to promote this button to the primary action. */
+    emphasis?: boolean;
 }
 
-function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, testId }: ToneButtonProps) {
+function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, testId, emphasis = false }: ToneButtonProps) {
     const [hovered, setHovered] = useState(false);
     const isSquare = paddingX === 0;
     return (
@@ -125,7 +136,7 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, t
             aria-label={ariaLabel}
             data-testid={testId}
             style={{
-                ...baseStyle(tone, hovered),
+                ...baseStyle(tone, hovered || emphasis),
                 paddingLeft: paddingX,
                 paddingRight: paddingX,
                 width: isSquare ? BUTTON_HEIGHT : undefined,
@@ -137,7 +148,7 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, t
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onReportBug }: ActionButtonsProps) {
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onReportBug, emphasizeReIdentify = false }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
@@ -188,6 +199,7 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     title="Wrong title — re-identify disc"
                     ariaLabel="Wrong title — re-identify disc"
                     paddingX={10}
+                    emphasis={emphasizeReIdentify}
                 >
                     <IcoRetry size={12} />
                     <span style={{ fontSize: 10 }}>Wrong title?</span>
