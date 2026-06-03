@@ -1,0 +1,39 @@
+name: Contributor welcome
+
+# Thank external contributors when their PR merges, with an extra-warm welcome
+# for first-timers. Comment-only: this job never checks out or executes the
+# PR's code, so pull_request_target (which grants a write token, needed to
+# comment on fork PRs) is safe here.
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  thank:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      # Default ref under pull_request_target is the BASE branch (trusted repo
+      # code), not the fork's PR head — so requiring the greeting script is safe.
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { decide, renderComment } = require(
+              `${process.env.GITHUB_WORKSPACE}/.github/scripts/contributor-greeting.cjs`
+            );
+            const pr = context.payload.pull_request;
+            const action = decide(pr.author_association, pr.user.login);
+            if (action === "skip") {
+              core.info(`Skipping @${pr.user.login} (${pr.author_association})`);
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: renderComment(action, pr.user.login),
+            });
