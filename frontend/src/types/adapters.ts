@@ -67,6 +67,7 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     subtitleStatus: job.subtitle_status || undefined,
     subtitleError: job.subtitle_error_message || undefined,
     conflictStatus: job.conflict_status || undefined,
+    reviewReason: job.review_reason || undefined,
     startedAt: job.created_at
       ? (job.created_at.endsWith('Z') || job.created_at.includes('+') ? job.created_at : job.created_at + 'Z')
       : undefined,
