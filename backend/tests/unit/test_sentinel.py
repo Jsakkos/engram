@@ -225,6 +225,69 @@ class TestDispatch:
 
 
 @pytest.mark.unit
+class TestNotifyEjectedBehavior:
+    """notify_ejected must cause the next poll to fire 'inserted' if a disc is present.
+
+    These tests exercise the full notify_ejected → _check_drives → _notify chain
+    without mocking notify_ejected itself.
+    """
+
+    async def test_new_disc_fires_inserted_after_notify_ejected(self):
+        """Core stranded-disc scenario: after notify_ejected, next poll fires 'inserted'."""
+        monitor, notify = _make_monitor()
+        monitor._drive_states = {"/dev/sr0": True}  # sentinel thinks disc is present
+
+        monitor.notify_ejected("/dev/sr0")  # rip finished, eject called
+        assert monitor._drive_states["/dev/sr0"] is False  # state reset
+
+        with (
+            patch.object(sentinel, "get_optical_drives", return_value=["/dev/sr0"]),
+            patch.object(sentinel, "is_disc_present", return_value=True),  # new disc present
+            patch.object(sentinel, "get_volume_label", return_value="NEW_DISC"),
+        ):
+            await monitor._check_drives()  # poll 1: False → True, debounce pending
+            notify.assert_not_called()
+
+            await monitor._check_drives()  # poll 2: confirmed → fires 'inserted'
+            notify.assert_awaited_once_with("inserted", "/dev/sr0", "NEW_DISC")
+
+    async def test_without_notify_ejected_same_disc_fires_nothing(self):
+        """Demonstrates the original bug: skipping notify_ejected means no event fires."""
+        monitor, notify = _make_monitor()
+        monitor._drive_states = {"/dev/sr0": True}  # sentinel thinks disc is present
+
+        # No notify_ejected call — simulates the pre-fix behavior
+
+        with (
+            patch.object(sentinel, "get_optical_drives", return_value=["/dev/sr0"]),
+            patch.object(sentinel, "is_disc_present", return_value=True),
+            patch.object(sentinel, "get_volume_label", return_value="NEW_DISC"),
+        ):
+            await monitor._check_drives()
+            await monitor._check_drives()
+
+        notify.assert_not_called()  # stranded — no event fired
+
+    async def test_notify_ejected_clears_debounce_before_next_poll(self):
+        """If removal debounce was in progress, notify_ejected clears it cleanly."""
+        monitor, notify = _make_monitor()
+        monitor._drive_states = {"/dev/sr0": True}
+        monitor._pending_changes["/dev/sr0"] = 1  # mid-debounce on removal
+
+        monitor.notify_ejected("/dev/sr0")
+
+        with (
+            patch.object(sentinel, "get_optical_drives", return_value=["/dev/sr0"]),
+            patch.object(sentinel, "is_disc_present", return_value=True),
+            patch.object(sentinel, "get_volume_label", return_value="NEXT_DISC"),
+        ):
+            await monitor._check_drives()
+            await monitor._check_drives()
+
+        notify.assert_awaited_once_with("inserted", "/dev/sr0", "NEXT_DISC")
+
+
+@pytest.mark.unit
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only ctypes paths")
 class TestWindowsReaders:
     """ctypes Windows paths — only exercised on win32."""

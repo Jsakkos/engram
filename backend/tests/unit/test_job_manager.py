@@ -422,3 +422,44 @@ class TestOnePassRipFallback:
         assert rip.await_count == 2
         assert rip.await_args_list[0].kwargs["title_indices"] is None  # one-pass
         assert sorted(rip.await_args_list[1].kwargs["title_indices"]) == [0, 1]  # fallback
+
+
+@pytest.mark.unit
+class TestRunRippingCallsNotifyEjected:
+    async def test_notify_ejected_called_after_rip(self, rip_env, monkeypatch):
+        """_run_ripping must call notify_ejected on the drive monitor after ejecting."""
+        from unittest.mock import MagicMock
+
+        job, _ = await _seed(content_type=ContentType.TV, staging=str(rip_env), is_selected=True)
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[]))
+
+        spy = MagicMock()
+        monkeypatch.setattr(job_manager._drive_monitor, "notify_ejected", spy)
+
+        await job_manager._run_ripping(job.id)
+
+        spy.assert_called_once_with(job.drive_id)
+
+
+@pytest.mark.unit
+class TestNotifyEjected:
+    def test_resets_drive_state_and_clears_pending(self):
+        """notify_ejected resets _drive_states and clears any pending debounce."""
+        from app.core.sentinel import DriveMonitor
+
+        monitor = DriveMonitor()
+        monitor._drive_states["/dev/sr0"] = True
+        monitor._pending_changes["/dev/sr0"] = 1
+
+        monitor.notify_ejected("/dev/sr0")
+
+        assert monitor._drive_states["/dev/sr0"] is False
+        assert "/dev/sr0" not in monitor._pending_changes
+
+    def test_no_error_when_drive_not_tracked(self):
+        """notify_ejected on an untracked drive is a no-op, does not raise."""
+        from app.core.sentinel import DriveMonitor
+
+        monitor = DriveMonitor()
+        monitor.notify_ejected("/dev/sr99")  # never added to _drive_states
