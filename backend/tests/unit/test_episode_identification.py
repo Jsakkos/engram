@@ -723,6 +723,39 @@ class TestTranscriptionCache:
         # Whisper ran once; the second call was served from the transcript cache.
         assert fake_model.transcribe.call_count == 1
 
+    def test_identify_episode_reuses_chunk_transcripts_across_seasons(self, tmp_path):
+        """End-to-end across-seasons win: matching the same file against two
+        seasons transcribes each scan-point offset once, not once per season.
+        """
+        matcher = self._matcher(tmp_path)
+        fake_model = MagicMock()
+        fake_model.transcribe.return_value = {"text": "the quick brown fox jumps over " * 4}
+
+        # Pre-seed a prepared TF-IDF matcher so identify_episode skips the real
+        # rebuild + hashed-query path; only the transcript-cache behaviour is exercised.
+        tfidf = MagicMock()
+        tfidf.is_prepared = True
+        tfidf.reference_signature.return_value = ("precomputed", ("S01E01",))
+        tfidf.match.return_value = [("S01E01", 0.9)]
+        matcher.tfidf_matcher = tfidf
+
+        precomputed = (csr_matrix(np.eye(1)), ["S01E01"], np.ones(1))
+
+        with (
+            patch.object(matcher, "_load_precomputed_season", return_value=precomputed),
+            patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
+            patch("app.matcher.episode_identification.get_cached_model", return_value=fake_model),
+            patch("app.matcher.episode_identification.get_video_duration", return_value=2000),
+        ):
+            matcher.identify_episode(tmp_path / "file.mkv", tmp_path, 1)
+            after_first = fake_model.transcribe.call_count
+            matcher.identify_episode(tmp_path / "file.mkv", tmp_path, 2)
+            after_second = fake_model.transcribe.call_count
+
+        assert after_first > 0, "first pass must transcribe the scan-point chunks"
+        # Second pass over the SAME file (different season) reused every transcript.
+        assert after_second == after_first
+
     def test_distinct_segments_each_transcribe(self, tmp_path):
         matcher = self._matcher(tmp_path)
         calls = []

@@ -886,9 +886,12 @@ class EpisodeMatcher:
         The cache persists across identify_episode() calls (it is NOT cleared in the
         per-call ``finally``), letting the season-unknown path reuse Whisper output
         across candidate seasons. It is shared across concurrent matches on the
-        singleton matcher; distinct-key writes are GIL-safe and keys are
+        singleton matcher; individual dict ops are GIL-safe and keys are
         source-addressed, so concurrent files never read each other's transcripts.
-        On overflow the whole cache is dropped (a rare, cheap reset).
+        On overflow the whole cache is dropped (a rare, cheap reset). The size-check
+        and clear are not atomic, so two concurrent overflows may flush early — at
+        worst a few extra transcriptions, never a wrong or mixed-up result; a lock
+        isn't warranted for a best-effort perf cache.
         """
         if len(self.transcriptions) >= self._max_transcription_cache:
             self.transcriptions.clear()
@@ -1396,7 +1399,12 @@ class EpisodeMatcher:
                             video_file, start_time, duration=chunk_len
                         )
                         temp_files_to_remove.append(audio_path)  # Track for cleanup
-                        text = model.transcribe(audio_path)["text"]
+                        # `or ""` guards a wrapper returning {"text": None}: caching
+                        # None would make this offset a perpetual miss (the `is None`
+                        # guard above would re-transcribe it every season). Matches
+                        # transcribe_full; the `len(text) < 10` check below still skips
+                        # genuinely empty audio.
+                        text = (model.transcribe(audio_path).get("text") or "").strip()
                         self._remember_transcription(chunk_key, text)
 
                     if len(text) < 10:
