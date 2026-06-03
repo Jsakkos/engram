@@ -22,6 +22,11 @@ export function useDiscFilters(
         return jobs.map(job => ({
             ...transformJobToDiscData(job, titlesMap[job.id] || []),
             needsReview: job.state === 'review_needed',
+            // Distinguishes "titles fetched and genuinely empty" (key present, []),
+            // from "not fetched yet" (key absent). The titles request resolves after
+            // the job list, so without this a post-rip review_needed job briefly has
+            // tracks=[] on first render — enough to flash the pre-rip banner/emphasis.
+            tracksLoaded: titlesMap[job.id] !== undefined,
         }));
     }, [jobs, titlesMap, devMode]);
 

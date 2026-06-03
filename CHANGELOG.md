@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clearer disc card when two shows share a name** — a disc that matches more than one same-name show (for example the 1993 vs 2023 **Frasier**) is flagged for review before ripping, but its card showed a "Review needed" button that opened an empty review screen — there's nothing to review until the disc is ripped — right next to an identical "Review needed" status badge. The card now hides that dead-end button until the disc actually has ripped tracks, emphasizes the **Wrong title?** action as the thing to click, and adds a short banner explaining the same-name ambiguity and how to resolve it. (#308)
+
 ## [0.15.0] - 2026-06-03
 
 _Highlights: same-name shows (for example the 2023 **Frasier** vs the 1993 original) can now coexist in your TV library, each in its own year/TMDB-tagged folder; the dashboard now warns you up front when no TMDB key is configured; and FFmpeg is now a documented prerequisite with broader Windows auto-detection and inline path validation in the Config Wizard._
