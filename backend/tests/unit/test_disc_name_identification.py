@@ -91,6 +91,8 @@ def test_parse_disc_info_no_cinfo_returns_empty_string():
         # suffix must be stripped so the trailing "Season N" is recognized.
         ("Supernatural Season 11 Disc 2", "Supernatural", 11),
         ("The Office Season 2 Disc 4", "The Office", 2),
+        # Dash-separated disc indicator (also supported, per the regex comment).
+        ("Supernatural Season 11 - Disc 2", "Supernatural", 11),
         # Disc-only name: clean the title, no season.
         ("Firefly Disc 1", "Firefly", None),
         ("", None, None),

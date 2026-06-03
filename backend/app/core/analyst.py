@@ -839,7 +839,12 @@ class DiscAnalyst:
         MakeMKV provides disc names like:
           "Star Trek: Strange New Worlds - Season 3 (Disc 1)"
           "The Office - Season 2"
+          "Supernatural Season 11 Disc 2"   # space- or dash-separated disc, no parens
           "Inception"
+
+        The trailing disc indicator is accepted with or without parentheses or a
+        dash ("(Disc 1)", "Disc 1", "- Disc 1"), so the season is recovered even
+        when it sits ahead of a bare "Disc N" suffix.
 
         Returns (show_title, season), either may be None if not found.
         """
