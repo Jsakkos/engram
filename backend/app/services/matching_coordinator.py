@@ -17,7 +17,7 @@ from app.core.curator import curator as episode_curator
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.database import async_session
-from app.models import DiscJob
+from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.job_state_machine import JobStateMachine
@@ -681,6 +681,10 @@ class MatchingCoordinator:
                     file_size_bytes=title.file_size_bytes,
                 )
 
+            # Belt-and-suspenders: make sure the job itself reflects MATCHING the
+            # moment a real per-title match begins (see _converge_job_to_matching).
+            await self._converge_job_to_matching(session, job_id)
+
         # 7. Run matching
         try:
             await self._match_single_file_inner(
@@ -729,6 +733,29 @@ class MatchingCoordinator:
             runtimes = []
         self._episode_runtimes[job.id] = runtimes
         return runtimes
+
+    async def _converge_job_to_matching(self, session, job_id: int) -> None:
+        """Ensure the parent job reflects MATCHING the moment a title starts matching.
+
+        Belt-and-suspenders for the import-folder dashboard: the job-level MATCHING
+        broadcast is normally emitted once by identify_from_staging (or the rip path)
+        when it kicks off matching. If that transition was ever skipped or raced, the
+        card would stay on the scanning radar while titles match in the background —
+        the exact import-watch-folder symptom PR #307 fixed. Converging here, at the
+        point real matching begins, makes "a title is matching ⇒ the job shows
+        matching" a local invariant instead of relying solely on a remote one-shot.
+
+        Acts ONLY on a job still in IDENTIFYING, so the REVIEW_NEEDED deep-rematch
+        path and an already-MATCHING job are untouched (no duplicate broadcasts, no
+        wrong transitions). Idempotent: the first title converges the job, the rest
+        no-op.
+        """
+        job = await session.get(DiscJob, job_id)
+        if job and job.state == JobState.IDENTIFYING:
+            if await self._state_machine.transition(
+                job, JobState.MATCHING, session, broadcast=False
+            ):
+                await ws_manager.broadcast_job_update(job_id, JobState.MATCHING.value)
 
     async def _match_single_file_inner(
         self,

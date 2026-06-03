@@ -39,3 +39,21 @@ async def test_match_single_file_forwards_overrides_to_matcher():
     assert args[2] == 1
     assert args[4] == 25
     assert args[5] == 4
+
+
+@pytest.mark.unit
+def test_confidence_accept_floor_default_and_override(tmp_path):
+    """The ranked-voting gate accepts a decisive match on calibrated confidence
+    once it clears confidence_accept_floor. Lock the default (0.70, mirroring the
+    curator's auto-organize gate) and that it stays overridable."""
+    from app.matcher.episode_identification import CONFIDENCE_ACCEPT_FLOOR, EpisodeMatcher
+
+    assert CONFIDENCE_ACCEPT_FLOOR == 0.70
+
+    default = EpisodeMatcher(cache_dir=tmp_path, show_name="X", model_name="tiny")
+    assert default.confidence_accept_floor == CONFIDENCE_ACCEPT_FLOOR
+
+    overridden = EpisodeMatcher(
+        cache_dir=tmp_path, show_name="X", model_name="tiny", confidence_accept_floor=0.55
+    )
+    assert overridden.confidence_accept_floor == 0.55

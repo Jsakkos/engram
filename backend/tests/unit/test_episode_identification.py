@@ -689,6 +689,78 @@ class TestMatchFullFileSurfacesTranscript:
 
 
 @pytest.mark.unit
+class TestRankedVotingAcceptsHighCalibratedConfidence:
+    """A decisive match whose RAW score sits at/below match_threshold but whose
+    CALIBRATED confidence clears the floor must be accepted directly, NOT thrown
+    into the expensive full-file fallback.
+
+    Reproduces the True Detective S1 symptom: S1E7 matched at raw score 0.094 /
+    calibrated 0.745 (7 decisive votes) but the old absolute raw-score gate
+    (> 0.10) rejected it, forcing a slow — and sometimes worse — full-file
+    re-transcription. The raw chunk cosine is structurally ~0.1 (30s ASR snippet
+    vs full-episode TF-IDF), so the calibrated confidence is the real signal.
+    """
+
+    def _matcher(self, tmp_path):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        return EpisodeMatcher(cache_dir=tmp_path, show_name="True Detective", model_name="tiny")
+
+    def _drive(self, matcher, tmp_path, per_chunk_match):
+        """Run identify_episode with the ASR/TF-IDF seams mocked so every scan
+        point yields ``per_chunk_match`` from the TF-IDF matcher. Returns
+        (result, fallback_mock)."""
+        fake_model = MagicMock()
+        fake_model.transcribe.return_value = {
+            "text": "you want a confession everybody wants some cathartic narrative " * 3
+        }
+
+        tfidf = MagicMock()
+        tfidf.is_prepared = True
+        tfidf.reference_signature.return_value = ("precomputed", ("S01E05", "S01E07"))
+        tfidf.match.return_value = per_chunk_match
+        matcher.tfidf_matcher = tfidf
+
+        precomputed = (csr_matrix(np.eye(2)), ["S01E05", "S01E07"], np.ones(2))
+        fallback = MagicMock(return_value=None)
+
+        with (
+            patch.object(matcher, "_load_precomputed_season", return_value=precomputed),
+            patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
+            patch.object(matcher, "_match_full_file", fallback),
+            patch("app.matcher.episode_identification.get_cached_model", return_value=fake_model),
+            patch("app.matcher.episode_identification.get_video_duration", return_value=3300),
+        ):
+            result = matcher.identify_episode(tmp_path / "5.mkv", tmp_path, 1)
+        return result, fallback
+
+    def test_low_raw_high_confidence_accepted_without_fallback(self, tmp_path):
+        matcher = self._matcher(tmp_path)
+        # Each chunk votes S01E07 at a low absolute cosine (~0.094) but with a
+        # clear per-chunk margin over the runner-up, so the chunk-vote gate passes.
+        result, fallback = self._drive(matcher, tmp_path, [("S01E07", 0.094), ("S01E05", 0.03)])
+
+        assert result is not None
+        assert result["episode"] == 7
+        # Accepted via the calibrated path: raw score at/below threshold, calibrated
+        # confidence above the floor — and crucially, the fallback never ran.
+        assert result["score"] <= matcher.match_threshold
+        assert result["confidence"] >= matcher.confidence_accept_floor
+        fallback.assert_not_called()
+
+    def test_indecisive_chunks_still_fall_through_to_fallback(self, tmp_path):
+        matcher = self._matcher(tmp_path)
+        # Near-tie per chunk (margin 0.05/0.045 < 1.8) — no chunk clears the
+        # vote gate, so there is no acceptable ranked match and the full-file
+        # fallback must still run (the calibrated path doesn't rescue noise).
+        result, fallback = self._drive(matcher, tmp_path, [("S01E07", 0.05), ("S01E05", 0.045)])
+
+        assert result is not None  # no-episode result preserved (not a bare None)
+        assert result["episode"] is None
+        fallback.assert_called_once()
+
+
+@pytest.mark.unit
 class TestTranscriptionCache:
     """ASR transcripts are memoized by (source, start, duration) and the cache
     SURVIVES across identify_episode() calls.
