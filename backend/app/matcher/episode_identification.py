@@ -1643,10 +1643,14 @@ class EpisodeMatcher:
             # --- FALLBACK ---
             # Full-file fallback when chunk voting produced no acceptable match
             # (no votes at all, score below threshold, or too few votes).
+            # Reached on any non-accept: low raw score, low calibrated confidence,
+            # too few votes, OR zero voting chunks (best_match is None here). State
+            # what an accept NEEDED rather than asserting which gate failed — the
+            # blocker may be votes alone even though score/confidence cleared.
             logger.info(
-                f"Ranked voting matching failed "
-                f"(best score {best_score:.3f} ≤ {self.match_threshold} and calibrated "
-                f"confidence below {self.confidence_accept_floor}, or insufficient votes). "
+                f"Ranked voting produced no acceptable match "
+                f"(best score {best_score:.3f}; needed raw score > {self.match_threshold} "
+                f"or calibrated confidence ≥ {self.confidence_accept_floor}, with enough votes). "
                 f"Attempting FULL FILE fallback..."
             )
             match = self._match_full_file(video_file, model_config, reference_files, video_duration)

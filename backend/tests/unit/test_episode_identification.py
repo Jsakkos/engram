@@ -6,6 +6,7 @@ ranked-voting aggregation, SRT parsing, and precomputed-cache load/fallback.
 The ASR (faster-whisper) and ffmpeg subprocess paths are NOT exercised here.
 """
 
+import contextlib
 import json
 from unittest.mock import MagicMock, patch
 
@@ -119,6 +120,23 @@ class TestCalibrateConfidence:
         assert conf > 0.7  # decisive, strong evidence
         assert comp["separation"] == pytest.approx(0.18 / 0.20)
         assert comp["consensus"] == pytest.approx(0.8)
+
+    def test_low_raw_score_decisive_match_clears_accept_floor(self):
+        """A structurally-low raw score (chunk-vs-full-episode cosine ~0.1) that is
+        decisive (score_gap ~= score, i.e. no real runner-up) with solid votes must
+        still calibrate ABOVE the 0.70 accept floor. This is the real reason the
+        ranked-voting gate consults calibrated confidence: it rescues correct
+        matches like True Detective S1E5 (0.808) / S1E7 (0.712) from the fallback.
+        Numbers mirror the observed live run.
+        """
+        s1e5, _ = calibrate_confidence(
+            score=0.100, score_gap=0.0996, vote_count=17, target_votes=25, processed_coverage=0.148
+        )
+        s1e7, _ = calibrate_confidence(
+            score=0.094, score_gap=0.0941, vote_count=7, target_votes=10, processed_coverage=0.065
+        )
+        assert s1e5 >= 0.70
+        assert s1e7 >= 0.70
 
     def test_near_tie_craters_confidence(self):
         """A small score_gap (two plausible episodes) gates confidence low."""
@@ -706,10 +724,17 @@ class TestRankedVotingAcceptsHighCalibratedConfidence:
 
         return EpisodeMatcher(cache_dir=tmp_path, show_name="True Detective", model_name="tiny")
 
-    def _drive(self, matcher, tmp_path, per_chunk_match):
+    def _drive(self, matcher, tmp_path, per_chunk_match, pinned_confidence=None):
         """Run identify_episode with the ASR/TF-IDF seams mocked so every scan
-        point yields ``per_chunk_match`` from the TF-IDF matcher. Returns
-        (result, fallback_mock)."""
+        point yields ``per_chunk_match`` from the TF-IDF matcher.
+
+        When ``pinned_confidence`` is set, ``_attach_calibrated_confidence`` is
+        replaced with a stub that pins ``best["confidence"]`` to that value. This
+        decouples the *gate* assertion (does it accept on calibrated confidence?)
+        from the calibration math (which is tested directly in
+        TestCalibrateConfidence) — a change to the calibration weights can't
+        silently break this test. Returns (result, fallback_mock).
+        """
         fake_model = MagicMock()
         fake_model.transcribe.return_value = {
             "text": "you want a confession everybody wants some cathartic narrative " * 3
@@ -724,27 +749,54 @@ class TestRankedVotingAcceptsHighCalibratedConfidence:
         precomputed = (csr_matrix(np.eye(2)), ["S01E05", "S01E07"], np.ones(2))
         fallback = MagicMock(return_value=None)
 
-        with (
-            patch.object(matcher, "_load_precomputed_season", return_value=precomputed),
-            patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
-            patch.object(matcher, "_match_full_file", fallback),
-            patch("app.matcher.episode_identification.get_cached_model", return_value=fake_model),
-            patch("app.matcher.episode_identification.get_video_duration", return_value=3300),
-        ):
+        def _pin_confidence(best, results_summary, video_duration):
+            best["confidence"] = pinned_confidence
+            best.setdefault("runner_ups", [])
+            best["match_details"]["score_gap"] = best.get("score", 0.0)
+
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                patch.object(matcher, "_load_precomputed_season", return_value=precomputed)
+            )
+            stack.enter_context(
+                patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav"))
+            )
+            stack.enter_context(patch.object(matcher, "_match_full_file", fallback))
+            stack.enter_context(
+                patch(
+                    "app.matcher.episode_identification.get_cached_model", return_value=fake_model
+                )
+            )
+            stack.enter_context(
+                patch("app.matcher.episode_identification.get_video_duration", return_value=3300)
+            )
+            if pinned_confidence is not None:
+                stack.enter_context(
+                    patch(
+                        "app.matcher.episode_identification._attach_calibrated_confidence",
+                        _pin_confidence,
+                    )
+                )
             result = matcher.identify_episode(tmp_path / "5.mkv", tmp_path, 1)
         return result, fallback
 
     def test_low_raw_high_confidence_accepted_without_fallback(self, tmp_path):
         matcher = self._matcher(tmp_path)
-        # Each chunk votes S01E07 at a low absolute cosine (~0.094) but with a
-        # clear per-chunk margin over the runner-up, so the chunk-vote gate passes.
-        result, fallback = self._drive(matcher, tmp_path, [("S01E07", 0.094), ("S01E05", 0.03)])
+        # Each chunk votes S01E07 at a low absolute cosine (~0.094) but with a clear
+        # per-chunk margin over the runner-up, so the chunk-vote gate passes. The
+        # calibrated confidence is pinned high (0.81) so this asserts the GATE's
+        # behaviour, not the calibration math.
+        result, fallback = self._drive(
+            matcher, tmp_path, [("S01E07", 0.094), ("S01E05", 0.03)], pinned_confidence=0.81
+        )
 
         assert result is not None
         assert result["episode"] == 7
-        # Accepted via the calibrated path: raw score at/below threshold, calibrated
-        # confidence above the floor — and crucially, the fallback never ran.
+        # Accepted via the calibrated path: raw score at/below threshold (real),
+        # calibrated confidence above the floor (pinned) — and crucially, the
+        # fallback never ran.
         assert result["score"] <= matcher.match_threshold
+        assert result["confidence"] == pytest.approx(0.81)
         assert result["confidence"] >= matcher.confidence_accept_floor
         fallback.assert_not_called()
 
