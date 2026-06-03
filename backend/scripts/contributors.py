@@ -20,8 +20,13 @@ touch the network.
 
 from __future__ import annotations
 
+import argparse
+import json
+import os
 import re
-from collections.abc import Iterable
+import subprocess
+import sys
+from collections.abc import Callable, Iterable
 
 # --- "who counts" -----------------------------------------------------------
 
@@ -110,3 +115,122 @@ def render_roster(entries: list[tuple[str, str | None]]) -> str:
         suffix = f" — first contribution: {version}" if version else ""
         lines.append(f"- [@{login}](https://github.com/{login}){suffix}")
     return "\n".join(lines) + "\n"
+
+
+# --- git / gh I/O (single injectable seam) ---------------------------------
+
+
+def _default_run(cmd: list[str]) -> str:
+    """Run a command, returning stdout text; raises on non-zero exit."""
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+
+
+def _gh_json(path: str, run: Callable[[list[str]], str]):
+    return json.loads(run(["gh", "api", path]))
+
+
+def gh_compare_logins(
+    repo: str, base: str, head: str, run: Callable[[list[str]], str]
+) -> list[str]:
+    return extract_compare_logins(_gh_json(f"repos/{repo}/compare/{base}...{head}", run))
+
+
+def gh_author_has_commits(repo: str, login: str, ref: str, run: Callable[[list[str]], str]) -> bool:
+    """True if ``login`` authored any commit reachable from ``ref``."""
+    data = _gh_json(f"repos/{repo}/commits?sha={ref}&author={login}&per_page=1", run)
+    return len(data) > 0
+
+
+def gh_all_contributor_logins(repo: str, run: Callable[[list[str]], str]) -> list[str]:
+    """All contributor logins (single page of 100 — engram has far fewer)."""
+    data = _gh_json(f"repos/{repo}/contributors?per_page=100", run)
+    return [c["login"] for c in data if c.get("login")]
+
+
+def git_version_tags_ascending(run: Callable[[list[str]], str]) -> list[str]:
+    out = run(["git", "tag", "--sort=version:refname"])
+    return [t for t in out.splitlines() if _VERSION_TAG.match(t.strip())]
+
+
+# --- orchestration ----------------------------------------------------------
+
+
+def build_release_section(
+    repo: str, prev: str, head: str, run: Callable[[list[str]], str] = _default_run
+) -> str:
+    logins = gh_compare_logins(repo, prev, head, run)
+    externals = [login for login in logins if is_external(login)]
+    first_timers = [
+        login for login in externals if not gh_author_has_commits(repo, login, prev, run)
+    ]
+    return render_release_section(externals, first_timers)
+
+
+def build_roster(repo: str, run: Callable[[list[str]], str] = _default_run) -> str:
+    externals = [login for login in gh_all_contributor_logins(repo, run) if is_external(login)]
+    tags = git_version_tags_ascending(run)
+    entries: list[tuple[str, str | None]] = []
+    for login in externals:
+        first_version: str | None = None
+        for tag in tags:
+            if gh_author_has_commits(repo, login, tag, run):
+                first_version = tag
+                break
+        entries.append((login, first_version))
+    return render_roster(entries)
+
+
+def _resolve_repo(explicit: str | None, run: Callable[[list[str]], str]) -> str:
+    if explicit:
+        return explicit
+    env = os.environ.get("GITHUB_REPOSITORY")
+    if env:
+        return env
+    return run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).strip()
+
+
+def main(argv: list[str] | None = None, run: Callable[[list[str]], str] = _default_run) -> int:
+    parser = argparse.ArgumentParser(description="Render contributor acknowledgments.")
+    parser.add_argument(
+        "--release-section", action="store_true", help="print the release-notes block"
+    )
+    parser.add_argument("--roster", action="store_true", help="print the CONTRIBUTORS.md body")
+    parser.add_argument("--from", dest="from_ref", help="previous tag (release-section mode)")
+    parser.add_argument("--to", dest="to_ref", help="current tag (release-section mode)")
+    parser.add_argument(
+        "--repo", help="owner/name (defaults to $GITHUB_REPOSITORY or `gh repo view`)"
+    )
+    args = parser.parse_args(argv)
+
+    # Pin stdout to UTF-8 so emoji / em-dashes don't crash on a cp1252 console.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
+    if args.release_section:
+        if not (args.from_ref and args.to_ref):
+            parser.error("--release-section requires --from and --to")
+        # Never fail the release build: any error -> omit the section.
+        try:
+            repo = _resolve_repo(args.repo, run)
+            section = build_release_section(repo, args.from_ref, args.to_ref, run=run)
+        except Exception as exc:  # noqa: BLE001 — intentional: acknowledgment must never fail a release
+            print(f"warning: contributor section skipped: {exc}", file=sys.stderr)
+            return 0
+        if section:
+            print(section)
+        return 0
+
+    if args.roster:
+        # Run by a human at release-PR time — let errors surface loudly.
+        repo = _resolve_repo(args.repo, run)
+        print(build_roster(repo, run=run), end="")
+        return 0
+
+    parser.error("one of --release-section or --roster is required")
+    return 2  # unreachable; parser.error exits
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

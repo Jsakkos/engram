@@ -8,6 +8,8 @@ classification + rendering logic and exercise the git/gh I/O through a fake
 The `contrib` fixture (loaded once per session) lives in conftest.py.
 """
 
+import json
+
 
 def test_is_external_excludes_owner_and_bots(contrib):
     assert contrib.is_external("katelovescode") is True
@@ -62,3 +64,70 @@ def test_render_roster_sorted_and_formatted(contrib):
         "- [@katelovescode](https://github.com/katelovescode) — first contribution: v0.15.0\n"
         "- [@zoe](https://github.com/zoe) — first contribution: v0.16.0\n"
     )
+
+
+def _fake_run(responses):
+    """Return a fake `run` that maps a substring of the joined command to stdout."""
+
+    def run(cmd):
+        joined = " ".join(cmd)
+        for needle, output in responses.items():
+            if needle in joined:
+                return output
+        raise AssertionError(f"unexpected command: {joined}")
+
+    return run
+
+
+def test_build_release_section_flags_first_timer(contrib):
+    run = _fake_run(
+        {
+            "compare/v0.14.1...v0.15.0": json.dumps(
+                {
+                    "commits": [
+                        {"author": {"login": "katelovescode"}},
+                        {"author": {"login": "Jsakkos"}},
+                    ]
+                }
+            ),
+            # No prior commits by Kate before v0.14.1 -> first-timer.
+            "author=katelovescode": json.dumps([]),
+        }
+    )
+    out = contrib.build_release_section("Jsakkos/engram", "v0.14.1", "v0.15.0", run=run)
+    assert out == (
+        "### Contributors\n"
+        "\n"
+        "Thanks to the people whose work shipped in this release:\n"
+        "\n"
+        "- @katelovescode 🎉 (first contribution!)"
+    )
+
+
+def test_build_release_section_returning_contributor_not_flagged(contrib):
+    run = _fake_run(
+        {
+            "compare/v0.15.0...v0.16.0": json.dumps(
+                {"commits": [{"author": {"login": "katelovescode"}}]}
+            ),
+            # Kate already has a commit before v0.15.0 -> returning.
+            "author=katelovescode": json.dumps([{"sha": "abc"}]),
+        }
+    )
+    out = contrib.build_release_section("Jsakkos/engram", "v0.15.0", "v0.16.0", run=run)
+    assert out.endswith("- @katelovescode")
+    assert "first contribution" not in out
+
+
+def test_main_release_section_degrades_to_empty_on_error(contrib, capsys):
+    def boom(cmd):
+        raise RuntimeError("gh exploded")
+
+    rc = contrib.main(
+        ["--release-section", "--from", "v0.14.1", "--to", "v0.15.0", "--repo", "x/y"],
+        run=boom,
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.out == ""  # nothing printed -> section omitted
+    assert "warning" in captured.err.lower()
