@@ -411,11 +411,19 @@ class JobManager:
             volume_label = staging_dir.name.upper().replace(" ", "_")
 
         async with async_session() as session:
-            # Guard: don't create a duplicate job for the same staging directory
+            # Guard: don't create a duplicate job for the same staging directory.
+            # A watch folder is re-detected on every poll and every server
+            # restart, so a *terminal-failed* prior job (cancelled, or auto-failed
+            # by restart recovery) must NOT permanently wedge re-import — only an
+            # active or review-pending job should dedup. Use .first() because a
+            # path may now accumulate multiple FAILED rows across retries.
             existing = await session.execute(
-                sa_select(DiscJob).where(DiscJob.staging_path == str(staging_dir))
+                sa_select(DiscJob).where(
+                    DiscJob.staging_path == str(staging_dir),
+                    DiscJob.state != JobState.FAILED,
+                )
             )
-            if existing.scalar_one_or_none():
+            if existing.scalars().first() is not None:
                 safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
                 logger.info("Job already exists for staging path %s, skipping", safe_path)
                 return -1
