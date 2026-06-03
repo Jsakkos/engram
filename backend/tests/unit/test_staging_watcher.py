@@ -403,6 +403,41 @@ class TestImportWatcherStructureDetection:
         assert seasons[2][0] == s2
         assert seasons[2][1]["show_name"] == "The Expanse"
 
+    async def test_loose_root_files_do_not_shadow_season_subdirs(self, tmp_path):
+        """Loose top-level MKVs must not shadow Season subfolders.
+
+        Data-loss regression (Seinfeld): the watch root held both stray
+        top-level rips (01.mkv, 02.mkv) and Season NN/ subfolders. The scanner
+        early-returned a single flat unit on the first loose file and never
+        imported the seasons — which were then deleted by staging cleanup. A
+        root containing structured subfolders is a container, not a flat dump:
+        the seasons must be imported and the ambiguous loose files left alone.
+        """
+        show_root = tmp_path / "Seinfeld"
+        show_root.mkdir()
+        (show_root / "01.mkv").write_bytes(b"\x00" * 1024)
+        (show_root / "02.mkv").write_bytes(b"\x00" * 1024)
+        s1 = show_root / "Season 1"
+        s1.mkdir()
+        (s1 / "title_t00.mkv").write_bytes(b"\x00" * 2048)
+        s2 = show_root / "Season 2"
+        s2.mkdir()
+        (s2 / "title_t00.mkv").write_bytes(b"\x00" * 2048)
+
+        watcher = StagingWatcher("/tmp/staging", import_watch_path=str(show_root))
+        units = watcher._scan_import_dir(show_root)
+
+        seasons = {meta["season"]: path for path, _, _, meta in units}
+        assert set(seasons) == {1, 2}, f"expected only Season 1 & 2 units, got {units}"
+        assert seasons[1] == s1
+        assert seasons[2] == s2
+        assert all(meta["structure"] != "flat" for *_, meta in units), (
+            "no flat unit should be emitted when Season subfolders exist"
+        )
+        assert all(path != show_root for path, *_ in units), (
+            "the watch root itself must not become an import unit"
+        )
+
     @pytest.mark.parametrize(
         "folder_name,expected_season",
         [
