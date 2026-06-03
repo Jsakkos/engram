@@ -121,8 +121,13 @@ def render_roster(entries: list[tuple[str, str | None]]) -> str:
 
 
 def _default_run(cmd: list[str]) -> str:
-    """Run a command, returning stdout text; raises on non-zero exit."""
-    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    """Run a command, returning stdout text; raises on non-zero exit.
+
+    Decode as UTF-8 explicitly: GitHub API payloads carry UTF-8 (em-dashes and
+    emoji in commit messages), and the Windows default cp1252 would otherwise
+    raise UnicodeDecodeError on the compare endpoint's large response.
+    """
+    return subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8").stdout
 
 
 def _gh_json(path: str, run: Callable[[list[str]], str]):
