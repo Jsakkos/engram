@@ -19,6 +19,7 @@ _Highlights: same-name shows (for example the 2023 **Frasier** vs the 1993 origi
 ### Fixed
 
 - **A TV disc named like "Show Season 11 Disc 2" could match the wrong episodes for hours, then fail** — when a disc had no readable volume label, Engram fell back to the drive's display name (e.g. `Supernatural Season 11 Disc 2`), but the parser only recognized a season when the disc number was in parentheses (`(Disc 2)`). A space-separated `Disc 2` left the season undetected, so no subtitles were downloaded for that season and matching fell back to brute-forcing every previously-seen season's subtitles with speech recognition — a run that could churn for many hours scoring the audio against the wrong seasons before failing. Engram now reads the season from these names (with or without parentheses or a dash), so the correct season is detected, its subtitles download, and episodes match on the first pass. (#303)
+- **Matching a disc whose season couldn't be determined was needlessly slow** — when a TV disc's season is unknown, Engram matches the file against every candidate season in turn. Each attempt re-ran speech recognition over the *same* audio from scratch, so a show with many seasons could spend hours re-transcribing identical audio before giving up. Transcriptions are now cached and reused across season attempts, so only the first attempt does the expensive transcription work and the rest are near-instant. (#303)
 
 ## [0.14.1] - 2026-06-02
 

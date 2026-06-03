@@ -348,6 +348,13 @@ MIN_CONSENSUS_FOR_RATIO = 0.50
 CHUNK_VOTE_FLOOR = 0.06  # below this top-1 cosine, treat the chunk as noise
 CHUNK_VOTE_MARGIN_RATIO = 1.8  # top-1 must lead the runner-up by this ratio to vote
 
+# Upper bound on the per-matcher ASR transcript cache (entries: chunks + full-file
+# transcripts, keyed by source+offset+duration). One season-unknown file needs
+# ~num_points + 1 entries; the bound just stops the long-lived singleton matcher
+# from growing without limit across many files. On overflow the cache is cleared
+# wholesale (cheap, correctness-preserving — keys are source-addressed).
+MAX_TRANSCRIPTION_CACHE = 1024
+
 
 def select_chunk_vote(
     tfidf_results: list[tuple[str, float]],
@@ -827,8 +834,15 @@ class EpisodeMatcher:
         self.subtitle_cache = SubtitleCache()
         # TF-IDF matcher (lazily initialized per season)
         self.tfidf_matcher = None
-        # Cache for extracted audio chunks
+        # Cache for extracted audio chunks (cleared per identify_episode call)
         self.audio_chunks = {}
+        # Cache for ASR transcripts, keyed by (resolved_source, start, duration).
+        # Unlike audio_chunks this PERSISTS across identify_episode calls so the
+        # season-unknown path (one call per candidate season) reuses Whisper output
+        # instead of re-transcribing the same offsets per season. Bounded; see
+        # _remember_transcription.
+        self.transcriptions = {}
+        self._max_transcription_cache = MAX_TRANSCRIPTION_CACHE
         # Store reference files to avoid repeated glob operations
         self.reference_files_cache = {}
         # Precomputed subtitle-vector cache (lazily loaded; False once known-absent)
@@ -856,6 +870,29 @@ class EpisodeMatcher:
         """Hash resolved source path into the filename so concurrent threads don't collide."""
         src_hash = hashlib.sha1(self._resolve_source(mkv_file).encode("utf-8")).hexdigest()[:16]
         return self.temp_dir / f"chunk_{src_hash}_{start_time}_{duration}.wav"
+
+    def _transcription_key(self, mkv_file, start_time, duration) -> tuple:
+        """Cache key for an ASR transcript: resolved source path + offset + duration.
+
+        Same shape as the audio-chunk cache key, so the chunk loop and the full-file
+        fallback share one transcript cache without colliding (chunks start >= 300s
+        with a 30s duration; the full-file pass uses start=0 with the file duration).
+        """
+        return (self._resolve_source(mkv_file), start_time, duration)
+
+    def _remember_transcription(self, key: tuple, text: str) -> None:
+        """Store an ASR transcript, bounding the cache.
+
+        The cache persists across identify_episode() calls (it is NOT cleared in the
+        per-call ``finally``), letting the season-unknown path reuse Whisper output
+        across candidate seasons. It is shared across concurrent matches on the
+        singleton matcher; distinct-key writes are GIL-safe and keys are
+        source-addressed, so concurrent files never read each other's transcripts.
+        On overflow the whole cache is dropped (a rare, cheap reset).
+        """
+        if len(self.transcriptions) >= self._max_transcription_cache:
+            self.transcriptions.clear()
+        self.transcriptions[key] = text
 
     def extract_audio_chunk(self, mkv_file, start_time, duration=None):
         """Extract a chunk of audio from MKV file with caching."""
@@ -1087,10 +1124,16 @@ class EpisodeMatcher:
 
         model_config = {"type": "whisper", "name": self.model_name, "device": self.device}
         try:
-            model = get_cached_model(model_config)
-            audio_path = self.extract_audio_chunk(video_file, start_time=0, duration=duration)
-            result = model.transcribe(audio_path)
-            full = (result.get("text") or "").strip()
+            # Memoized by (source, 0, duration): the full-file fallback fires once per
+            # candidate season when no chunk votes, so without this the season-unknown
+            # path re-transcribes the ENTIRE file per season — the single biggest cost.
+            full_key = self._transcription_key(video_file, 0, duration)
+            full = self.transcriptions.get(full_key)
+            if full is None:
+                model = get_cached_model(model_config)
+                audio_path = self.extract_audio_chunk(video_file, start_time=0, duration=duration)
+                full = (model.transcribe(audio_path).get("text") or "").strip()
+                self._remember_transcription(full_key, full)
         except Exception as e:
             logger.warning(
                 f"transcribe_full: transcription failed for {video_file}: {e}",
@@ -1342,14 +1385,19 @@ class EpisodeMatcher:
                 scan_percent = 10.0 + (i / len(scan_points)) * 80.0
 
                 try:
-                    audio_path = self.extract_audio_chunk(
-                        video_file, start_time, duration=chunk_len
-                    )
-                    temp_files_to_remove.append(audio_path)  # Track for cleanup
-
-                    # Transcribe
-                    result = model.transcribe(audio_path)
-                    text = result["text"]
+                    # Transcribe, memoized by (source, offset, duration). On a hit
+                    # (e.g. a later candidate season re-scanning the same file) we
+                    # skip both ffmpeg extraction and Whisper — only the ~1ms TF-IDF
+                    # match below re-runs.
+                    chunk_key = self._transcription_key(video_file, start_time, chunk_len)
+                    text = self.transcriptions.get(chunk_key)
+                    if text is None:
+                        audio_path = self.extract_audio_chunk(
+                            video_file, start_time, duration=chunk_len
+                        )
+                        temp_files_to_remove.append(audio_path)  # Track for cleanup
+                        text = model.transcribe(audio_path)["text"]
+                        self._remember_transcription(chunk_key, text)
 
                     if len(text) < 10:
                         logger.debug(

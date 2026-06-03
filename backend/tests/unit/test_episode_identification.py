@@ -686,3 +686,74 @@ class TestMatchFullFileSurfacesTranscript:
         assert result is not None
         assert "transcript" in result
         assert result["transcript"].startswith("long fake transcript")
+
+
+@pytest.mark.unit
+class TestTranscriptionCache:
+    """ASR transcripts are memoized by (source, start, duration) and the cache
+    SURVIVES across identify_episode() calls.
+
+    Background: identify_episode()'s `finally` clears audio_chunks and deletes the
+    chunk WAVs every call, so when the season is unknown and the curator matches a
+    file against several candidate seasons (one identify_episode per season), every
+    season re-extracts AND re-runs Whisper over the exact same audio offsets — the
+    dominant cost behind the multi-hour season-unknown runaway. A persistent
+    transcript cache collapses seasons 2..N to a TF-IDF-only pass.
+    """
+
+    def _matcher(self, tmp_path):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        return EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show", model_name="tiny")
+
+    def test_transcribe_full_reuses_transcript_across_calls(self, tmp_path):
+        matcher = self._matcher(tmp_path)
+        fake_model = MagicMock()
+        fake_model.transcribe.return_value = {"text": " hello world from the episode " * 10}
+
+        with (
+            patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
+            patch("app.matcher.episode_identification.get_cached_model", return_value=fake_model),
+            patch("app.matcher.episode_identification.get_video_duration", return_value=1320),
+        ):
+            first = matcher.transcribe_full(tmp_path / "fake.mkv")
+            second = matcher.transcribe_full(tmp_path / "fake.mkv")
+
+        assert first == second
+        # Whisper ran once; the second call was served from the transcript cache.
+        assert fake_model.transcribe.call_count == 1
+
+    def test_distinct_segments_each_transcribe(self, tmp_path):
+        matcher = self._matcher(tmp_path)
+        calls = []
+
+        def compute():
+            calls.append(1)
+            return f"text-{len(calls)}"
+
+        key_a = matcher._transcription_key(tmp_path / "f.mkv", 300, 30)
+        key_b = matcher._transcription_key(tmp_path / "f.mkv", 600, 30)
+        # Same key reuses; different (start) recomputes.
+        assert matcher.transcriptions.get(key_a) is None
+        matcher._remember_transcription(key_a, compute())
+        assert matcher.transcriptions.get(key_a) == "text-1"
+        matcher._remember_transcription(key_b, compute())
+        assert len(calls) == 2
+        assert key_a != key_b
+
+    def test_cache_is_bounded(self, tmp_path):
+        matcher = self._matcher(tmp_path)
+        matcher._max_transcription_cache = 2
+        matcher._remember_transcription(("s", 0, 30), "a")
+        matcher._remember_transcription(("s", 30, 30), "b")
+        # Third insert exceeds the cap -> cache is cleared before storing.
+        matcher._remember_transcription(("s", 60, 30), "c")
+        assert ("s", 60, 30) in matcher.transcriptions
+        assert len(matcher.transcriptions) == 1
+
+    def test_key_is_source_addressed(self, tmp_path):
+        matcher = self._matcher(tmp_path)
+        # Same offset/duration on different source files must not collide.
+        a = matcher._transcription_key("/d/title_t00.mkv", 300, 30)
+        b = matcher._transcription_key("/d/title_t01.mkv", 300, 30)
+        assert a != b
