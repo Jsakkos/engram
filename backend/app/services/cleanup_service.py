@@ -117,6 +117,16 @@ class CleanupService:
                 cutoff = now - (max_age_days * 86400)
 
                 for d in root.iterdir():
+                    # This path does its own rmtree without the import guard in
+                    # delete_staging, so it relies on a structural invariant to
+                    # never touch a user's import source: it only deletes dirs
+                    # that are (a) directly inside the managed staging_root and
+                    # (b) named "job_*". Import sources are the user's
+                    # import_watch_path (or a subfolder of it), which is neither
+                    # under staging_root nor named "job_*" — disc-rip staging
+                    # dirs are the only things created with that prefix here. If
+                    # that convention ever changes, add a drive_id == "import"
+                    # DB cross-check before deleting.
                     if not d.is_dir() or not d.name.startswith("job_"):
                         continue
                     try:

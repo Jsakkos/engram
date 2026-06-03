@@ -224,7 +224,12 @@ class StagingWatcher:
         Returns list of (dir_path, mkv_count, total_size, metadata) tuples.
         """
         units = []
-        root_has_loose_mkv = False
+        # Tally loose top-level MKVs during the single scan pass so the flat
+        # (Pattern C) decision and its count/size don't need a second iterdir()
+        # of root afterwards (avoids a redundant traversal and a TOCTOU window
+        # where a file removed between passes would skew the count).
+        root_loose_count = 0
+        root_loose_size = 0
         try:
             for entry in os.scandir(root):
                 if entry.is_file() and entry.name.lower().endswith(".mkv"):
@@ -234,7 +239,11 @@ class StagingWatcher:
                     # loose file (os.scandir order is arbitrary) would shadow
                     # those subfolders and skip importing them — the data-loss
                     # path that left un-imported Season folders to be deleted.
-                    root_has_loose_mkv = True
+                    root_loose_count += 1
+                    try:
+                        root_loose_size += entry.stat().st_size
+                    except OSError:
+                        pass  # File vanished between scandir and stat; skip its size
                     continue
 
                 if not entry.is_dir():
@@ -294,13 +303,12 @@ class StagingWatcher:
         # exist, the subfolders win and the loose top-level files are left
         # untouched (they're ambiguous specials/strays — move them into a
         # Season folder to import them).
-        if root_has_loose_mkv and not units:
-            mkv_count, total_size = self._count_mkvs(root)
+        if root_loose_count and not units:
             units.append(
                 (
                     root,
-                    mkv_count,
-                    total_size,
+                    root_loose_count,
+                    root_loose_size,
                     {
                         "structure": "flat",
                         "show_name": None,
@@ -310,14 +318,13 @@ class StagingWatcher:
                     },
                 )
             )
-        elif root_has_loose_mkv and units:
-            loose_count, _ = self._count_mkvs(root)
+        elif root_loose_count and units:
             logger.info(
                 "Import scan: %s has structured subfolders, so %d loose top-level "
                 "MKV file(s) were left un-imported (move them into a Season folder "
                 "to import them)",
                 root,
-                loose_count,
+                root_loose_count,
             )
         return units
 
