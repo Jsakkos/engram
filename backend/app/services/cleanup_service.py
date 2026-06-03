@@ -39,10 +39,30 @@ class CleanupService:
             await self.auto_export_for_discdb(job_id, config)
 
     async def delete_staging(self, job_id: int) -> None:
-        """Delete the staging directory for a job."""
+        """Delete the staging directory for a job.
+
+        For a disc rip, staging_path is a regenerable temp dir under the
+        staging root, so deleting it just reclaims space. For a watch-folder
+        import (drive_id == "import"), staging_path is the user's *original*
+        source folder on disk (the import_watch_path or a subfolder of it).
+        Successfully imported files are *moved* out of it, so cleanup has
+        nothing legitimate to reclaim — and an rmtree would destroy whatever
+        remains, including content the importer never scanned (e.g. Season
+        subfolders skipped by the flat-file scan). Never delete an import
+        source.
+        """
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job or not job.staging_path:
+                return
+
+            if job.drive_id == "import":
+                logger.info(
+                    "Skipping staging cleanup for import job %s: %s is the user's "
+                    "source directory, not regenerable staging",
+                    job_id,
+                    job.staging_path,
+                )
                 return
 
             staging_path = Path(job.staging_path)

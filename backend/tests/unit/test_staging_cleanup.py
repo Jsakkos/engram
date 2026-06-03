@@ -155,6 +155,69 @@ class TestCleanupPolicy:
 
 
 # ---------------------------------------------------------------------------
+# Import-source protection (delete_staging)
+# ---------------------------------------------------------------------------
+
+
+class TestImportSourceProtection:
+    """delete_staging must never rmtree an import job's source directory.
+
+    For a disc rip, staging_path is a regenerable temp dir under the staging
+    root. For a watch-folder import (drive_id == "import"), staging_path is the
+    user's *original* source folder on disk — deleting it destroys their files,
+    including content the importer never scanned. See data-loss incident: a
+    Seinfeld import deleted X:\\media\\rips\\Seinfeld wholesale.
+    """
+
+    async def _insert_job(self, drive_id: str, staging_path: str) -> int:
+        from app.database import async_session
+        from app.models import DiscJob, JobState
+
+        async with async_session() as session:
+            job = DiscJob(
+                drive_id=drive_id,
+                volume_label="SEINFELD",
+                staging_path=staging_path,
+                state=JobState.COMPLETED,
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            return job.id
+
+    @pytest.mark.asyncio
+    async def test_import_source_dir_is_preserved(self, tmp_path):
+        from app.services.cleanup_service import CleanupService
+
+        source = tmp_path / "Seinfeld"
+        source.mkdir()
+        (source / "01.mkv").write_text("episode")
+        season = source / "Season 2"
+        season.mkdir()
+        (season / "ep.mkv").write_text("never scanned")
+
+        job_id = await self._insert_job("import", str(source))
+        await CleanupService().delete_staging(job_id)
+
+        assert source.exists(), "Import source directory must not be deleted"
+        assert (season / "ep.mkv").exists(), "Un-scanned subfolder content must survive"
+
+    @pytest.mark.asyncio
+    async def test_disc_rip_staging_dir_is_deleted(self, tmp_path):
+        """Regression guard: normal disc-rip cleanup still removes its temp dir."""
+        from app.services.cleanup_service import CleanupService
+
+        staging = tmp_path / "job_20260603_120000"
+        staging.mkdir()
+        (staging / "title_0.mkv").write_text("ripped")
+
+        job_id = await self._insert_job("E:", str(staging))
+        await CleanupService().delete_staging(job_id)
+
+        assert not staging.exists(), "Disc-rip staging dir should still be cleaned up"
+
+
+# ---------------------------------------------------------------------------
 # Timed cleanup (_run_timed_cleanup)
 # ---------------------------------------------------------------------------
 
