@@ -4,3 +4,10 @@
 docker/entrypoint.sh text eol=lf
 docker/install-makemkv.sh text eol=lf
 Dockerfile text eol=lf
+
+# Every PR appends to CHANGELOG.md's `## [Unreleased]`, making it a conflict
+# magnet across parallel PRs. `union` (git's built-in driver, no per-clone config)
+# keeps both sides on every rebase — no hand-editing. Cosmetic caveats (bullet
+# order, occasional duplicate subsection) are absorbed by the release-PR curation
+# pass. See docs/superpowers/reviews/2026-06-02-changelog-conflict-friction.md.
+CHANGELOG.md merge=union
