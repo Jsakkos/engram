@@ -16,6 +16,10 @@ _Highlights: same-name shows (for example the 2023 **Frasier** vs the 1993 origi
 
 - Windows FFmpeg auto-detection now also searches the Chocolatey, scoop, winget (`Gyan.FFmpeg`), and user-home install locations, so a freshly-installed FFmpeg is found even when it isn't yet on the running process's `PATH`. The in-app install hint now names the exact winget package.
 
+### Fixed
+
+- **A TV disc named like "Show Season 11 Disc 2" could match the wrong episodes for hours, then fail** — when a disc had no readable volume label, Engram fell back to the drive's display name (e.g. `Supernatural Season 11 Disc 2`), but the parser only recognized a season when the disc number was in parentheses (`(Disc 2)`). A space-separated `Disc 2` left the season undetected, so no subtitles were downloaded for that season and matching fell back to brute-forcing every previously-seen season's subtitles with speech recognition — a run that could churn for many hours scoring the audio against the wrong seasons before failing. Engram now reads the season from these names (with or without parentheses or a dash), so the correct season is detected, its subtitles download, and episodes match on the first pass. (#303)
+
 ## [0.14.1] - 2026-06-02
 
 _Highlights: a hardening fix for the in-app auto-updater — it can no longer install an incomplete or corrupted download over your working copy, and builds now always include the TLS certificate bundle whose absence silently broke all networking in some 0.14.0 installs._

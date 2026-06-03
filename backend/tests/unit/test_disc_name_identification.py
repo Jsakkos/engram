@@ -87,6 +87,12 @@ def test_parse_disc_info_no_cinfo_returns_empty_string():
         ("Arrested Development Season 4", "Arrested Development", 4),
         ("Inception", "Inception", None),
         ("Star Trek: Strange New Worlds - Season 3", "Star Trek: Strange New Worlds", 3),
+        # Space-separated "Disc N" without parentheses (issue #303): the disc
+        # suffix must be stripped so the trailing "Season N" is recognized.
+        ("Supernatural Season 11 Disc 2", "Supernatural", 11),
+        ("The Office Season 2 Disc 4", "The Office", 2),
+        # Disc-only name: clean the title, no season.
+        ("Firefly Disc 1", "Firefly", None),
         ("", None, None),
         ("  ", None, None),
     ],
