@@ -31,7 +31,6 @@ from collections.abc import Callable, Iterable
 # --- "who counts" -----------------------------------------------------------
 
 OWNER_LOGINS = {"jsakkos"}
-OWNER_EMAILS = {"jonathansakkos@gmail.com", "jonathansakkos@protonmail.com"}
 BOT_LOGINS = {"dependabot", "renovate", "github-actions"}
 
 _VERSION_TAG = re.compile(r"^v?\d+\.\d+\.\d+$")
@@ -172,6 +171,12 @@ def build_release_section(
 
 
 def build_roster(repo: str, run: Callable[[list[str]], str] = _default_run) -> str:
+    """Build the full CONTRIBUTORS.md body.
+
+    Makes up to O(contributors × tags) GitHub API calls to find each
+    contributor's first version tag — acceptable at Engram's current scale
+    (a handful of contributors, ~15 tags) but worth noting for future growth.
+    """
     externals = [login for login in gh_all_contributor_logins(repo, run) if is_external(login)]
     tags = git_version_tags_ascending(run)
     entries: list[tuple[str, str | None]] = []

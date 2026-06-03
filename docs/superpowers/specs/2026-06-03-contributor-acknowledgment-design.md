@@ -53,15 +53,13 @@ credit is a documented convention.
 These rules live in `backend/scripts/contributors.py` and are reused everywhere.
 
 - **External contributor:** a GitHub **login** that is neither the owner nor a bot.
-  - **Owner exclusion:** login `Jsakkos`; also his commit emails
-    `jonathansakkos@gmail.com` and `jonathansakkos@protonmail.com` (email match is a
-    fallback when a login can't be resolved).
+  - **Owner exclusion:** login `Jsakkos` (the owner always resolves to a login).
   - **Bot exclusion:** any login ending in `[bot]`, plus the explicit set
     `{dependabot, renovate, github-actions}`.
 - **Identity:** always resolved to GitHub **logins** via the GitHub commits/compare
-  API (`gh api`), **never** raw emails in output (privacy). The helper degrades
-  gracefully: if a login can't be resolved for a commit, that commit's author is
-  matched against the owner-email fallback and otherwise skipped (logged to stderr).
+  API (`gh api`), **never** raw emails (privacy). A commit with no resolvable login
+  (`author == null`) can't be @-mentioned, so it is simply skipped — login-based
+  exclusion already covers the owner, so no email fallback is needed.
 - **First-timer (release section):** an external login with **zero merged commits
   reachable before `<PREV_TAG>`**. Computed from `git log` (the release job checks
   out with `fetch-depth: 0`, so full history is present).
@@ -203,9 +201,8 @@ external contribution appends `(#NNN, thanks @user!)`.
   code; minimal `pull-requests: write` permission.
 - **Protected `main` (GH006)** → roster regenerated inside the human release PR,
   never pushed by a workflow.
-- **Identity drift** (contributor with multiple emails / no resolvable login) →
-  login-first resolution with owner-email fallback; unresolved authors skipped with
-  a stderr warning rather than leaking an email.
+- **Identity drift** (commit with no resolvable login) → such commits are skipped
+  rather than leaking a raw email; login-based exclusion already covers the owner.
 
 ## Out of scope / deferred
 

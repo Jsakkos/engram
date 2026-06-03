@@ -9,6 +9,7 @@ on:
     types: [closed]
 
 permissions:
+  contents: read # actions/checkout needs this; an explicit block zeroes out all unlisted scopes
   pull-requests: write
 
 jobs:

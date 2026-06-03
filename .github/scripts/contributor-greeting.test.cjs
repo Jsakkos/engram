@@ -24,3 +24,18 @@ test("first-time external contributor gets the first-timer greeting", () => {
 test("returning external contributor gets repeat thanks", () => {
   assert.equal(decide("CONTRIBUTOR", "katelovescode"), "repeat");
 });
+
+const { renderComment } = require("./contributor-greeting.cjs");
+
+test("first-timer comment mentions the login, CONTRIBUTORS.md and CONTRIBUTING.md", () => {
+  const msg = renderComment("first", "katelovescode");
+  assert.ok(msg.includes("@katelovescode"));
+  assert.ok(msg.includes("CONTRIBUTORS.md"));
+  assert.ok(msg.includes("CONTRIBUTING.md"));
+});
+
+test("repeat comment mentions the login and release notes", () => {
+  const msg = renderComment("repeat", "katelovescode");
+  assert.ok(msg.includes("@katelovescode"));
+  assert.ok(msg.includes("release"));
+});
