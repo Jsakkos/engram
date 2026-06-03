@@ -65,6 +65,11 @@ class JobManager:
         self._analyst = DiscAnalyst()
         self._active_jobs: dict[int, asyncio.Task] = {}
         self._drive_locks: dict[str, asyncio.Lock] = {}
+        # Per staging-path lock guarding create_job_from_staging's check→insert,
+        # mirroring _drive_locks for the disc path. create_job_from_staging is
+        # reachable from both the watch-folder poller and POST /api/staging/import,
+        # so concurrent calls for the same path must not both pass the dedup guard.
+        self._staging_locks: dict[str, asyncio.Lock] = {}
         self._last_job_created_at: dict[str, float] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
@@ -410,46 +415,63 @@ class JobManager:
         if not volume_label:
             volume_label = staging_dir.name.upper().replace(" ", "_")
 
-        async with async_session() as session:
-            # Guard: don't create a duplicate job for the same staging directory
-            existing = await session.execute(
-                sa_select(DiscJob).where(DiscJob.staging_path == str(staging_dir))
-            )
-            if existing.scalar_one_or_none():
-                safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
-                logger.info("Job already exists for staging path %s, skipping", safe_path)
-                return -1
+        # Hold a per-path lock across the dedup check and insert so two concurrent
+        # callers (poller + API, or two API calls) for the same path can't both
+        # pass the guard and insert duplicate jobs — mirrors _drive_locks on the
+        # disc path. Widened slightly by this dedup change: retries of a path with
+        # only FAILED rows now reach the check→insert that the guard used to short.
+        if str(staging_dir) not in self._staging_locks:
+            self._staging_locks[str(staging_dir)] = asyncio.Lock()
 
-            job = DiscJob(
-                drive_id=drive_id,
-                volume_label=volume_label,
-                staging_path=str(staging_dir),
-                state=JobState.IDENTIFYING,
-                destination_mode=destination_mode,
-            )
+        async with self._staging_locks[str(staging_dir)]:
+            async with async_session() as session:
+                # Guard: don't create a duplicate job for the same staging directory.
+                # A watch folder is re-detected on every poll and every server
+                # restart, so a *terminal-failed* prior job (cancelled, or auto-failed
+                # by restart recovery) must NOT permanently wedge re-import — only an
+                # active or review-pending job should dedup. Use .first() because a
+                # path may now accumulate multiple FAILED rows across retries.
+                existing = await session.execute(
+                    sa_select(DiscJob).where(
+                        DiscJob.staging_path == str(staging_dir),
+                        DiscJob.state != JobState.FAILED,
+                    )
+                )
+                if existing.scalars().first() is not None:
+                    safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                    logger.info("Job already exists for staging path %s, skipping", safe_path)
+                    return -1
 
-            if content_type in ("tv", "movie"):
-                job.content_type = ContentType(content_type)
-            if detected_title:
-                job.detected_title = detected_title
-            if detected_season is not None:
-                job.detected_season = detected_season
+                job = DiscJob(
+                    drive_id=drive_id,
+                    volume_label=volume_label,
+                    staging_path=str(staging_dir),
+                    state=JobState.IDENTIFYING,
+                    destination_mode=destination_mode,
+                )
 
-            session.add(job)
-            await session.commit()
-            await session.refresh(job)
+                if content_type in ("tv", "movie"):
+                    job.content_type = ContentType(content_type)
+                if detected_title:
+                    job.detected_title = detected_title
+                if detected_season is not None:
+                    job.detected_season = detected_season
 
-            job_id = job.id
-            safe_path = str(staging_path).replace("\n", "").replace("\r", "")
-            safe_label = str(volume_label).replace("\n", "").replace("\r", "")
-            logger.info(
-                "Created %s job %s from %s (label: %s, destination: %s)",
-                "import" if drive_id == "import" else "staging",
-                job_id,
-                safe_path,
-                safe_label,
-                destination_mode,
-            )
+                session.add(job)
+                await session.commit()
+                await session.refresh(job)
+
+                job_id = job.id
+                safe_path = str(staging_path).replace("\n", "").replace("\r", "")
+                safe_label = str(volume_label).replace("\n", "").replace("\r", "")
+                logger.info(
+                    "Created %s job %s from %s (label: %s, destination: %s)",
+                    "import" if drive_id == "import" else "staging",
+                    job_id,
+                    safe_path,
+                    safe_label,
+                    destination_mode,
+                )
 
         await event_broadcaster.broadcast_drive_inserted(drive_id, volume_label)
 

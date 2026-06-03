@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **The import watch folder stopped re-importing a folder after a single failed attempt** — once any job had been created for a watched folder, that exact folder was blocked from ever being imported again, even if the job had failed (cancelled, or auto-failed when the server restarted mid-job). Because the watch folder is re-scanned on every poll and on every restart, a one-time failure silently wedged the folder: the watcher kept detecting it and immediately skipped it ("Job already exists for staging path …"), so nothing imported. Engram now dedups only against an active or review-pending job for the path, so a previously failed import is retried on the next scan instead of being stuck forever.
 - **Clearer disc card when two shows share a name** — a disc that matches more than one same-name show (for example the 1993 vs 2023 **Frasier**) is flagged for review before ripping, but its card showed a "Review needed" button that opened an empty review screen — there's nothing to review until the disc is ripped — right next to an identical "Review needed" status badge. The card now hides that dead-end button until the disc actually has ripped tracks, emphasizes the **Wrong title?** action as the thing to click, and adds a short banner explaining the same-name ambiguity and how to resolve it. (#308)
 
 ## [0.15.0] - 2026-06-03
