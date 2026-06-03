@@ -65,6 +65,12 @@ def ecl():
 
 
 @pytest.fixture(scope="session")
+def contrib():
+    """The contributors.py module, loaded once per pytest session."""
+    return _load_script_module("contributors")
+
+
+@pytest.fixture(scope="session")
 def nsc():
     """The normalize_subtitle_cache.py module, loaded once per pytest session."""
     return _load_script_module("normalize_subtitle_cache")
