@@ -71,6 +71,10 @@ export interface DiscData {
   subtitleError?: string;
   startedAt?: string;
   needsReview?: boolean;
+  reviewReason?: string;
+  /** Whether this disc's titles have been fetched yet (vs. genuinely empty).
+   *  Guards the pre-rip banner against the title-load race — see reviewPreRip. */
+  tracksLoaded?: boolean;
   conflictStatus?: string;
 }
 
@@ -187,6 +191,14 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     const doneTrackCount =
       disc.tracks?.filter(t => ["matched", "completed"].includes(t.state)).length ?? 0;
     const failedTrackCount = disc.tracks?.filter(t => t.state === "failed").length ?? 0;
+
+    // A disc that needs review but hasn't ripped yet (no tracks) has nothing to
+    // review in the queue — the only useful action is "Wrong title?" (re-identify).
+    // Drives both the on-card hint banner and the emphasis on the re-identify button.
+    // `tracksLoaded` gates out the title-load race: titles resolve after the job
+    // list, so a post-rip review_needed job momentarily has tracks=[] on first
+    // render — without this guard the banner/emphasis would flash then vanish.
+    const reviewPreRip = !!disc.needsReview && totalTrackCount === 0 && !!disc.tracksLoaded;
 
     return (
       <motion.div
@@ -373,9 +385,41 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
                     onReportBug={onReportBug}
+                    emphasizeReIdentify={reviewPreRip}
                   />
                 </div>
               </div>
+
+              {/* Ambiguous / unconfirmed identity, pre-rip — the review queue is
+                  empty until ripping, so point the user at "Wrong title?" instead
+                  and explain why (reuses the backend's review_reason sentence). */}
+              {reviewPreRip && (
+                <div
+                  role="alert"
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    marginBottom: 16,
+                    padding: "10px 12px",
+                    border: `1px solid ${sv.yellow}99`,
+                    borderLeft: `3px solid ${sv.yellow}`,
+                    background: `${sv.yellow}14`,
+                    fontFamily: sv.mono,
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    letterSpacing: "0.02em",
+                    color: sv.yellow,
+                  }}
+                >
+                  <span aria-hidden style={{ flexShrink: 0 }}>⚠</span>
+                  <span>
+                    {disc.reviewReason ||
+                      "This disc's identity needs confirming before ripping."}{" "}
+                    Use "Wrong title?" to pick the correct one.
+                  </span>
+                </div>
+              )}
 
               {/* No reference subtitles — loud + actionable while the job is still
                   actionable. Hidden once completed (e.g. user assigned manually). */}
