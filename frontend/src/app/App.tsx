@@ -730,7 +730,7 @@ function MainDashboard() {
         <ModalScrim>
           <ConfigWizard
             onClose={() => setShowOnboarding(false)}
-            onComplete={() => setShowOnboarding(false)}
+            onComplete={() => { setShowOnboarding(false); checkSetup(); }}
             isOnboarding={true}
           />
         </ModalScrim>
