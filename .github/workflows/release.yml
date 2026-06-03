@@ -416,14 +416,27 @@ jobs:
           sha256sum engram-windows-x64.zip engram-linux-x64.tar.gz engram-macos-arm64.tar.gz > sha256sums.txt
           cat sha256sums.txt
       - name: Generate release notes from CHANGELOG
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
           python3 backend/scripts/extract_changelog.py \
             --version "$VERSION" --changelog CHANGELOG.md > release-notes.md
-          # Append a compare link to the previous tag (omitted for the first release).
+          # Previous tag drives both the contributors range and the compare link
+          # (both omitted for the very first release).
           PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
           if [ -n "$PREV" ]; then
+            # Contributors section: external humans only, first-timers flagged.
+            # Inserted between the changelog body and the Full Changelog footer.
+            # The helper degrades to empty output on any error, so `|| true`
+            # plus the emptiness check means acknowledgment never fails a release.
+            SECTION=$(python3 backend/scripts/contributors.py \
+              --release-section --from "$PREV" --to "$TAG" \
+              --repo "${{ github.repository }}" || true)
+            if [ -n "$SECTION" ]; then
+              printf '\n\n%s\n' "$SECTION" >> release-notes.md
+            fi
             printf '\n\n---\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
               "${{ github.repository }}" "$PREV" "$TAG" >> release-notes.md
           fi
