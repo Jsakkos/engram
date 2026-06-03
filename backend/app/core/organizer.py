@@ -13,37 +13,118 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Allowed placeholders for naming format strings
-ALLOWED_TV_PLACEHOLDERS = {"show", "season", "episode"}
+ALLOWED_TV_PLACEHOLDERS = {
+    "show",
+    "season",
+    "episode",
+}  # season folder (episode validation uses ALLOWED_EPISODE_PLACEHOLDERS once routes are wired)
+# Show *folder* format — adds year/tmdb_id for same-name disambiguation
+# (Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]").
+ALLOWED_TV_SHOW_PLACEHOLDERS = {"show", "year", "tmdb_id"}
+# Episode *filename* format — widened so the year can opt into the filename too.
+ALLOWED_EPISODE_PLACEHOLDERS = {"show", "season", "episode", "year", "tmdb_id"}
 ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year"}
 
 
 def format_season_folder(fmt: str, season: int) -> str:
     """Format a season folder name from a config format string."""
+    # format_map (not format(**...)) so a user-supplied format with an unknown
+    # placeholder raises KeyError → caught below → safe fallback. Equivalent to
+    # format(**mapping) but keeps CodeQL's missing-named-argument check from
+    # flagging the intentionally-dynamic, user-controlled format string.
     try:
-        result = fmt.format(season=season)
+        result = fmt.format_map({"season": season})
     except (KeyError, ValueError, IndexError):
         result = f"Season {season:02d}"
     return sanitize_filename(result)
 
 
-def format_episode_filename(fmt: str, show: str, season: int, episode: int) -> str:
-    """Format an episode filename from a config format string."""
+def format_episode_filename(
+    fmt: str,
+    show: str,
+    season: int,
+    episode: int,
+    *,
+    year: int | None = None,
+    tmdb_id: str | int | None = None,
+) -> str:
+    """Format an episode filename from a config format string.
+
+    ``year``/``tmdb_id`` are optional placeholders ({year}, {tmdb_id}). When the
+    chosen format omits them they are ignored; when year is missing, an empty
+    ``()`` left behind is stripped (mirrors ``format_movie_folder``). The default
+    format ("{show} - SxxExx") is unaffected.
+    """
+    # format_map keeps an unknown placeholder raising KeyError → safe fallback,
+    # while avoiding CodeQL's missing-named-argument false positive on the
+    # user-controlled format string (see format_season_folder).
     try:
-        result = fmt.format(show=show, season=season, episode=episode)
+        result = fmt.format_map(
+            {
+                "show": show,
+                "season": season,
+                "episode": episode,
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
+            }
+        )
     except (KeyError, ValueError, IndexError):
         result = f"{show} - S{season:02d}E{episode:02d}"
+    result = _strip_empty_name_groups(result)
     return sanitize_filename(result)
 
 
 def format_movie_folder(fmt: str, title: str, year: int | None) -> str:
     """Format a movie folder name from a config format string."""
     try:
-        result = fmt.format(title=title, year=year or "")
+        result = fmt.format_map({"title": title, "year": year or ""})
     except (KeyError, ValueError, IndexError):
         result = f"{title} ({year})" if year else title
     # Clean up trailing empty parens if year is None
     result = re.sub(r"\s*\(\s*\)\s*$", "", result).strip()
     return sanitize_filename(result)
+
+
+def _strip_empty_name_groups(name: str) -> str:
+    """Remove empty (), {..-}, [..-] groups left when year/tmdb_id are absent,
+    consuming the whitespace that preceded each removed group so no double space
+    is left behind. Does NOT collapse other internal whitespace — so a bare
+    default format ("{show}") yields a byte-identical folder to pre-feature
+    behavior (e.g. a sanitized "Tom  Jerry" double space is preserved).
+
+    A populated tag like "{tmdb-3452}" is preserved (the char before '}' is a
+    digit, not '-'); genuinely non-empty parens like "(US)" are preserved too.
+    """
+    name = re.sub(r"\s*\(\s*\)", "", name)  # empty parens (+ leading ws)
+    name = re.sub(r"\s*\{[^{}]*-\s*\}", "", name)  # empty Plex tag, e.g. {tmdb-}
+    name = re.sub(r"\s*\[[^\[\]]*-\s*\]", "", name)  # empty Jellyfin tag, e.g. [tmdbid-]
+    return name.strip()
+
+
+def format_tv_show_folder(fmt: str, show: str, year: int | None, tmdb_id: str | int | None) -> str:
+    """Format the show *directory* name from a config format string.
+
+    Mirrors ``format_movie_folder`` but adds a ``{tmdb_id}`` placeholder for
+    media-server disambiguation (Plex ``{tmdb-NNNN}`` / Jellyfin ``[tmdbid-NNNN]``).
+    Empty groups are stripped when year/id are missing, so the stable id tag never
+    degrades to ``Frasier {tmdb-}``. A falsy/empty/whitespace-only ``fmt`` (e.g. an
+    existing DB that backfilled '') falls back to the bare show name == current
+    behavior — a whitespace-only format must NOT collapse the show-folder level.
+    """
+    fmt = (fmt or "").strip()
+    if not fmt:
+        return sanitize_filename(show)
+    try:
+        result = fmt.format_map(
+            {
+                "show": show,
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
+            }
+        )
+    except (KeyError, ValueError, IndexError):
+        result = show
+    return sanitize_filename(_strip_empty_name_groups(result))
 
 
 def validate_naming_format(fmt: str, allowed: set[str]) -> str | None:
@@ -367,6 +448,7 @@ def organize_tv_episode(
     library_path: Path | None = None,
     conflict_resolution: str = "ask",
     *,
+    year: int | None = None,
     tmdb_id: str | None = None,
     ordering: str = "aired",
     episode_group_id: str | None = None,
@@ -387,6 +469,9 @@ def organize_tv_episode(
             canonical (#200).
         episode_group_id: Resolved TMDB group id for ``ordering`` (unused here;
             accepted so callers can pass the resolver's full result for audit).
+        year: First-air year used for same-name show disambiguation in the folder
+            name (e.g. Frasier 1993 vs 2023). Only affects the show folder when
+            the configured ``naming_tv_show_format`` includes ``{year}``.
 
     Returns:
         dict with 'success', 'final_path', 'error' keys
@@ -435,15 +520,22 @@ def organize_tv_episode(
 
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
+    show_folder = format_tv_show_folder(cfg.naming_tv_show_format, clean_show, year, tmdb_id)
     season_folder = format_season_folder(cfg.naming_season_format, out_season)
     ep_stem = format_episode_filename(
-        cfg.naming_episode_format, clean_show, out_season, out_episode
+        cfg.naming_episode_format,
+        clean_show,
+        out_season,
+        out_episode,
+        year=year,
+        tmdb_id=tmdb_id,
     )
     filename = f"{ep_stem}.mkv"
 
-    # Build destination path
+    # Build destination path. The show folder may carry year/tmdb-id so same-name
+    # shows (Frasier 1993 vs 2023) coexist; default "{show}" == bare clean_show.
     library_path = Path(library_path)
-    dest_dir = library_path / clean_show / season_folder
+    dest_dir = library_path / show_folder / season_folder
     dest_file = dest_dir / filename
 
     logger.info(f"Organizing TV episode: {source_file.name} -> {dest_file}")
@@ -477,6 +569,9 @@ def organize_tv_extras(
     disc_number: int = 1,
     extra_index: int = 1,
     title_index: int | None = None,
+    *,
+    year: int | None = None,
+    tmdb_id: str | None = None,
 ) -> dict:
     """Organize a ripped TV extra/bonus content into the library Extras folder.
 
@@ -488,6 +583,10 @@ def organize_tv_extras(
         disc_number: Disc number for multi-disc sets (default: 1)
         extra_index: Index of this extra on the disc (default: 1)
         title_index: MakeMKV title index for unique naming (e.g., t03)
+        year: First-air year for show-folder disambiguation (e.g. Frasier 1993 vs 2023).
+            Only affects the folder when ``naming_tv_show_format`` includes ``{year}``.
+        tmdb_id: Show's TMDB id for show-folder disambiguation. Only affects the folder
+            when ``naming_tv_show_format`` includes ``{tmdb_id}``.
 
     Returns:
         dict with 'success', 'final_path', 'error' keys
@@ -511,6 +610,9 @@ def organize_tv_extras(
 
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
+    # Use the SAME disambiguated show folder as organize_tv_episode so an extra
+    # and its episodes land under one show folder (TV-organize-paths-sync hazard).
+    show_folder = format_tv_show_folder(cfg.naming_tv_show_format, clean_show, year, tmdb_id)
     season_folder = format_season_folder(cfg.naming_season_format, season)
 
     if title_index is not None:
@@ -520,7 +622,7 @@ def organize_tv_extras(
 
     # Build destination path
     library_path = Path(library_path)
-    dest_dir = library_path / clean_show / season_folder / "Extras"
+    dest_dir = library_path / show_folder / season_folder / "Extras"
     dest_file = dest_dir / extra_name
 
     logger.info(f"Organizing TV extra: {source_file.name} -> {dest_file}")
@@ -555,12 +657,13 @@ class TVOrganizer:
         tmdb_id: str | None = None,
         ordering: str = "aired",
         episode_group_id: str | None = None,
+        year: int | None = None,
     ) -> dict:
         """Organize a TV episode from staging to library.
 
-        Forwards the output-ordering controls to organize_tv_episode so the
-        library-mode path (no explicit library_path) also honors the chosen
-        ordering. episode_code stays canonical; only the filename is projected.
+        Forwards the output-ordering controls AND show disambiguation (year/tmdb_id)
+        to organize_tv_episode so the library-mode path (no explicit library_path)
+        also honors them. episode_code stays canonical; only the filename is projected.
         """
         return organize_tv_episode(
             source_file,
@@ -569,25 +672,31 @@ class TVOrganizer:
             tmdb_id=tmdb_id,
             ordering=ordering,
             episode_group_id=episode_group_id,
+            year=year,
         )
 
     def organize_batch(
         self,
         files: list[tuple[Path, str]],
         show_name: str,
+        *,
+        year: int | None = None,
+        tmdb_id: str | None = None,
     ) -> list[dict]:
         """Organize multiple TV episodes.
 
         Args:
             files: List of (file_path, episode_code) tuples
             show_name: Name of the TV show
+            year: First-air year for show-folder disambiguation (threaded to organize).
+            tmdb_id: Show's TMDB id for show-folder disambiguation.
 
         Returns:
             List of result dicts for each file
         """
         results = []
         for source_file, episode_code in files:
-            result = self.organize(source_file, show_name, episode_code)
+            result = self.organize(source_file, show_name, episode_code, year=year, tmdb_id=tmdb_id)
             results.append(result)
         return results
 

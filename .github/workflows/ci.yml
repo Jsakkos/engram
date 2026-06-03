@@ -18,6 +18,67 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  # Decide whether this is a release-only change (a `chore: release vX.Y.Z` PR
+  # that touches nothing but version strings + CHANGELOG.md). When it is, the
+  # heavy behavioral jobs below are skipped — the released code was already
+  # validated when its source PRs merged, and release.yml does the real binary
+  # validation. The detection keys on a release SIGNAL (title + a strict file
+  # allowlist), NEVER on paths alone, so a Renovate/Dependabot lock-file bump
+  # (which also touches uv.lock / package-lock.json but is titled `build(deps):`)
+  # still runs the full suite. See docs/superpowers/specs for the design.
+  detect-release:
+    name: Detect Release
+    runs-on: ubuntu-latest
+    outputs:
+      is_release: ${{ steps.detect.outputs.is_release }}
+      os_matrix: ${{ steps.detect.outputs.os_matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # need base history for the changed-file diff
+      - id: detect
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          # Clamp to the first line: head_commit.message carries the full body,
+          # and `grep '^'` matches the start of EVERY line, so a body line that
+          # begins `chore: release v` could false-positive. We only want to key
+          # on the commit subject (PR titles are already single-line).
+          title=$(printf '%s' "${PR_TITLE:-$HEAD_MSG}" | head -n1)
+          echo "event=$EVENT_NAME title=$title"
+          is_release=false
+          if printf '%s' "$title" | grep -qE '^chore: release v[0-9]'; then
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              base="$PR_BASE_SHA"; head="$PR_HEAD_SHA"
+            else
+              base="$PUSH_BEFORE"; head="$PUSH_AFTER"
+            fi
+            changed=$(git diff --name-only "$base" "$head" 2>/dev/null || true)
+            echo "changed files:"; printf '%s\n' "$changed"
+            allow='^(backend/pyproject\.toml|backend/app/__init__\.py|backend/uv\.lock|frontend/package\.json|frontend/package-lock\.json|CHANGELOG\.md)$'
+            # release-only iff there IS a diff AND no changed file is outside the allowlist
+            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE "$allow"; then
+              is_release=true
+            else
+              echo "Title says release but diff is empty or includes non-allowlisted files — running full CI."
+            fi
+          fi
+          if [ "$is_release" = "true" ]; then
+            os_matrix='["ubuntu-latest"]'
+          else
+            os_matrix='["ubuntu-latest","windows-latest"]'
+          fi
+          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
+          echo "os_matrix=$os_matrix" >> "$GITHUB_OUTPUT"
+          echo "RESULT is_release=$is_release os_matrix=$os_matrix"
+
   changelog-version-check:
     name: Changelog Version Check
     runs-on: ubuntu-latest
@@ -57,10 +118,13 @@ jobs:
 
   backend-test-unit:
     name: Backend Tests (unit)
+    # Kept on release PRs as the unit smoke, but ubuntu-only there: the dynamic
+    # matrix drops the (slow) Windows leg for a version-only change.
+    needs: [detect-release]
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: ${{ fromJSON(needs.detect-release.outputs.os_matrix) }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -117,7 +181,8 @@ jobs:
   backend-test-integration:
     name: Backend Tests (integration)
     runs-on: ubuntu-latest
-    needs: [backend-test-unit]
+    needs: [detect-release, backend-test-unit]
+    if: needs.detect-release.outputs.is_release != 'true'
     defaults:
       run:
         working-directory: backend
@@ -163,7 +228,8 @@ jobs:
   backend-coverage:
     name: Backend Coverage
     runs-on: ubuntu-latest
-    needs: [backend-test-unit, backend-test-integration]
+    needs: [detect-release, backend-test-unit, backend-test-integration]
+    if: needs.detect-release.outputs.is_release != 'true'
     defaults:
       run:
         working-directory: backend
@@ -253,6 +319,8 @@ jobs:
     name: Dependency Resolution (Python ${{ matrix.python }}, ${{ matrix.os }})
     # Reproduces the macOS source-install path so a too-new interpreter or a
     # missing platform wheel (e.g. onnxruntime) is caught before a user hits it.
+    needs: [detect-release]
+    if: needs.detect-release.outputs.is_release != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -278,6 +346,8 @@ jobs:
     # onnxruntime has no cp314 wheel, so the requires-python upper bound must
     # keep uv off Python 3.14. If this job starts failing because uv sync
     # *succeeded* on 3.14, raise the cap and refresh this guard.
+    needs: [detect-release]
+    if: needs.detect-release.outputs.is_release != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -307,6 +377,8 @@ jobs:
 
   alembic-check:
     name: Alembic Migration Sanity
+    needs: [detect-release]
+    if: needs.detect-release.outputs.is_release != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -373,6 +445,8 @@ jobs:
 
   frontend-test-unit:
     name: Frontend Unit Tests
+    needs: [detect-release]
+    if: needs.detect-release.outputs.is_release != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -396,7 +470,8 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [frontend-lint-build]
+    needs: [detect-release, frontend-lint-build]
+    if: needs.detect-release.outputs.is_release != 'true'
     defaults:
       run:
         working-directory: frontend
@@ -456,3 +531,47 @@ jobs:
         with:
           name: playwright-traces
           path: frontend/test-results/
+
+  # Single required status check for branch protection. `needs:` every granular
+  # job and reports one pass/fail, so the individual jobs can be made
+  # non-required (and freely skipped on release PRs) without leaving a required
+  # context stuck in "Expected — waiting" → PR BLOCKED. Uses `always()` so it
+  # runs even when upstream jobs were skipped or failed. A *skipped* job is
+  # acceptable (intentionally skipped on a release-only change); only a
+  # *failed/cancelled* job fails the gate.
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - detect-release
+      - changelog-version-check
+      - backend-lint
+      - backend-test-unit
+      - backend-test-integration
+      - backend-coverage
+      - backend-smoke
+      - dependency-resolution
+      - dependency-resolution-py314-guard
+      - alembic-check
+      - frontend-lint-build
+      - frontend-test-unit
+      - e2e-tests
+    steps:
+      - name: Gate on needed jobs (skipped is OK, failed/cancelled is not)
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$NEEDS_JSON"
+          bad=$(printf '%s' "$NEEDS_JSON" | python3 -c '
+          import json, sys
+          needs = json.load(sys.stdin)
+          bad = [k for k, v in needs.items() if v.get("result") in ("failure", "cancelled")]
+          print(",".join(bad))
+          ')
+          if [ -n "$bad" ]; then
+            echo "CI Gate FAILED — failed/cancelled jobs: $bad"
+            exit 1
+          fi
+          echo "CI Gate PASSED."

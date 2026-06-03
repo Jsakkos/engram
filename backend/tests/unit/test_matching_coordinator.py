@@ -144,6 +144,36 @@ class TestHandleExtras:
             assert title.is_extra is True
             assert json.loads(title.match_details)["organize_error"] == "boom"
 
+    async def test_keep_policy_threads_tmdb_id_and_year(self, monkeypatch, tmp_path):
+        """When job carries tmdb_id + tmdb_year, organize_tv_extras must receive them
+        as kwargs — otherwise match-time extras land in the bare show folder instead
+        of the disambiguated one (e.g. "Frasier/..." vs "Frasier (1993) {tmdb-3452}/...").
+        """
+        _patch_config(monkeypatch, "keep")
+        import app.core.organizer as org
+
+        mock_org = Mock(return_value={"success": True, "final_path": "/lib/tv/Show/Extras/x.mkv"})
+        monkeypatch.setattr(org, "organize_tv_extras", mock_org)
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session)
+            # Simulate a job that has been identified with a specific TMDB entry.
+            job.tmdb_id = 3452
+            job.tmdb_year = 1993
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            await coord._handle_extras(
+                job.id, title.id, title, job, tmp_path / "x.mkv", 10.0, [22, 44], session
+            )
+
+        mock_org.assert_called_once()
+        kwargs = mock_org.call_args.kwargs
+        assert kwargs["tmdb_id"] == "3452", (
+            f"expected tmdb_id='3452', got {kwargs.get('tmdb_id')!r}"
+        )
+        assert kwargs["year"] == 1993, f"expected year=1993, got {kwargs.get('year')!r}"
+
 
 @pytest.mark.unit
 class TestRematchSingleTitle:

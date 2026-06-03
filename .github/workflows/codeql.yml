@@ -27,6 +27,15 @@ jobs:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Skip on a release-only change (`chore: release vX.Y.Z` PR or its merge
+    # commit): the tree is identical to already-scanned main except version
+    # strings + CHANGELOG. Not a required check, so a title-only guard is safe.
+    # The weekly scheduled scan and all normal PRs/pushes are unaffected.
+    if: >-
+      !(
+        (github.event_name == 'pull_request' && startsWith(github.event.pull_request.title, 'chore: release v')) ||
+        (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release v'))
+      )
 
     strategy:
       fail-fast: false

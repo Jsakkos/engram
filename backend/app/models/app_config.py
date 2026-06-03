@@ -109,6 +109,15 @@ class AppConfig(SQLModel, table=True):
     naming_season_format: str = "Season {season:02d}"
     naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
     naming_movie_format: str = "{title} ({year})"
+    # Show *folder* format. Default "{show}" == today's bare-name behavior so
+    # existing libraries are untouched. server_default ensures EXISTING DBs get
+    # "{show}" (not the _add_missing_columns String fallback of '') when the
+    # column is added. Opt into disambiguation with e.g.
+    # "{show} ({year}) {{tmdb-{tmdb_id}}}" (Plex) or
+    # "{show} ({year}) [tmdbid-{tmdb_id}]" (Jellyfin).
+    naming_tv_show_format: str = Field(
+        default="{show}", sa_column_kwargs={"server_default": text("'{show}'")}
+    )
 
     # Episode ordering (#200) — global default output ordering for TV libraries.
     # "aired" keeps TMDB's canonical numbering (== the fingerprint-network key,
