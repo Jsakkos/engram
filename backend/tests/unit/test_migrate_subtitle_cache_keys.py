@@ -224,6 +224,35 @@ class TestNormalizedMatch:
 
 
 @pytest.mark.unit
+class TestRelocateErrorHandling:
+    def test_move_failure_is_recorded_and_loop_continues(self, msc, tmp_path, monkeypatch):
+        # A locked SRT / disk-full / AV lock can make one move raise mid-run. That
+        # must be recorded and skipped, not crash the whole migration — the script
+        # is idempotent, so a re-run recovers, but only if the run finishes.
+        data = tmp_path / "data"
+        _mk_srt(data / "Breaking Bad", "Breaking Bad - S01E01.srt")
+        _mk_srt(data / "The Wire", "The Wire - S01E01.srt")
+        real = msc._relocate
+
+        def flaky(legacy_dir, target, *, dry_run, tally):
+            if legacy_dir.name == "Breaking Bad":
+                raise OSError("file is locked")
+            return real(legacy_dir, target, dry_run=dry_run, tally=tally)
+
+        monkeypatch.setattr(msc, "_relocate", flaky)
+        tally = msc.migrate_cache(
+            data,
+            {"Breaking Bad": "1396", "The Wire": "1438"},
+            dry_run=False,
+            fetch_id_fn=lambda n: None,
+        )
+        # The good dir (sorted after the failing one) still migrates.
+        assert (data / "1438" / "The Wire - S01E01.srt").exists()
+        assert "Breaking Bad" in tally.failed
+        assert tally.migrated == 1
+
+
+@pytest.mark.unit
 class TestBackupDirSkipped:
     def test_backup_suffix_never_migrated(self, msc, tmp_path):
         data = tmp_path / "data"

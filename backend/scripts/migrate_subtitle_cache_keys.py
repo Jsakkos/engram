@@ -31,7 +31,6 @@ import argparse
 import csv
 import io
 import os
-import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -63,6 +62,7 @@ class Tally:
     skipped_backup: list[str] = field(default_factory=list)  # manual backup-looking dir
     ambiguous: list[str] = field(default_factory=list)  # numeric dir that is also a show name
     unresolved: list[str] = field(default_factory=list)  # name with no tmdb_id
+    failed: list[str] = field(default_factory=list)  # resolved but the move raised OSError
 
 
 # Suffixes that mark a deliberate manual backup / scratch copy (e.g.
@@ -135,7 +135,7 @@ def resolve_dir(
         # Numeric and not a show name (e.g. "1396") → already the tmdb_id scheme.
         return (None, "ambiguous") if dir_name in curated_map else (None, "already_id")
 
-    tid = curated_map.get(sanitize_filename(dir_name)) or curated_map.get(dir_name)
+    tid = curated_map.get(sanitize_filename(dir_name))
     if tid:
         return str(tid), "csv"
     norm_hit = norm_map.get(_normalize(dir_name))
@@ -176,8 +176,10 @@ def _relocate(legacy_dir: Path, target: Path, *, dry_run: bool, tally: Tally) ->
                     f.unlink()
                 tally.files_dropped_smaller += 1
         else:
+            # Same filesystem (both under data_dir) and dest doesn't exist, so a
+            # plain rename is sufficient — no cross-device copy fallback needed.
             if not dry_run:
-                shutil.move(str(f), str(dest))
+                f.rename(dest)
             tally.files_moved += 1
 
     if dry_run:
@@ -238,7 +240,14 @@ def migrate_cache(
         if target == show_dir:  # defensive: name already equals its id
             tally.skipped_already_id += 1
             continue
-        _relocate(show_dir, target, dry_run=dry_run, tally=tally)
+        try:
+            _relocate(show_dir, target, dry_run=dry_run, tally=tally)
+        except OSError as e:
+            # One bad move (locked SRT, disk full, cross-device edge) must not
+            # abort the whole run. Record it and continue — the migration is
+            # idempotent, so re-running with --apply finishes the rest.
+            logger.error(f"  failed: {name}/ -> {tid}/ — {e}", exc_info=True)
+            tally.failed.append(name)
 
     return tally
 
@@ -329,10 +338,13 @@ def main() -> int:
         f"dropped_smaller={tally.files_dropped_smaller} "
         f"skipped_already_id={tally.skipped_already_id} "
         f"skipped_backup={len(tally.skipped_backup)} "
-        f"ambiguous={len(tally.ambiguous)} unresolved={len(tally.unresolved)}"
+        f"ambiguous={len(tally.ambiguous)} unresolved={len(tally.unresolved)} "
+        f"failed={len(tally.failed)}"
     )
     if tally.skipped_backup:
         logger.warning(f"Backup dirs (left in place): {sorted(tally.skipped_backup)}")
+    if tally.failed:
+        logger.error(f"Failed to move (re-run with --apply to retry): {sorted(tally.failed)}")
     if tally.ambiguous:
         logger.warning(f"Ambiguous (left in place): {sorted(tally.ambiguous)}")
     if tally.unresolved:
