@@ -723,6 +723,13 @@ class IdentificationCoordinator:
                         session.add(dt)
                     await session.commit()
 
+                    # titles_discovered already populated the UI with the tracks,
+                    # but their state stays pre-matching until the matcher emits
+                    # per-title updates. Mirror the disc flow so tracks render as
+                    # "matching" immediately instead of after the first match.
+                    for dt in db_titles:
+                        await self._broadcaster.broadcast_title_matching_started(dt)
+
                     for dt in db_titles:
                         if dt.output_filename:
                             file_path = Path(dt.output_filename)
@@ -737,10 +744,11 @@ class IdentificationCoordinator:
                                     )
                                 )
                 else:
-                    # Movie: skip matching, go straight to organization
-                    job.state = JobState.ORGANIZING
-                    await session.commit()
-                    await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
+                    # Movie: skip matching, go straight to organization. Route
+                    # through the state machine (now a legal IDENTIFYING ->
+                    # ORGANIZING edge) so it persists, broadcasts, and fires
+                    # transition observers like every other transition.
+                    await self._state_machine.transition(job, JobState.ORGANIZING, session)
 
                     # Mark titles as MATCHED
                     db_titles = (

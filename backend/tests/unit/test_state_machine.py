@@ -70,6 +70,12 @@ class TestStateTransitionValidation:
         # ORGANIZING -> COMPLETED is valid
         assert state_machine.can_transition(JobState.ORGANIZING, JobState.COMPLETED)
 
+    def test_can_transition_import_shortcut(self, state_machine):
+        """Import/staging jobs skip RIPPING (files already exist), so IDENTIFYING
+        must be able to advance straight to MATCHING (TV) or ORGANIZING (movie)."""
+        assert state_machine.can_transition(JobState.IDENTIFYING, JobState.MATCHING)
+        assert state_machine.can_transition(JobState.IDENTIFYING, JobState.ORGANIZING)
+
     def test_can_transition_to_failed_from_any_state(self, state_machine):
         """Test that FAILED can be reached from any non-terminal state."""
         non_terminal_states = [
