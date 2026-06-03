@@ -182,3 +182,5 @@ AGPL-3.0. See [LICENSE](LICENSE).
 - [mkv-episode-matcher](https://github.com/Jsakkos/mkv-episode-matcher) for audio fingerprinting
 - [TheDiscDB](https://thediscdb.com/) for disc content-hash lookups
 - [TMDB](https://www.themoviedb.org/) for media metadata and poster art
+
+And thank you to Engram's community [contributors](CONTRIBUTORS.md) 💜
