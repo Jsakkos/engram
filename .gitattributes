@@ -5,15 +5,9 @@ docker/entrypoint.sh text eol=lf
 docker/install-makemkv.sh text eol=lf
 Dockerfile text eol=lf
 
-# Every PR appends an entry under CHANGELOG.md's `## [Unreleased]` block, so with
-# 3-4 parallel PRs the first merge gives all the others a conflict whose ONLY
-# clashing file is this one. `merge=union` is git's built-in driver that keeps
-# BOTH sides of a conflicting hunk (concatenated) instead of emitting conflict
-# markers — so concurrent `[Unreleased]` additions auto-combine on rebase/merge
-# with no hand resolution. It's a built-in driver (like text/binary), so every
-# clone honors it from this committed file alone — no per-clone `git config`.
-# Caveats (all cosmetic, caught by the release-PR curation pass): bullet ORDER is
-# "upstream then yours", and the rare case where two PRs introduce *different*
-# new subsection headers keeps both. Release-note extraction is unaffected — it
-# only ever reads finished `## [X.Y.Z]` sections, never `[Unreleased]`.
+# Every PR appends to CHANGELOG.md's `## [Unreleased]`, making it a conflict
+# magnet across parallel PRs. `union` (git's built-in driver, no per-clone config)
+# keeps both sides on every rebase — no hand-editing. Cosmetic caveats (bullet
+# order, occasional duplicate subsection) are absorbed by the release-PR curation
+# pass. See docs/superpowers/reviews/2026-06-02-changelog-conflict-friction.md.
 CHANGELOG.md merge=union
