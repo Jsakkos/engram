@@ -77,6 +77,12 @@ def nsc():
 
 
 @pytest.fixture(scope="session")
+def msc():
+    """The migrate_subtitle_cache_keys.py module, loaded once per pytest session."""
+    return _load_script_module("migrate_subtitle_cache_keys")
+
+
+@pytest.fixture(scope="session")
 def psc(bsc):
     """The pack_subtitle_cache.py module, loaded once per pytest session.
 

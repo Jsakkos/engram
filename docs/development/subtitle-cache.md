@@ -77,6 +77,44 @@ After any full build, dispatch the workflow once more with the same `limit`. The
 
 If those don't hold, something has broken the resume path — file an issue with the run URL.
 
+## Migrating an older name-keyed cache
+
+The harvested SRT cache under `~/.engram/cache/data/` used to be keyed by show
+**name** (`data/Breaking Bad/`). Since [#288](https://github.com/Jsakkos/engram/pull/288)
+it is keyed by **tmdb_id** (`data/1396/`) so two same-named shows can't collide. The
+per-season coverage records (`subtitle_coverage`) were already tmdb-keyed, so after the
+switch the resume fast path sees a season marked "done" but looks for its SRTs under the
+new `data/<tmdb_id>/` path, finds nothing, and **re-harvests the whole show from scratch**.
+
+If you have a cache built before that change, relocate the legacy dirs once with:
+
+```bash
+cd backend
+# Preview the plan (dry-run is the default — nothing is moved):
+uv run python scripts/migrate_subtitle_cache_keys.py --cache-dir ~/.engram/cache
+# Apply it:
+uv run python scripts/migrate_subtitle_cache_keys.py --cache-dir ~/.engram/cache --apply
+```
+
+How it resolves each `data/<name>/` dir to a tmdb_id:
+
+- **Offline first.** Names are matched against `scripts/curated_shows.csv` (the list the
+  cache is built from), tolerant of case and of Windows silently stripping trailing dots
+  from directory names (`S.W.A.T.` → on-disk `S.W.A.T`). This is the default and needs no
+  network.
+- **`--tmdb-fallback`** (opt-in) resolves names absent from the CSV via a TMDB search.
+  It's off by default so an unrecognized dir is reported rather than risk a fuzzy
+  misfile. It needs a TMDB key, so run it with `DATABASE_URL` pointed at a config DB.
+- A purely-numeric dir (`1396/`) is treated as already-migrated and skipped — unless it's
+  also a show name in the CSV (`24` is the *show*, not tmdb_id 24), in which case it's
+  reported as ambiguous; pass `--treat-as-name 24` to force it.
+- Dirs ending in a backup suffix (`-bak`, `.bak`, `~`, `.tmp`, `.old`) are always left in
+  place, so deliberate manual backups are never clobbered.
+
+When a target id dir already exists (e.g. a show that was re-harvested from scratch after
+the switch), the two are **merged**: episodes are unioned and, on a filename collision,
+the larger SRT is kept. The migration is idempotent — a second run finds nothing to move.
+
 ## Cache format versioning
 
 The published tarball includes a [`manifest.json`](https://github.com/Jsakkos/engram/blob/main/backend/scripts/build_subtitle_cache.py) with `cache_format_version` (a string defined in `backend/app/matcher/vectorizer_config.py` — currently `"2"`, which stores uint16 hashed counts and applies TF-IDF at load time; `"1"` shipped pre-computed float64 TF-IDF rows). The backend reads this on download and rejects incompatible caches, falling back to scraping. The check happens in two places:
