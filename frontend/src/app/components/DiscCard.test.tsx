@@ -16,6 +16,7 @@ function makeDisc(overrides: Partial<DiscData> = {}): DiscData {
     progress: 0,
     needsReview: true,
     tracks: [],
+    tracksLoaded: true,
     ...overrides,
   };
 }
@@ -83,5 +84,27 @@ describe('DiscCard — review affordances', () => {
     expect(
       screen.queryByText(/use "wrong title\?" to pick the correct one/i),
     ).not.toBeInTheDocument();
+  });
+
+  it('titles not loaded yet: does not flash the pre-rip banner (title-load race)', () => {
+    // A post-rip review_needed job whose titles haven't been fetched yet looks
+    // identical to a pre-rip disc (tracks=[]). tracksLoaded=false must suppress
+    // the banner so it doesn't flash on page load / WebSocket reconnect.
+    render(
+      <DiscCard
+        disc={makeDisc({
+          tracks: [],
+          tracksLoaded: false,
+          reviewReason: 'some pending reason',
+        })}
+        onReview={undefined}
+        onReIdentify={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByText(/use "wrong title\?" to pick the correct one/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/some pending reason/i)).not.toBeInTheDocument();
   });
 });

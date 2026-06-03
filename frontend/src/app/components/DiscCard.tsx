@@ -72,6 +72,9 @@ export interface DiscData {
   startedAt?: string;
   needsReview?: boolean;
   reviewReason?: string;
+  /** Whether this disc's titles have been fetched yet (vs. genuinely empty).
+   *  Guards the pre-rip banner against the title-load race — see reviewPreRip. */
+  tracksLoaded?: boolean;
   conflictStatus?: string;
 }
 
@@ -192,7 +195,10 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     // A disc that needs review but hasn't ripped yet (no tracks) has nothing to
     // review in the queue — the only useful action is "Wrong title?" (re-identify).
     // Drives both the on-card hint banner and the emphasis on the re-identify button.
-    const reviewPreRip = !!disc.needsReview && totalTrackCount === 0;
+    // `tracksLoaded` gates out the title-load race: titles resolve after the job
+    // list, so a post-rip review_needed job momentarily has tracks=[] on first
+    // render — without this guard the banner/emphasis would flash then vanish.
+    const reviewPreRip = !!disc.needsReview && totalTrackCount === 0 && !!disc.tracksLoaded;
 
     return (
       <motion.div
