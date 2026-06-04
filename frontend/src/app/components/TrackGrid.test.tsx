@@ -84,7 +84,7 @@ describe("TrackGrid — provenance rendering", () => {
     expect(screen.getByTestId("source-badge-engram")).toBeInTheDocument();
   });
 
-  it("review track with a stale match_source shows no provider chip", () => {
+  it("review track with a stale match_source shows no provider chip or method tag", () => {
     render(
       <TrackGrid
         tracks={[
@@ -94,10 +94,15 @@ describe("TrackGrid — provenance rendering", () => {
             finalMatch: "S02E09",
             finalMatchConfidence: 0.42,
             matchSource: "engram",
+            matchMethod: "full_file",
+            videoResolution: "1080p",
           }),
         ]}
       />,
     );
     expect(screen.queryByTestId("source-badge-engram")).not.toBeInTheDocument();
+    // The resolution chip forces the badge row to render, but no FULL-FILE tag
+    // should leak onto a non-matched track.
+    expect(screen.queryByText("FULL-FILE")).not.toBeInTheDocument();
   });
 });

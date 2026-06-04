@@ -205,7 +205,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                         </SvBadge>
                       )}
                       {chipSource && <SourceChip source={chipSource} />}
-                      {track.matchMethod === "full_file" && (
+                      {chipSource && track.matchMethod === "full_file" && (
                         <SvBadge size="sm" tone={sv.inkDim} testid="method-tag-full-file">
                           FULL-FILE
                         </SvBadge>
