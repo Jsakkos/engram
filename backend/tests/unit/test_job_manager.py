@@ -487,6 +487,9 @@ class TestCreateJobForDiscDedup:
         # Start each test with clean per-drive cooldown + lock state.
         job_manager._last_job_created_at.clear()
         job_manager._drive_locks.clear()
+        # _on_task_done removes the entry on the *next* loop iteration, so a
+        # prior test's no-op task can leave a stale entry — clear it explicitly.
+        job_manager._active_jobs.clear()
 
     async def _seed_job(self, state, label, drive="E:"):
         async with _unit_session_factory() as session:
@@ -539,6 +542,14 @@ class TestCreateJobForDiscDedup:
         await self._insert("MOVIE_B")
 
         assert len(await self._jobs_for_drive()) == 2
+
+    async def test_organizing_same_label_is_skipped(self):
+        """A same-disc re-insert during ORGANIZING is skipped — symmetric with MATCHING."""
+        await self._seed_job(JobState.ORGANIZING, "MOVIE_A")
+
+        await self._insert("MOVIE_A")
+
+        assert len(await self._jobs_for_drive()) == 1
 
     @pytest.mark.parametrize("state", [JobState.IDLE, JobState.IDENTIFYING, JobState.RIPPING])
     async def test_disc_required_state_blocks_even_different_label(self, state):
