@@ -6,6 +6,8 @@ interface Props {
   color?: string;
   paper?: boolean;
   glow?: boolean;
+  /** Render a filled center node — the audio-fingerprint variant of the mark. */
+  node?: boolean;
 }
 
 const PAPER_INK = "#15161A";
@@ -16,7 +18,7 @@ const PAPER_INK = "#15161A";
  * Stroke bumped to 3px (vs. 2.5px on the full mark) to compensate for the
  * smaller render area.
  */
-export function MarkMono({ size = 32, color, paper = false, glow = false }: Props) {
+export function MarkMono({ size = 32, color, paper = false, glow = false, node = false }: Props) {
   const uid = useId().replace(/:/g, "-");
   const p = color ?? (paper ? PAPER_INK : sv.cyan);
   return (
@@ -57,6 +59,7 @@ export function MarkMono({ size = 32, color, paper = false, glow = false }: Prop
         strokeLinecap="round"
         opacity="0.55"
       />
+      {node && <circle cx="32" cy="32" r="5" fill={p} />}
       <title>Engram</title>
     </svg>
   );
