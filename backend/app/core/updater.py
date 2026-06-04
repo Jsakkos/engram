@@ -5,7 +5,10 @@ verifies the SHA256 checksum, and stages it for a user-triggered restart.
 
 Platform restart strategies:
   Linux/macOS: shutil.copy2 + os.execv (replaces process image in-place)
-  Windows:     .bat helper that xcopy-swaps after the main process exits
+  Windows:     .bat helper that, after this process exits, robocopies the staged
+               build to a sibling dir, verifies it, swaps it in via two atomic
+               same-volume renames, relaunches, and rolls back on any failure —
+               logging every step to ~/.engram/update_helper.log
 """
 
 import hashlib
@@ -83,16 +86,31 @@ class UpdateChecker:
 
         Staging holds only not-yet-applied updates. Without this, every release ever
         downloaded accumulates under ~/.engram/update/ forever (e.g. 0.9.1 … 0.13.0).
-        Best-effort: never let cleanup failures interfere with the update check.
+
+        Each doomed dir is renamed to a ``.pruning-<pid>`` sibling *before* deletion,
+        so an interrupted rmtree can only ever leave an obviously-temporary dir — never
+        a half-deleted real-version dir that looks like a staged build (we observed a
+        181-of-825-file ``0.15.2`` tree caught mid-rmtree). Leftover ``.pruning-*`` dirs
+        from an earlier interrupted run are swept on entry. Best-effort: never let
+        cleanup failures interfere with the update check.
         """
         if not STAGING_BASE.exists():
             return
-        for child in STAGING_BASE.iterdir():
+        pid = os.getpid()
+        for child in list(STAGING_BASE.iterdir()):
             if not child.is_dir():
+                continue
+            if ".pruning-" in child.name:
+                shutil.rmtree(child, ignore_errors=True)  # leftover from an interrupted prune
                 continue
             if self._is_older_or_equal(child.name, self._current_version):
                 logger.info(f"Pruning stale staged update: {child}")
-                shutil.rmtree(child, ignore_errors=True)
+                doomed = child.with_name(f"{child.name}.pruning-{pid}")
+                try:
+                    os.replace(child, doomed)  # atomic rename aside; never leaves a partial
+                except OSError:
+                    doomed = child  # rename failed (locked?) — delete in place, best effort
+                shutil.rmtree(doomed, ignore_errors=True)
 
     async def _load_skipped_version(self) -> str | None:
         """Load the skipped version preference from AppConfig."""
@@ -548,21 +566,25 @@ class UpdateChecker:
         os.execv(sys.executable, sys.argv)
 
     def _restart_windows(self) -> None:
-        """Write a .bat helper that xcopy-swaps the install dir after we exit (Windows).
+        """Swap the staged build in for the live install via a detached .bat helper.
 
-        The .bat polls the current PID until it disappears, then copies the staged
-        directory over the install directory and relaunches engram.exe.
+        The helper waits for this process to exit, then performs an atomic, verified,
+        recoverable swap (see ``_render_update_bat``): robocopy the staged tree to a
+        sibling ``.new`` dir, verify sentinels, swap with two same-volume renames,
+        relaunch, and roll back to the previous install on any failure — logging every
+        step to ``~/.engram/update_helper.log``.
 
-        Two robustness details, each fixing a way the helper could silently fail to
-        run the swap:
-          * Spawned with CREATE_BREAKAWAY_FROM_JOB. If engram runs inside a Windows
-            Job Object that terminates children when the parent exits (some
-            launchers/sandboxes/packagers do), a plain DETACHED_PROCESS child is
-            killed at os._exit() *before* it can swap — the app just goes down with
-            no update applied. Breaking away from the job lets the helper outlive us.
-          * Uses ``ping`` instead of ``timeout`` for the poll delay. ``timeout``
-            aborts immediately ("input redirection is not supported") in the helper's
-            console-less DETACHED_PROCESS context, so it can't be relied on there.
+        This replaces the old in-place ``xcopy /E`` over the live install, which had no
+        exit-code check, no verification, and no rollback: a single destination file
+        still locked just after the old process exited left a half-old/half-new install
+        that wouldn't launch, with no way back (the recurring "restart bricks my
+        install, I have to re-download" failure).
+
+        Spawned with CREATE_BREAKAWAY_FROM_JOB (via ``_spawn_detached_helper``) so a
+        kill-on-close Job Object can't terminate the helper before it swaps. The bat
+        uses ``ping`` (not ``timeout``) for delays — ``timeout`` aborts immediately
+        ("input redirection is not supported") in the console-less DETACHED_PROCESS
+        context.
         """
         assert self.staging_path is not None
         new_engram_dir = self.staging_path / "engram"
@@ -570,29 +592,134 @@ class UpdateChecker:
             raise UpdateError(f"Staged update directory not found: {new_engram_dir}")
 
         install_dir = Path(sys.executable).parent
+        version = self.latest_version or "new"
+        # The ``.new``/``.old`` siblings live next to the INSTALL (not staging), so the
+        # swap is two fast atomic same-volume renames even when staging is on a
+        # different drive than the install.
+        new_dir = install_dir.parent / f"{install_dir.name}.new-{version}"
+        old_dir = install_dir.parent / f"{install_dir.name}.old-{version}"
+        log_path = Path.home() / ".engram" / "update_helper.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
         temp_dir = Path(os.environ.get("TEMP", "C:\\Temp"))
         bat_path = temp_dir / "engram_update.bat"
         pid = os.getpid()
 
-        bat_content = (
-            "@echo off\n"
-            ":wait\n"
-            f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL\n'
-            "if not errorlevel 1 (\n"
-            "    ping -n 2 127.0.0.1 >nul\n"
-            "    goto wait\n"
-            ")\n"
-            f'xcopy /Y /E /I "{new_engram_dir}\\*" "{install_dir}\\"\n'
-            f'start "" "{install_dir}\\engram.exe"\n'
-            'del "%~f0"\n'
+        bat_content = self._render_update_bat(
+            src=str(new_engram_dir),
+            install=str(install_dir),
+            new_dir=str(new_dir),
+            old_dir=str(old_dir),
+            log_path=str(log_path),
+            exe=Path(sys.executable).name,
+            pid=pid,
         )
-
-        with open(bat_path, "w") as f:
+        # cmd.exe requires CRLF line endings (LF-only batch files mishandle labels/goto);
+        # write them explicitly so the helper is valid regardless of host platform.
+        with open(bat_path, "w", newline="\r\n") as f:
             f.write(bat_content)
 
         logger.info(f"Launching update helper: {bat_path}")
         self._spawn_detached_helper(["cmd", "/c", str(bat_path)])
         os._exit(0)  # Hard exit: avoids asyncio catching SystemExit
+
+    @staticmethod
+    def _render_update_bat(
+        *,
+        src: str,
+        install: str,
+        new_dir: str,
+        old_dir: str,
+        log_path: str,
+        exe: str,
+        pid: int,
+    ) -> str:
+        """Render the Windows update helper batch script (pure — testable off-Windows).
+
+        Atomic + verified + recoverable swap, run after the parent PID ``pid`` exits:
+
+          1. ``robocopy`` the staged build (``src``) to a sibling ``new_dir`` — never
+             touches the live install. ``/MIR`` *replaces* rather than merges (so files
+             dropped in the new version don't linger); ``/R:3 /W:2`` retries files still
+             transiently locked just after the old process exits. robocopy "success" is
+             any exit code ``< 8``.
+          2. Verify the sentinel files every healthy onedir build must contain
+             (launcher, ``base_library.zip``, the certifi CA bundle, the bundled
+             frontend ``index.html``).
+          3. Swap with two same-volume renames: ``install`` -> ``old_dir``, then
+             ``new_dir`` -> ``install`` — each atomic, so the install is never a hybrid.
+          4. Relaunch ``exe``. On any failure (copy / verify / move) roll back to the
+             previous install and relaunch it.
+
+        Logs every step to ``log_path`` and only deletes itself on success, so a failed
+        run leaves the bat + log behind as evidence.
+
+        Built as a line list so only the path/pid lines interpolate; every line that
+        references a cmd variable (``%LOG%``, ``%ERRORLEVEL%``, ``%~f0`` …) is a plain
+        string and never meets Python's ``%`` handling — no ``%%`` doubling needed.
+        """
+        lines = [
+            "@echo off",
+            "setlocal enableextensions",
+            f'set "SRC={src}"',
+            f'set "INSTALL={install}"',
+            f'set "NEWDIR={new_dir}"',
+            f'set "OLDDIR={old_dir}"',
+            f'set "LOG={log_path}"',
+            f'set "EXE=%INSTALL%\\{exe}"',
+            f'echo [engram-update] start (pid {pid}) > "%LOG%"',
+            # --- wait for the parent process to exit, then let file handles release ---
+            ":wait",
+            f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL',
+            "if not errorlevel 1 (",
+            "    ping -n 2 127.0.0.1 >nul",
+            "    goto wait",
+            ")",
+            'echo [engram-update] process exited; waiting for handles >> "%LOG%"',
+            "ping -n 3 127.0.0.1 >nul",
+            "ping -n 3 127.0.0.1 >nul",
+            # --- copy staged build to a sibling of the install (never in place) ---
+            'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
+            'echo [engram-update] robocopy "%SRC%" to "%NEWDIR%" >> "%LOG%"',
+            'robocopy "%SRC%" "%NEWDIR%" /MIR /R:3 /W:2 /NP /NFL /NDL >> "%LOG%" 2>&1',
+            "if %ERRORLEVEL% GEQ 8 goto fail",
+            # --- verify the copied tree before touching the live install ---
+            'if not exist "%NEWDIR%\\engram.exe" goto fail',
+            'if not exist "%NEWDIR%\\_internal\\base_library.zip" goto fail',
+            'if not exist "%NEWDIR%\\_internal\\certifi\\cacert.pem" goto fail',
+            'if not exist "%NEWDIR%\\_internal\\app\\static\\index.html" goto fail',
+            # --- atomic swap: install -> .old, .new -> install ---
+            # Clear any stale .old from a prior failed run, else `move` below fails.
+            'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
+            'echo [engram-update] swapping install >> "%LOG%"',
+            'move "%INSTALL%" "%OLDDIR%" >> "%LOG%" 2>&1',
+            "if errorlevel 1 goto fail_no_swap",
+            'move "%NEWDIR%" "%INSTALL%" >> "%LOG%" 2>&1',
+            "if errorlevel 1 goto restore_old",
+            # --- success ---
+            'echo [engram-update] success; relaunching >> "%LOG%"',
+            'start "" "%EXE%"',
+            'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
+            '(goto) 2>nul & del "%~f0"',  # exit batch context, then delete self (idiom)
+            # --- rollback paths (bat is NOT deleted — left with the log for diagnosis) ---
+            ":restore_old",
+            'echo [engram-update] swap failed; restoring previous install >> "%LOG%"',
+            'rmdir /S /Q "%INSTALL%" >nul 2>&1',
+            'move "%OLDDIR%" "%INSTALL%" >> "%LOG%" 2>&1',
+            "goto relaunch_old",
+            ":fail_no_swap",
+            'echo [engram-update] could not move install aside; left untouched >> "%LOG%"',
+            "goto relaunch_old",
+            ":fail",
+            'echo [engram-update] copy/verify failed; install untouched >> "%LOG%"',
+            'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
+            "goto relaunch_old",
+            ":relaunch_old",
+            'echo [engram-update] rolled back to previous install >> "%LOG%"',
+            'start "" "%EXE%"',
+            "endlocal",
+        ]
+        return "\n".join(lines) + "\n"
 
     @staticmethod
     def _spawn_detached_helper(args: list[str]) -> None:

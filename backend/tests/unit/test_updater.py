@@ -571,6 +571,30 @@ class TestPruneStaging:
         checker._current_version = "0.12.1"
         checker._prune_staging()  # must not raise
 
+    def test_renames_aside_before_delete(self, monkeypatch, tmp_path):
+        """Prune must rename a doomed dir aside before deleting it.
+
+        Regression: prune used shutil.rmtree in place; an interrupted rmtree left a
+        half-deleted *real-version* dir (we saw a 181-of-825-file ``0.15.2`` tree that
+        looked like a staged build). Renaming to a ``.pruning-*`` sibling first means a
+        crash mid-delete can only ever leave an obviously-temporary dir, never a
+        partial version dir. Simulate rmtree failing to remove anything and assert the
+        original version name is gone regardless.
+        """
+        monkeypatch.setattr("app.core.updater.STAGING_BASE", tmp_path)
+        (tmp_path / "0.11.0").mkdir()
+        # rmtree can't finish (e.g. a locked file) — the doomed dir must already have
+        # been renamed out of the way so it's never seen as "0.11.0" again.
+        monkeypatch.setattr("app.core.updater.shutil.rmtree", lambda *a, **k: None)
+
+        checker = UpdateChecker()
+        checker._current_version = "0.12.1"
+        checker._prune_staging()
+
+        names = sorted(p.name for p in tmp_path.iterdir())
+        assert "0.11.0" not in names  # renamed aside, not left as a partial version dir
+        assert names and all(".pruning-" in n for n in names)  # leftover clearly marked
+
 
 class TestSpawnDetachedHelper:
     """The Windows update helper must escape a kill-on-close Job Object."""
@@ -611,3 +635,141 @@ class TestSpawnDetachedHelper:
         assert len(flags_seen) == 2
         assert flags_seen[0] & breakaway  # tried with breakaway
         assert not (flags_seen[1] & breakaway)  # then fell back without
+
+
+# Representative real-world paths: the user runs out of a parens'd Downloads folder
+# and staging lives under ~/.engram on a (possibly) different volume.
+_BAT_ARGS = dict(
+    src=r"C:\Users\jonat\.engram\update\0.16.0\engram",
+    install=r"C:\Users\jonat\Downloads\engram-windows-x64(8)\engram",
+    new_dir=r"C:\Users\jonat\Downloads\engram-windows-x64(8)\engram.new-0.16.0",
+    old_dir=r"C:\Users\jonat\Downloads\engram-windows-x64(8)\engram.old-0.16.0",
+    log_path=r"C:\Users\jonat\.engram\update_helper.log",
+    exe="engram.exe",
+    pid=28628,
+)
+
+
+class TestRenderUpdateBat:
+    """The Windows update helper must swap atomically, verify, roll back, and log.
+
+    The bat is rendered as a pure string so it's testable on non-Windows CI without
+    executing it. These assertions pin the failure modes that bricked the live
+    install: in-place overwrite, unchecked exit codes, no verification, no rollback,
+    no logging.
+    """
+
+    def _bat(self):
+        return UpdateChecker._render_update_bat(**_BAT_ARGS)
+
+    def test_copies_to_sibling_not_in_place(self):
+        """robocopy must target the .new sibling, never the live install dir."""
+        bat = self._bat()
+        assert "xcopy" not in bat.lower()  # the old, in-place, merge-y approach is gone
+        assert "robocopy" in bat
+        assert "/MIR" in bat  # true replace, not a merge
+        assert 'robocopy "%SRC%" "%NEWDIR%"' in bat
+        # robocopy's destination is the sibling, not the install:
+        assert 'robocopy "%SRC%" "%INSTALL%"' not in bat
+
+    def test_verifies_all_four_sentinels_in_new_dir(self):
+        bat = self._bat()
+        for sentinel in (
+            r"engram.exe",
+            r"_internal\base_library.zip",
+            r"_internal\certifi\cacert.pem",
+            r"_internal\app\static\index.html",  # the real frontend location
+        ):
+            assert f'if not exist "%NEWDIR%\\{sentinel}" goto fail' in bat
+
+    def test_atomic_two_rename_swap(self):
+        bat = self._bat()
+        assert 'move "%INSTALL%" "%OLDDIR%"' in bat  # install aside
+        assert 'move "%NEWDIR%" "%INSTALL%"' in bat  # new into place
+
+    def test_clears_stale_old_dir_before_swap(self):
+        """A leftover .old from a prior failed run must be cleared before the swap,
+        or `move install -> old` fails and a retry can't succeed."""
+        bat = self._bat()
+        assert bat.index('rmdir /S /Q "%OLDDIR%"') < bat.index('move "%INSTALL%" "%OLDDIR%"')
+
+    def test_checks_exit_codes(self):
+        bat = self._bat()
+        assert "if %ERRORLEVEL% GEQ 8 goto fail" in bat  # robocopy: success is < 8
+        assert bat.count("if errorlevel 1") >= 2  # one per move
+
+    def test_rollback_restores_previous_install(self):
+        bat = self._bat()
+        assert ":restore_old" in bat
+        assert ":relaunch_old" in bat
+        assert 'move "%OLDDIR%" "%INSTALL%"' in bat  # put the old install back
+        # The failed-move branch jumps to the restore path:
+        assert "goto restore_old" in bat
+
+    def test_logs_every_step(self):
+        bat = self._bat()
+        assert "update_helper.log" in bat
+        assert '>> "%LOG%" 2>&1' in bat  # robocopy/move output captured
+
+    def test_deletes_bat_only_on_success(self):
+        bat = self._bat()
+        assert bat.count('del "%~f0"') == 1
+        # The single delete sits in the success path, before the rollback labels:
+        assert bat.index('del "%~f0"') < bat.index(":restore_old")
+        # ...and the rollback/relaunch tail never deletes the evidence:
+        assert 'del "%~f0"' not in bat[bat.index(":relaunch_old") :]
+
+    def test_waits_for_pid_then_grace_using_ping(self):
+        bat = self._bat()
+        assert f'tasklist /FI "PID eq {_BAT_ARGS["pid"]}"' in bat
+        assert "ping -n" in bat  # PID poll + post-exit grace
+        assert "timeout" not in bat  # timeout aborts in a console-less context
+
+    def test_preserves_parens_in_paths(self):
+        bat = self._bat()
+        assert r'set "INSTALL=C:\Users\jonat\Downloads\engram-windows-x64(8)\engram"' in bat
+
+
+class TestRestartWindowsWiring:
+    """_restart_windows wires the renderer to a detached, job-breakaway helper."""
+
+    def test_writes_bat_and_spawns_detached(self, monkeypatch, tmp_path):
+        # Pretend a complete staged build and an install dir both exist on disk.
+        staging = tmp_path / "update" / "0.16.0"
+        (staging / "engram").mkdir(parents=True)
+        install = tmp_path / "install"
+        install.mkdir()
+        temp = tmp_path / "temp"
+        temp.mkdir()
+
+        monkeypatch.setenv("TEMP", str(temp))
+        # Path.home() resolves via HOME/USERPROFILE — point both at tmp so the helper
+        # log lands under the test dir, not the real ~/.engram.
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.setattr("app.core.updater.sys.executable", str(install / "engram.exe"))
+
+        checker = UpdateChecker()
+        checker.staging_path = staging
+        checker.latest_version = "0.16.0"
+
+        spawned = {}
+        monkeypatch.setattr(
+            checker, "_spawn_detached_helper", lambda args: spawned.update(args=args)
+        )
+
+        def fake_exit(code):
+            raise SystemExit(code)
+
+        monkeypatch.setattr("app.core.updater.os._exit", fake_exit)
+
+        with pytest.raises(SystemExit):
+            checker._restart_windows()
+
+        bat_path = temp / "engram_update.bat"
+        assert bat_path.exists()
+        content = bat_path.read_text()
+        assert "robocopy" in content
+        # Helper is launched via cmd /c <bat>, breakaway handled by _spawn_detached_helper.
+        assert spawned["args"][:2] == ["cmd", "/c"]
+        assert spawned["args"][2] == str(bat_path)
