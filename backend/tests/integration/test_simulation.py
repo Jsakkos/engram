@@ -212,21 +212,22 @@ async def test_on_title_ripped_transitions_to_ripping(client):
         await job_manager._on_title_ripped(job_id, 1, fake_path, sorted_titles)
 
         # 4. Verify DB was updated — _on_title_ripped transitions PENDING/RIPPING
-        # to MATCHING (for TV) so the UI shows the correct state immediately.
+        # to QUEUED (for TV): the file is on disk, enqueued for matching, waiting
+        # for a slot. The QUEUED→MATCHING flip happens once a match slot is acquired.
         async with db_session() as session:
             title = await session.get(DiscTitle, sorted_titles[1].id)
             assert title is not None
-            assert title.state == TitleState.MATCHING, f"Expected MATCHING, got {title.state}"
+            assert title.state == TitleState.QUEUED, f"Expected QUEUED, got {title.state}"
             assert title.output_filename == str(fake_path), (
                 f"Expected {fake_path}, got {title.output_filename}"
             )
 
-        # 5. Verify WebSocket broadcast was called with matching state
+        # 5. Verify WebSocket broadcast was called with queued state
         mock_broadcast.assert_called_once()
         call_args = mock_broadcast.call_args
         assert call_args[0][0] == job_id  # job_id
         assert call_args[0][1] == sorted_titles[1].id  # title_id
-        assert call_args[0][2] == "matching"  # state (transitioned from pending)
+        assert call_args[0][2] == "queued"  # state (transitioned from pending)
 
         # 6. Verify matching was started (for TV content)
         mock_match.assert_called_once_with(job_id, sorted_titles[1].id, fake_path)
@@ -278,10 +279,11 @@ async def test_on_title_ripped_maps_by_filename_index(client):
         await job_manager._on_title_ripped(job_id, 99, fake_path, sorted_titles)
 
         # Verify title_index=3 was updated (not rip_index 99)
-        # State transitions to MATCHING (TV content) on rip completion
+        # State transitions to QUEUED (TV content) on rip completion — enqueued
+        # for matching, awaiting a slot.
         async with db_session() as session:
             title_3 = await session.get(DiscTitle, sorted_titles[3].id)
-            assert title_3.state == TitleState.MATCHING
+            assert title_3.state == TitleState.QUEUED
             assert title_3.output_filename == str(fake_path)
 
             # Other titles should still be pending

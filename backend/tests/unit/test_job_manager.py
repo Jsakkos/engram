@@ -96,7 +96,9 @@ class TestOnTitleRipped:
         await asyncio.sleep(0)  # let the dispatched task run
 
         t = await _get_title(title.id)
-        assert t.state == TitleState.MATCHING
+        # Enqueued for matching → QUEUED (match_single_file is mocked, so the
+        # post-semaphore QUEUED→MATCHING flip never runs here).
+        assert t.state == TitleState.QUEUED
         dispatch.assert_awaited_once()
 
     async def test_tv_title_with_discdb_checks_completion(self, tmp_path, monkeypatch):
@@ -164,7 +166,8 @@ class TestRerunMatching:
         await asyncio.sleep(0)
 
         t = await _get_title(title.id)
-        assert t.state == TitleState.MATCHING
+        # Re-enqueued for matching → QUEUED (match_single_file is mocked).
+        assert t.state == TitleState.QUEUED
         assert t.matched_episode is None
         dispatch.assert_awaited_once()
 

@@ -524,7 +524,12 @@ class FinalizationCoordinator:
         result = await session.execute(statement)
         titles = result.scalars().all()
 
-        active_states = [TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING]
+        active_states = [
+            TitleState.PENDING,
+            TitleState.RIPPING,
+            TitleState.QUEUED,
+            TitleState.MATCHING,
+        ]
         active_titles = [t for t in titles if t.state in active_states]
 
         # Diagnostic: log ALL title states every time this is called

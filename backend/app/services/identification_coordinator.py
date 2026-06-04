@@ -728,16 +728,17 @@ class IdentificationCoordinator:
                         )
 
                         for dt in db_titles:
-                            dt.state = TitleState.MATCHING
+                            dt.state = TitleState.QUEUED
                             session.add(dt)
                         await session.commit()
 
-                        # titles_discovered already populated the UI with the tracks,
-                        # but their state stays pre-matching until the matcher emits
-                        # per-title updates. Mirror the disc flow so tracks render as
-                        # "matching" immediately instead of after the first match.
+                        # titles_discovered already populated the UI with the tracks.
+                        # They're enqueued for matching but only ``max_concurrent_matches``
+                        # run at once, so render them as QUEUED ("waiting for a slot")
+                        # — the QUEUED→MATCHING flip happens in match_single_file once a
+                        # slot is actually acquired.
                         for dt in db_titles:
-                            await self._broadcaster.broadcast_title_matching_started(dt)
+                            await self._broadcaster.broadcast_title_queued(dt)
 
                         for dt in db_titles:
                             if dt.output_filename:

@@ -13,6 +13,7 @@ unmatched titles route to REVIEW, holding the job in REVIEW_NEEDED.
 """
 
 import asyncio
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -128,8 +129,143 @@ async def test_reconcile_stuck_tv_with_file_queues_match(tmp_path, monkeypatch):
     await job_manager.reconcile_stuck_titles(job_id)
     await asyncio.sleep(0.05)  # let the queued match task run
 
-    assert (await _title(tid)).state == TitleState.MATCHING
+    # Enqueued for matching → QUEUED (the match coroutine is monkeypatched to a
+    # no-op, so the post-semaphore QUEUED→MATCHING flip never runs here).
+    assert (await _title(tid)).state == TitleState.QUEUED
     assert called.get("match") == (job_id, tid, str(f))
+
+
+# --- QUEUED state: completion check treats it as active --------------------
+
+
+@pytest.mark.asyncio
+async def test_all_queued_titles_do_not_finalize(tmp_path):
+    """A job whose tracks are all QUEUED (waiting for a match slot) is not 'done'.
+
+    QUEUED must count as an active state in check_job_completion, otherwise a
+    freshly-enqueued job reads as 'all terminal' and finalizes with nothing matched.
+    """
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+    await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+    await _add_title(job_id, 1, TitleState.QUEUED, output=str(f))
+
+    async with db.async_session() as session:
+        await job_manager._finalization.check_job_completion(session, job_id)
+
+    assert (await _job(job_id)).state == JobState.MATCHING
+
+
+@pytest.mark.asyncio
+async def test_match_timeout_routes_to_review(tmp_path, monkeypatch):
+    """A match that exceeds the per-track ceiling → REVIEW with forced_review.
+
+    The clock starts only once matching is underway (this runs under the semaphore),
+    so a genuinely stuck match is recovered while waiting (QUEUED) tracks are untouched.
+    The forced_review flag stops the review-escalation from re-dispatching it into a
+    timeout loop.
+    """
+    import json as _json
+
+    from sqlmodel import select as sa_select
+
+    from app.models import AppConfig
+
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+    tid = await _add_title(job_id, 0, TitleState.MATCHING, output=str(f))
+
+    # Tiny per-track ceiling so the hung matcher trips quickly.
+    async with db.async_session() as session:
+        cfg = (await session.execute(sa_select(AppConfig).limit(1))).scalar_one_or_none()
+        if cfg is None:
+            cfg = AppConfig()
+            session.add(cfg)
+        cfg.timeout_matching_seconds = 1
+        await session.commit()
+
+    async def slow_match(*args, **kwargs):
+        await asyncio.sleep(3)  # never finishes before the 1s ceiling
+        return SimpleNamespace(
+            episode_code=None, confidence=0.0, needs_review=True, match_details={}
+        )
+
+    monkeypatch.setattr(
+        "app.services.matching_coordinator.episode_curator.match_single_file", slow_match
+    )
+    monkeypatch.setattr(
+        job_manager._matching, "_check_job_completion", lambda *a, **k: asyncio.sleep(0)
+    )
+
+    await job_manager._matching._match_single_file_inner(job_id, tid, f)
+
+    t = await _title(tid)
+    assert t.state == TitleState.REVIEW
+    details = _json.loads(t.match_details)
+    assert details.get("forced_review") is True
+    assert "tim" in details.get("reason", "").lower()  # "match timed out"
+
+
+@pytest.mark.asyncio
+async def test_match_timeout_releases_semaphore(tmp_path, monkeypatch):
+    """A timed-out match frees its slot (via the outer finally) so the queue drains."""
+    from sqlmodel import select as sa_select
+
+    from app.models import AppConfig
+
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+    tid = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    async with db.async_session() as session:
+        cfg = (await session.execute(sa_select(AppConfig).limit(1))).scalar_one_or_none()
+        if cfg is None:
+            cfg = AppConfig()
+            session.add(cfg)
+        cfg.timeout_matching_seconds = 1
+        await session.commit()
+
+    job_manager._matching.init_semaphore(1)
+
+    async def slow_match(*args, **kwargs):
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(
+        "app.services.matching_coordinator.episode_curator.match_single_file", slow_match
+    )
+    monkeypatch.setattr(
+        job_manager._matching, "_wait_for_file_ready", lambda *a, **k: asyncio.sleep(0, result=True)
+    )
+    monkeypatch.setattr(
+        job_manager._matching, "_check_job_completion", lambda *a, **k: asyncio.sleep(0)
+    )
+
+    await job_manager._matching._run_match_single_file(job_id, tid, f)
+
+    assert (await _title(tid)).state == TitleState.REVIEW
+    # Slot returned to the pool — the next QUEUED track can acquire it.
+    assert job_manager._matching._match_semaphore._value == 1
+
+
+@pytest.mark.asyncio
+async def test_match_failure_routes_queued_title_to_review(tmp_path, monkeypatch):
+    """A match task that fails while its title is still QUEUED → REVIEW (not stuck)."""
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+    tid = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    # Isolate the state transition from downstream finalization/review-escalation.
+    monkeypatch.setattr(
+        job_manager._matching, "_check_job_completion", lambda *a, **k: asyncio.sleep(0)
+    )
+
+    await job_manager._matching._handle_match_failure(job_id, tid, "boom")
+
+    assert (await _title(tid)).state == TitleState.REVIEW
 
 
 # --- Issue 2: match attribution --------------------------------------------
@@ -241,11 +377,71 @@ async def test_skip_title_to_review(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_skip_queued_title_to_review(tmp_path):
+    """A user can manually skip a track still waiting in the match queue."""
+    f = tmp_path / "disc_t02.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+    tid = await _add_title(job_id, 2, TitleState.QUEUED, output=str(f))
+
+    assert await job_manager.skip_title(job_id, tid) is True
+    assert (await _title(tid)).state == TitleState.REVIEW
+
+
+@pytest.mark.asyncio
 async def test_skip_title_already_resolved_returns_false(tmp_path):
     job_id = await _make_job(tmp_path, state=JobState.MATCHING)
     tid = await _add_title(job_id, 0, TitleState.MATCHED)
 
     assert await job_manager.skip_title(job_id, tid) is False
+
+
+# --- watchdog: queue-aware (does not punish waiting tracks) ----------------
+
+
+@pytest.mark.asyncio
+async def test_watchdog_does_not_force_review_queued_tracks(tmp_path):
+    """A MATCHING job whose tracks are QUEUED (waiting for a slot) is not 'stuck'.
+
+    Reproduces the import-storm bug: many jobs queued behind the global match
+    semaphore made no progress, so the per-job watchdog clock went stale and
+    force-advanced every waiting track to REVIEW. Queued work must reset the
+    clock instead.
+    """
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+    t0 = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+    t1 = await _add_title(job_id, 1, TitleState.QUEUED, output=str(f))
+
+    cfg = AppConfig()
+    cfg.timeout_matching_seconds = 1
+    # Stale clock: last activity far beyond the timeout.
+    job_manager._last_activity[job_id] = time.monotonic() - 9999
+
+    job = await _job(job_id)
+    await job_manager._watchdog_check_job(job, cfg, time.monotonic())
+
+    assert (await _title(t0)).state == TitleState.QUEUED
+    assert (await _title(t1)).state == TitleState.QUEUED
+    # Clock refreshed so the next sweep also leaves the draining queue alone.
+    assert job_manager._last_activity[job_id] > time.monotonic() - 5
+
+
+@pytest.mark.asyncio
+async def test_watchdog_advances_genuinely_stale_ripping_job(tmp_path):
+    """The watchdog still force-advances a non-matching phase that truly stalls."""
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.RIPPING)
+    stuck = await _add_title(job_id, 0, TitleState.RIPPING)  # no file → FAILED on advance
+
+    cfg = AppConfig()
+    cfg.timeout_ripping_seconds = 1
+    job_manager._last_activity[job_id] = time.monotonic() - 9999
+
+    job = await _job(job_id)
+    await job_manager._watchdog_check_job(job, cfg, time.monotonic())
+
+    assert (await _title(stuck)).state == TitleState.FAILED
 
 
 # --- watchdog config helper ------------------------------------------------

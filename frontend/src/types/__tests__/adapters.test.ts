@@ -35,6 +35,7 @@ describe("mapTitleStateToTrackState", () => {
   const cases: [TitleState, string][] = [
     ["pending", "pending"],
     ["ripping", "ripping"],
+    ["queued", "queued"],
     ["matching", "matching"],
     ["matched", "matched"],
     ["review", "review"],
@@ -136,6 +137,17 @@ describe("transformJobToDiscData", () => {
     const result = transformJobToDiscData(job, []);
 
     expect(result.mediaType).toBe("unknown");
+  });
+
+  it("renders a queued track as idle (state 'queued', progress 0)", () => {
+    // A queued track is on disk waiting for a match slot — it must read as idle,
+    // not as work-in-progress, even though it may carry a stale confidence value.
+    const job = makeJob({ content_type: "tv", state: "matching" });
+    const title = makeTitle({ state: "queued", match_confidence: 0.5 });
+    const track = transformJobToDiscData(job, [title]).tracks![0];
+
+    expect(track.state).toBe("queued");
+    expect(track.progress).toBe(0);
   });
 
   it("carries conflict_status through to the disc view model", () => {

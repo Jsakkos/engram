@@ -103,8 +103,9 @@ def _make_staging(tmp_path, count: int):
 
 @pytest.mark.asyncio
 async def test_tv_import_advances_to_matching_and_broadcasts(tmp_path, monkeypatch):
-    """A TV import must leave IDENTIFYING for MATCHING, broadcast the job-level
-    transition, and broadcast each title's MATCHING state so the UI shows tracks."""
+    """A TV import must leave IDENTIFYING for MATCHING (job-level), broadcast the
+    transition, and broadcast each title as QUEUED — enqueued for matching, waiting
+    for a slot — so the UI shows tracks without claiming they're all actively working."""
     staging_dir = _make_staging(tmp_path, count=3)
     coordinator, broadcaster_ws, module_ws = _build_coordinator(ContentType.TV, monkeypatch)
 
@@ -119,14 +120,15 @@ async def test_tv_import_advances_to_matching_and_broadcasts(tmp_path, monkeypat
     # UI gets the job-level matching signal.
     module_ws.broadcast_job_update.assert_any_await(job_id, JobState.MATCHING.value)
 
-    # Each of the 3 titles broadcasts its MATCHING state immediately (polish #2),
-    # so tracks render as "matching" without waiting for the matcher.
-    matching_title_calls = [
+    # Each of the 3 titles broadcasts QUEUED immediately so tracks render as
+    # "waiting for a slot" instead of after the first match (the QUEUED→MATCHING
+    # flip happens per-title once a match slot is acquired).
+    queued_title_calls = [
         c
         for c in broadcaster_ws.broadcast_title_update.await_args_list
-        if c.kwargs.get("state") == TitleState.MATCHING.value
+        if c.kwargs.get("state") == TitleState.QUEUED.value
     ]
-    assert len(matching_title_calls) == 3
+    assert len(queued_title_calls) == 3
 
 
 @pytest.mark.asyncio
@@ -170,12 +172,12 @@ async def test_tv_import_skips_matching_when_transition_rejected(tmp_path, monke
         if JobState.MATCHING.value in c.args
     ]
     assert matching_job_calls == []
-    matching_title_calls = [
+    queued_title_calls = [
         c
         for c in broadcaster_ws.broadcast_title_update.await_args_list
-        if c.kwargs.get("state") == TitleState.MATCHING.value
+        if c.kwargs.get("state") in (TitleState.QUEUED.value, TitleState.MATCHING.value)
     ]
-    assert matching_title_calls == []
+    assert queued_title_calls == []
     coordinator._match_single_file.assert_not_called()
 
 

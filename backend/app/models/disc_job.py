@@ -33,6 +33,7 @@ class TitleState(StrEnum):
 
     PENDING = "pending"
     RIPPING = "ripping"
+    QUEUED = "queued"  # Ripped/on disk, waiting for a matching slot (subtitle + semaphore wait)
     MATCHING = "matching"
     MATCHED = "matched"  # Intermediate state: matched but not yet organized
     REVIEW = "review"  # Ripped successfully but needs human review for episode assignment

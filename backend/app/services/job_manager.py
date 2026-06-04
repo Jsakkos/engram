@@ -609,8 +609,9 @@ class JobManager:
                 await session.commit()
             else:
                 for title in disc_titles:
-                    # Reset title state for re-matching
-                    title.state = TitleState.MATCHING
+                    # Reset title state for re-matching → QUEUED (enqueued; the
+                    # QUEUED→MATCHING flip happens once a match slot is acquired).
+                    title.state = TitleState.QUEUED
                     title.matched_episode = None
                     title.match_confidence = 0.0
                     title.match_details = None
@@ -765,7 +766,10 @@ class JobManager:
                     continue
 
                 title.output_filename = str(file_path)
-                title.state = TitleState.MATCHING if is_tv else TitleState.MATCHED
+                # Enqueued for matching → QUEUED (the post-semaphore flip to MATCHING
+                # happens in match_single_file once a slot is acquired). Movies skip
+                # matching entirely → MATCHED.
+                title.state = TitleState.QUEUED if is_tv else TitleState.MATCHED
                 session.add(title)
                 logger.info(
                     f"Job {sanitize_log_value(job_id)}: recovered orphaned title "
@@ -875,7 +879,12 @@ class JobManager:
             title = await session.get(DiscTitle, title_id)
             if not title or title.job_id != job_id:
                 return False
-            if title.state not in (TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING):
+            if title.state not in (
+                TitleState.PENDING,
+                TitleState.RIPPING,
+                TitleState.QUEUED,
+                TitleState.MATCHING,
+            ):
                 return False
 
             title.state = target
@@ -927,6 +936,53 @@ class JobManager:
             JobState.ORGANIZING: config.timeout_organizing_seconds,
         }.get(state)
 
+    async def _has_pending_match_work(self, job_id: int) -> bool:
+        """True if the job still has tracks QUEUED for or actively MATCHING.
+
+        Such a job is draining the global match queue (``max_concurrent_matches``),
+        not stuck — the watchdog must not force its waiting tracks to review. A
+        genuinely hung *active* match is caught by the per-track timeout in the
+        matcher, which frees the slot so the queue keeps draining.
+        """
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscTitle.id)
+                .where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.state.in_((TitleState.QUEUED, TitleState.MATCHING)),
+                )
+                .limit(1)
+            )
+            return result.first() is not None
+
+    async def _watchdog_check_job(self, job: DiscJob, config, now: float) -> None:
+        """Apply the stale-job timeout to one job (extracted from the loop for testing)."""
+        timeout = self._phase_timeout(config, job.state)
+        if not timeout or timeout <= 0:
+            return
+        # Queue-aware: a MATCHING job that still has tracks QUEUED or actively
+        # MATCHING is healthy — it's draining the global match queue at
+        # max_concurrent_matches, not stuck. Refresh its clock and leave its
+        # waiting tracks alone (the original import-storm bug force-advanced them
+        # all to REVIEW here). A genuinely hung *active* match is recovered by the
+        # per-track timeout in the matcher, which frees the slot to drain the queue.
+        if job.state == JobState.MATCHING and await self._has_pending_match_work(job.id):
+            self._last_activity[job.id] = now
+            return
+        last = self._last_activity.get(job.id)
+        if last is None:
+            # First sighting — seed the clock so we time from now, not from an
+            # unknown past (avoids an instant false trip).
+            self._last_activity[job.id] = now
+            return
+        idle = now - last
+        if idle >= timeout:
+            logger.warning(
+                f"Watchdog: job {job.id} idle {idle:.0f}s in "
+                f"{job.state.value} (timeout {timeout}s) → auto-advancing"
+            )
+            await self.reconcile_and_advance(job.id, reason=f"stale timeout in {job.state.value}")
+
     async def _watchdog_loop(self) -> None:
         """Periodically auto-advance jobs that have stopped making progress."""
         from app.services.config_service import get_config
@@ -959,30 +1015,13 @@ class JobManager:
 
                     now = time.monotonic()
                     for job in jobs:
-                        timeout = self._phase_timeout(config, job.state)
-                        if not timeout or timeout <= 0:
-                            continue
-                        last = self._last_activity.get(job.id)
-                        if last is None:
-                            # First sighting — seed the clock so we time from now, not
-                            # from an unknown past (avoids an instant false trip).
-                            self._last_activity[job.id] = now
-                            continue
-                        idle = now - last
-                        if idle >= timeout:
-                            logger.warning(
-                                f"Watchdog: job {job.id} idle {idle:.0f}s in "
-                                f"{job.state.value} (timeout {timeout}s) → auto-advancing"
+                        try:
+                            await self._watchdog_check_job(job, config, now)
+                        except Exception as e:
+                            logger.error(
+                                f"Watchdog: auto-advance of job {job.id} failed: {e}",
+                                exc_info=True,
                             )
-                            try:
-                                await self.reconcile_and_advance(
-                                    job.id, reason=f"stale timeout in {job.state.value}"
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    f"Watchdog: auto-advance of job {job.id} failed: {e}",
-                                    exc_info=True,
-                                )
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
@@ -1203,11 +1242,12 @@ class JobManager:
     ) -> None:
         """Transition a no-longer-active title out of RIPPING.
 
-        TV titles move to MATCHING, movie titles to MATCHED. Only acts on titles
-        currently in RIPPING. Failures are logged at ``on_error_level`` and
-        swallowed so progress tracking is never interrupted.
+        TV titles move to QUEUED (enqueued for matching; the QUEUED→MATCHING flip
+        happens once a match slot is acquired), movie titles to MATCHED. Only acts
+        on titles currently in RIPPING. Failures are logged at ``on_error_level``
+        and swallowed so progress tracking is never interrupted.
         """
-        new_state = TitleState.MATCHING if content_type == ContentType.TV else TitleState.MATCHED
+        new_state = TitleState.QUEUED if content_type == ContentType.TV else TitleState.MATCHED
         try:
             async with async_session() as sess:
                 title_db = await sess.get(DiscTitle, title_id)
@@ -1898,7 +1938,9 @@ class JobManager:
             job = await session.get(DiscJob, job_id)
             if title.state in (TitleState.PENDING, TitleState.RIPPING):
                 if job and job.content_type == ContentType.TV:
-                    title.state = TitleState.MATCHING
+                    # Enqueued for matching → QUEUED; the QUEUED→MATCHING flip
+                    # happens in match_single_file once a slot is acquired.
+                    title.state = TitleState.QUEUED
                 else:
                     title.state = TitleState.MATCHED
 

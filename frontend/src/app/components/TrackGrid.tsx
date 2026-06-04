@@ -32,6 +32,9 @@ interface StateConfig {
 const STATE: Record<TrackState, StateConfig> = {
   pending:   { label: "PENDING",  color: sv.inkDim,  border: `${sv.line}`,         bg: `${sv.bg2}66`, Icon: null         },
   ripping:   { label: "RIPPING",  color: sv.magenta, border: `${sv.magenta}66`,    bg: `${sv.magenta}10`, Icon: IcoRipping },
+  // QUEUED: ripped/on disk, waiting for a match slot. Muted cyan + no icon so it
+  // reads as idle ("in line"), distinct from the active amber MATCHING spinner.
+  queued:    { label: "QUEUED",   color: sv.cyan,    border: `${sv.cyan}44`,       bg: `${sv.cyan}0a`, Icon: null        },
   matching:  { label: "MATCHING", color: sv.amber,   border: `${sv.amber}55`,      bg: `${sv.amber}10`, Icon: IcoMatching },
   matched:   { label: "MATCHED",  color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: IcoComplete },
   review:    { label: "NEEDS REVIEW", color: sv.yellow, border: `${sv.yellow}66`,  bg: `${sv.yellow}10`, Icon: IcoError  },

@@ -27,6 +27,7 @@ export function mapTitleStateToTrackState(
   const stateMap: Record<BackendTitleState, TrackState> = {
     'pending': 'pending',
     'ripping': 'ripping',
+    'queued': 'queued',
     'matching': 'matching',
     'matched': 'matched',
     'review': 'review',
@@ -131,7 +132,9 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
     title: trackTitle,
     duration: formatDurationLongFloored(title.duration_seconds),
     state: trackState,
-    progress: trackState === 'matching'
+    progress: trackState === 'queued'
+      ? 0  // enqueued, no work started yet — read as idle, not in-progress
+      : trackState === 'matching'
       ? (title.match_progress ?? 0)
       : trackState === 'ripping'
         ? (title.actual_size_bytes && title.expected_size_bytes

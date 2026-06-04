@@ -384,7 +384,7 @@ class SimulationService:
                     )
 
                 post_rip_state = (
-                    TitleState.MATCHING if content_type == ContentType.TV else TitleState.MATCHED
+                    TitleState.QUEUED if content_type == ContentType.TV else TitleState.MATCHED
                 )
                 title_db.state = post_rip_state
                 await session.commit()
@@ -520,9 +520,7 @@ class SimulationService:
                 if title_db:
                     title_db.output_filename = f"simulated_title_{title.title_index}.mkv"
                     post_rip_state = (
-                        TitleState.MATCHING
-                        if content_type == ContentType.TV
-                        else TitleState.MATCHED
+                        TitleState.QUEUED if content_type == ContentType.TV else TitleState.MATCHED
                     )
                     title_db.state = post_rip_state
                     await session.commit()
