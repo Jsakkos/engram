@@ -636,6 +636,16 @@ class SimulationService:
             if not title_db:
                 continue
 
+            # Persist MATCHING the moment this title starts matching, mirroring the
+            # real pipeline's post-semaphore QUEUED→MATCHING flip. Titles arrive here
+            # QUEUED (waiting for a slot); the vote-round broadcasts below only push
+            # WS updates, so without this commit the DB would jump QUEUED→COMPLETED
+            # and a poller (or the UI on reconnect) would never see the matching phase.
+            title_db.state = TitleState.MATCHING
+            session.add(title_db)
+            await session.commit()
+            await ws_manager.broadcast_title_update(job_id, title_db.id, TitleState.MATCHING.value)
+
             confidence = random.uniform(0.7, 1.0)
             season = 1
             job = await session.get(DiscJob, job_id)
