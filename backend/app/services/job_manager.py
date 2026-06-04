@@ -345,18 +345,47 @@ class JobManager:
 
         async with self._drive_locks[drive_letter]:
             async with async_session() as session:
+                # Disc-required jobs (the disc is physically in the drive) always
+                # block a new job. Ripping EJECTS the disc + calls notify_ejected()
+                # *before* the RIPPING->MATCHING transition, so MATCHING/ORGANIZING
+                # jobs no longer hold the drive — a genuinely new disc must be allowed
+                # through. We still block a MATCHING/ORGANIZING job whose volume_label
+                # matches the inserted disc: that's the SAME disc lingering after a
+                # reported-but-incomplete eject, and a new job for it would duplicate
+                # the in-flight one. (COMPLETED/FAILED/REVIEW_NEEDED are absent here,
+                # so they stay non-blocking, as before.)
+                disc_required_states = (
+                    JobState.IDLE,
+                    JobState.IDENTIFYING,
+                    JobState.RIPPING,
+                )
+                post_eject_states = (JobState.MATCHING, JobState.ORGANIZING)
+
                 result = await session.execute(
                     select(DiscJob).where(
                         DiscJob.drive_id == drive_letter,
-                        DiscJob.state.not_in(
-                            [JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED]
-                        ),
+                        DiscJob.state.in_(disc_required_states + post_eject_states),
                     )
                 )
-                existing_job = result.scalar_one_or_none()
+                # .all() (not scalar_one_or_none): an old MATCHING job and a new
+                # RIPPING job can now legitimately coexist on one drive.
+                active_jobs = result.scalars().all()
 
-                if existing_job:
-                    logger.info(f"Job already exists for drive {drive_letter}")
+                blocking_job = next(
+                    (
+                        j
+                        for j in active_jobs
+                        if j.state in disc_required_states
+                        or (j.state in post_eject_states and j.volume_label == volume_label)
+                    ),
+                    None,
+                )
+                if blocking_job is not None:
+                    logger.info(
+                        f"Job {blocking_job.id} already occupies drive "
+                        f"{sanitize_log_value(drive_letter)} (state={blocking_job.state.value}); "
+                        f"skipping new job for label={sanitize_log_value(volume_label)}"
+                    )
                     return
 
                 last_created = self._last_job_created_at.get(drive_letter, 0)
