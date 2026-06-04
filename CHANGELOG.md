@@ -4,9 +4,13 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-06-04
+
+_Highlights: the community fingerprint network moved to a stable custom domain (`api.engramfp.com`); existing installs migrate automatically on update with no interruption._
+
 ### Changed
 
-- **The fingerprint network moved to a stable custom domain** — Engram now contributes and identifies against `https://api.engramfp.com` by default, instead of the old `*.workers.dev` address. Existing installs pick up the new address automatically on update (unless you've set a custom server URL in Settings → Data Sharing); the old address keeps serving during the transition, so nothing breaks mid-migration.
+- **The fingerprint network moved to a stable custom domain** — Engram now contributes and identifies against `https://api.engramfp.com` by default, instead of the old `*.workers.dev` address. Existing installs pick up the new address automatically on update (unless you've set a custom server URL in Settings → Data Sharing); the old address keeps serving during the transition, so nothing breaks mid-migration. (#319)
 
 ## [0.15.1] - 2026-06-03
 
