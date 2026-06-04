@@ -6,6 +6,7 @@ Extracted from JobManager to isolate matching concerns.
 import asyncio
 import json
 import logging
+import re
 import time
 from datetime import UTC
 from pathlib import Path
@@ -55,6 +56,21 @@ def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int])
         <= (rt + EPISODE_DURATION_OVER_TOLERANCE_MIN)
         for rt in runtimes
     )
+
+
+def _same_episode_code(a: str | None, b: str | None) -> bool:
+    """True if two codes denote the same SxxEyy, tolerant of zero-padding.
+
+    The matcher emits canonical "S01E09" but user/discdb codes may be unpadded
+    ("S1E9"), so compare the parsed (season, episode) integers rather than strings.
+    """
+    if not a or not b:
+        return False
+    pa = re.match(r"[Ss](\d{1,3})[Ee](\d{1,3})", a.strip())
+    pb = re.match(r"[Ss](\d{1,3})[Ee](\d{1,3})", b.strip())
+    if not pa or not pb:
+        return a.strip().upper() == b.strip().upper()
+    return (int(pa.group(1)), int(pa.group(2))) == (int(pb.group(1)), int(pb.group(2)))
 
 
 # Module-level cache for fpcalc detection results.
@@ -343,6 +359,7 @@ class MatchingCoordinator:
         source_preference: str | None = None,
         num_points: int | None = None,
         min_vote_count: int | None = None,
+        advisory: bool = False,
     ) -> None:
         """Re-match a single title with the specified source preference.
 
@@ -353,6 +370,12 @@ class MatchingCoordinator:
 
         ``num_points``/``min_vote_count`` override the matcher scan density and
         vote gate for the engram path (deep re-match); None keeps defaults.
+
+        ``advisory`` marks a user-initiated re-match: the result is surfaced in
+        review for manual confirmation and is NEVER auto-organized (the title is
+        held in REVIEW with ``forced_review`` regardless of confidence). Only the
+        manual per-track button sets this; pipeline/escalation/conflict callers
+        leave it False so they keep auto-finalizing.
         """
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -423,7 +446,9 @@ class MatchingCoordinator:
 
         # Fire-and-forget: matching runs in background, progress via WebSocket
         match_task = asyncio.create_task(
-            self.match_single_file(job_id, title_id, file_path, num_points, min_vote_count)
+            self.match_single_file(
+                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
+            )
         )
         match_task.add_done_callback(
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
@@ -436,6 +461,7 @@ class MatchingCoordinator:
         file_path: Path,
         num_points: int | None = None,
         min_vote_count: int | None = None,
+        advisory: bool = False,
     ) -> None:
         """Run matching for a single ripped file, tagging logs with the job id.
 
@@ -443,10 +469,13 @@ class MatchingCoordinator:
         how this is reached — task spawn, direct ``await`` from an API handler
         (deep re-match / conflict resolution), or via the injected callback used
         by the identification/finalization coordinators.
+
+        ``advisory`` (manual per-track re-match) holds the result in REVIEW for
+        confirmation instead of auto-organizing — see ``rematch_single_title``.
         """
         with job_log_context(job_id):
             await self._run_match_single_file(
-                job_id, title_id, file_path, num_points, min_vote_count
+                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
 
     async def _llm_fallback_without_subtitles(
@@ -540,11 +569,13 @@ class MatchingCoordinator:
         file_path: Path,
         num_points: int | None = None,
         min_vote_count: int | None = None,
+        advisory: bool = False,
     ) -> None:
         """Run matching for a single ripped file.
 
         ``num_points``/``min_vote_count`` override the matcher's scan density and
-        vote gate (deep re-match); None keeps defaults.
+        vote gate (deep re-match); None keeps defaults. ``advisory`` surfaces the
+        result in review instead of auto-organizing (manual per-track re-match).
         """
         logger.info(
             f"[MATCH] Title {title_id} (Job {job_id}): match task started for {file_path.name}"
@@ -712,7 +743,7 @@ class MatchingCoordinator:
         # 7. Run matching
         try:
             await self._match_single_file_inner(
-                job_id, title_id, file_path, num_points, min_vote_count
+                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
         except Exception as e:
             logger.exception(
@@ -788,8 +819,15 @@ class MatchingCoordinator:
         file_path: Path,
         num_points: int | None = None,
         min_vote_count: int | None = None,
+        advisory: bool = False,
     ) -> None:
-        """Inner matching logic, called under the match semaphore."""
+        """Inner matching logic, called under the match semaphore.
+
+        ``advisory`` (manual per-track re-match): a confident result is held in
+        REVIEW with ``forced_review`` and the contribution enqueue is skipped, so
+        nothing is auto-organized and an unconfirmed match never poisons the
+        fingerprint corpus.
+        """
         match_start = time.monotonic()
 
         async with async_session() as session:
@@ -905,7 +943,7 @@ class MatchingCoordinator:
                 title.matched_episode = result.episode_code
                 title.match_confidence = result.confidence
 
-                if result.needs_review:
+                if result.needs_review or advisory:
                     # A low-confidence result always goes to REVIEW — even when the
                     # matcher emits a best-guess episode code. Auto-organizing a
                     # borderline guess silently mis-files content (e.g. a bonus
@@ -914,10 +952,19 @@ class MatchingCoordinator:
                     # auto review-escalation deep re-matches it next; if it still
                     # can't resolve, the user decides. matched_episode is kept as
                     # the inspector's starting suggestion.
+                    #
+                    # ``advisory`` (manual per-track re-match) forces this branch
+                    # even for a confident result: a user-initiated re-match must
+                    # surface its candidate for confirmation, never auto-organize.
                     title.state = TitleState.REVIEW
 
+                    _why = (
+                        "advisory (manual re-match)"
+                        if advisory and not result.needs_review
+                        else "needs review"
+                    )
                     logger.info(
-                        f"[MATCH] Title {title_id} (Job {job_id}): needs review — "
+                        f"[MATCH] Title {title_id} (Job {job_id}): {_why} — "
                         f"episode={result.episode_code}, confidence={result.confidence:.2f}, "
                         f"state={title.state.value}, elapsed={elapsed:.1f}s"
                     )
@@ -1032,6 +1079,51 @@ class MatchingCoordinator:
                         title.match_details = json.dumps(result.match_details)
                     except Exception as e:
                         logger.error(f"Failed to dump match_details: {e}")
+
+                if advisory:
+                    # Stamp the user-initiated re-match as a deliberate
+                    # hand-to-human: ``forced_review`` makes _is_rematchable_review
+                    # skip it, so the auto review/conflict escalation never
+                    # re-dispatches the surfaced candidate behind the user's back.
+                    try:
+                        _md = json.loads(title.match_details) if title.match_details else {}
+                        if not isinstance(_md, dict):
+                            _md = {}
+                    except (json.JSONDecodeError, TypeError):
+                        _md = {}
+                    _md["forced_review"] = True
+
+                    # Warn right in review if this candidate is already organized by
+                    # another track on the SAME disc — the "an extra got force-matched
+                    # to an episode that already ripped" case the user hit. (Cross-job
+                    # / library duplicates can't be known without organizing; they
+                    # surface at confirm time via the organizer's FILE_EXISTS handling.)
+                    if result.episode_code:
+                        siblings = (
+                            (
+                                await session.execute(
+                                    select(DiscTitle).where(
+                                        DiscTitle.job_id == job_id,
+                                        DiscTitle.id != title_id,
+                                    )
+                                )
+                            )
+                            .scalars()
+                            .all()
+                        )
+                        if any(
+                            s.state == TitleState.COMPLETED
+                            and _same_episode_code(s.matched_episode, result.episode_code)
+                            for s in siblings
+                        ):
+                            _md["error"] = "file_exists"
+                            _md["message"] = (
+                                f"{result.episode_code} is already organized by another "
+                                "track on this disc — likely a duplicate or extra. "
+                                "Reassign the episode or mark it as an Extra."
+                            )
+
+                    title.match_details = json.dumps(_md)
 
                 # Only attribute the match to Engram when an episode match was
                 # actually recorded. A title routed to REVIEW with no episode must

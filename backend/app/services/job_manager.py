@@ -46,6 +46,31 @@ from app.services.simulation_service import SimulationService
 
 logger = logging.getLogger(__name__)
 
+# match_details keys that describe a PRIOR match attempt's review reason. A fresh
+# user assignment supersedes them, so they must be dropped on reassignment (else a
+# stale "file_exists" keeps the Inspector badge lit and "forced_review" wrongly
+# marks the user's pick non-rematchable).
+_REVIEW_REASON_KEYS = ("error", "message", "forced_review")
+
+
+def _strip_review_flags(match_details: str | None) -> str | None:
+    """Remove stale review-reason keys from a match_details JSON string.
+
+    Returns the cleaned JSON, ``None`` if nothing meaningful remains, or the
+    original value unchanged when it is missing/unparseable.
+    """
+    if not match_details:
+        return match_details
+    try:
+        parsed = json.loads(match_details)
+    except (json.JSONDecodeError, TypeError):
+        return match_details
+    if not isinstance(parsed, dict):
+        return match_details
+    cleaned = {k: v for k, v in parsed.items() if k not in _REVIEW_REASON_KEYS}
+    return json.dumps(cleaned) if cleaned else None
+
+
 # Create domain-specific event broadcaster
 event_broadcaster = EventBroadcaster(ws_manager)
 
@@ -1006,6 +1031,11 @@ class JobManager:
                 title.edition = edition
             if title.state != TitleState.MATCHED:
                 title.state = TitleState.MATCHED
+            # Clear stale review-reason flags describing the PRIOR match attempt:
+            # a fresh user assignment supersedes them. Leaving error/message would
+            # keep the Inspector's "File exists" badge lit on the new episode, and
+            # leaving forced_review would wrongly mark this user pick non-rematchable.
+            title.match_details = _strip_review_flags(title.match_details)
             session.add(title)
             await session.commit()
 
@@ -1089,6 +1119,11 @@ class JobManager:
         ``deep`` re-runs the engram matcher at strict scan density + vote gate
         (the same params as conflict escalation), giving a low-confidence title a
         real chance to resolve instead of re-failing at the original depth.
+
+        This is the manual, user-initiated entry point (the only caller is the
+        ``/rematch`` route), so it runs ``advisory=True``: the result is surfaced
+        in review for confirmation and never auto-organized. Pipeline/escalation/
+        conflict callers invoke the coordinator method directly (advisory False).
         """
         await self._matching.rematch_single_title(
             job_id,
@@ -1096,6 +1131,7 @@ class JobManager:
             source_preference,
             num_points=STRICT_SCAN_POINTS if deep else None,
             min_vote_count=STRICT_MIN_VOTES if deep else None,
+            advisory=True,
         )
 
     async def rematch_conflict(self, job_id: int, episode_code: str) -> dict:

@@ -9,6 +9,7 @@ import { formatDuration, formatSize, titleDisplayName } from './ReviewQueue/util
 import { MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
@@ -203,6 +204,39 @@ function ReviewQueue() {
         fetchJobDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [jobId]);
+
+    // Live title updates. The page holds a local `titles` snapshot fetched on
+    // mount, so without this a background (advisory) re-match's progress never
+    // reaches the UI: the in-flight indicator would stick on 'matching' forever
+    // and a file-exists conflict raised during finalize would stay invisible.
+    // Merge title_update messages for THIS job into `titles` — state/match fields
+    // only, never the user's in-progress episode selections.
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    const { addMessageListener } = useWebSocket(wsUrl);
+
+    useEffect(() => {
+        const numericJobId = jobId ? parseInt(jobId) : null;
+        if (numericJobId === null || Number.isNaN(numericJobId)) return;
+        return addMessageListener((msg) => {
+            if (msg.type !== 'title_update' || msg.job_id !== numericJobId) return;
+            setTitles((prev) =>
+                prev.map((t) =>
+                    t.id === msg.title_id
+                        ? {
+                              ...t,
+                              state: msg.state,
+                              matched_episode: msg.matched_episode ?? t.matched_episode,
+                              match_confidence: msg.match_confidence ?? t.match_confidence,
+                              match_stage: msg.match_stage ?? t.match_stage,
+                              match_progress: msg.match_progress ?? t.match_progress,
+                              match_details: msg.match_details ?? t.match_details,
+                              error_message: msg.error ?? t.error_message,
+                          }
+                        : t,
+                ),
+            );
+        });
+    }, [jobId, addMessageListener]);
 
     // Fetch config once on mount to know whether AI matching is enabled.
     useEffect(() => {
