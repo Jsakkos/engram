@@ -20,7 +20,7 @@ jobs:
       # Default ref under pull_request_target is the BASE branch (trusted repo
       # code), not the fork's PR head — so requiring the greeting script is safe.
       - uses: actions/checkout@v4
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const { decide, renderComment } = require(
