@@ -180,8 +180,11 @@ describe("Synapse v2 primitives — smoke", () => {
 describe("MarkMono — fingerprint node", () => {
   it("renders a filled center node when node is set", () => {
     const { container } = render(<MarkMono size={12} color="#ff3d7f" node />);
-    // The node is the only <circle> when glow is off.
-    expect(container.querySelector("circle")).not.toBeNull();
+    // The node is the only <circle> when glow is off; assert its fill to pin the
+    // result to the node (and confirm it inherits the color prop).
+    const circle = container.querySelector("circle");
+    expect(circle).not.toBeNull();
+    expect(circle!.getAttribute("fill")).toBe("#ff3d7f");
   });
 
   it("renders no center node by default", () => {

@@ -13,10 +13,10 @@ interface Props {
 const PAPER_INK = "#15161A";
 
 /**
- * Engram monogram — the three open arcs without the read-line or node.
- * Use at small sizes (≤32px) where the dendrite would not render cleanly.
- * Stroke bumped to 3px (vs. 2.5px on the full mark) to compensate for the
- * smaller render area.
+ * Engram monogram — the three open arcs. Pass `node` for the audio-fingerprint
+ * variant that adds a filled center circle. Use at small sizes (≤32px) where the
+ * dendrite would not render cleanly. Stroke bumped to 3px (vs. 2.5px on the full
+ * mark) to compensate for the smaller render area.
  */
 export function MarkMono({ size = 32, color, paper = false, glow = false, node = false }: Props) {
   const uid = useId().replace(/:/g, "-");
