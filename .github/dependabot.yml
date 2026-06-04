@@ -9,6 +9,13 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "weekly"
+    ignore:
+      # Vite major bumps are a coordinated, dev-only upgrade (vite +
+      # @vitejs/plugin-react + @tailwindcss/vite must move together) that
+      # Dependabot can't do atomically — it raises a vite-only PR that fails
+      # `npm ci` with ERESOLVE. Keep majors off; do the upgrade deliberately.
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "pip"
     directory: "/backend"
