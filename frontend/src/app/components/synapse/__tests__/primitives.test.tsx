@@ -7,6 +7,7 @@ import {
   SvBarChart,
   SvLabel,
   SvMark,
+  MarkMono,
   SvPanel,
   SvRuler,
   SvTelemetryBand,
@@ -173,5 +174,21 @@ describe("Synapse v2 primitives — smoke", () => {
     expect(sv.bg0).toMatch(/^#[0-9a-f]{6}$/i);
     expect(sv.cyan).toMatch(/^#[0-9a-f]{6}$/i);
     expect(sv.magenta).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+describe("MarkMono — fingerprint node", () => {
+  it("renders a filled center node when node is set", () => {
+    const { container } = render(<MarkMono size={12} color="#ff3d7f" node />);
+    // The node is the only <circle> when glow is off; assert its fill to pin the
+    // result to the node (and confirm it inherits the color prop).
+    const circle = container.querySelector("circle");
+    expect(circle).not.toBeNull();
+    expect(circle!.getAttribute("fill")).toBe("#ff3d7f");
+  });
+
+  it("renders no center node by default", () => {
+    const { container } = render(<MarkMono size={12} color="#5eead4" />);
+    expect(container.querySelector("circle")).toBeNull();
   });
 });

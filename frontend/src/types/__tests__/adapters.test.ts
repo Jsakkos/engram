@@ -261,3 +261,89 @@ describe("extractMatchCandidates (via track transform)", () => {
     expect(track.finalMatchConfidence).toBe(0.9); // not the raw 0.165
   });
 });
+
+// ---------------------------------------------------------------------------
+// transformDiscTitleToTrack — match provenance
+// ---------------------------------------------------------------------------
+
+describe("track provenance mapping", () => {
+  function track(title: Partial<DiscTitle>) {
+    return transformJobToDiscData(makeJob({ state: "matching" }), [makeTitle(title)])
+      .tracks![0];
+  }
+
+  it("chunk-vote match: confidence + votes from match_details, method chunk_vote", () => {
+    const t = track({
+      state: "matched",
+      matched_episode: "S02E17",
+      match_source: "engram",
+      match_confidence: 0.71,
+      match_details: JSON.stringify({ score: 0.71, vote_count: 3, target_votes: 10 }),
+    });
+    expect(t.finalMatchConfidence).toBeCloseTo(0.71);
+    expect(t.finalMatchVotes).toBe(3);
+    expect(t.finalMatchTargetVotes).toBe(10);
+    expect(t.matchMethod).toBe("chunk_vote");
+  });
+
+  it("full-file fallback: confidence from column, no votes, method full_file", () => {
+    const t = track({
+      state: "matched",
+      matched_episode: "S02E18",
+      match_source: "engram",
+      match_confidence: 0.93,
+      match_details: JSON.stringify({ method: "full_transcription", score: 0.93 }),
+    });
+    expect(t.finalMatchConfidence).toBeCloseTo(0.93);
+    expect(t.finalMatchVotes).toBeUndefined();
+    expect(t.matchMethod).toBe("full_file");
+  });
+
+  it("discdb match: confidence from column, no method (carries its own chip)", () => {
+    const t = track({
+      state: "matched",
+      matched_episode: "S02E05",
+      match_source: "discdb",
+      match_confidence: 0.99,
+      match_details: JSON.stringify({ source: "discdb", episode: "S02E05" }),
+    });
+    expect(t.finalMatchConfidence).toBeCloseTo(0.99);
+    expect(t.finalMatchVotes).toBeUndefined();
+    expect(t.matchMethod).toBeUndefined();
+  });
+
+  it("manual match: confidence from column even with no match_details", () => {
+    const t = track({
+      state: "completed",
+      matched_episode: "S02E07",
+      match_source: "user",
+      match_confidence: 1.0,
+      match_details: null,
+    });
+    expect(t.finalMatchConfidence).toBeCloseTo(1.0);
+    expect(t.matchMethod).toBeUndefined();
+  });
+
+  it("review best-guess: column is 0, so confidence falls back to match_details", () => {
+    const t = track({
+      state: "review",
+      matched_episode: "S02E09",
+      match_source: null,
+      match_confidence: 0,
+      match_details: JSON.stringify({ score: 0.58, vote_count: 2, target_votes: 10 }),
+    });
+    expect(t.finalMatchConfidence).toBeCloseTo(0.58);
+  });
+
+  it("review low-confidence: non-zero column wins, method still derived", () => {
+    const t = track({
+      state: "review",
+      matched_episode: "S02E09",
+      match_source: "engram",
+      match_confidence: 0.42,
+      match_details: JSON.stringify({ score: 0.42, confidence: 0.42, vote_count: 2, target_votes: 10 }),
+    });
+    expect(t.finalMatchConfidence).toBeCloseTo(0.42);
+    expect(t.matchMethod).toBe("chunk_vote");
+  });
+});
