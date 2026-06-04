@@ -83,4 +83,21 @@ describe("TrackGrid — provenance rendering", () => {
     );
     expect(screen.getByTestId("source-badge-engram")).toBeInTheDocument();
   });
+
+  it("review track with a stale match_source shows no provider chip", () => {
+    render(
+      <TrackGrid
+        tracks={[
+          makeTrack({
+            title: "Run Away, Little Boy",
+            state: "review",
+            finalMatch: "S02E09",
+            finalMatchConfidence: 0.42,
+            matchSource: "engram",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("source-badge-engram")).not.toBeInTheDocument();
+  });
 });

@@ -124,14 +124,14 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
               ? Math.min(1, track.actualSizeBytes / track.expectedSizeBytes)
               : Math.max(0, Math.min(1, track.progress / 100));
 
-          // A confidently-matched, non-extra track always carries a provider
-          // chip; default to the Engram (ASR) mark when match_source is missing
-          // (older/edge rows). Review/pending/ripping tracks get no chip.
+          // Only a confidently-matched, non-extra track carries a provider chip;
+          // default to the Engram (ASR) mark when match_source is missing
+          // (older/edge rows). Review/pending/ripping tracks get no chip even if
+          // they still carry a stale match_source.
           const isConfidentMatch =
             (track.state === "matched" || track.state === "completed") && !!track.finalMatch;
-          const chipSource = track.isExtra
-            ? undefined
-            : track.matchSource ?? (isConfidentMatch ? "engram" : undefined);
+          const chipSource =
+            track.isExtra || !isConfidentMatch ? undefined : track.matchSource ?? "engram";
 
           return (
             <motion.div
