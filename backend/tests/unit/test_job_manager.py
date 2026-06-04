@@ -9,9 +9,11 @@ and websocket layer are stubbed.
 import asyncio
 import importlib
 import json
+import time
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.extractor import RipResult
@@ -463,3 +465,103 @@ class TestNotifyEjected:
 
         monitor = DriveMonitor()
         monitor.notify_ejected("/dev/sr99")  # never added to _drive_states
+
+
+@pytest.mark.unit
+class TestCreateJobForDiscDedup:
+    """A disc inserted while the prior job for the same drive is *past ripping*
+    (MATCHING/ORGANIZING) must start a new job: ripping ejects the disc + calls
+    notify_ejected() before the RIPPING->MATCHING transition, so the drive is
+    physically free. A re-insert of the SAME disc (same volume_label) while such a
+    job runs is still skipped, so a disc that lingered after a reported-but-
+    incomplete eject can't spawn a duplicate. Disc-required states
+    (IDLE/IDENTIFYING/RIPPING) always block regardless of label.
+
+    Regression for: new disc not detected while the prior job is MATCHING.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _neutralize(self, monkeypatch):
+        # A created job must not spawn a real disc-identification task.
+        monkeypatch.setattr(job_manager._identification, "identify_disc", AsyncMock())
+        # Start each test with clean per-drive cooldown + lock state.
+        job_manager._last_job_created_at.clear()
+        job_manager._drive_locks.clear()
+
+    async def _seed_job(self, state, label, drive="E:"):
+        async with _unit_session_factory() as session:
+            job = DiscJob(
+                drive_id=drive,
+                volume_label=label,
+                state=state,
+                staging_path="/tmp/seed",
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            return job.id
+
+    async def _insert(self, label, drive="E:"):
+        await job_manager._create_job_for_disc(drive, label)
+        # Let any spawned (no-op) identify task settle so it doesn't dangle.
+        await asyncio.sleep(0)
+
+    async def _jobs_for_drive(self, drive="E:"):
+        async with _unit_session_factory() as session:
+            result = await session.execute(select(DiscJob).where(DiscJob.drive_id == drive))
+            return result.scalars().all()
+
+    async def test_new_disc_during_matching_creates_job(self):
+        """The regression: a *different* disc inserted during MATCHING starts a job."""
+        await self._seed_job(JobState.MATCHING, "GILMORE_GIRLS_S1_D1")
+
+        await self._insert("GILMORE_GIRLS_S1_D2")
+
+        jobs = await self._jobs_for_drive()
+        assert len(jobs) == 2
+        assert any(
+            j.state == JobState.IDENTIFYING and j.volume_label == "GILMORE_GIRLS_S1_D2"
+            for j in jobs
+        )
+
+    async def test_same_label_during_matching_is_skipped(self):
+        """A same-disc re-insert during MATCHING is skipped (no duplicate / no loop)."""
+        await self._seed_job(JobState.MATCHING, "DVD_VIDEO")
+
+        await self._insert("DVD_VIDEO")
+
+        assert len(await self._jobs_for_drive()) == 1
+
+    async def test_organizing_different_label_allowed(self):
+        """ORGANIZING (disc long gone) does not block a different disc."""
+        await self._seed_job(JobState.ORGANIZING, "MOVIE_A")
+
+        await self._insert("MOVIE_B")
+
+        assert len(await self._jobs_for_drive()) == 2
+
+    @pytest.mark.parametrize("state", [JobState.IDLE, JobState.IDENTIFYING, JobState.RIPPING])
+    async def test_disc_required_state_blocks_even_different_label(self, state):
+        """Pre-eject states keep blocking — the disc is still in the drive."""
+        await self._seed_job(state, "DISC_A")
+
+        await self._insert("DISC_B")
+
+        assert len(await self._jobs_for_drive()) == 1
+
+    @pytest.mark.parametrize("state", [JobState.REVIEW_NEEDED, JobState.FAILED, JobState.COMPLETED])
+    async def test_terminal_or_review_does_not_block(self, state):
+        """Terminal / review jobs never block, and re-detect does not loop."""
+        await self._seed_job(state, "DISC_A")
+
+        await self._insert("DISC_A")
+
+        assert len(await self._jobs_for_drive()) == 2
+
+    async def test_cooldown_still_gates_rapid_recreate(self):
+        """The 15s per-drive cooldown still suppresses a too-soon second create."""
+        job_manager._last_job_created_at["E:"] = time.monotonic()
+
+        await self._insert("DISC_B")
+
+        assert len(await self._jobs_for_drive()) == 0
