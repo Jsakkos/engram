@@ -2,7 +2,8 @@ import React from "react";
 import { motion } from "motion/react";
 import { IcoRipping, IcoMatching, IcoComplete, IcoError } from "./icons";
 import type { Track, TrackState } from "./DiscCard";
-import { sv, SvBadge, SvBar, SvLabel } from "./synapse";
+import { sv, SvBadge, SvBar, SvLabel, MarkMono } from "./synapse";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { formatBytesBinary } from "../../utils/formatting";
 
 interface TrackGridProps {
@@ -42,17 +43,68 @@ const STATE: Record<TrackState, StateConfig> = {
   completed: { label: "DONE",     color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: IcoComplete },
 };
 
-const matchSourceColor = (source?: string): string => {
-  if (source === "discdb") return "#60a5fa"; // blue
-  if (source === "user") return sv.green;
-  return sv.purple;
+type SourceDesc = {
+  kind: "icon" | "text";
+  label: string;
+  tone: string;
+  tooltip: string;
+  node?: boolean;
 };
 
-const matchSourceLabel = (source?: string): string => {
-  if (source === "discdb") return "DISCDB";
-  if (source === "user") return "MANUAL";
-  return "ENGRAM";
+// Engram-engine sources render the brand mark (icon-only, label on hover);
+// external/manual sources render a text chip. Unknown sources fall back to a
+// generic purple text chip so nothing renders blank.
+const SOURCE_DESC: Record<string, SourceDesc> = {
+  engram:             { kind: "icon", label: "ENGRAM", tone: sv.cyan,    tooltip: "Matched by Engram (ASR)" },
+  engram_chromaprint: { kind: "icon", label: "ENGRAM", tone: sv.magenta, tooltip: "Matched by Engram (audio fingerprint)", node: true },
+  discdb:             { kind: "text", label: "DISCDB", tone: "#60a5fa",  tooltip: "Matched from TheDiscDB" },
+  ai_llm:             { kind: "text", label: "AI",     tone: sv.purple,  tooltip: "Identified by AI" },
+  user:               { kind: "text", label: "MANUAL", tone: sv.green,   tooltip: "Assigned manually" },
 };
+
+function sourceDesc(source: string): SourceDesc {
+  return (
+    SOURCE_DESC[source] ?? {
+      kind: "text",
+      label: source.toUpperCase(),
+      tone: sv.purple,
+      tooltip: `Matched by ${source}`,
+    }
+  );
+}
+
+/** Provider chip — Engram mark (icon + tooltip) or a text source badge. */
+function SourceChip({ source }: { source: string }) {
+  const desc = sourceDesc(source);
+  if (desc.kind === "text") {
+    return (
+      <SvBadge size="sm" tone={desc.tone} testid={`source-badge-${source}`}>
+        {desc.label}
+      </SvBadge>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          data-testid={`source-badge-${source}`}
+          aria-label={desc.tooltip}
+          title={desc.tooltip}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "1px 5px",
+            border: `1px solid ${desc.tone}55`,
+            background: `${desc.tone}10`,
+          }}
+        >
+          <MarkMono size={12} color={desc.tone} node={desc.node} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{desc.tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus }: TrackGridProps) {
   const passInfo = parsePassInfo(conflictStatus);
@@ -74,6 +126,15 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
             track.expectedSizeBytes && track.actualSizeBytes
               ? Math.min(1, track.actualSizeBytes / track.expectedSizeBytes)
               : Math.max(0, Math.min(1, track.progress / 100));
+
+          // Only a confidently-matched, non-extra track carries a provider chip;
+          // default to the Engram (ASR) mark when match_source is missing
+          // (older/edge rows). Review/pending/ripping tracks get no chip even if
+          // they still carry a stale match_source.
+          const isConfidentMatch =
+            (track.state === "matched" || track.state === "completed") && !!track.finalMatch;
+          const chipSource =
+            track.isExtra || !isConfidentMatch ? undefined : track.matchSource ?? "engram";
 
           return (
             <motion.div
@@ -134,9 +195,9 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                     </div>
                   )}
 
-                  {/* Quality / source / extra / deep-rematch badges */}
-                  {(track.videoResolution || track.edition || track.isExtra || track.matchSource || (conflictStatus && track.state === "matching")) && (
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                  {/* Quality / source / method / extra / deep-rematch badges */}
+                  {(track.videoResolution || track.edition || track.isExtra || chipSource || (conflictStatus && track.state === "matching")) && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6, alignItems: "center" }}>
                       {conflictStatus && track.state === "matching" && (
                         <SvBadge
                           size="sm"
@@ -146,13 +207,10 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                           {passInfo ? `DEEP · ${passInfo}` : "DEEP RE-MATCH"}
                         </SvBadge>
                       )}
-                      {track.matchSource && (
-                        <SvBadge
-                          size="sm"
-                          tone={matchSourceColor(track.matchSource)}
-                          testid={`source-badge-${track.matchSource}`}
-                        >
-                          {matchSourceLabel(track.matchSource)}
+                      {chipSource && <SourceChip source={chipSource} />}
+                      {chipSource && track.matchMethod === "full_file" && (
+                        <SvBadge size="sm" tone={sv.inkDim} testid={`method-tag-full-file-${track.id}`}>
+                          FULL-FILE
                         </SvBadge>
                       )}
                       {track.videoResolution && (

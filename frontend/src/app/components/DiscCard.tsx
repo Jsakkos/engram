@@ -44,6 +44,10 @@ export interface Track {
   videoResolution?: string;
   edition?: string;
   matchSource?: string;
+  /** Which Engram matcher produced this result, when distinguishable:
+   *  'chunk_vote' (ranked voting, has votes) | 'full_file' (whole-file fallback,
+   *  no votes by construction). Undefined for DiscDB/AI/manual matches. */
+  matchMethod?: "chunk_vote" | "full_file";
 
   fileSizeBytes?: number;
   expectedSizeBytes?: number;

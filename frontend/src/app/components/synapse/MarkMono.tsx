@@ -6,17 +6,19 @@ interface Props {
   color?: string;
   paper?: boolean;
   glow?: boolean;
+  /** Render a filled center node — the audio-fingerprint variant of the mark. */
+  node?: boolean;
 }
 
 const PAPER_INK = "#15161A";
 
 /**
- * Engram monogram — the three open arcs without the read-line or node.
- * Use at small sizes (≤32px) where the dendrite would not render cleanly.
- * Stroke bumped to 3px (vs. 2.5px on the full mark) to compensate for the
- * smaller render area.
+ * Engram monogram — the three open arcs. Pass `node` for the audio-fingerprint
+ * variant that adds a filled center circle. Use at small sizes (≤32px) where the
+ * dendrite would not render cleanly. Stroke bumped to 3px (vs. 2.5px on the full
+ * mark) to compensate for the smaller render area.
  */
-export function MarkMono({ size = 32, color, paper = false, glow = false }: Props) {
+export function MarkMono({ size = 32, color, paper = false, glow = false, node = false }: Props) {
   const uid = useId().replace(/:/g, "-");
   const p = color ?? (paper ? PAPER_INK : sv.cyan);
   return (
@@ -57,6 +59,7 @@ export function MarkMono({ size = 32, color, paper = false, glow = false }: Prop
         strokeLinecap="round"
         opacity="0.55"
       />
+      {node && <circle cx="32" cy="32" r="5" fill={p} />}
       <title>Engram</title>
     </svg>
   );
