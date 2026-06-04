@@ -382,9 +382,9 @@ class JobManager:
                 )
                 if blocking_job is not None:
                     logger.info(
-                        f"Job {blocking_job.id} already occupies drive {drive_letter} "
-                        f"(state={blocking_job.state.value}); skipping new job for "
-                        f"label={sanitize_log_value(volume_label)}"
+                        f"Job {blocking_job.id} already occupies drive "
+                        f"{sanitize_log_value(drive_letter)} (state={blocking_job.state.value}); "
+                        f"skipping new job for label={sanitize_log_value(volume_label)}"
                     )
                     return
 
