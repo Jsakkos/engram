@@ -334,4 +334,16 @@ describe("track provenance mapping", () => {
     });
     expect(t.finalMatchConfidence).toBeCloseTo(0.58);
   });
+
+  it("review low-confidence: non-zero column wins, method still derived", () => {
+    const t = track({
+      state: "review",
+      matched_episode: "S02E09",
+      match_source: "engram",
+      match_confidence: 0.42,
+      match_details: JSON.stringify({ score: 0.42, confidence: 0.42, vote_count: 2, target_votes: 10 }),
+    });
+    expect(t.finalMatchConfidence).toBeCloseTo(0.42);
+    expect(t.matchMethod).toBe("chunk_vote");
+  });
 });

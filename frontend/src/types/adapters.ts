@@ -157,10 +157,11 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
         : (title.match_confidence || 0) * 100,
     matchCandidates: extractMatchCandidates(title),
     finalMatch: title.matched_episode || undefined,
-    // Displayed confidence comes from the reliable match_confidence COLUMN, which
-    // is set on every matched path (ASR result.confidence, DiscDB 0.99, manual
-    // 1.0). For REVIEW the column is 0.0, so fall back to the match_details
-    // best-guess score. This is what un-breaks the bare full-file card.
+    // Displayed confidence comes from the reliable match_confidence COLUMN, set on
+    // every path that produces a result (ASR result.confidence, DiscDB 0.99, manual
+    // 1.0). The column is 0 only when there's no confident result at all (subtitle
+    // download failed, or a pre-match reset); fall back to the match_details
+    // best-guess score then. This is what un-breaks the bare full-file card.
     finalMatchConfidence:
       title.match_confidence > 0 ? title.match_confidence : finalMatchInfo?.confidence,
     finalMatchVotes: finalMatchInfo?.votes,
