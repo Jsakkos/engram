@@ -270,8 +270,11 @@ class TestRematchSingleTitle:
         coord = _make_coord()
         dispatched: dict = {}
 
-        async def fake_match(job_id, title_id, file_path, num_points=None, min_vote_count=None):
+        async def fake_match(
+            job_id, title_id, file_path, num_points=None, min_vote_count=None, advisory=False
+        ):
             dispatched["args"] = (job_id, title_id, file_path)
+            dispatched["advisory"] = advisory
 
         coord.match_single_file = fake_match
         coord.on_match_task_done = lambda *a, **k: None
@@ -299,6 +302,9 @@ class TestRematchSingleTitle:
             assert t.matched_episode is None
             assert t.match_source is None
         assert dispatched["args"][1] == title_id
+        # A direct coordinator call (the pipeline/escalation path) is NOT advisory —
+        # only JobManager.rematch_single_title (the manual route) opts in.
+        assert dispatched["advisory"] is False
 
     async def test_engram_missing_file_raises(self, tmp_path):
         coord = _make_coord()

@@ -197,6 +197,112 @@ async def test_rematch_title_missing_file_raises(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_advisory_rematch_surfaces_for_review_without_organizing(monkeypatch, tmp_path):
+    """An advisory (manual per-track) re-match holds even a CONFIDENT result in
+    REVIEW with forced_review — surfaced for confirmation, never auto-organized."""
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    fake_file = staging_dir / "title_t00.mkv"
+    fake_file.touch()
+
+    job, title = await _seed_job_and_title(
+        match_source="engram",
+        matched_episode=None,
+        staging_path=str(staging_dir),
+        output_filename=str(fake_file),
+        state=TitleState.MATCHING,
+        match_details=None,
+    )
+
+    # Curator returns a confident match (needs_review=False) — exactly the case
+    # the old flow would have set MATCHED and auto-organized.
+    result = MagicMock()
+    result.episode_code = "S01E09"
+    result.confidence = 0.93
+    result.needs_review = False
+    result.match_details = {"method": "full_transcription", "score": 0.93}
+
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    coordinator = _make_coordinator(monkeypatch)
+
+    await coordinator._match_single_file_inner(job.id, title.id, fake_file, advisory=True)
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        # REVIEW (not MATCHED) → check_job_completion holds the job, never organizes.
+        assert title.state == TitleState.REVIEW
+        # Candidate is kept as the inspector's starting suggestion.
+        assert title.matched_episode == "S01E09"
+        details = json.loads(title.match_details)
+        assert details.get("forced_review") is True
+        # No sibling holds S01E09 → no false "already exists" warning.
+        assert "error" not in details
+
+    coordinator._check_job_completion.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_advisory_rematch_warns_when_episode_already_on_disc(monkeypatch, tmp_path):
+    """When the advisory candidate is already organized by another COMPLETED track
+    on the same disc, surface a structured file_exists warning right in review."""
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    fake_file = staging_dir / "title_t02.mkv"
+    fake_file.touch()
+
+    job, title = await _seed_job_and_title(
+        match_source="engram",
+        matched_episode=None,
+        staging_path=str(staging_dir),
+        output_filename=str(fake_file),
+        state=TitleState.MATCHING,
+        match_details=None,
+    )
+    # A sibling on the same disc already organized S01E09 (unpadded to exercise
+    # the format-tolerant comparison).
+    async with _unit_session_factory() as session:
+        session.add(
+            DiscTitle(
+                job_id=job.id,
+                title_index=1,
+                duration_seconds=2400,
+                state=TitleState.COMPLETED,
+                matched_episode="S1E9",
+                match_confidence=0.95,
+            )
+        )
+        await session.commit()
+
+    result = MagicMock()
+    result.episode_code = "S01E09"
+    result.confidence = 0.93
+    result.needs_review = False
+    result.match_details = {"method": "full_transcription", "score": 0.93}
+
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    coordinator = _make_coordinator(monkeypatch)
+    await coordinator._match_single_file_inner(job.id, title.id, fake_file, advisory=True)
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        assert title.state == TitleState.REVIEW
+        details = json.loads(title.match_details)
+        assert details.get("forced_review") is True
+        assert details.get("error") == "file_exists"
+        assert "message" in details
+
+
+@pytest.mark.asyncio
 async def test_rematch_single_title_deep_uses_strict_params(monkeypatch):
     """job_manager.rematch_single_title(deep=True) threads STRICT scan params."""
     from app.services.job_manager import job_manager
@@ -205,12 +311,18 @@ async def test_rematch_single_title_deep_uses_strict_params(monkeypatch):
     captured: dict = {}
 
     async def _capture(
-        job_id, title_id, source_preference=None, num_points=None, min_vote_count=None
+        job_id,
+        title_id,
+        source_preference=None,
+        num_points=None,
+        min_vote_count=None,
+        advisory=False,
     ):
         captured.update(
             source_preference=source_preference,
             num_points=num_points,
             min_vote_count=min_vote_count,
+            advisory=advisory,
         )
 
     monkeypatch.setattr(job_manager._matching, "rematch_single_title", _capture)
@@ -220,6 +332,8 @@ async def test_rematch_single_title_deep_uses_strict_params(monkeypatch):
     assert captured["num_points"] == STRICT_SCAN_POINTS
     assert captured["min_vote_count"] == STRICT_MIN_VOTES
     assert captured["source_preference"] == "engram"
+    # The manual route always runs advisory: surface for confirmation, never auto-organize.
+    assert captured["advisory"] is True
 
 
 @pytest.mark.asyncio
@@ -230,9 +344,14 @@ async def test_rematch_single_title_shallow_keeps_defaults(monkeypatch):
     captured: dict = {}
 
     async def _capture(
-        job_id, title_id, source_preference=None, num_points=None, min_vote_count=None
+        job_id,
+        title_id,
+        source_preference=None,
+        num_points=None,
+        min_vote_count=None,
+        advisory=False,
     ):
-        captured.update(num_points=num_points, min_vote_count=min_vote_count)
+        captured.update(num_points=num_points, min_vote_count=min_vote_count, advisory=advisory)
 
     monkeypatch.setattr(job_manager._matching, "rematch_single_title", _capture)
 
@@ -240,6 +359,8 @@ async def test_rematch_single_title_shallow_keeps_defaults(monkeypatch):
 
     assert captured["num_points"] is None
     assert captured["min_vote_count"] is None
+    # Even a shallow manual re-match is advisory (it is the user-initiated route).
+    assert captured["advisory"] is True
 
 
 @pytest.mark.asyncio

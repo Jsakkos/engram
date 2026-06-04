@@ -1,7 +1,14 @@
 import type { CSSProperties } from 'react';
+import { IcoRetry } from '../../app/components/icons';
 import { SvBadge, sv } from '../../app/components/synapse';
 import type { DiscTitle } from '../../types';
-import { confidenceColor, formatDuration, formatSize, titleDisplayName } from './utils';
+import {
+    confidenceColor,
+    formatDuration,
+    formatSize,
+    parseMatchDetails,
+    titleDisplayName,
+} from './utils';
 
 const truncate: CSSProperties = {
     overflow: 'hidden',
@@ -55,6 +62,11 @@ export function TitleList({
                 const inConflict = !!selection && collisions.has(selection);
                 const isActive = title.id === selectedTitleId;
                 const needsReview = !selection;
+                // Live, per-title in-flight signal driven by the WebSocket title
+                // state (persists for the real match duration — unlike the parent's
+                // ephemeral isRematching, which clears the instant the POST returns).
+                const isMatching = title.state === 'matching';
+                const fileExists = parseMatchDetails(title).error === 'file_exists';
                 const accent = inConflict ? sv.red : needsReview ? sv.yellow : sv.line;
                 const checked = selectedIds.has(title.id);
 
@@ -133,18 +145,29 @@ export function TitleList({
                                     conflict
                                 </SvBadge>
                             )}
-                            <span
-                                style={{
-                                    fontFamily: sv.display,
-                                    fontSize: 14,
-                                    fontWeight: 600,
-                                    minWidth: 44,
-                                    textAlign: 'right',
-                                    color: title.match_confidence > 0 ? confidenceColor(title.match_confidence) : sv.inkFaint,
-                                }}
-                            >
-                                {title.match_confidence > 0 ? `${Math.round(title.match_confidence * 100)}%` : '—'}
-                            </span>
+                            {fileExists && (
+                                <SvBadge size="sm" state="warn" dot>
+                                    file exists
+                                </SvBadge>
+                            )}
+                            {isMatching ? (
+                                <SvBadge size="sm" tone={sv.cyan}>
+                                    <IcoRetry size={10} className="animate-spin" /> matching…
+                                </SvBadge>
+                            ) : (
+                                <span
+                                    style={{
+                                        fontFamily: sv.display,
+                                        fontSize: 14,
+                                        fontWeight: 600,
+                                        minWidth: 44,
+                                        textAlign: 'right',
+                                        color: title.match_confidence > 0 ? confidenceColor(title.match_confidence) : sv.inkFaint,
+                                    }}
+                                >
+                                    {title.match_confidence > 0 ? `${Math.round(title.match_confidence * 100)}%` : '—'}
+                                </span>
+                            )}
                         </div>
                     </button>
                     </div>

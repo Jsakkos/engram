@@ -892,6 +892,26 @@ class FinalizationCoordinator:
                     # Advance the extras slot only on a confirmed write.
                     if t.matched_episode == "extra":
                         extra_index += 1
+                elif org_result.get("error_code") == "FILE_EXISTS":
+                    # The target already exists in the library — almost always a
+                    # duplicate disc track or a mis-matched extra. Record a
+                    # structured review reason (the Inspector renders a
+                    # "File exists" badge + message from match_details.error) so
+                    # the conflict surfaces in the UI instead of failing silently.
+                    # Mirror the other organize paths (movie / process_matched /
+                    # _finalize_tv) which already do this.
+                    t.state = TitleState.REVIEW
+                    t.match_details = _merge_match_details(
+                        t.match_details,
+                        {
+                            "error": "file_exists",
+                            "message": (
+                                f"{org_result['error']} — likely a duplicate or extra; "
+                                "reassign the episode or mark it as an Extra."
+                            ),
+                        },
+                    )
+                    logger.warning(f"Organization conflict for Title {t.id}: {org_result['error']}")
                 else:
                     t.state = TitleState.REVIEW
                     logger.error(f"Organize failed for Title {t.id}: {org_result['error']}")

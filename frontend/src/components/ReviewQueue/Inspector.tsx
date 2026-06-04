@@ -72,6 +72,11 @@ export function Inspector({
     const details = parseMatchDetails(title);
     const fileExists = details.error === 'file_exists';
     const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
+    // In-flight = the live WebSocket title state (durable, lasts the whole match)
+    // OR the parent's optimistic isRematching (covers the gap before the first WS
+    // message). The parent flag clears the instant the fire-and-forget POST returns,
+    // so the title state is what keeps the spinner up while matching actually runs.
+    const isMatching = title.state === 'matching' || isRematching;
     const season = job.detected_season ?? 1;
 
     // The set of episode codes held by OTHER titles → conflict source. Derived
@@ -135,10 +140,10 @@ export function Inspector({
                             tone="magenta"
                             size="sm"
                             onClick={() => onDeepRematch(selection as string)}
-                            disabled={isRematching}
+                            disabled={isMatching}
                         >
-                            <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
-                            {isRematching ? 'Re-matching…' : 'Deep re-match'}
+                            <IcoRetry size={11} className={isMatching ? 'animate-spin' : ''} />
+                            {isMatching ? 'Re-matching…' : 'Deep re-match'}
                         </SvActionButton>
                     </div>
                 )}
@@ -368,12 +373,12 @@ export function Inspector({
                             tone="magenta"
                             size="sm"
                             onClick={() => onRematch(title.id, 'engram', true)}
-                            disabled={isRematching}
+                            disabled={isMatching}
                             title="Deep re-match this track (denser sampling + stricter votes)"
                             ariaLabel="Deep re-match this track"
                         >
-                            <IcoRetry size={11} className={isRematching ? 'animate-spin' : ''} />
-                            Re-match
+                            <IcoRetry size={11} className={isMatching ? 'animate-spin' : ''} />
+                            {isMatching ? 'Re-matching…' : 'Re-match'}
                         </SvActionButton>
                         {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
                             <SvActionButton

@@ -336,6 +336,58 @@ class TestFinalizeDiscJob:
         assert titles[3].state == TitleState.REVIEW
         assert titles[3].is_extra is True
         assert _is_rematchable_review(titles[3]) is False
+        # The conflict is now surfaced as a structured review reason (the Inspector
+        # renders the "File exists" badge + message from match_details.error).
+        assert json.loads(titles[3].match_details)["error"] == "file_exists"
+        assert job.state == JobState.REVIEW_NEEDED
+
+    async def test_episode_organize_file_exists_surfaces_structured_error(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression for the silent re-match bug: a non-extra MATCHED title whose
+        episode already exists in the library is routed to REVIEW with a structured
+        match_details.error == "file_exists" (previously the finalize_disc_job loop
+        only logged the failure and re-broadcast unchanged match_details, so the UI
+        never showed why)."""
+        import app.core.organizer as org
+        from app.models import AppConfig
+        from app.services.finalization_coordinator import _is_rematchable_review
+
+        tv_lib = tmp_path / "TV"
+        tv_lib.mkdir()
+        fake_config = AppConfig(library_tv_path=str(tv_lib))
+        monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: fake_config)
+
+        # organize_tv_episode reports the destination already exists.
+        monkeypatch.setattr(
+            org,
+            "organize_tv_episode",
+            Mock(
+                return_value={
+                    "success": False,
+                    "error_code": "FILE_EXISTS",
+                    "error": "File already exists: .../Some Show - S01E09.mkv",
+                }
+            ),
+        )
+
+        f0 = tmp_path / "show_t02.mkv"
+        f0.write_text("")
+        job_id = await _seed_job(
+            [(2, "S01E09", str(f0), TitleState.MATCHED)],
+            staging=str(tmp_path),
+        )
+
+        await _make_coord().finalize_disc_job(job_id)
+
+        job, titles = await _load(job_id)
+        assert titles[2].state == TitleState.REVIEW
+        assert titles[2].is_extra is False
+        details = json.loads(titles[2].match_details)
+        assert details["error"] == "file_exists"
+        assert "message" in details
+        # A file_exists review is NOT a low-confidence miss → escalation must skip it.
+        assert _is_rematchable_review(titles[2]) is False
         assert job.state == JobState.REVIEW_NEEDED
 
 
