@@ -108,6 +108,23 @@ function extractFinalMatchInfo(title: DiscTitle): { confidence: number; votes: n
   return undefined;
 }
 
+/**
+ * Which Engram matcher produced this result, inferred from match_details shape.
+ * Only Engram-engine ASR sources carry a method worth surfacing — DiscDB / AI /
+ * manual matches return undefined (their provider chip already says enough).
+ *  - chunk_vote: ranked voting (has vote_count)
+ *  - full_file:  whole-file fallback ({method:"full_transcription"}, or a bare
+ *                score with no votes)
+ */
+function deriveMatchMethod(title: DiscTitle): "chunk_vote" | "full_file" | undefined {
+  const source = title.match_source;
+  if (source && source !== "engram" && source !== "engram_chromaprint") return undefined;
+  const details = parseMatchDetails(title);
+  if (details.vote_count !== undefined) return "chunk_vote";
+  if (details.method === "full_transcription" || details.score !== undefined) return "full_file";
+  return undefined;
+}
+
 function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
   // Determine track title: prefer matched episode, then output filename, then generic
   let trackTitle = title.matched_episode;
@@ -140,9 +157,15 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
         : (title.match_confidence || 0) * 100,
     matchCandidates: extractMatchCandidates(title),
     finalMatch: title.matched_episode || undefined,
-    finalMatchConfidence: finalMatchInfo?.confidence,
+    // Displayed confidence comes from the reliable match_confidence COLUMN, which
+    // is set on every matched path (ASR result.confidence, DiscDB 0.99, manual
+    // 1.0). For REVIEW the column is 0.0, so fall back to the match_details
+    // best-guess score. This is what un-breaks the bare full-file card.
+    finalMatchConfidence:
+      title.match_confidence > 0 ? title.match_confidence : finalMatchInfo?.confidence,
     finalMatchVotes: finalMatchInfo?.votes,
     finalMatchTargetVotes: finalMatchInfo?.targetVotes,
+    matchMethod: deriveMatchMethod(title),
 
     // File tracking
     outputFilename: title.output_filename || undefined,
@@ -183,6 +206,7 @@ interface MatchDetails {
   total_chunks?: number;
   episode?: string;
   reason?: string;
+  method?: string;       // e.g. "full_transcription" for the whole-file fallback
 }
 
 function extractErrorReason(title: DiscTitle): string | null {
