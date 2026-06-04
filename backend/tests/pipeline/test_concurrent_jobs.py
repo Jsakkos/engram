@@ -1,7 +1,17 @@
-"""Test that a job in REVIEW_NEEDED does not block other jobs.
+"""State-machine-level checks for the concurrent-job model.
 
-Verifies the concurrency model: jobs on different drives can run
-simultaneously, and a review-blocked job doesn't prevent new processing.
+Verifies (via the JobStateMachine transition tables) that jobs on different
+drives can run simultaneously and that REVIEW_NEEDED is neither a blocking nor
+a terminal state.
+
+The authoritative behavior of the per-drive, per-volume_label job-creation
+dedup guard (``JobManager._create_job_for_disc``) — which disc-required states
+block regardless of label, which post-eject states (MATCHING/ORGANIZING) block
+only a same-label re-insert, and which states never block — is exercised
+directly, with in-memory DB isolation, in
+``tests/unit/test_job_manager.py::TestCreateJobForDiscDedup``. Pipeline tests
+have no DB isolation (see ``tests/pipeline/conftest.py``), so they must not call
+``_create_job_for_disc`` against the real ``engram.db``.
 """
 
 import pytest
@@ -27,32 +37,10 @@ class TestReviewDoesNotBlock:
         valid_next = JobStateMachine.VALID_TRANSITIONS.get(JobState.REVIEW_NEEDED, set())
         assert JobState.RIPPING in valid_next or JobState.IDENTIFYING in valid_next
 
-    def test_drive_blocking_excludes_review_state(self):
-        """The JobManager blocks new jobs on the SAME drive only for active states.
-
-        REVIEW_NEEDED should be excluded from the blocking check so a different
-        drive can start a new job even while one drive's job awaits review.
-
-        This tests the design assumption documented in job_manager.py's
-        _create_job_for_disc method.
-        """
-        # REVIEW_NEEDED should be treated specially — it blocks the SAME drive
-        # from starting a new job (disc is still in the drive), but does NOT
-        # block other drives from processing.
-        # The key test: verify that REVIEW_NEEDED is a distinct state from
-        # RIPPING/MATCHING which would indicate the drive is in active use.
-        active_processing_states = {
-            JobState.IDENTIFYING,
-            JobState.RIPPING,
-            JobState.MATCHING,
-            JobState.ORGANIZING,
-        }
-        assert JobState.REVIEW_NEEDED not in active_processing_states
-
 
 @pytest.mark.pipeline
 class TestConcurrentJobScenario:
-    """Document the expected concurrent job behavior for the review+new job case."""
+    """Concurrent jobs on different drives are independent in the state model."""
 
     def test_different_drives_are_independent(self):
         """Two jobs on different drives (E: and F:) should not interfere.
@@ -69,14 +57,3 @@ class TestConcurrentJobScenario:
         # because they're on different drives
         assert JobState.IDENTIFYING in JobStateMachine.VALID_TRANSITIONS[JobState.IDLE]
         assert len(JobStateMachine.VALID_TRANSITIONS[JobState.REVIEW_NEEDED]) > 0
-
-    def test_same_drive_review_blocks_new_insert(self):
-        """A job in REVIEW_NEEDED on drive E: should block a NEW insert on E:.
-
-        The disc is still physically in the drive during review, so another
-        disc can't be inserted on the same drive.
-        """
-        # This is by physical design — can't have two discs in one drive.
-        # The JobManager checks for active jobs on the same drive_id
-        # before creating a new one. REVIEW_NEEDED IS active (disc is in drive).
-        assert True  # Verified by integration tests
