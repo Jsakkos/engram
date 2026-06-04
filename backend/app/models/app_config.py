@@ -16,7 +16,7 @@ from sqlmodel import Field, SQLModel
 # — whose app_config row predates this column and stores NULL — still engage the
 # network. The opt-out toggle (enable_fingerprint_contributions), not a blank
 # URL, is the single source of truth for "do I contribute".
-DEFAULT_FINGERPRINT_SERVER_URL = "https://engram-fp-prod.jonathansakkos.workers.dev"
+DEFAULT_FINGERPRINT_SERVER_URL = "https://api.engramfp.com"
 
 
 class AppConfig(SQLModel, table=True):

@@ -961,7 +961,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                     <input
                                         id="fingerprintServerUrl"
                                         type="text"
-                                        placeholder="https://engram-fp-prod.jonathansakkos.workers.dev"
+                                        placeholder="https://api.engramfp.com"
                                         value={config.fingerprintServerUrl}
                                         onChange={(e) => handleInputChange('fingerprintServerUrl', e.target.value)}
                                     />

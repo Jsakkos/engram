@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **The fingerprint network moved to a stable custom domain** — Engram now contributes and identifies against `https://api.engramfp.com` by default, instead of the old `*.workers.dev` address. Existing installs pick up the new address automatically on update (unless you've set a custom server URL in Settings → Data Sharing); the old address keeps serving during the transition, so nothing breaks mid-migration.
+
 ## [0.15.1] - 2026-06-03
 
 _Highlights: a data-loss fix — importing from a watch folder no longer deletes your source folder — plus faster, more accurate episode matching, several import-reliability fixes, and a disc loaded right after an eject is now reliably picked up._
