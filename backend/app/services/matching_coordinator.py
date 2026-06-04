@@ -943,12 +943,21 @@ class MatchingCoordinator:
                         f"review-escalation from re-dispatching it into a timeout loop."
                     )
                     title.state = TitleState.REVIEW
-                    title.match_details = json.dumps(
-                        {
-                            "forced_review": True,
-                            "reason": f"match timed out after {match_ceiling}s",
-                        }
-                    )
+                    # Merge, don't overwrite: a concurrent skip_title may have stamped
+                    # its own forced_review reason while this match was running. Preserve
+                    # it (setdefault) so the audit trail isn't rewritten to "timed out".
+                    # Mirrors JobManager._forced_review_details.
+                    _md: dict = {}
+                    if title.match_details:
+                        try:
+                            parsed = json.loads(title.match_details)
+                            if isinstance(parsed, dict):
+                                _md = parsed
+                        except (json.JSONDecodeError, TypeError):
+                            _md = {}
+                    _md["forced_review"] = True
+                    _md.setdefault("reason", f"match timed out after {match_ceiling}s")
+                    title.match_details = json.dumps(_md)
                     session.add(title)
                     await session.commit()
                     await ws_manager.broadcast_title_update(

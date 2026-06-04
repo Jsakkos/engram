@@ -209,6 +209,56 @@ async def test_match_timeout_routes_to_review(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_match_timeout_preserves_existing_match_details(tmp_path, monkeypatch):
+    """The timeout handler must MERGE into match_details, not stomp a concurrent skip's reason.
+
+    If skip_title committed {"forced_review": true, "reason": "Skipped by user"} while the
+    match was still running, the timeout path must preserve that reason (audit trail), not
+    overwrite it with "match timed out".
+    """
+    import json as _json
+
+    from sqlmodel import select as sa_select
+
+    from app.models import AppConfig
+
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+    tid = await _add_title(job_id, 0, TitleState.MATCHING, output=str(f))
+
+    async with db.async_session() as session:
+        t = await session.get(DiscTitle, tid)
+        t.match_details = _json.dumps({"forced_review": True, "reason": "Skipped by user"})
+        await session.commit()
+        cfg = (await session.execute(sa_select(AppConfig).limit(1))).scalar_one_or_none()
+        if cfg is None:
+            cfg = AppConfig()
+            session.add(cfg)
+        cfg.timeout_matching_seconds = 1
+        await session.commit()
+
+    async def slow_match(*args, **kwargs):
+        await asyncio.sleep(3)
+        return SimpleNamespace(
+            episode_code=None, confidence=0.0, needs_review=True, match_details={}
+        )
+
+    monkeypatch.setattr(
+        "app.services.matching_coordinator.episode_curator.match_single_file", slow_match
+    )
+    monkeypatch.setattr(
+        job_manager._matching, "_check_job_completion", lambda *a, **k: asyncio.sleep(0)
+    )
+
+    await job_manager._matching._match_single_file_inner(job_id, tid, f)
+
+    details = _json.loads((await _title(tid)).match_details)
+    assert details.get("forced_review") is True
+    assert details.get("reason") == "Skipped by user"  # preserved, not stomped
+
+
+@pytest.mark.asyncio
 async def test_match_timeout_releases_semaphore(tmp_path, monkeypatch):
     """A timed-out match frees its slot (via the outer finally) so the queue drains."""
     from sqlmodel import select as sa_select

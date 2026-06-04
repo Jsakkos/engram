@@ -820,6 +820,10 @@ class JobManager:
         else FAILED — then runs the normal completion check, which organizes whatever
         matched and lands the job in COMPLETED or REVIEW_NEEDED. Returns True if the
         job was non-terminal and processed.
+
+        QUEUED is deliberately NOT in the active set below: a queued track is draining
+        the global match semaphore, not stuck, so the watchdog must never force it to
+        review (a genuinely hung *active* match is caught by the per-track timeout).
         """
         # Stop any in-flight rip/processing task so it can't race the reconcile.
         if job_id in self._active_jobs:
@@ -827,6 +831,7 @@ class JobManager:
             del self._active_jobs[job_id]
         self._extractor.cancel(job_id)
 
+        # NOTE: QUEUED excluded on purpose — see docstring (queued ≠ stuck).
         active = (TitleState.PENDING, TitleState.RIPPING, TitleState.MATCHING)
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
