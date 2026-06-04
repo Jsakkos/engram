@@ -18,6 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Jsakkos/engram?style=flat-square&color=ec4899" alt="License" /></a>
   <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/badges/docs/badges/windows-downloads.json&style=flat-square" alt="Windows Downloads" /></a>
   <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/badges/docs/badges/linux-downloads.json&style=flat-square" alt="Linux Downloads" /></a>
+  <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/badges/docs/badges/macos-downloads.json&style=flat-square" alt="macOS Downloads" /></a>
 </p>
 
 ---

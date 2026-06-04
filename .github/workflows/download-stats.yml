@@ -43,6 +43,7 @@ jobs:
           mkdir -p "$work/docs/badges"
           cp docs/badges/windows-downloads.json "$work/docs/badges/"
           cp docs/badges/linux-downloads.json "$work/docs/badges/"
+          cp docs/badges/macos-downloads.json "$work/docs/badges/"
           cp docs/downloads-chart.svg "$work/docs/"
 
           cd "$work"
