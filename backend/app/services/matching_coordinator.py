@@ -31,6 +31,32 @@ logger = logging.getLogger(__name__)
 STRICT_SCAN_POINTS = 25
 STRICT_MIN_VOTES = 4
 
+# Duration pre-filter tolerances (minutes). DVD/Blu-ray episode tracks run LONGER
+# than TMDB's nominal runtime: the physical track includes the "previously on"
+# recap, full end credits, and "next time" preview that the broadcast-slot runtime
+# figure omits. So the accept window is asymmetric — tight below an episode runtime,
+# lenient above it — mirroring analyst.py's movie tolerances. A symmetric window
+# centered on TMDB's underestimate wrongly rejected the season's longest real
+# episodes (Gilmore Girls S01E09 "Rory's Dance": disc 49.8min vs TMDB 44min) and
+# dumped them to Extras un-transcribed (bug report job 41).
+EPISODE_DURATION_UNDER_TOLERANCE_MIN = 5
+EPISODE_DURATION_OVER_TOLERANCE_MIN = 10
+
+
+def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int]) -> bool:
+    """True if a track's duration is plausibly an episode for this season.
+
+    Asymmetric window: a track may fall up to ``UNDER`` minutes short of an episode
+    runtime or run up to ``OVER`` minutes past it (DVD recap + credits padding).
+    """
+    return any(
+        (rt - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
+        <= title_minutes
+        <= (rt + EPISODE_DURATION_OVER_TOLERANCE_MIN)
+        for rt in runtimes
+    )
+
+
 # Module-level cache for fpcalc detection results.
 # `detect_fpcalc()` is deterministic within a process (the binary doesn't appear
 # or disappear mid-run), but each invocation runs up to 6 subprocess probes with
@@ -634,9 +660,7 @@ class MatchingCoordinator:
                     runtimes = await self._episode_runtimes_for_job(job)
                     if runtimes and title.duration_seconds:
                         title_minutes = title.duration_seconds / 60
-                        tolerance = 5  # minutes
-                        matches_any = any(abs(title_minutes - rt) <= tolerance for rt in runtimes)
-                        if not matches_any:
+                        if not _duration_matches_episode_runtime(title_minutes, runtimes):
                             handled = await self._handle_extras(
                                 job_id,
                                 title_id,
@@ -1079,7 +1103,9 @@ class MatchingCoordinator:
         """Handle extras based on policy. Returns True if title was handled."""
         logger.info(
             f"[MATCH] Title {title_id} (Job {job_id}): duration {title_minutes:.0f}min "
-            f"doesn't match any episode runtime {runtimes} (±5min). "
+            f"doesn't match any episode runtime {runtimes} "
+            f"(window -{EPISODE_DURATION_UNDER_TOLERANCE_MIN}/"
+            f"+{EPISODE_DURATION_OVER_TOLERANCE_MIN}min). "
             f"Detected as extra."
         )
 

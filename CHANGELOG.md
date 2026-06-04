@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A disc's longest episode could be misfiled as an "extra"** — before matching a TV track, Engram checks its length against the episode runtimes TMDB lists for the season, and a track that's too far off is set aside as bonus content without ever being matched. That length window was symmetric (±5 minutes), but DVD/Blu-ray episodes run *longer* than TMDB's listed runtime — the disc includes the "previously on" recap, full end credits, and "next time" preview — so a season's longest episode could overshoot the window and be dropped into Extras even though its shorter siblings on the same disc matched fine (seen with **Gilmore Girls** S1, where the ~50-minute "Rory's Dance" was filed as an extra next to its ~46–48-minute neighbors). The window is now lenient on the long side (up to 5 minutes short, 10 minutes over), so a long-but-real episode is still transcribed and matched.
+
 ## [0.15.2] - 2026-06-04
 
 _Highlights: the community fingerprint network moved to a stable custom domain (`api.engramfp.com`); existing installs migrate automatically on update with no interruption._
