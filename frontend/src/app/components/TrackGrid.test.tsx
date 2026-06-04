@@ -105,4 +105,26 @@ describe("TrackGrid — provenance rendering", () => {
     // should leak onto a non-matched track.
     expect(screen.queryByText("FULL-FILE")).not.toBeInTheDocument();
   });
+
+  it("chromaprint match: renders the engram_chromaprint icon chip with the fingerprint node", () => {
+    render(
+      <TrackGrid
+        tracks={[
+          makeTrack({
+            title: "Presenting Lorelai Gilmore",
+            finalMatch: "S02E06",
+            finalMatchConfidence: 0.95,
+            matchSource: "engram_chromaprint",
+            matchMethod: "chunk_vote",
+          }),
+        ]}
+      />,
+    );
+    const chip = screen.getByTestId("source-badge-engram_chromaprint");
+    expect(chip).toBeInTheDocument();
+    // The fingerprint variant draws a filled center node (a magenta <circle>).
+    const node = chip.querySelector("circle");
+    expect(node).not.toBeNull();
+    expect(node!.getAttribute("fill")).toBe("#ff3d7f");
+  });
 });

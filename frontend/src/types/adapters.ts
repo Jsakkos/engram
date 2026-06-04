@@ -121,6 +121,10 @@ function deriveMatchMethod(title: DiscTitle): "chunk_vote" | "full_file" | undef
   if (source && source !== "engram" && source !== "engram_chromaprint") return undefined;
   const details = parseMatchDetails(title);
   if (details.vote_count !== undefined) return "chunk_vote";
+  // "full_transcription" is the canonical signal; the bare-score fallback handles
+  // rows written before that field was added. A null-source row with a score but
+  // no vote_count is assumed to be a full-file result — the only way to reach that
+  // state via the ASR path (backend match_source backfill is a separate follow-up).
   if (details.method === "full_transcription" || details.score !== undefined) return "full_file";
   return undefined;
 }
