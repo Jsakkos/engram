@@ -30,7 +30,6 @@ PLATFORMS = {
     "linux": ("engram-linux-", ".tar.gz"),
     "macos": ("engram-macos-", ".tar.gz"),
 }
-_APP_PREFIXES = tuple(prefix for prefix, _ in PLATFORMS.values())
 
 
 def fetch_releases(token: str) -> list[dict]:
@@ -68,6 +67,21 @@ def _platform_downloads(release: dict, prefix: str, suffix: str) -> int:
     )
 
 
+def _is_app_release(release: dict) -> bool:
+    """True if the release ships at least one per-OS app binary.
+
+    Uses the same (prefix, suffix) predicate as ``_platform_downloads`` so the
+    skip guard and the counters can never disagree — a stray asset like
+    ``engram-windows-notes.txt`` (matching prefix but not suffix) must not
+    qualify a release that has no actual binary.
+    """
+    return any(
+        a["name"].startswith(prefix) and a["name"].endswith(suffix)
+        for a in release["assets"]
+        for prefix, suffix in PLATFORMS.values()
+    )
+
+
 def compute_stats(
     releases: list[dict],
 ) -> tuple[dict[str, int], list[tuple[str, int, int, int]]]:
@@ -78,7 +92,7 @@ def compute_stats(
         # Skip releases that ship no app binary at all (e.g. the rolling
         # subtitle-cache data-pack releases) so they neither pollute the totals
         # nor add empty rows to the chart.
-        if not any(a["name"].startswith(_APP_PREFIXES) for a in release["assets"]):
+        if not _is_app_release(release):
             continue
         counts = {
             os_name: _platform_downloads(release, prefix, suffix)

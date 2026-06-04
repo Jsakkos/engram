@@ -28,6 +28,15 @@ def _load_module():
     return mod
 
 
+if not _SCRIPT.exists():
+    # Hard failure, deliberately NOT pytest.skip: this module's whole purpose is
+    # to guard the script's behavior, so a missing/moved script is a regression
+    # to surface loudly — a skip would let CI stay green with the guard gone.
+    raise FileNotFoundError(
+        f"download-stats script not found at {_SCRIPT} — repo layout changed? "
+        "(resolved via Path(__file__).parents[3] / 'scripts')"
+    )
+
 download_stats = _load_module()
 
 
@@ -77,6 +86,25 @@ def test_subtitle_cache_pack_is_excluded():
     assert totals["macos"] == 0
     # The data-pack release ships no app binary, so it is dropped from the chart.
     assert [row[0] for row in per_release] == ["v1.0.0"]
+
+
+def test_prefix_match_without_binary_suffix_is_not_an_app_release():
+    """A non-binary asset that merely shares a platform prefix must not qualify a
+    release — otherwise it produces a phantom all-zero row in the chart."""
+    releases = [
+        _release(
+            "v1.0.0",
+            [
+                # Matches the windows prefix but not the .zip suffix, and there
+                # is no actual binary anywhere in this release.
+                _asset("engram-windows-x64.manifest.sha256", 5),
+                _asset("sha256sums.txt", 5),
+            ],
+        ),
+    ]
+    totals, per_release = download_stats.compute_stats(releases)
+    assert totals == {"windows": 0, "linux": 0, "macos": 0}
+    assert per_release == []  # release dropped entirely, no ghost row
 
 
 def test_macos_not_counted_as_linux():
