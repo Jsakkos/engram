@@ -17,7 +17,11 @@ from app.api.websocket import manager as ws_manager
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
-from app.services.matching_coordinator import MatchingCoordinator, episode_curator
+from app.services.matching_coordinator import (
+    MatchingCoordinator,
+    _duration_matches_episode_runtime,
+    episode_curator,
+)
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -173,6 +177,54 @@ class TestHandleExtras:
             f"expected tmdb_id='3452', got {kwargs.get('tmdb_id')!r}"
         )
         assert kwargs["year"] == 1993, f"expected year=1993, got {kwargs.get('year')!r}"
+
+
+# Real TMDB Season 1 runtimes from the job-41 bundle (max 44, min 39).
+GILMORE_S1 = [44, 43, 43, 43, 42, 44, 44, 44, 44, 42, 44, 42, 39, 44, 43, 44, 44, 44, 42, 43, 43]
+
+
+@pytest.mark.unit
+class TestDurationMatchesEpisodeRuntime:
+    """The duration pre-filter accepts a track as an episode candidate only if its
+    runtime is close to a TMDB episode runtime. The window is ASYMMETRIC: DVD/BD
+    tracks run longer than TMDB's nominal runtime (recap + full credits + "next
+    time" preview), so we are tight below an episode runtime and lenient above it.
+
+    Regression for bug report job 41 (Gilmore Girls S1 Disc 3): E09 "Rory's Dance"
+    ran 2990s (49.8min) vs TMDB's 44min and the old symmetric ±5 window (ceiling
+    49min) dumped it to Extras un-transcribed while its 46-48min siblings matched.
+    """
+
+    def test_long_episode_is_not_an_extra(self):
+        # E09 "Rory's Dance": 2990s = 49.83min. Must clear the gate (the bug).
+        assert _duration_matches_episode_runtime(2990 / 60, GILMORE_S1) is True
+
+    def test_sibling_episodes_match(self):
+        # E10/E11/E12 on the same disc (these matched correctly in the field).
+        for seconds in (2896, 2866, 2763):
+            assert _duration_matches_episode_runtime(seconds / 60, GILMORE_S1) is True
+
+    def test_play_all_track_is_an_extra(self):
+        # t00: 11515s = 191.9min — the concatenated "Play All" track stays an extra.
+        assert _duration_matches_episode_runtime(11515 / 60, GILMORE_S1) is False
+
+    def test_short_featurette_is_an_extra(self):
+        # A 10-min track is well below any episode runtime → still an extra.
+        assert _duration_matches_episode_runtime(10.0, [22, 44]) is False
+
+    def test_upper_bound_is_inclusive(self):
+        # Exactly runtime + 10 (over-tolerance) is accepted; just past it is not.
+        assert _duration_matches_episode_runtime(54.0, [44]) is True
+        assert _duration_matches_episode_runtime(54.01, [44]) is False
+
+    def test_lower_bound_is_inclusive(self):
+        # Exactly runtime - 5 (under-tolerance) is accepted; just under it is not.
+        assert _duration_matches_episode_runtime(39.0, [44]) is True
+        assert _duration_matches_episode_runtime(38.99, [44]) is False
+
+    def test_empty_runtimes_never_matches(self):
+        # No runtimes → the pre-filter caller skips entirely; the predicate is False.
+        assert _duration_matches_episode_runtime(45.0, []) is False
 
 
 @pytest.mark.unit
