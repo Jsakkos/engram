@@ -686,19 +686,18 @@ class TestMatchFullFileSurfacesTranscript:
         from app.matcher.episode_identification import EpisodeMatcher
 
         matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
+        # The per-call TF-IDF matcher is passed in (no longer read from shared state).
+        tfidf_mock = MagicMock()
+        tfidf_mock.match.return_value = [("S01E03.srt", 0.85)]
+        tfidf_mock.is_prepared = True
         # Stub the underlying transcription to a known value
-        with (
-            patch.object(matcher, "transcribe_full", return_value="long fake transcript " * 50),
-            patch.object(matcher, "tfidf_matcher", create=True) as tfidf_mock,
-        ):
-            tfidf_mock.match.return_value = [("S01E03.srt", 0.85)]
-            tfidf_mock.is_prepared = True
-
+        with patch.object(matcher, "transcribe_full", return_value="long fake transcript " * 50):
             result = matcher._match_full_file(
                 video_file=tmp_path / "x.mkv",
                 model_config={"type": "whisper", "name": "small", "device": "cpu"},
                 reference_files=[tmp_path / "S01E03.srt"],
                 duration=1320,
+                tfidf_matcher=tfidf_mock,
             )
 
         assert result is not None
@@ -744,7 +743,6 @@ class TestRankedVotingAcceptsHighCalibratedConfidence:
         tfidf.is_prepared = True
         tfidf.reference_signature.return_value = ("precomputed", ("S01E05", "S01E07"))
         tfidf.match.return_value = per_chunk_match
-        matcher.tfidf_matcher = tfidf
 
         precomputed = (csr_matrix(np.eye(2)), ["S01E05", "S01E07"], np.ones(2))
         fallback = MagicMock(return_value=None)
@@ -755,6 +753,9 @@ class TestRankedVotingAcceptsHighCalibratedConfidence:
             best["match_details"]["score_gap"] = best.get("score", 0.0)
 
         with contextlib.ExitStack() as stack:
+            # Inject the fake TF-IDF matcher via the per-call seam (identify_episode
+            # no longer reads a shared self.tfidf_matcher slot).
+            stack.enter_context(patch.object(matcher, "_get_tfidf_matcher", return_value=tfidf))
             stack.enter_context(
                 patch.object(matcher, "_load_precomputed_season", return_value=precomputed)
             )
@@ -861,11 +862,12 @@ class TestTranscriptionCache:
         tfidf.is_prepared = True
         tfidf.reference_signature.return_value = ("precomputed", ("S01E01",))
         tfidf.match.return_value = [("S01E01", 0.9)]
-        matcher.tfidf_matcher = tfidf
 
         precomputed = (csr_matrix(np.eye(1)), ["S01E01"], np.ones(1))
 
         with (
+            # Inject the fake TF-IDF matcher via the per-call seam.
+            patch.object(matcher, "_get_tfidf_matcher", return_value=tfidf),
             patch.object(matcher, "_load_precomputed_season", return_value=precomputed),
             patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
             patch("app.matcher.episode_identification.get_cached_model", return_value=fake_model),

@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -365,6 +366,13 @@ CONFIDENCE_ACCEPT_FLOOR = 0.70
 # from growing without limit across many files. On overflow the cache is cleared
 # wholesale (cheap, correctness-preserving — keys are source-addressed).
 MAX_TRANSCRIPTION_CACHE = 1024
+
+# Upper bound on the per-matcher TF-IDF cache (one prepared matcher per distinct
+# reference set / season). A show rarely has more than a few dozen seasons in
+# flight; the bound just stops the long-lived singleton matcher from growing
+# without limit across many shows. On overflow the cache is cleared wholesale
+# (cheap — a prepared matcher rebuilds in ms for precomputed, seconds for scraped).
+MAX_TFIDF_CACHE = 64
 
 
 def select_chunk_vote(
@@ -846,8 +854,17 @@ class EpisodeMatcher:
         self.temp_dir.mkdir(exist_ok=True)
         # Initialize subtitle cache
         self.subtitle_cache = SubtitleCache()
-        # TF-IDF matcher (lazily initialized per season)
-        self.tfidf_matcher = None
+        # Per-(reference-set) TF-IDF matchers, keyed by reference_signature. The
+        # matcher singleton is SHARED across concurrent identify_episode threads
+        # (parallel ASR, #336); a single mutable slot let one thread's season
+        # rebuild clobber another in-flight season's references mid-scan -> zero
+        # votes -> bogus review. Keying by signature gives each season its own
+        # prepared matcher while preserving cross-call reuse. TfidfMatcher.match()
+        # is read-only, so a cached instance is safe to share across same-season
+        # threads. Bounded + lock-guarded; see _get_tfidf_matcher.
+        self._tfidf_cache: dict[tuple, TfidfMatcher] = {}
+        self._tfidf_cache_lock = threading.Lock()
+        self._max_tfidf_cache = MAX_TFIDF_CACHE
         # Cache for extracted audio chunks (cleared per identify_episode call)
         self.audio_chunks = {}
         # Cache for ASR transcripts, keyed by (resolved_source, start, duration).
@@ -1175,10 +1192,52 @@ class EpisodeMatcher:
             return None
         return full
 
-    def _match_full_file(self, video_file, model_config, reference_files, duration):
+    def _get_tfidf_matcher(
+        self, signature, *, using_precomputed, precomputed=None, reference_files=None
+    ):
+        """Return a prepared TfidfMatcher for ``signature``, building once and caching.
+
+        Replaces the single shared ``self.tfidf_matcher`` slot. Keying by the
+        reference signature preserves the old cross-call reuse while giving each
+        season (each distinct reference set) its OWN matcher — so concurrent
+        identify_episode threads (parallel ASR) never clobber one another's
+        references mid-scan. ``TfidfMatcher.match()`` is read-only, so a cached
+        instance is safe to share across same-season threads.
+
+        ``precomputed`` is ``(ref_matrix, ref_episode_codes, idf_array)`` in
+        precomputed mode; otherwise ``reference_files`` is fitted.
+        """
+        cached = self._tfidf_cache.get(signature)
+        if cached is not None:
+            return cached
+        # Build OUTSIDE the lock so concurrent different-season builds don't
+        # serialize; insert under the lock (double-checked) so each signature
+        # resolves to a single shared instance. A rare duplicate build on a race
+        # is wasteful but correct.
+        tm = TfidfMatcher()
+        if using_precomputed:
+            ref_matrix, ref_episode_codes, idf_array = precomputed
+            tm.load_precomputed(ref_matrix, ref_episode_codes, idf_array)
+        else:
+            tm.prepare(reference_files, self.subtitle_cache)
+        with self._tfidf_cache_lock:
+            existing = self._tfidf_cache.get(signature)
+            if existing is not None:
+                return existing
+            if len(self._tfidf_cache) >= self._max_tfidf_cache:
+                self._tfidf_cache.clear()
+            self._tfidf_cache[signature] = tm
+            return tm
+
+    def _match_full_file(self, video_file, model_config, reference_files, duration, tfidf_matcher):
         """
         Fallback: matching by transcribing the ENTIRE file.
         This is resource intensive but necessary if chunk matching fails.
+
+        ``tfidf_matcher`` is the per-call matcher already prepared for this season
+        (passed in, not read from shared state, so a concurrent season can't swap
+        the references out from under the fallback). It is rebuilt from
+        ``reference_files`` only as a defensive fallback if somehow unprepared.
         """
         logger.warning(f"Starting FULL FILE transcription fallback for {video_file}...")
 
@@ -1192,13 +1251,13 @@ class EpisodeMatcher:
         best_confidence = 0
         best_match = None
 
-        # Use TF-IDF for full-file matching too (fast and accurate)
-        if self.tfidf_matcher is None or not self.tfidf_matcher.is_prepared:
-            self.tfidf_matcher = TfidfMatcher()
-            self.tfidf_matcher.prepare(reference_files, self.subtitle_cache)
+        # Use the per-call TF-IDF matcher (read-only match(); safe to share).
+        if tfidf_matcher is None or not tfidf_matcher.is_prepared:
+            tfidf_matcher = TfidfMatcher()
+            tfidf_matcher.prepare(reference_files, self.subtitle_cache)
 
         cleaned_transcription = self.clean_text(full_transcription)
-        tfidf_results = self.tfidf_matcher.match(cleaned_transcription)
+        tfidf_results = tfidf_matcher.match(cleaned_transcription)
 
         if tfidf_results:
             best_rf, best_confidence = tfidf_results[0]
@@ -1372,27 +1431,29 @@ class EpisodeMatcher:
             model_config = self._model_config()
             model = get_cached_model(model_config)
 
-            # Rebuild the cached matcher when the reference set changes — a stale
-            # precomputed-mode matcher returning codes would KeyError in path-keyed coverages.
+            # Resolve the TF-IDF matcher for THIS season's reference set as a
+            # per-call local — never a shared instance slot. The matcher singleton
+            # is shared across concurrent identify_episode threads (parallel ASR),
+            # so a single mutable slot let a sibling thread's season rebuild
+            # clobber this scan's references mid-loop (codes the path-keyed
+            # `coverages` dict doesn't hold → KeyError → zero votes → bogus review).
+            # _get_tfidf_matcher caches per reference signature, so reuse is kept
+            # without the cross-thread races. See test_matcher_concurrency.
             expected_signature: tuple = (
                 ("precomputed", tuple(ref_episode_codes))
                 if using_precomputed
                 else ("scraping", tuple(str(rf) for rf in reference_files))
             )
-            needs_rebuild = (
-                self.tfidf_matcher is None
-                or not self.tfidf_matcher.is_prepared
-                or self.tfidf_matcher.reference_signature() != expected_signature
+            if progress_callback:
+                progress_callback("preparing_model", 10.0)
+            tfidf_matcher = self._get_tfidf_matcher(
+                expected_signature,
+                using_precomputed=using_precomputed,
+                precomputed=(ref_matrix, ref_episode_codes, idf_array)
+                if using_precomputed
+                else None,
+                reference_files=reference_files,
             )
-            if needs_rebuild:
-                logger.info("Initializing TF-IDF matcher for reference episodes...")
-                if progress_callback:
-                    progress_callback("preparing_model", 10.0)
-                self.tfidf_matcher = TfidfMatcher()
-                if using_precomputed:
-                    self.tfidf_matcher.load_precomputed(ref_matrix, ref_episode_codes, idf_array)
-                else:
-                    self.tfidf_matcher.prepare(reference_files, self.subtitle_cache)
 
             logger.info(
                 f"Scanning {len(scan_points)} chunks using {model_config['name']} + TF-IDF matching "
@@ -1447,7 +1508,7 @@ class EpisodeMatcher:
                     # perfect match, so vote on rank+margin rather than an absolute
                     # cosine gate (see select_chunk_vote). One vote per chunk: its
                     # clearly-leading top episode, or none.
-                    tfidf_results = self.tfidf_matcher.match(text)
+                    tfidf_results = tfidf_matcher.match(text)
                     vote = select_chunk_vote(
                         tfidf_results,
                         floor=self.chunk_vote_floor,
@@ -1660,7 +1721,9 @@ class EpisodeMatcher:
                 f"or calibrated confidence ≥ {self.confidence_accept_floor}, with enough votes). "
                 f"Attempting FULL FILE fallback..."
             )
-            match = self._match_full_file(video_file, model_config, reference_files, video_duration)
+            match = self._match_full_file(
+                video_file, model_config, reference_files, video_duration, tfidf_matcher
+            )
 
             if match:
                 # Intentional exception to calibration: the full-file fallback
