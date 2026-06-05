@@ -228,15 +228,15 @@ class FasterWhisperModel(ASRModel):
             )
 
             try:
-                _kwargs = {
+                model_kwargs = {
                     "device": self.device,
                     "compute_type": compute_type,
                     "download_root": None,  # Use default cache location
                     "num_workers": runtime.workers,
                 }
                 if runtime.cpu_threads is not None:
-                    _kwargs["cpu_threads"] = runtime.cpu_threads
-                self._model = WhisperModel(self.model_name, **_kwargs)
+                    model_kwargs["cpu_threads"] = runtime.cpu_threads
+                self._model = WhisperModel(self.model_name, **model_kwargs)
 
                 # Eagerly transcribe 1s of silence to surface missing CUDA
                 # DLL errors here instead of on the first real transcription.
@@ -269,6 +269,11 @@ class FasterWhisperModel(ASRModel):
                         download_root=None,
                         num_workers=cpu_runtime.workers,
                         cpu_threads=cpu_runtime.cpu_threads,
+                    )
+                    # Stored under the CPU key, not the stale CUDA key computed above.
+                    cache_key = (
+                        f"faster_whisper_{self.model_name}_{self.device}"
+                        f"_w{cpu_runtime.workers}_t{cpu_runtime.cpu_threads}"
                     )
                 else:
                     raise
@@ -472,9 +477,11 @@ def get_cached_model(model_config: dict) -> ASRModel:
     Returns:
         ASRModel instance (loaded and ready for use)
     """
+    device = model_config.get("device") or detect_asr_device()
+    runtime = resolve_asr_runtime(device, model_config.get("requested_workers", 1))
     cache_key = (
         f"{model_config.get('type', '')}_{model_config.get('name', '')}"
-        f"_{model_config.get('device', 'auto')}_w{model_config.get('requested_workers', 1)}"
+        f"_{device}_w{runtime.workers}_t{runtime.cpu_threads}"
     )
 
     if cache_key not in _model_cache:
