@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-05
+
+_Highlights: episode matching now transcribes multiple tracks in parallel — the **Max Concurrent Matches** setting finally drives real concurrency (auto-clamped to your CPU or GPU), with a live ASR backend badge on the dashboard, and the "Matching" count is now honest about which tracks are genuinely transcribing._
+
 ### Added
 
 - **Episode matching now transcribes multiple tracks in parallel** — the dashboard could show several tracks as "Matching" at once while only one actually made progress and the CPU sat mostly idle. The speech-recognition model was running one transcription at a time no matter what, so the **Max Concurrent Matches** setting didn't really do anything. That setting now drives how many episodes are transcribed simultaneously (on CPU or GPU), automatically clamped to your hardware (CPU cores, or a GPU limit) so it can't oversubscribe and slow things down. A small **ASR badge** on the dashboard shows the active backend — e.g. `ASR: CUDA · float16 · 4w` or `ASR: CPU · int8 · 8w`. (#336)
