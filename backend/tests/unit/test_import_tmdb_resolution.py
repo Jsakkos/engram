@@ -203,3 +203,27 @@ async def test_set_name_and_resume_resolves_tmdb_id(tmp_path, monkeypatch):
         assert job.tmdb_id == 1400
         assert job.detected_title == "Seinfeld"
         assert job.state == JobState.RIPPING
+
+
+@pytest.mark.asyncio
+async def test_import_tmdb_resolution_failure_proceeds_with_null_id(tmp_path, monkeypatch):
+    """A transient TMDB failure during resolution must NOT fail the import — the job
+    proceeds (to MATCHING) with a null tmdb_id, treating it as a recoverable error
+    (log warning, continue) per project convention, not a fatal one."""
+    staging = _make_staging(tmp_path, count=2)
+    coordinator, _bw, _mw = _build_coordinator(_fake_analysis(), monkeypatch, signal=None)
+    # classify_from_tmdb raises (network timeout / HTTP error / bad payload).
+    monkeypatch.setattr(
+        idc_mod,
+        "classify_from_tmdb",
+        MagicMock(side_effect=RuntimeError("TMDB unreachable")),
+        raising=False,
+    )
+    job_id = await _make_import_job(str(staging), "SEASON_3")
+
+    await coordinator.identify_from_staging(job_id)
+
+    async with _unit_session_factory() as session:
+        job = await session.get(DiscJob, job_id)
+        assert job.tmdb_id is None  # resolution swallowed the error
+        assert job.state == JobState.MATCHING  # import still proceeded, not FAILED

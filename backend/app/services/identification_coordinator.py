@@ -17,7 +17,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError
-from app.core.tmdb_classifier import classify_from_tmdb, should_flag_no_year
+from app.core.tmdb_classifier import TmdbSignal, classify_from_tmdb, should_flag_no_year
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -527,21 +527,24 @@ class IdentificationCoordinator:
             logger.debug(f"Could not resolve season count for '{title}': {e}")
         return []
 
-    async def _resolve_missing_tmdb_id(self, job, session):
-        """Resolve + persist a missing ``tmdb_id`` from a job's known title.
+    async def _resolve_missing_tmdb_id(self, job: DiscJob) -> TmdbSignal | None:
+        """Resolve a missing ``tmdb_id`` from a job's known title (caller commits).
 
         Generic-label imports (volume label "SEASON_3") and user-named discs set
         ``detected_title`` but never run the identify-time TMDB lookup (it is gated on
         the nameless volume label), leaving ``tmdb_id`` null. The subtitle/reference
         cache is keyed by tmdb_id (#288), so a null id makes the matcher read a
         non-existent name-keyed dir (``cache/data/<name>``) and find no references.
-        Resolving the id here keys matching, the season roster, and the extras
-        pre-filter on the real show.
+        Resolving the id keys matching, the season roster, and the extras pre-filter
+        on the real show.
 
-        Persists only a CONFIDENT, unambiguous match: same-name twins (Frasier 1993 vs
-        the 2023 revival) are left null and the signal is still returned, so the
-        caller's existing collision block can route them to review (#287). Returns the
-        ``TmdbSignal`` (or ``None`` when there is nothing to resolve / no match).
+        Mutates ``job`` in place for a CONFIDENT, unambiguous match and returns the
+        ``TmdbSignal``; same-name twins (Frasier 1993 vs the 2023 revival) are left
+        null so the caller's collision block routes them to review (#287). Does NOT
+        commit — the caller persists ``job`` atomically with its state transition, so
+        no half-written {detected_title, tmdb_id} row is ever observable. Returns
+        ``None`` (no mutation) when there is nothing to resolve, or when the TMDB
+        lookup fails — a transient TMDB error is recoverable, not fatal to the job.
         """
         if job.tmdb_id is not None or not job.detected_title:
             return None
@@ -552,9 +555,18 @@ class IdentificationCoordinator:
         if not config.tmdb_api_key:
             return None
 
-        signal = await asyncio.to_thread(
-            classify_from_tmdb, job.detected_title, config.tmdb_api_key
-        )
+        try:
+            signal = await asyncio.to_thread(
+                classify_from_tmdb, job.detected_title, config.tmdb_api_key
+            )
+        except Exception as e:
+            logger.warning(
+                f"Job {job.id}: TMDB resolution failed for '{job.detected_title}', "
+                f"proceeding with null tmdb_id: {e}",
+                exc_info=True,
+            )
+            return None
+
         if not signal or not signal.tmdb_id:
             return signal
 
@@ -569,8 +581,14 @@ class IdentificationCoordinator:
             job.tmdb_id = signal.tmdb_id
             job.tmdb_name = signal.tmdb_name
             job.candidates_json = _candidates_json_from_signal(signal)
-            job.tmdb_year = await asyncio.to_thread(_resolve_show_year, signal.tmdb_id, signal)
-            await session.commit()
+            try:
+                job.tmdb_year = await asyncio.to_thread(_resolve_show_year, signal.tmdb_id, signal)
+            except Exception as e:
+                logger.warning(
+                    f"Job {job.id}: could not resolve show year for tmdb_id={signal.tmdb_id}: {e}",
+                    exc_info=True,
+                )
+                job.tmdb_year = None
             logger.info(
                 f"Job {job.id}: resolved missing tmdb_id={job.tmdb_id} "
                 f"('{job.tmdb_name}') from title '{job.detected_title}'"
@@ -701,7 +719,7 @@ class IdentificationCoordinator:
                 # pre-filter all key on the real id. Feeds the same-name signal to the block
                 # below so ambiguous twins still route to review.
                 if job.tmdb_id is None and not getattr(analysis, "_tmdb_signal", None):
-                    _resolved_signal = await self._resolve_missing_tmdb_id(job, session)
+                    _resolved_signal = await self._resolve_missing_tmdb_id(job)
                     if _resolved_signal is not None:
                         analysis._tmdb_signal = _resolved_signal
 
@@ -893,9 +911,10 @@ class IdentificationCoordinator:
             if season is not None:
                 job.detected_season = season
             # Resolve the TMDB id for the user-provided name now (same tmdb-keyed-cache
-            # requirement as imports — #288). Confident single match persists the id;
-            # ambiguous same-name twins are left null.
-            await self._resolve_missing_tmdb_id(job, session)
+            # requirement as imports — #288). Confident single match sets the id;
+            # ambiguous same-name twins are left null. Committed atomically with the
+            # RIPPING transition below (the resolver does not commit).
+            await self._resolve_missing_tmdb_id(job)
             job.state = JobState.RIPPING
             job.updated_at = datetime.now(UTC)
             await session.commit()
