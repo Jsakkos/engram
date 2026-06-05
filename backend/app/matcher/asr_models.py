@@ -9,11 +9,13 @@ import abc
 import hashlib
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import ctranslate2
 import librosa
 import numpy as np
+import psutil
 import soundfile as sf
 from loguru import logger
 from rapidfuzz import fuzz
@@ -22,6 +24,54 @@ from app.matcher.srt_utils import clean_text
 
 # Cache for loaded models to avoid reloading
 _model_cache = {}
+
+GPU_WORKER_CAP = (
+    4  # Conservative parallel-stream cap on GPU (VRAM auto-sizing is a future enhancement).
+)
+
+
+@dataclass(frozen=True)
+class AsrRuntime:
+    """Resolved ASR execution parameters — the single source of truth for sizing.
+
+    Consumed by the shared WhisperModel (num_workers/cpu_threads), the JobManager
+    match semaphore (workers == admission slots, so the dashboard cannot overstate
+    MATCHING), and the /api/asr-status endpoint.
+    """
+
+    device: str  # "cuda" | "cpu"
+    compute_type: str  # "float16" (cuda) | "int8" (cpu)
+    workers: int
+    cpu_threads: int | None  # None on GPU (not applicable)
+
+
+def detect_asr_device() -> str:
+    """Return 'cuda' when a CUDA device is visible to ctranslate2, else 'cpu'."""
+    try:
+        return "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
+    except Exception:  # noqa: BLE001 — any probe failure means no usable GPU
+        return "cpu"
+
+
+def resolve_asr_runtime(device: str, requested_workers: int) -> AsrRuntime:
+    """Resolve (workers, cpu_threads) from a requested worker count, clamped to hardware.
+
+    CPU: workers clamp to physical cores; cpu_threads = cores // workers so the total
+    thread count stays ~= cores (avoids the oversubscription that makes naive
+    parallelism slower). GPU: workers clamp to GPU_WORKER_CAP; cpu_threads is N/A.
+    """
+    requested = max(1, int(requested_workers or 1))
+    if device == "cuda":
+        return AsrRuntime(
+            device="cuda",
+            compute_type="float16",
+            workers=min(requested, GPU_WORKER_CAP),
+            cpu_threads=None,
+        )
+    cores = psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 1
+    workers = max(1, min(requested, cores))
+    cpu_threads = max(1, cores // workers)
+    return AsrRuntime(device="cpu", compute_type="int8", workers=workers, cpu_threads=cpu_threads)
 
 
 class ASRModel(abc.ABC):
