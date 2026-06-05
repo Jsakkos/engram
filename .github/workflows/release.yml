@@ -114,7 +114,7 @@ jobs:
                 break
               } catch {
                 Write-Host "detect-tools attempt $($i + 1) failed: $($_.Exception.Message)"
-                Start-Sleep -Seconds 2
+                if ($i -lt 3) { Start-Sleep -Seconds 2 }
               }
             }
             if ($null -eq $tools) { throw "detect-tools never responded after 4 attempts" }
@@ -264,8 +264,12 @@ jobs:
             fpcalc_found=$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/detect-tools \
               | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])" 2>/dev/null) || true
             if [ "$fpcalc_found" = "True" ]; then break; fi
-            echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', retrying"
-            sleep 2
+            if [ "$i" -lt 4 ]; then
+              echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', retrying in 2s"
+              sleep 2
+            else
+              echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', no more retries"
+            fi
           done
           echo "fpcalc detected: $fpcalc_found"
           if [ "$fpcalc_found" != "True" ]; then
@@ -405,8 +409,12 @@ jobs:
             fpcalc_found=$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/detect-tools \
               | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])" 2>/dev/null) || true
             if [ "$fpcalc_found" = "True" ]; then break; fi
-            echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', retrying"
-            sleep 2
+            if [ "$i" -lt 4 ]; then
+              echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', retrying in 2s"
+              sleep 2
+            else
+              echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', no more retries"
+            fi
           done
           echo "fpcalc detected: $fpcalc_found"
           if [ "$fpcalc_found" != "True" ]; then
