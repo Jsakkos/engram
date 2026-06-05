@@ -462,7 +462,7 @@ async def _detect_within_deadline(
     the deadline without cancelling — the over-deadline worker thread is left to
     finish and its result discarded, and ``on_timeout`` is returned in its place.
     """
-    task = asyncio.ensure_future(asyncio.to_thread(detector))
+    task = asyncio.create_task(asyncio.to_thread(detector))
     done, _pending = await asyncio.wait({task}, timeout=deadline)
     if task in done:
         return task.result()
