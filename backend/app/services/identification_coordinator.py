@@ -17,7 +17,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError
-from app.core.tmdb_classifier import should_flag_no_year
+from app.core.tmdb_classifier import classify_from_tmdb, should_flag_no_year
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -527,6 +527,56 @@ class IdentificationCoordinator:
             logger.debug(f"Could not resolve season count for '{title}': {e}")
         return []
 
+    async def _resolve_missing_tmdb_id(self, job, session):
+        """Resolve + persist a missing ``tmdb_id`` from a job's known title.
+
+        Generic-label imports (volume label "SEASON_3") and user-named discs set
+        ``detected_title`` but never run the identify-time TMDB lookup (it is gated on
+        the nameless volume label), leaving ``tmdb_id`` null. The subtitle/reference
+        cache is keyed by tmdb_id (#288), so a null id makes the matcher read a
+        non-existent name-keyed dir (``cache/data/<name>``) and find no references.
+        Resolving the id here keys matching, the season roster, and the extras
+        pre-filter on the real show.
+
+        Persists only a CONFIDENT, unambiguous match: same-name twins (Frasier 1993 vs
+        the 2023 revival) are left null and the signal is still returned, so the
+        caller's existing collision block can route them to review (#287). Returns the
+        ``TmdbSignal`` (or ``None`` when there is nothing to resolve / no match).
+        """
+        if job.tmdb_id is not None or not job.detected_title:
+            return None
+
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        if not config.tmdb_api_key:
+            return None
+
+        signal = await asyncio.to_thread(
+            classify_from_tmdb, job.detected_title, config.tmdb_api_key
+        )
+        if not signal or not signal.tmdb_id:
+            return signal
+
+        # Mirror the caller's collision gate: don't auto-pick an ambiguous twin, nor a
+        # no-year dominant twin (folder/label carries no year to disambiguate).
+        no_year_twin = (
+            not signal.ambiguous_identity
+            and job.content_type == ContentType.TV
+            and should_flag_no_year(signal.all_candidates, _label_has_year(job.volume_label))
+        )
+        if not signal.ambiguous_identity and not no_year_twin:
+            job.tmdb_id = signal.tmdb_id
+            job.tmdb_name = signal.tmdb_name
+            job.candidates_json = _candidates_json_from_signal(signal)
+            job.tmdb_year = await asyncio.to_thread(_resolve_show_year, signal.tmdb_id, signal)
+            await session.commit()
+            logger.info(
+                f"Job {job.id}: resolved missing tmdb_id={job.tmdb_id} "
+                f"('{job.tmdb_name}') from title '{job.detected_title}'"
+            )
+        return signal
+
     async def identify_from_staging(self, job_id: int) -> None:
         """Identify and process pre-ripped MKV files from staging."""
         from app.core.analyst import TitleInfo
@@ -643,6 +693,17 @@ class IdentificationCoordinator:
                         review_reason="Could not determine title. Please enter the title to continue.",
                     )
                     return
+
+                # Imports / generic-label discs derive the show name from the folder/label
+                # but the identify-time TMDB lookup was gated on the (nameless) volume label,
+                # leaving tmdb_id null. Resolve it now from the known title so reference
+                # subtitles (tmdb-keyed since #288), the season roster, and the extras
+                # pre-filter all key on the real id. Feeds the same-name signal to the block
+                # below so ambiguous twins still route to review.
+                if job.tmdb_id is None and not getattr(analysis, "_tmdb_signal", None):
+                    _resolved_signal = await self._resolve_missing_tmdb_id(job, session)
+                    if _resolved_signal is not None:
+                        analysis._tmdb_signal = _resolved_signal
 
                 # Same-name collision: route to review with the candidate list instead of
                 # matching against the wrong same-named show's corpus by name. Covers both
@@ -831,6 +892,10 @@ class IdentificationCoordinator:
             job.content_type = ContentType(content_type_str)
             if season is not None:
                 job.detected_season = season
+            # Resolve the TMDB id for the user-provided name now (same tmdb-keyed-cache
+            # requirement as imports — #288). Confident single match persists the id;
+            # ambiguous same-name twins are left null.
+            await self._resolve_missing_tmdb_id(job, session)
             job.state = JobState.RIPPING
             job.updated_at = datetime.now(UTC)
             await session.commit()
