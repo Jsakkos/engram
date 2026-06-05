@@ -25,9 +25,8 @@ from app.matcher.srt_utils import clean_text
 # Cache for loaded models to avoid reloading
 _model_cache = {}
 
-GPU_WORKER_CAP = (
-    4  # Conservative parallel-stream cap on GPU (VRAM auto-sizing is a future enhancement).
-)
+# Conservative parallel-stream cap on GPU (VRAM auto-sizing is a future enhancement).
+GPU_WORKER_CAP = 4
 
 
 @dataclass(frozen=True)
@@ -53,7 +52,7 @@ def detect_asr_device() -> str:
         return "cpu"
 
 
-def resolve_asr_runtime(device: str, requested_workers: int) -> AsrRuntime:
+def resolve_asr_runtime(device: str, requested_workers: int | None) -> AsrRuntime:
     """Resolve (workers, cpu_threads) from a requested worker count, clamped to hardware.
 
     CPU: workers clamp to physical cores; cpu_threads = cores // workers so the total

@@ -5,8 +5,26 @@ from unittest.mock import patch
 from app.matcher.asr_models import (
     GPU_WORKER_CAP,
     AsrRuntime,
+    detect_asr_device,
     resolve_asr_runtime,
 )
+
+
+class TestDetectAsrDevice:
+    def test_returns_cuda_when_device_present(self):
+        with patch("app.matcher.asr_models.ctranslate2.get_cuda_device_count", return_value=1):
+            assert detect_asr_device() == "cuda"
+
+    def test_returns_cpu_when_no_device(self):
+        with patch("app.matcher.asr_models.ctranslate2.get_cuda_device_count", return_value=0):
+            assert detect_asr_device() == "cpu"
+
+    def test_returns_cpu_when_probe_raises(self):
+        with patch(
+            "app.matcher.asr_models.ctranslate2.get_cuda_device_count",
+            side_effect=RuntimeError("no cuda runtime"),
+        ):
+            assert detect_asr_device() == "cpu"
 
 
 class TestResolveAsrRuntimeCpu:
