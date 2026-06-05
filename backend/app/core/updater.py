@@ -676,8 +676,8 @@ class UpdateChecker:
             # Diagnostic context: %CD% here is the cwd we INHERITED from engram. If it
             # equals %INSTALL%, the `cd /d` below is what saves the swap (see there).
             'echo [engram-update] cwd=%CD% >> "%LOG%"',
-            "echo [engram-update] INSTALL=%INSTALL% NEWDIR=%NEWDIR% OLDDIR=%OLDDIR%"
-            ' SRC=%SRC% EXE=%EXE% >> "%LOG%"',
+            'echo [engram-update] INSTALL=%INSTALL% NEWDIR=%NEWDIR% OLDDIR=%OLDDIR% >> "%LOG%"',
+            'echo [engram-update] SRC=%SRC% EXE=%EXE% >> "%LOG%"',
             # --- wait for the parent process to exit, then let file handles release ---
             ":wait",
             f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL',
