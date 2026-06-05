@@ -100,7 +100,24 @@ jobs:
             Write-Host "engram process count: $count"
             if ($count -gt 2) { throw "too many engram processes ($count) - possible multiprocessing fork-bomb" }
             # fpcalc must be bundled and detected — the whole point of shipping it.
-            $tools = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/detect-tools" -TimeoutSec 5
+            # The endpoint shells out to ffmpeg/fpcalc subprocesses; on a fresh
+            # Windows runner the first execution of a just-extracted binary pays
+            # Defender real-time-scan + cold process-creation latency that can blow
+            # past a tight one-shot timeout (this is what flaked the v0.16.1 release).
+            # Retry with a generous per-attempt timeout — the first attempt warms the
+            # cache so a retry returns fast. The gate stays strict: it still requires
+            # fpcalc.found, it just tolerates transient first-run slowness.
+            $tools = $null
+            for ($i = 0; $i -lt 4; $i++) {
+              try {
+                $tools = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/detect-tools" -TimeoutSec 15
+                break
+              } catch {
+                Write-Host "detect-tools attempt $($i + 1) failed: $($_.Exception.Message)"
+                Start-Sleep -Seconds 2
+              }
+            }
+            if ($null -eq $tools) { throw "detect-tools never responded after 4 attempts" }
             if (-not $tools.fpcalc.found) { throw "bundled fpcalc was not detected: $($tools.fpcalc.error)" }
             Write-Host "fpcalc detected: $($tools.fpcalc.path)"
             Write-Host "smoke test passed"
@@ -108,7 +125,7 @@ jobs:
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }
 
-      - name: Verify CA bundle + TLS self-test
+      - name: Verify CA bundle + bundled fpcalc + TLS self-test
         shell: pwsh
         run: |
           # Deterministic guard: the build MUST contain certifi's CA bundle. Its
@@ -117,6 +134,13 @@ jobs:
           if (-not (Test-Path $ca)) { throw "certifi CA bundle missing from build ($ca)" }
           if ((Get-Item $ca).Length -lt 50000) { throw "certifi CA bundle suspiciously small" }
           Write-Host "certifi CA bundle present: $((Get-Item $ca).Length) bytes"
+          # Deterministic guard for the bundled fpcalc, independent of server timing
+          # (the smoke test's detect-tools probe additionally proves the frozen app
+          # can execute it). engram.spec bundles it to bin/, which is _internal/bin/
+          # in the onedir layout — the same path detect_fpcalc() resolves via _MEIPASS.
+          $fp = "backend/dist/engram/_internal/bin/fpcalc.exe"
+          if (-not (Test-Path $fp)) { throw "bundled fpcalc missing from build ($fp)" }
+          Write-Host "bundled fpcalc present: $fp"
           # Prove the frozen runtime can actually complete a TLS handshake.
           & "backend/dist/engram/engram.exe" --selftest
           if ($LASTEXITCODE -ne 0) { throw "TLS self-test failed (exit $LASTEXITCODE)" }
@@ -231,8 +255,18 @@ jobs:
             exit 1
           fi
           # fpcalc must be bundled and detected — the whole point of shipping it.
-          fpcalc_found=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/detect-tools \
-            | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])")
+          # Retry with a generous per-attempt timeout: the endpoint shells out to
+          # ffmpeg/fpcalc subprocesses and the first call can be slow on a cold
+          # runner; a retry after warmup returns fast. The gate stays strict — it
+          # still requires found=True, it just tolerates transient first-run latency.
+          fpcalc_found=""
+          for i in $(seq 1 4); do
+            fpcalc_found=$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/detect-tools \
+              | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])" 2>/dev/null) || true
+            if [ "$fpcalc_found" = "True" ]; then break; fi
+            echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', retrying"
+            sleep 2
+          done
           echo "fpcalc detected: $fpcalc_found"
           if [ "$fpcalc_found" != "True" ]; then
             echo "bundled fpcalc was not detected"
@@ -240,13 +274,18 @@ jobs:
           fi
           echo "smoke test passed"
 
-      - name: Verify CA bundle + TLS self-test
+      - name: Verify CA bundle + bundled fpcalc + TLS self-test
         run: |
           ca="backend/dist/engram/_internal/certifi/cacert.pem"
           test -f "$ca" || { echo "certifi CA bundle missing from build ($ca)"; exit 1; }
           size=$(stat -c%s "$ca")
           [ "$size" -ge 50000 ] || { echo "certifi CA bundle suspiciously small ($size)"; exit 1; }
           echo "certifi CA bundle present: $size bytes"
+          # Deterministic guard for the bundled fpcalc (_internal/bin/, the path
+          # detect_fpcalc() resolves via _MEIPASS) — independent of server timing.
+          fpc="backend/dist/engram/_internal/bin/fpcalc"
+          test -f "$fpc" || { echo "bundled fpcalc missing from build ($fpc)"; exit 1; }
+          echo "bundled fpcalc present: $fpc"
           ./backend/dist/engram/engram --selftest || { echo "TLS self-test failed"; exit 1; }
 
       - name: Generate file manifest
@@ -357,8 +396,18 @@ jobs:
             exit 1
           fi
           # fpcalc must be bundled and detected — the whole point of shipping it.
-          fpcalc_found=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/detect-tools \
-            | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])")
+          # Retry with a generous per-attempt timeout: the endpoint shells out to
+          # ffmpeg/fpcalc subprocesses and the first call can be slow on a cold
+          # runner; a retry after warmup returns fast. The gate stays strict — it
+          # still requires found=True, it just tolerates transient first-run latency.
+          fpcalc_found=""
+          for i in $(seq 1 4); do
+            fpcalc_found=$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/detect-tools \
+              | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])" 2>/dev/null) || true
+            if [ "$fpcalc_found" = "True" ]; then break; fi
+            echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', retrying"
+            sleep 2
+          done
           echo "fpcalc detected: $fpcalc_found"
           if [ "$fpcalc_found" != "True" ]; then
             echo "bundled fpcalc was not detected"
@@ -366,13 +415,18 @@ jobs:
           fi
           echo "smoke test passed"
 
-      - name: Verify CA bundle + TLS self-test
+      - name: Verify CA bundle + bundled fpcalc + TLS self-test
         run: |
           ca="backend/dist/engram/_internal/certifi/cacert.pem"
           test -f "$ca" || { echo "certifi CA bundle missing from build ($ca)"; exit 1; }
           size=$(stat -f%z "$ca")
           [ "$size" -ge 50000 ] || { echo "certifi CA bundle suspiciously small ($size)"; exit 1; }
           echo "certifi CA bundle present: $size bytes"
+          # Deterministic guard for the bundled fpcalc (_internal/bin/, the path
+          # detect_fpcalc() resolves via _MEIPASS) — independent of server timing.
+          fpc="backend/dist/engram/_internal/bin/fpcalc"
+          test -f "$fpc" || { echo "bundled fpcalc missing from build ($fpc)"; exit 1; }
+          echo "bundled fpcalc present: $fpc"
           ./backend/dist/engram/engram --selftest || { echo "TLS self-test failed"; exit 1; }
 
       - name: Generate file manifest
