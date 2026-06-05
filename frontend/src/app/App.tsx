@@ -22,6 +22,7 @@ import { buildNavItems } from "./navigation";
 import type { Job } from "../types";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { AsrStatusBadge } from "./components/AsrStatusBadge";
 import {
   Splash,
   SvAtmosphere,
@@ -241,6 +242,7 @@ function MainDashboard() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <AsrStatusBadge />
           {/* View mode toggle */}
           <div style={{ display: "inline-flex", border: `1px solid ${sv.line}` }}>
             <button
