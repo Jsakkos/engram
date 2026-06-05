@@ -70,3 +70,49 @@ class TestResolveAsrRuntimeGpu:
         assert rt.workers == 2
         assert rt.cpu_threads is None
         assert rt.compute_type == "float16"
+
+
+class TestModelConstruction:
+    """FasterWhisperModel must pass num_workers/cpu_threads and key the cache by them."""
+
+    def _fake_whisper(self):
+        """A WhisperModel stand-in that records constructor kwargs."""
+        calls = []
+
+        class FakeWhisperModel:
+            def __init__(self, model_name, **kwargs):
+                calls.append({"model_name": model_name, **kwargs})
+
+        return FakeWhisperModel, calls
+
+    def test_cpu_model_gets_num_workers_and_cpu_threads(self):
+        import app.matcher.asr_models as m
+
+        m._model_cache.clear()
+        Fake, calls = self._fake_whisper()
+        with (
+            patch("faster_whisper.WhisperModel", Fake),
+            patch("app.matcher.asr_models.psutil.cpu_count", return_value=8),
+        ):
+            model = m.FasterWhisperModel("small", device="cpu", requested_workers=4)
+            model.load()
+        assert calls[0]["num_workers"] == 4
+        assert calls[0]["cpu_threads"] == 2  # 8 // 4
+
+    def test_cache_key_varies_by_requested_workers(self):
+        import app.matcher.asr_models as m
+
+        m._model_cache.clear()
+        Fake, calls = self._fake_whisper()
+        with (
+            patch("faster_whisper.WhisperModel", Fake),
+            patch("app.matcher.asr_models.psutil.cpu_count", return_value=8),
+        ):
+            m.get_cached_model(
+                {"type": "whisper", "name": "small", "device": "cpu", "requested_workers": 2}
+            )
+            m.get_cached_model(
+                {"type": "whisper", "name": "small", "device": "cpu", "requested_workers": 4}
+            )
+        # Two distinct worker counts -> two distinct constructions, not a stale reuse.
+        assert len(calls) == 2

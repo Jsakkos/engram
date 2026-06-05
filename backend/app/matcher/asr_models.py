@@ -169,16 +169,22 @@ class FasterWhisperModel(ASRModel):
         "large-v3": {"params": "1550M", "vram": "~10GB", "speed": "slowest"},
     }
 
-    def __init__(self, model_name: str = "small", device: str | None = None):
+    def __init__(
+        self, model_name: str = "small", device: str | None = None, requested_workers: int = 1
+    ):
         """
         Initialize Faster Whisper model.
 
         Args:
             model_name: Whisper model size (tiny, base, small, medium, large-v3)
             device: Device to run on ('cpu', 'cuda', or None for auto-detect)
+            requested_workers: Desired parallel ASR workers; resolve_asr_runtime
+                clamps this to hardware at load time.
         """
         if model_name.startswith("openai/whisper-"):
             model_name = model_name.replace("openai/whisper-", "")
+
+        self.requested_workers = max(1, int(requested_workers or 1))
 
         # Ensure NVIDIA libraries are in PATH for Windows CUDA support
         if device == "cuda" or (device is None and ctranslate2.get_cuda_device_count() > 0):
@@ -200,7 +206,11 @@ class FasterWhisperModel(ASRModel):
         if self.is_loaded:
             return
 
-        cache_key = f"faster_whisper_{self.model_name}_{self.device}"
+        runtime = resolve_asr_runtime(self.device, self.requested_workers)
+        cache_key = (
+            f"faster_whisper_{self.model_name}_{self.device}"
+            f"_w{runtime.workers}_t{runtime.cpu_threads}"
+        )
 
         if cache_key in _model_cache:
             self._model = _model_cache[cache_key]
@@ -218,12 +228,15 @@ class FasterWhisperModel(ASRModel):
             )
 
             try:
-                self._model = WhisperModel(
-                    self.model_name,
-                    device=self.device,
-                    compute_type=compute_type,
-                    download_root=None,  # Use default cache location
-                )
+                _kwargs = {
+                    "device": self.device,
+                    "compute_type": compute_type,
+                    "download_root": None,  # Use default cache location
+                    "num_workers": runtime.workers,
+                }
+                if runtime.cpu_threads is not None:
+                    _kwargs["cpu_threads"] = runtime.cpu_threads
+                self._model = WhisperModel(self.model_name, **_kwargs)
 
                 # Eagerly transcribe 1s of silence to surface missing CUDA
                 # DLL errors here instead of on the first real transcription.
@@ -248,11 +261,14 @@ class FasterWhisperModel(ASRModel):
                     )
                     self.device = "cpu"
                     compute_type = "int8"
+                    cpu_runtime = resolve_asr_runtime("cpu", self.requested_workers)
                     self._model = WhisperModel(
                         self.model_name,
                         device=self.device,
                         compute_type=compute_type,
                         download_root=None,
+                        num_workers=cpu_runtime.workers,
+                        cpu_threads=cpu_runtime.cpu_threads,
                     )
                 else:
                     raise
@@ -423,6 +439,7 @@ def create_asr_model(model_config: dict) -> ASRModel:
     model_type = model_config.get("type", "").lower()
     model_name = model_config.get("name", "")
     device = model_config.get("device")
+    requested_workers = model_config.get("requested_workers", 1)
 
     # Handle whisper and faster-whisper types
     if model_type in ("whisper", "faster-whisper", "openai-whisper"):
@@ -430,14 +447,14 @@ def create_asr_model(model_config: dict) -> ASRModel:
             model_name = "small"
 
         logger.info(f"Creating Faster Whisper model: {model_name}")
-        return FasterWhisperModel(model_name, device)
+        return FasterWhisperModel(model_name, device, requested_workers=requested_workers)
 
     # Legacy parakeet support - redirect to whisper
     elif model_type == "parakeet":
         logger.warning(
             "Parakeet models are no longer supported. Using Whisper 'small' model instead."
         )
-        return FasterWhisperModel("small", device)
+        return FasterWhisperModel("small", device, requested_workers=requested_workers)
 
     else:
         raise ValueError(
@@ -455,7 +472,10 @@ def get_cached_model(model_config: dict) -> ASRModel:
     Returns:
         ASRModel instance (loaded and ready for use)
     """
-    cache_key = f"{model_config.get('type', '')}_{model_config.get('name', '')}_{model_config.get('device', 'auto')}"
+    cache_key = (
+        f"{model_config.get('type', '')}_{model_config.get('name', '')}"
+        f"_{model_config.get('device', 'auto')}_w{model_config.get('requested_workers', 1)}"
+    )
 
     if cache_key not in _model_cache:
         model = create_asr_model(model_config)
