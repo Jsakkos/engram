@@ -103,6 +103,7 @@ class EpisodeCurator:
                 cache_dir=self._cache_dir,
                 show_name=canonical_name,
                 min_confidence=self.LOW_CONFIDENCE_THRESHOLD,
+                requested_workers=(config.max_concurrent_matches if config else 1),
                 expected_tmdb_id=tmdb_id,
             )
             self._initialized = True
