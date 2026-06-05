@@ -108,6 +108,40 @@ async def complete_json(
         return None
 
 
+def _to_gemini_schema(schema):
+    """Translate a standard JSON Schema into Gemini's OpenAPI-subset dialect.
+
+    Gemini's ``responseSchema`` is Protobuf-backed and accepts only a single
+    scalar ``type`` plus a separate ``nullable`` flag. A JSON-Schema union such
+    as ``type: ["object", "null"]`` is rejected with HTTP 400 ("Proto field is
+    not repeating, cannot start list"), which silently disables *all* Gemini
+    structured-output calls. This rewrites union types to ``type: <T>`` +
+    ``nullable: True`` and recurses through ``properties``/``items`` so nested
+    shapes are converted too. Returns a new object; the caller's schema is left
+    unmutated (it is shared with other providers).
+    """
+    if isinstance(schema, list):
+        return [_to_gemini_schema(s) for s in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    out: dict = {}
+    for key, value in schema.items():
+        if key == "type" and isinstance(value, list):
+            non_null = [t for t in value if t != "null"]
+            if "null" in value:
+                out["nullable"] = True
+            # Gemini takes a single type; keep the first concrete one.
+            out["type"] = non_null[0] if non_null else "null"
+        elif key == "properties" and isinstance(value, dict):
+            out["properties"] = {k: _to_gemini_schema(v) for k, v in value.items()}
+        elif key == "items":
+            out["items"] = _to_gemini_schema(value)
+        else:
+            out[key] = value
+    return out
+
+
 def _parse_json_text(text: str) -> dict | None:
     """Parse JSON, tolerating ```json fences and surrounding whitespace."""
     text = text.strip()
@@ -195,7 +229,7 @@ async def _call_gemini(
         "temperature": 0,
     }
     if schema is not None:
-        generation_config["responseSchema"] = schema
+        generation_config["responseSchema"] = _to_gemini_schema(schema)
 
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
