@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Restart to update" now actually applies the update on Windows** — the crash-safe swap added in 0.15.3 (copy aside, verify, atomic rename, roll back) was correct, but it never ran to completion: the helper that performs the swap was launched with your install folder as its working directory, and Windows won't rename a folder while it's any program's current directory. So the very first rename failed, the updater rolled back, and you were left on the old version with no visible error — every time. The helper now moves to a neutral working directory before the swap (and is spawned from one), so the rename succeeds and the new build is installed. The `~/.engram/update_helper.log` now also records the helper's working directory and each step's exit code, so any remaining edge case is diagnosable from a single log. (#338)
+
 ## [0.16.0] - 2026-06-05
 
 _Highlights: episode matching now transcribes multiple tracks in parallel — the **Max Concurrent Matches** setting finally drives real concurrency (auto-clamped to your CPU or GPU), with a live ASR backend badge on the dashboard, and the "Matching" count is now honest about which tracks are genuinely transcribing._

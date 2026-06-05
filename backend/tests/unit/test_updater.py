@@ -636,6 +636,43 @@ class TestSpawnDetachedHelper:
         assert flags_seen[0] & breakaway  # tried with breakaway
         assert not (flags_seen[1] & breakaway)  # then fell back without
 
+    def test_spawns_with_neutral_cwd(self, monkeypatch):
+        """Helper must be spawned with an explicit cwd OFF the install dir.
+
+        Regression (confirmed in an isolated swap harness): Popen was called with no
+        ``cwd=``, so the detached ``cmd /c bat`` inherited engram's working directory —
+        the install dir for a double-clicked onedir exe. A process whose cwd is a
+        directory holds an open handle on it, so the helper's own ``move install -> .old``
+        failed with "being used by another process" and every restart silently rolled
+        back. The spawn must pin a neutral, existing cwd.
+        """
+        seen = []
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *a, **kw: seen.append(kw.get("cwd")) or MagicMock()
+        )
+        UpdateChecker._spawn_detached_helper(["cmd", "/c", "x.bat"])
+
+        assert seen, "Popen was never called"
+        assert seen[0] is not None, "helper spawned with no cwd — inherits the install dir"
+        assert Path(seen[0]).is_dir()
+
+    def test_fallback_spawn_also_gets_neutral_cwd(self, monkeypatch):
+        """The plain-detached fallback path must also pin the neutral cwd."""
+        breakaway = self._breakaway_flag()
+        seen = []
+
+        def fake_popen(*a, **kw):
+            seen.append(kw.get("cwd"))
+            if kw.get("creationflags", 0) & breakaway:
+                raise OSError("Access is denied")
+            return MagicMock()
+
+        monkeypatch.setattr(subprocess, "Popen", fake_popen)
+        UpdateChecker._spawn_detached_helper(["cmd", "/c", "x.bat"])
+
+        assert len(seen) == 2
+        assert all(c is not None and Path(c).is_dir() for c in seen)
+
 
 # Representative real-world paths: the user runs out of a parens'd Downloads folder
 # and staging lives under ~/.engram on a (possibly) different volume.
@@ -695,7 +732,9 @@ class TestRenderUpdateBat:
 
     def test_checks_exit_codes(self):
         bat = self._bat()
-        assert "if %ERRORLEVEL% GEQ 8 goto fail" in bat  # robocopy: success is < 8
+        # robocopy's exit is captured first (echo resets ERRORLEVEL) then gated; success
+        # is < 8. The gate may read the captured var rather than %ERRORLEVEL% directly.
+        assert "GEQ 8 goto fail" in bat
         assert bat.count("if errorlevel 1") >= 2  # one per move
 
     def test_rollback_restores_previous_install(self):
@@ -728,6 +767,34 @@ class TestRenderUpdateBat:
     def test_preserves_parens_in_paths(self):
         bat = self._bat()
         assert r'set "INSTALL=C:\Users\jonat\Downloads\engram-windows-x64(8)\engram"' in bat
+
+    def test_changes_cwd_off_install_before_swap(self):
+        """The helper must cd off the install dir before the swap renames.
+
+        Regression (reproduced in an isolated swap harness): the detached helper
+        inherited engram's cwd (the install dir). A directory that is any process's
+        current directory can't be renamed, so ``move install -> .old`` failed and the
+        update silently rolled back on every attempt. Changing the helper's own cwd to a
+        neutral dir releases that handle. Must occur before the first ``move``.
+        """
+        bat = self._bat()
+        assert 'cd /d "%TEMP%"' in bat
+        assert bat.index('cd /d "%TEMP%"') < bat.index('move "%INSTALL%" "%OLDDIR%"')
+
+    def test_logs_diagnostic_context_before_swap(self):
+        """The helper echoes its cwd + key paths so a field failure is diagnosable
+        from update_helper.log alone (the capability that was missing every prior time)."""
+        bat = self._bat()
+        assert "%CD%" in bat  # the resolved working directory
+        assert "%INSTALL%" in bat
+        # robocopy's real exit code is recorded before the GEQ-8 gate
+        assert "%ERRORLEVEL%" in bat
+
+    def test_emits_done_marker_on_terminal_paths(self):
+        """Every terminal branch writes a final marker, so a log that stops mid-step is
+        distinguishable from a clean (if failed) finish."""
+        bat = self._bat()
+        assert "[engram-update] done" in bat
 
 
 class TestRestartWindowsWiring:

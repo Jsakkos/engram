@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 from enum import StrEnum
 from pathlib import Path
@@ -619,7 +620,11 @@ class UpdateChecker:
         with open(bat_path, "w", newline="\r\n") as f:
             f.write(bat_content)
 
+        # Log where the helper will write its own log, plus the resolved home, so a
+        # support case can reconcile "no update_helper.log" against where it actually
+        # looked (HOME/USERPROFILE drift is a known way the file appears "missing").
         logger.info(f"Launching update helper: {bat_path}")
+        logger.info(f"Update helper log -> {log_path} (home={Path.home()})")
         self._spawn_detached_helper(["cmd", "/c", str(bat_path)])
         os._exit(0)  # Hard exit: avoids asyncio catching SystemExit
 
@@ -668,6 +673,11 @@ class UpdateChecker:
             f'set "LOG={log_path}"',
             f'set "EXE=%INSTALL%\\{exe}"',
             f'echo [engram-update] start (pid {pid}) > "%LOG%"',
+            # Diagnostic context: %CD% here is the cwd we INHERITED from engram. If it
+            # equals %INSTALL%, the `cd /d` below is what saves the swap (see there).
+            'echo [engram-update] cwd=%CD% >> "%LOG%"',
+            "echo [engram-update] INSTALL=%INSTALL% NEWDIR=%NEWDIR% OLDDIR=%OLDDIR%"
+            ' SRC=%SRC% EXE=%EXE% >> "%LOG%"',
             # --- wait for the parent process to exit, then let file handles release ---
             ":wait",
             f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL',
@@ -678,11 +688,24 @@ class UpdateChecker:
             'echo [engram-update] process exited; waiting for handles >> "%LOG%"',
             "ping -n 3 127.0.0.1 >nul",
             "ping -n 3 127.0.0.1 >nul",
+            # Move our OWN working directory off the install dir before the swap. A
+            # detached helper inherits the parent engram process's cwd, which for a
+            # double-clicked onedir exe is the install dir. A directory that is any
+            # process's current directory cannot be renamed, so without this the
+            # `move "%INSTALL%"` below fails with "being used by another process" and
+            # every restart silently rolls back (confirmed in an isolated swap harness).
+            # %TEMP% is guaranteed valid — this bat lives there.
+            'cd /d "%TEMP%"',
+            'echo [engram-update] cwd(after cd)=%CD% >> "%LOG%"',
             # --- copy staged build to a sibling of the install (never in place) ---
             'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
             'echo [engram-update] robocopy "%SRC%" to "%NEWDIR%" >> "%LOG%"',
             'robocopy "%SRC%" "%NEWDIR%" /MIR /R:3 /W:2 /NP /NFL /NDL >> "%LOG%" 2>&1',
-            "if %ERRORLEVEL% GEQ 8 goto fail",
+            # Capture robocopy's exit BEFORE any other command (echo resets ERRORLEVEL),
+            # then both log and gate on the captured value. Success is < 8.
+            "set RC=%ERRORLEVEL%",
+            'echo [engram-update] robocopy exit=%RC% >> "%LOG%"',
+            "if %RC% GEQ 8 goto fail",
             # --- verify the copied tree before touching the live install ---
             'if not exist "%NEWDIR%\\engram.exe" goto fail',
             'if not exist "%NEWDIR%\\_internal\\base_library.zip" goto fail',
@@ -696,9 +719,11 @@ class UpdateChecker:
             "if errorlevel 1 goto fail_no_swap",
             'move "%NEWDIR%" "%INSTALL%" >> "%LOG%" 2>&1',
             "if errorlevel 1 goto restore_old",
-            # --- success ---
+            # --- success --- relaunch with cwd pinned to the (new) install dir, exactly
+            # as a double-click would, so nothing depends on the helper's %TEMP% cwd.
             'echo [engram-update] success; relaunching >> "%LOG%"',
-            'start "" "%EXE%"',
+            'start "" /D "%INSTALL%" "%EXE%"',
+            'echo [engram-update] done (success) >> "%LOG%"',
             'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
             '(goto) 2>nul & del "%~f0"',  # exit batch context, then delete self (idiom)
             # --- rollback paths (bat is NOT deleted — left with the log for diagnosis) ---
@@ -716,7 +741,8 @@ class UpdateChecker:
             "goto relaunch_old",
             ":relaunch_old",
             'echo [engram-update] rolled back to previous install >> "%LOG%"',
-            'start "" "%EXE%"',
+            'start "" /D "%INSTALL%" "%EXE%"',
+            'echo [engram-update] done (rolled back) >> "%LOG%"',
             "endlocal",
         ]
         return "\n".join(lines) + "\n"
@@ -736,11 +762,19 @@ class UpdateChecker:
         new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
         breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
         base = detached | new_group
+        # Pin a neutral working directory. Without an explicit cwd the detached helper
+        # inherits engram's cwd — the install dir for a double-clicked onedir exe — and a
+        # process whose cwd is a directory holds an open handle that blocks renaming it,
+        # so the helper's own `move install -> .old` fails and the swap silently rolls
+        # back. The bat also `cd /d "%TEMP%"`s for defense in depth.
+        safe_cwd = tempfile.gettempdir()
         try:
-            subprocess.Popen(args, shell=False, close_fds=True, creationflags=base | breakaway)
+            subprocess.Popen(
+                args, shell=False, close_fds=True, cwd=safe_cwd, creationflags=base | breakaway
+            )
         except OSError as exc:
             logger.warning(f"Update helper breakaway spawn failed ({exc}); retrying detached")
-            subprocess.Popen(args, shell=False, close_fds=True, creationflags=base)
+            subprocess.Popen(args, shell=False, close_fds=True, cwd=safe_cwd, creationflags=base)
 
     async def _broadcast(self) -> None:
         """Push current update state to all WebSocket clients."""
