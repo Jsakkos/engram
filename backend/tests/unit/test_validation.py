@@ -1015,6 +1015,170 @@ class TestValidateFfmpegEndpoint:
         assert result.error == "FFmpeg command timeout (10s)"
 
 
+class TestDetectToolsVersionProbeBudget:
+    """detect-tools probes MakeMKV's version on a short budget; the interactive
+    validate path keeps the full budget.
+
+    The version probe runs ``makemkvcon -r info disc:99999``, which enumerates
+    optical drives and can block for many seconds on a slow/busy drive. The
+    found+path answer never depends on it, so detect-tools must not pay the full
+    20s for a cosmetic version string.
+    """
+
+    @staticmethod
+    def _capture_probe_timeout():
+        """Stub subprocess.run, recording the timeout handed to the -r probe."""
+        seen: dict[str, float | None] = {}
+
+        def fake_run(cmd, **kwargs):
+            m = MagicMock()
+            m.returncode = 1
+            m.stderr = ""
+            if "-r" in cmd:  # the drive-enumerating version probe
+                seen["probe_timeout"] = kwargs.get("timeout")
+                m.stdout = (
+                    'MSG:1005,0,1,"MakeMKV v1.18.3 win(x64-release) started",'
+                    '"%1 started","MakeMKV v1.18.3 win(x64-release)"'
+                )
+            else:  # the fast no-arg validity check
+                m.stdout = "Use: makemkvcon [switches] Command [Parameters]"
+            return m
+
+        return seen, fake_run
+
+    def test_detect_makemkv_uses_short_probe_timeout(self):
+        """The auto-detect path (only caller is detect-tools) probes on the short budget."""
+        from app.api import validation
+        from app.api.validation import detect_makemkv
+
+        seen, fake_run = self._capture_probe_timeout()
+        with (
+            patch.object(validation.shutil, "which", return_value="/usr/bin/makemkvcon64"),
+            patch("app.api.validation.subprocess.run", side_effect=fake_run),
+        ):
+            result = detect_makemkv()
+
+        # Found + path + version still resolve when the drive responds quickly...
+        assert result.found is True
+        assert result.path == "/usr/bin/makemkvcon64"
+        assert result.version == "MakeMKV v1.18.3 win(x64-release)"
+        # ...but the drive-enumerating probe got the short detect-tools budget, not 20s.
+        assert seen["probe_timeout"] == validation._DETECT_VERSION_PROBE_TIMEOUT_S
+        assert seen["probe_timeout"] < validation._VERSION_PROBE_TIMEOUT_S
+
+    def test_validate_binary_default_keeps_full_probe_timeout(self):
+        """The interactive /validate/makemkv path keeps the full version-probe budget."""
+        from app.api import validation
+        from app.api.validation import _validate_makemkv_binary
+
+        seen, fake_run = self._capture_probe_timeout()
+        with patch("app.api.validation.subprocess.run", side_effect=fake_run):
+            result = _validate_makemkv_binary("C:/MakeMKV/makemkvcon64.exe")
+
+        assert result.found is True
+        assert seen["probe_timeout"] == validation._VERSION_PROBE_TIMEOUT_S
+
+
+class TestDetectToolsDeadline:
+    """A slow MakeMKV detector (busy optical drive) must not gate the response."""
+
+    def test_slow_makemkv_does_not_delay_ffmpeg_and_fpcalc(self):
+        """detect-tools caps MakeMKV with a per-detector deadline, so its
+        drive-enumerating probe can't stall the ffmpeg/fpcalc results."""
+        import asyncio
+        import threading
+        import time
+
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult, detect_tools
+
+        release = threading.Event()
+
+        def stuck_makemkv() -> ToolDetectionResult:
+            # Simulate a busy optical drive: blocks well past the deadline.
+            release.wait(timeout=10)
+            return ToolDetectionResult(found=True, path="m", version="MakeMKV v1.18.3")
+
+        def fast_ffmpeg() -> ToolDetectionResult:
+            return ToolDetectionResult(found=True, path="f", version="ffmpeg 6.0")
+
+        def fast_fpcalc() -> ToolDetectionResult:
+            return ToolDetectionResult(found=True, path="fp", version="fpcalc 1.5.1")
+
+        async def drive():
+            start = time.monotonic()
+            result = await detect_tools()
+            elapsed = time.monotonic() - start
+            release.set()  # unblock the orphaned probe thread so teardown is prompt
+            return result, elapsed
+
+        with (
+            patch.object(validation, "_MAKEMKV_DETECT_DEADLINE_S", 0.2),
+            patch.object(validation, "detect_makemkv", stuck_makemkv),
+            patch.object(validation, "detect_ffmpeg", fast_ffmpeg),
+            patch.object(validation, "detect_fpcalc", fast_fpcalc),
+        ):
+            result, elapsed = asyncio.run(drive())
+
+        # ffmpeg + fpcalc came back intact; the stuck MakeMKV probe never gated them.
+        assert result.ffmpeg.found is True
+        assert result.ffmpeg.version == "ffmpeg 6.0"
+        assert result.fpcalc.found is True
+        assert result.fpcalc.version == "fpcalc 1.5.1"
+        # MakeMKV hit its deadline -> degraded result, not a multi-second hang.
+        assert result.makemkv.found is False
+        assert "timed out" in (result.makemkv.error or "").lower()
+        # The response landed near the 0.2s deadline, nowhere near the 10s block.
+        assert elapsed < 2.0
+
+    def test_orphaned_makemkv_exception_is_traced_not_swallowed(self, caplog):
+        """If the over-deadline detector later raises, the error is logged at debug
+        rather than vanishing — detectors normally catch their own errors, so this
+        backstop path shouldn't be silent."""
+        import asyncio
+        import logging
+        import threading
+
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult, detect_tools
+
+        release = threading.Event()
+
+        def stuck_then_raise() -> ToolDetectionResult:
+            release.wait(timeout=10)
+            raise RuntimeError("drive exploded")
+
+        def fast_ffmpeg() -> ToolDetectionResult:
+            return ToolDetectionResult(found=True, path="f", version="ffmpeg 6.0")
+
+        def fast_fpcalc() -> ToolDetectionResult:
+            return ToolDetectionResult(found=True, path="fp", version="fpcalc 1.5.1")
+
+        async def drive():
+            result = await detect_tools()
+            release.set()  # let the orphaned detector finish (and raise)
+            await asyncio.sleep(0.3)  # let its done-callback run before teardown
+            return result
+
+        with (
+            caplog.at_level(logging.DEBUG, logger="app.api.validation"),
+            patch.object(validation, "_MAKEMKV_DETECT_DEADLINE_S", 0.2),
+            patch.object(validation, "detect_makemkv", stuck_then_raise),
+            patch.object(validation, "detect_ffmpeg", fast_ffmpeg),
+            patch.object(validation, "detect_fpcalc", fast_fpcalc),
+        ):
+            result = asyncio.run(drive())
+
+        # The endpoint still returned the degraded result for the timed-out detector...
+        assert result.makemkv.found is False
+        assert "timed out" in (result.makemkv.error or "").lower()
+        # ...and the orphan's late exception was traced, not silently discarded.
+        assert any(
+            "orphaned detector finished with error" in m and "drive exploded" in m
+            for m in caplog.messages
+        )
+
+
 class TestTmdbValidationRemainingBranches:
     """The status/timeout/generic-exception branches not covered elsewhere."""
 
