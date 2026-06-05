@@ -5,7 +5,10 @@ from unittest.mock import patch
 from app.matcher.asr_models import (
     GPU_WORKER_CAP,
     AsrRuntime,
+    FasterWhisperModel,
+    _model_cache,
     detect_asr_device,
+    get_cached_model,
     resolve_asr_runtime,
 )
 
@@ -90,47 +93,41 @@ class TestModelConstruction:
         return FakeWhisperModel, calls
 
     def test_cpu_model_gets_num_workers_and_cpu_threads(self):
-        import app.matcher.asr_models as m
-
-        m._model_cache.clear()
+        _model_cache.clear()
         Fake, calls = self._fake_whisper()
         with (
             patch("faster_whisper.WhisperModel", Fake),
             patch("app.matcher.asr_models.psutil.cpu_count", return_value=8),
         ):
-            model = m.FasterWhisperModel("small", device="cpu", requested_workers=4)
+            model = FasterWhisperModel("small", device="cpu", requested_workers=4)
             model.load()
         assert calls[0]["num_workers"] == 4
         assert calls[0]["cpu_threads"] == 2  # 8 // 4
 
     def test_cache_key_varies_by_requested_workers(self):
-        import app.matcher.asr_models as m
-
-        m._model_cache.clear()
+        _model_cache.clear()
         Fake, calls = self._fake_whisper()
         with (
             patch("faster_whisper.WhisperModel", Fake),
             patch("app.matcher.asr_models.psutil.cpu_count", return_value=8),
         ):
-            m.get_cached_model(
+            get_cached_model(
                 {"type": "whisper", "name": "small", "device": "cpu", "requested_workers": 2}
             )
-            m.get_cached_model(
+            get_cached_model(
                 {"type": "whisper", "name": "small", "device": "cpu", "requested_workers": 4}
             )
         # Two distinct worker counts -> two distinct constructions, not a stale reuse.
         assert len(calls) == 2
 
     def test_gpu_model_passes_workers_and_omits_cpu_threads(self):
-        import app.matcher.asr_models as m
-
-        m._model_cache.clear()
+        _model_cache.clear()
         Fake, calls = self._fake_whisper()
         with (
             patch("faster_whisper.WhisperModel", Fake),
             patch("app.matcher.asr_models.ctranslate2.get_cuda_device_count", return_value=1),
         ):
-            model = m.FasterWhisperModel("small", device="cuda", requested_workers=3)
+            model = FasterWhisperModel("small", device="cuda", requested_workers=3)
             model.load()
         assert calls[0]["num_workers"] == 3
         assert "cpu_threads" not in calls[0]  # GPU path must not pass cpu_threads
