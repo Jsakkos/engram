@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tool detection no longer hangs the Settings/first-run screen on a busy optical drive** — the "Detect tools" check (which runs on the dashboard and in the Config Wizard) read MakeMKV's version by briefly spinning up the drive, and on a slow or busy drive that probe could block the whole check for up to ~20 seconds — so FFmpeg and fpcalc, which were already detected, sat waiting on it before anything showed up. MakeMKV is now reported as found (with its path) without waiting on the slow version read, the version probe is given a short budget and degrades to "version probe timed out" instead of stalling, and a hard per-tool deadline guarantees one slow tool can never gate the others. Server startup and the diagnostics report get the same short budget, so neither stalls on a busy drive either.
+
 ## [0.16.1] - 2026-06-05
 
 _Highlights: a fixes-only release — "Restart to update" on Windows now runs to completion and actually installs the update, and importing a TV-season folder with a generic label (like `Season 3`) now resolves the show and matches its episodes instead of dropping the whole season into Needs Review._

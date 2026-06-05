@@ -152,6 +152,22 @@ def _iter_winget_ffmpeg_paths() -> list[str]:
 _VERSION_NOT_DETECTABLE = "MakeMKV (version not detectable)"
 _VERSION_PROBE_TIMEOUT = "MakeMKV (version probe timed out)"
 
+# The MakeMKV version probe runs `makemkvcon -r info disc:99999`, which enumerates
+# optical drives and can block for many seconds on a slow or busy drive.
+#   * The interactive /validate/makemkv endpoint can afford the full wait.
+#   * detect-tools fires on dashboard/Config-Wizard load, so it uses a short
+#     budget — found+path never depends on the version string, so a stuck drive
+#     shouldn't stall the page. A timed-out probe degrades to _VERSION_PROBE_TIMEOUT.
+_VERSION_PROBE_TIMEOUT_S = 20.0
+_DETECT_VERSION_PROBE_TIMEOUT_S = 3.0
+
+# Hard wall-clock cap on the whole MakeMKV detector inside detect-tools. The short
+# probe budget above handles the common slow-drive case; this is the backstop so
+# anything else hanging in detect_makemkv (e.g. the no-arg validity call) still
+# can't gate the ffmpeg/fpcalc results. Comfortably above the probe budget so a
+# healthy-but-unhurried drive isn't cut off.
+_MAKEMKV_DETECT_DEADLINE_S = 8.0
+
 # Robot mode (-r) prints a startup banner naming the version, e.g.
 #   MSG:1005,0,1,"MakeMKV v1.18.3 win(x64-release) started",...
 # Capture "MakeMKV v1.18.3 win(x64-release)" — product, semantic version, and the
@@ -175,14 +191,16 @@ def _extract_makemkv_version(output: str) -> str:
     return _VERSION_NOT_DETECTABLE
 
 
-def _probe_makemkv_version(path_str: str) -> str:
+def _probe_makemkv_version(path_str: str, *, timeout: float = _VERSION_PROBE_TIMEOUT_S) -> str:
     """Best-effort version read via robot mode.
 
     Running with no arguments only prints usage text (no version), so the version
     comes from the robot-mode (-r) startup banner. Robot mode enumerates optical
     drives, so this is kept separate from the binary validity check and never
     blocks detection on a slow or busy drive. The out-of-range ``disc:99999``
-    index can't open a real disc — it just triggers the banner.
+    index can't open a real disc — it just triggers the banner. ``timeout`` bounds
+    that drive enumeration: callers on a latency-sensitive path (detect-tools)
+    pass a short budget; the interactive validate endpoint takes the default.
     """
     # Refuse to launch anything that isn't a MakeMKV executable, so a
     # user-supplied config path can't coerce this into running an arbitrary
@@ -193,13 +211,13 @@ def _probe_makemkv_version(path_str: str) -> str:
         result = subprocess.run(
             [path_str, "-r", "info", "disc:99999"],
             capture_output=True,
-            timeout=20,
+            timeout=timeout,
             text=True,
         )
     except subprocess.TimeoutExpired:
         # Distinct from "not detectable" so operators can tell a slow/busy drive
         # apart from a binary that simply never emitted a parseable version.
-        logger.warning("MakeMKV version probe timed out (20s)")
+        logger.warning("MakeMKV version probe timed out (%.0fs)", timeout)
         return _VERSION_PROBE_TIMEOUT
     except Exception as e:
         logger.debug(f"MakeMKV version probe failed: {e}")
@@ -207,8 +225,15 @@ def _probe_makemkv_version(path_str: str) -> str:
     return _extract_makemkv_version(result.stdout + result.stderr)
 
 
-def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
-    """Validate a MakeMKV binary and extract version info."""
+def _validate_makemkv_binary(
+    path_str: str, *, version_probe_timeout: float = _VERSION_PROBE_TIMEOUT_S
+) -> ToolDetectionResult:
+    """Validate a MakeMKV binary and extract version info.
+
+    ``version_probe_timeout`` bounds only the drive-enumerating version probe,
+    not the fast no-arg validity check — so found+path is returned regardless of
+    how slow the optical drive is. detect-tools passes a short budget here.
+    """
     # Self-guard the subprocess sink: never execute a path whose basename isn't
     # a known MakeMKV executable, independent of the caller (py/command-line-injection).
     if not executable_basename_allowed(path_str, _MAKEMKV_EXE_NAMES):
@@ -231,7 +256,11 @@ def _validate_makemkv_binary(path_str: str) -> ToolDetectionResult:
 
     # Probe is decoupled from the validity check above: it self-catches all its
     # own errors, so its subprocess lifetime never interacts with this try block.
-    return ToolDetectionResult(found=True, path=path_str, version=_probe_makemkv_version(path_str))
+    return ToolDetectionResult(
+        found=True,
+        path=path_str,
+        version=_probe_makemkv_version(path_str, timeout=version_probe_timeout),
+    )
 
 
 def _validate_ffmpeg_binary(path_str: str) -> ToolDetectionResult:
@@ -364,14 +393,24 @@ def detect_fpcalc() -> ToolDetectionResult:
     )
 
 
-def detect_makemkv() -> ToolDetectionResult:
-    """Auto-detect MakeMKV by searching PATH then common install locations."""
+def detect_makemkv(
+    *, version_probe_timeout: float = _DETECT_VERSION_PROBE_TIMEOUT_S
+) -> ToolDetectionResult:
+    """Auto-detect MakeMKV by searching PATH then common install locations.
+
+    The version probe defaults to the short budget because every caller is
+    latency-sensitive and uses the version only cosmetically: detect-tools (on
+    page load), lifespan startup (blocks the server coming up), and the
+    diagnostics report. found+path is the load-bearing result and never depends
+    on the probe, so a busy drive degrades the version to _VERSION_PROBE_TIMEOUT
+    rather than stalling the caller.
+    """
     # 1. Check system PATH
     for name in ("makemkvcon64", "makemkvcon"):
         found = shutil.which(name)
         if found:
             logger.info(f"Found MakeMKV on PATH: {found}")
-            result = _validate_makemkv_binary(found)
+            result = _validate_makemkv_binary(found, version_probe_timeout=version_probe_timeout)
             if result.found:
                 return result
 
@@ -379,7 +418,7 @@ def detect_makemkv() -> ToolDetectionResult:
     for path_str in _get_makemkv_search_paths():
         if Path(path_str).is_file():
             logger.info(f"Found MakeMKV at: {path_str}")
-            result = _validate_makemkv_binary(path_str)
+            result = _validate_makemkv_binary(path_str, version_probe_timeout=version_probe_timeout)
             if result.found:
                 return result
 
@@ -409,13 +448,51 @@ def detect_ffmpeg() -> ToolDetectionResult:
     return ToolDetectionResult(found=False, error="FFmpeg not found")
 
 
+async def _detect_within_deadline(
+    detector,
+    *,
+    deadline: float,
+    on_timeout: ToolDetectionResult,
+    label: str,
+) -> ToolDetectionResult:
+    """Run a blocking detector off the event loop under a wall-clock deadline.
+
+    Bounds a single detector so a slow tool can't gate /detect-tools. A blocking
+    subprocess can't be interrupted, so ``asyncio.wait`` is used to *return at*
+    the deadline without cancelling — the over-deadline worker thread is left to
+    finish and its result discarded, and ``on_timeout`` is returned in its place.
+    """
+    task = asyncio.ensure_future(asyncio.to_thread(detector))
+    done, _pending = await asyncio.wait({task}, timeout=deadline)
+    if task in done:
+        return task.result()
+    logger.warning(
+        "%s detection exceeded its %.1fs deadline; returning degraded result", label, deadline
+    )
+    # Retrieve the eventual result/exception when the orphaned probe finishes so a
+    # late failure isn't logged as "exception never retrieved"; the value is dropped.
+    task.add_done_callback(lambda t: t.cancelled() or t.exception())
+    return on_timeout
+
+
 @router.get("/detect-tools", response_model=DetectToolsResponse)
 async def detect_tools() -> DetectToolsResponse:
-    """Auto-detect MakeMKV, FFmpeg, and fpcalc installations."""
-    # Detection shells out to the tools (blocking, multi-second on slow/busy
-    # drives), so run it off the event loop to avoid stalling other requests.
+    """Auto-detect MakeMKV, FFmpeg, and fpcalc installations.
+
+    Detection shells out to the tools (blocking), so each detector runs off the
+    event loop. MakeMKV is additionally bounded by a deadline: its version probe
+    enumerates optical drives and can block for seconds on a busy drive, so it
+    must never gate the quick ffmpeg/fpcalc ``-version`` results.
+    """
     makemkv, ffmpeg, fpcalc = await asyncio.gather(
-        asyncio.to_thread(detect_makemkv),
+        _detect_within_deadline(
+            detect_makemkv,
+            deadline=_MAKEMKV_DETECT_DEADLINE_S,
+            on_timeout=ToolDetectionResult(
+                found=False, error="MakeMKV detection timed out (drive busy?)"
+            ),
+            label="MakeMKV",
+        ),
         asyncio.to_thread(detect_ffmpeg),
         asyncio.to_thread(detect_fpcalc),
     )
