@@ -358,3 +358,26 @@ class TestErrorHandling:
         list_resp = await client.get("/api/jobs")
         job_ids = [j["id"] for j in list_resp.json()]
         assert job.id not in job_ids
+
+
+# ---------------------------------------------------------------------------
+# ASR Status
+# ---------------------------------------------------------------------------
+
+
+class TestAsrStatusEndpoint:
+    async def test_asr_status_reports_cpu_runtime(self, client):
+        from unittest.mock import patch
+
+        with (
+            patch("app.matcher.asr_models.detect_asr_device", return_value="cpu"),
+            patch("app.matcher.asr_models.psutil.cpu_count", return_value=8),
+        ):
+            resp = await client.get("/api/asr-status")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device"] == "cpu"
+        assert body["compute_type"] == "int8"
+        assert body["workers"] >= 1
+        assert "max_concurrent_matches" in body
+        assert "model" in body

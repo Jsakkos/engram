@@ -1241,12 +1241,14 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 id="maxConcurrentMatches"
                                 type="number"
                                 min={1}
-                                max={4}
+                                max={8}
                                 value={config.maxConcurrentMatches}
-                                onChange={(e) => handleInputChange('maxConcurrentMatches', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                                onChange={(e) => handleInputChange('maxConcurrentMatches', Math.max(1, Math.min(8, parseInt(e.target.value) || 1)))}
                             />
                             <span className="form-hint">
-                                Number of episodes matched simultaneously (uses GPU for speech recognition). Lower values reduce memory usage.
+                                Requested number of episodes transcribed in parallel. Automatically
+                                clamped to your hardware (CPU cores, or a GPU limit). Takes effect
+                                after a backend restart.
                             </span>
                         </div>
 

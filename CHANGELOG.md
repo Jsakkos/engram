@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Episode matching now transcribes multiple tracks in parallel** — the dashboard could show several tracks as "Matching" at once while only one actually made progress and the CPU sat mostly idle. The speech-recognition model was running one transcription at a time no matter what, so the **Max Concurrent Matches** setting didn't really do anything. That setting now drives how many episodes are transcribed simultaneously (on CPU or GPU), automatically clamped to your hardware (CPU cores, or a GPU limit) so it can't oversubscribe and slow things down. A small **ASR badge** on the dashboard shows the active backend — e.g. `ASR: CUDA · float16 · 4w` or `ASR: CPU · int8 · 8w`. (#336)
+
+### Changed
+
+- **The dashboard's "Matching" count is now honest** — tracks waiting for a transcription slot now show **QUEUED** and flip to **MATCHING** only when a real worker actually starts on them, so the number of tracks shown as "Matching" reflects what's genuinely transcribing rather than overstating progress. The **Max Concurrent Matches** setting takes effect after a backend restart (noted in Settings). (#336)
+
 ## [0.15.4] - 2026-06-04
 
 _Highlights: a fixes-only release — large multi-season imports no longer dump episodes into "Needs Review" while they wait for a match slot, the review page's "Re-match" is now visible and advisory (it never silently files a track), and every ripped track now shows consistently how its episode was identified._

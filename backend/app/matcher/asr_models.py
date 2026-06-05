@@ -9,19 +9,73 @@ import abc
 import hashlib
 import os
 import tempfile
+import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 import ctranslate2
 import librosa
 import numpy as np
+import psutil
 import soundfile as sf
 from loguru import logger
 from rapidfuzz import fuzz
 
 from app.matcher.srt_utils import clean_text
 
-# Cache for loaded models to avoid reloading
+# Cache for loaded models to avoid reloading. Guarded by _model_cache_lock so that
+# concurrent matching threads (N semaphore slots → N asyncio.to_thread workers) don't
+# each build their own model on a cold cache — without the lock, N threads race past the
+# membership check and construct N models with N workers each (N² threads).
 _model_cache = {}
+_model_cache_lock = threading.Lock()
+
+# Conservative parallel-stream cap on GPU (VRAM auto-sizing is a future enhancement).
+GPU_WORKER_CAP = 4
+
+
+@dataclass(frozen=True)
+class AsrRuntime:
+    """Resolved ASR execution parameters — the single source of truth for sizing.
+
+    Consumed by the shared WhisperModel (num_workers/cpu_threads), the JobManager
+    match semaphore (workers == admission slots, so the dashboard cannot overstate
+    MATCHING), and the /api/asr-status endpoint.
+    """
+
+    device: str  # "cuda" | "cpu"
+    compute_type: str  # "float16" (cuda) | "int8" (cpu)
+    workers: int
+    cpu_threads: int | None  # None on GPU (not applicable)
+
+
+def detect_asr_device() -> str:
+    """Return 'cuda' when a CUDA device is visible to ctranslate2, else 'cpu'."""
+    try:
+        return "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
+    except Exception:  # noqa: BLE001 — any probe failure means no usable GPU
+        return "cpu"
+
+
+def resolve_asr_runtime(device: str, requested_workers: int | None) -> AsrRuntime:
+    """Resolve (workers, cpu_threads) from a requested worker count, clamped to hardware.
+
+    CPU: workers clamp to physical cores; cpu_threads = cores // workers so the total
+    thread count stays ~= cores (avoids the oversubscription that makes naive
+    parallelism slower). GPU: workers clamp to GPU_WORKER_CAP; cpu_threads is N/A.
+    """
+    requested = max(1, int(requested_workers or 1))
+    if device == "cuda":
+        return AsrRuntime(
+            device="cuda",
+            compute_type="float16",
+            workers=min(requested, GPU_WORKER_CAP),
+            cpu_threads=None,
+        )
+    cores = psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 1
+    workers = max(1, min(requested, cores))
+    cpu_threads = max(1, cores // workers)
+    return AsrRuntime(device="cpu", compute_type="int8", workers=workers, cpu_threads=cpu_threads)
 
 
 class ASRModel(abc.ABC):
@@ -120,16 +174,22 @@ class FasterWhisperModel(ASRModel):
         "large-v3": {"params": "1550M", "vram": "~10GB", "speed": "slowest"},
     }
 
-    def __init__(self, model_name: str = "small", device: str | None = None):
+    def __init__(
+        self, model_name: str = "small", device: str | None = None, requested_workers: int = 1
+    ):
         """
         Initialize Faster Whisper model.
 
         Args:
             model_name: Whisper model size (tiny, base, small, medium, large-v3)
             device: Device to run on ('cpu', 'cuda', or None for auto-detect)
+            requested_workers: Desired parallel ASR workers; resolve_asr_runtime
+                clamps this to hardware at load time.
         """
         if model_name.startswith("openai/whisper-"):
             model_name = model_name.replace("openai/whisper-", "")
+
+        self.requested_workers = max(1, int(requested_workers or 1))
 
         # Ensure NVIDIA libraries are in PATH for Windows CUDA support
         if device == "cuda" or (device is None and ctranslate2.get_cuda_device_count() > 0):
@@ -151,7 +211,11 @@ class FasterWhisperModel(ASRModel):
         if self.is_loaded:
             return
 
-        cache_key = f"faster_whisper_{self.model_name}_{self.device}"
+        runtime = resolve_asr_runtime(self.device, self.requested_workers)
+        cache_key = (
+            f"faster_whisper_{self.model_name}_{self.device}"
+            f"_w{runtime.workers}_t{runtime.cpu_threads}"
+        )
 
         if cache_key in _model_cache:
             self._model = _model_cache[cache_key]
@@ -169,12 +233,15 @@ class FasterWhisperModel(ASRModel):
             )
 
             try:
-                self._model = WhisperModel(
-                    self.model_name,
-                    device=self.device,
-                    compute_type=compute_type,
-                    download_root=None,  # Use default cache location
-                )
+                model_kwargs = {
+                    "device": self.device,
+                    "compute_type": compute_type,
+                    "download_root": None,  # Use default cache location
+                    "num_workers": runtime.workers,
+                }
+                if runtime.cpu_threads is not None:
+                    model_kwargs["cpu_threads"] = runtime.cpu_threads
+                self._model = WhisperModel(self.model_name, **model_kwargs)
 
                 # Eagerly transcribe 1s of silence to surface missing CUDA
                 # DLL errors here instead of on the first real transcription.
@@ -199,11 +266,19 @@ class FasterWhisperModel(ASRModel):
                     )
                     self.device = "cpu"
                     compute_type = "int8"
+                    cpu_runtime = resolve_asr_runtime("cpu", self.requested_workers)
                     self._model = WhisperModel(
                         self.model_name,
                         device=self.device,
                         compute_type=compute_type,
                         download_root=None,
+                        num_workers=cpu_runtime.workers,
+                        cpu_threads=cpu_runtime.cpu_threads,
+                    )
+                    # Stored under the CPU key, not the stale CUDA key computed above.
+                    cache_key = (
+                        f"faster_whisper_{self.model_name}_{self.device}"
+                        f"_w{cpu_runtime.workers}_t{cpu_runtime.cpu_threads}"
                     )
                 else:
                     raise
@@ -374,6 +449,7 @@ def create_asr_model(model_config: dict) -> ASRModel:
     model_type = model_config.get("type", "").lower()
     model_name = model_config.get("name", "")
     device = model_config.get("device")
+    requested_workers = model_config.get("requested_workers", 1)
 
     # Handle whisper and faster-whisper types
     if model_type in ("whisper", "faster-whisper", "openai-whisper"):
@@ -381,14 +457,14 @@ def create_asr_model(model_config: dict) -> ASRModel:
             model_name = "small"
 
         logger.info(f"Creating Faster Whisper model: {model_name}")
-        return FasterWhisperModel(model_name, device)
+        return FasterWhisperModel(model_name, device, requested_workers=requested_workers)
 
     # Legacy parakeet support - redirect to whisper
     elif model_type == "parakeet":
         logger.warning(
             "Parakeet models are no longer supported. Using Whisper 'small' model instead."
         )
-        return FasterWhisperModel("small", device)
+        return FasterWhisperModel("small", device, requested_workers=requested_workers)
 
     else:
         raise ValueError(
@@ -406,14 +482,23 @@ def get_cached_model(model_config: dict) -> ASRModel:
     Returns:
         ASRModel instance (loaded and ready for use)
     """
-    cache_key = f"{model_config.get('type', '')}_{model_config.get('name', '')}_{model_config.get('device', 'auto')}"
+    device = model_config.get("device") or detect_asr_device()
+    runtime = resolve_asr_runtime(device, model_config.get("requested_workers", 1))
+    cache_key = (
+        f"{model_config.get('type', '')}_{model_config.get('name', '')}"
+        f"_{device}_w{runtime.workers}_t{runtime.cpu_threads}"
+    )
 
-    if cache_key not in _model_cache:
-        model = create_asr_model(model_config)
-        model.load()  # Load immediately for caching
-        _model_cache[cache_key] = model
+    # Hold the lock across check-create-store so exactly one thread builds the shared
+    # model per cache_key; the rest block, then reuse it. First-load contention is the
+    # whole point — it's what makes "one shared model with N workers" actually one model.
+    with _model_cache_lock:
+        if cache_key not in _model_cache:
+            model = create_asr_model(model_config)
+            model.load()  # Load immediately for caching
+            _model_cache[cache_key] = model
 
-    return _model_cache[cache_key]
+        return _model_cache[cache_key]
 
 
 def clear_model_cache():

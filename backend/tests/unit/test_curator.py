@@ -353,7 +353,10 @@ class TestEnsureInitialized:
             ),
             patch(
                 "app.services.config_service.get_config_sync",
-                return_value=SimpleNamespace(subtitles_cache_path=str(tmp_path / "cache")),
+                return_value=SimpleNamespace(
+                    subtitles_cache_path=str(tmp_path / "cache"),
+                    max_concurrent_matches=2,
+                ),
             ),
         ):
             ok = curator._ensure_initialized("Show")

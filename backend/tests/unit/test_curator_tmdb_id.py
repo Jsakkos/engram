@@ -9,7 +9,7 @@ def test_ensure_initialized_uses_known_id_and_skips_fetch_show_id():
     captured = {}
 
     class FakeMatcher:
-        def __init__(self, cache_dir, show_name, min_confidence, expected_tmdb_id=None):
+        def __init__(self, cache_dir, show_name, min_confidence, expected_tmdb_id=None, **kwargs):
             captured["expected_tmdb_id"] = expected_tmdb_id
             captured["show_name"] = show_name
 
@@ -41,7 +41,7 @@ def test_ensure_initialized_rebuilds_when_tmdb_id_changes():
     captured = {}
 
     class FakeMatcher:
-        def __init__(self, cache_dir, show_name, min_confidence, expected_tmdb_id=None):
+        def __init__(self, cache_dir, show_name, min_confidence, expected_tmdb_id=None, **kwargs):
             captured["expected_tmdb_id"] = expected_tmdb_id
 
     cfg = MagicMock()

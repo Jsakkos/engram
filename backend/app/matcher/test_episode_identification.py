@@ -198,3 +198,28 @@ class TestEpisodeMatcherConfiguration:
         )
 
         assert matcher.use_ranked_voting is True
+
+
+class TestEpisodeMatcherWorkers:
+    def test_model_config_includes_requested_workers(self):
+        from pathlib import Path
+
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(
+            cache_dir=Path.home() / ".engram" / "cache",
+            show_name="Test Show",
+            requested_workers=5,
+        )
+        cfg = matcher._model_config()
+        assert cfg["requested_workers"] == 5
+        assert cfg["type"] == "whisper"
+        assert cfg["name"] == matcher.model_name
+
+    def test_requested_workers_defaults_to_one(self):
+        from pathlib import Path
+
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(cache_dir=Path.home() / ".engram" / "cache", show_name="Test Show")
+        assert matcher._model_config()["requested_workers"] == 1

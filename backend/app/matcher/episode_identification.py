@@ -828,6 +828,7 @@ class EpisodeMatcher:
         match_threshold=0.10,
         confidence_accept_floor=CONFIDENCE_ACCEPT_FLOOR,
         model_name="small",
+        requested_workers=1,
         expected_tmdb_id=None,
     ):
         self.cache_dir = Path(cache_dir)
@@ -839,6 +840,7 @@ class EpisodeMatcher:
             90  # Minimal skip for title cards; ranked voting handles intro noise
         )
         self.model_name = model_name
+        self.requested_workers = max(1, int(requested_workers or 1))
         self.device = device or ("cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu")
         self.temp_dir = Path(tempfile.gettempdir()) / "whisper_chunks"
         self.temp_dir.mkdir(exist_ok=True)
@@ -1124,6 +1126,15 @@ class EpisodeMatcher:
         self.reference_files_cache[cache_key] = reference_files
         return reference_files
 
+    def _model_config(self) -> dict:
+        """Single source for the ASR model_config dict (keeps both call sites DRY)."""
+        return {
+            "type": "whisper",
+            "name": self.model_name,
+            "device": self.device,
+            "requested_workers": self.requested_workers,
+        }
+
     def transcribe_full(self, video_file) -> str | None:
         """Whisper-transcribe the entire video file, returning the cleaned text.
 
@@ -1140,7 +1151,7 @@ class EpisodeMatcher:
             )
             return None
 
-        model_config = {"type": "whisper", "name": self.model_name, "device": self.device}
+        model_config = self._model_config()
         try:
             # Memoized by (source, 0, duration): the full-file fallback fires once per
             # candidate season when no chunk votes, so without this the season-unknown
@@ -1358,11 +1369,7 @@ class EpisodeMatcher:
                 if point < video_duration - chunk_len:
                     scan_points.append(point)
 
-            model_config = {
-                "type": "whisper",
-                "name": self.model_name,
-                "device": self.device,
-            }
+            model_config = self._model_config()
             model = get_cached_model(model_config)
 
             # Rebuild the cached matcher when the reference set changes — a stale

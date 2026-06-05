@@ -171,14 +171,12 @@ class JobManager:
         config = await get_config()
         await ensure_paths_exist(config)
 
-        # Initialize matching concurrency limiter
-        concurrency = max(1, config.max_concurrent_matches)
-        if concurrency != config.max_concurrent_matches:
-            logger.warning(
-                f"Invalid max_concurrent_matches={config.max_concurrent_matches} "
-                f"in config, using {concurrency}"
-            )
-        self._matching.init_semaphore(concurrency)
+        # Initialize matching concurrency limiter from REAL ASR capacity, so the
+        # dashboard's MATCHING count can't exceed what can actually be transcribing.
+        from app.matcher.asr_models import detect_asr_device, resolve_asr_runtime
+
+        _asr_runtime = resolve_asr_runtime(detect_asr_device(), config.max_concurrent_matches)
+        self._matching.init_semaphore(_asr_runtime.workers)
 
         # Start timed staging cleanup if policy is "after_days"
         if config.staging_cleanup_policy == "after_days":
@@ -204,7 +202,11 @@ class JobManager:
         if config.watchdog_enabled:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
-        logger.info(f"Job manager started (max_concurrent_matches={concurrency})")
+        logger.info(
+            f"Job manager started (asr_device={_asr_runtime.device}, "
+            f"asr_workers={_asr_runtime.workers}, cpu_threads={_asr_runtime.cpu_threads}, "
+            f"requested={config.max_concurrent_matches})"
+        )
 
     async def _cleanup_stale_jobs(self) -> None:
         """Mark stale jobs as FAILED on startup."""

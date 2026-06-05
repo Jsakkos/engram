@@ -3594,6 +3594,24 @@ async def get_update_status():
     return update_checker.get_status()
 
 
+@router.get("/asr-status")
+async def get_asr_status():
+    """Resolved ASR backend for the dashboard badge (read-only, no secrets)."""
+    from app.matcher.asr_models import detect_asr_device, resolve_asr_runtime
+    from app.services.config_service import get_config as _get_app_config
+
+    config = await _get_app_config()
+    runtime = resolve_asr_runtime(detect_asr_device(), config.max_concurrent_matches)
+    return {
+        "device": runtime.device,
+        "compute_type": runtime.compute_type,
+        "model": "small",  # current hardcoded matcher default (EpisodeMatcher.model_name)
+        "workers": runtime.workers,
+        "cpu_threads": runtime.cpu_threads,
+        "max_concurrent_matches": config.max_concurrent_matches,
+    }
+
+
 @router.post("/updates/skip")
 async def skip_update_version(body: SkipVersionRequest):
     """Persist user's choice to skip a specific version."""
