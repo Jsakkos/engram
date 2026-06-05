@@ -1131,6 +1131,53 @@ class TestDetectToolsDeadline:
         # The response landed near the 0.2s deadline, nowhere near the 10s block.
         assert elapsed < 2.0
 
+    def test_orphaned_makemkv_exception_is_traced_not_swallowed(self, caplog):
+        """If the over-deadline detector later raises, the error is logged at debug
+        rather than vanishing — detectors normally catch their own errors, so this
+        backstop path shouldn't be silent."""
+        import asyncio
+        import logging
+        import threading
+
+        from app.api import validation
+        from app.api.validation import ToolDetectionResult, detect_tools
+
+        release = threading.Event()
+
+        def stuck_then_raise() -> ToolDetectionResult:
+            release.wait(timeout=10)
+            raise RuntimeError("drive exploded")
+
+        def fast_ffmpeg() -> ToolDetectionResult:
+            return ToolDetectionResult(found=True, path="f", version="ffmpeg 6.0")
+
+        def fast_fpcalc() -> ToolDetectionResult:
+            return ToolDetectionResult(found=True, path="fp", version="fpcalc 1.5.1")
+
+        async def drive():
+            result = await detect_tools()
+            release.set()  # let the orphaned detector finish (and raise)
+            await asyncio.sleep(0.3)  # let its done-callback run before teardown
+            return result
+
+        with (
+            caplog.at_level(logging.DEBUG, logger="app.api.validation"),
+            patch.object(validation, "_MAKEMKV_DETECT_DEADLINE_S", 0.2),
+            patch.object(validation, "detect_makemkv", stuck_then_raise),
+            patch.object(validation, "detect_ffmpeg", fast_ffmpeg),
+            patch.object(validation, "detect_fpcalc", fast_fpcalc),
+        ):
+            result = asyncio.run(drive())
+
+        # The endpoint still returned the degraded result for the timed-out detector...
+        assert result.makemkv.found is False
+        assert "timed out" in (result.makemkv.error or "").lower()
+        # ...and the orphan's late exception was traced, not silently discarded.
+        assert any(
+            "orphaned detector finished with error" in m and "drive exploded" in m
+            for m in caplog.messages
+        )
+
 
 class TestTmdbValidationRemainingBranches:
     """The status/timeout/generic-exception branches not covered elsewhere."""

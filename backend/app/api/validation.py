@@ -469,9 +469,16 @@ async def _detect_within_deadline(
     logger.warning(
         "%s detection exceeded its %.1fs deadline; returning degraded result", label, deadline
     )
-    # Retrieve the eventual result/exception when the orphaned probe finishes so a
-    # late failure isn't logged as "exception never retrieved"; the value is dropped.
-    task.add_done_callback(lambda t: t.cancelled() or t.exception())
+
+    # When the orphaned probe eventually finishes, retrieve its result/exception so a
+    # late failure isn't logged as "exception never retrieved". The result is dropped
+    # (the response already moved on), but an unexpected exception — detectors are
+    # meant to catch their own errors — is traced at debug rather than vanishing.
+    def _discard_orphan(t):
+        if not t.cancelled() and (exc := t.exception()):
+            logger.debug("%s orphaned detector finished with error: %s", label, exc)
+
+    task.add_done_callback(_discard_orphan)
     return on_timeout
 
 
