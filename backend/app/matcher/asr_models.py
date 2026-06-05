@@ -9,6 +9,7 @@ import abc
 import hashlib
 import os
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,8 +23,12 @@ from rapidfuzz import fuzz
 
 from app.matcher.srt_utils import clean_text
 
-# Cache for loaded models to avoid reloading
+# Cache for loaded models to avoid reloading. Guarded by _model_cache_lock so that
+# concurrent matching threads (N semaphore slots → N asyncio.to_thread workers) don't
+# each build their own model on a cold cache — without the lock, N threads race past the
+# membership check and construct N models with N workers each (N² threads).
 _model_cache = {}
+_model_cache_lock = threading.Lock()
 
 # Conservative parallel-stream cap on GPU (VRAM auto-sizing is a future enhancement).
 GPU_WORKER_CAP = 4
@@ -484,12 +489,16 @@ def get_cached_model(model_config: dict) -> ASRModel:
         f"_{device}_w{runtime.workers}_t{runtime.cpu_threads}"
     )
 
-    if cache_key not in _model_cache:
-        model = create_asr_model(model_config)
-        model.load()  # Load immediately for caching
-        _model_cache[cache_key] = model
+    # Hold the lock across check-create-store so exactly one thread builds the shared
+    # model per cache_key; the rest block, then reuse it. First-load contention is the
+    # whole point — it's what makes "one shared model with N workers" actually one model.
+    with _model_cache_lock:
+        if cache_key not in _model_cache:
+            model = create_asr_model(model_config)
+            model.load()  # Load immediately for caching
+            _model_cache[cache_key] = model
 
-    return _model_cache[cache_key]
+        return _model_cache[cache_key]
 
 
 def clear_model_cache():

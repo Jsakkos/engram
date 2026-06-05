@@ -1,5 +1,6 @@
 """Unit tests for ASR runtime sizing (resolve_asr_runtime / detect_asr_device)."""
 
+import threading
 from unittest.mock import patch
 
 from app.matcher.asr_models import (
@@ -131,3 +132,27 @@ class TestModelConstruction:
             model.load()
         assert calls[0]["num_workers"] == 3
         assert "cpu_threads" not in calls[0]  # GPU path must not pass cpu_threads
+
+    def test_concurrent_get_cached_model_constructs_once(self):
+        # N threads racing on a cold cache must build exactly ONE shared model, not N
+        # (the _model_cache_lock guards the check-create-store). Without the lock this
+        # would usually construct several models, each with N workers (N**2 threads).
+        _model_cache.clear()
+        Fake, calls = self._fake_whisper()
+        cfg = {"type": "whisper", "name": "small", "device": "cpu", "requested_workers": 2}
+        barrier = threading.Barrier(8)
+
+        def worker():
+            barrier.wait()  # release all threads together to maximize the race window
+            get_cached_model(cfg)
+
+        with (
+            patch("faster_whisper.WhisperModel", Fake),
+            patch("app.matcher.asr_models.psutil.cpu_count", return_value=8),
+        ):
+            threads = [threading.Thread(target=worker) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        assert len(calls) == 1
