@@ -168,6 +168,73 @@ class TestCompleteJsonGemini:
         assert body["contents"][0]["parts"][0]["text"] == "match this episode"
 
     @pytest.mark.asyncio
+    async def test_gemini_union_null_type_is_translated_to_nullable(self):
+        """A JSON-Schema union ``type: [T, "null"]`` must be translated to
+        Gemini's OpenAPI-subset form (single ``type`` + ``nullable: True``).
+
+        Gemini's ``responseSchema`` is Protobuf-backed and rejects a list-valued
+        ``type`` with HTTP 400 ("Proto field is not repeating, cannot start
+        list"), which silently disabled all Gemini structured-output matching.
+        """
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(
+            {
+                "candidates": [
+                    {"content": {"parts": [{"text": '{"episode": 1, "confidence": 1.0}'}]}}
+                ]
+            }
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "episode": {"type": "integer"},
+                "runner_up": {
+                    "type": ["object", "null"],
+                    "properties": {"episode": {"type": "integer"}},
+                },
+            },
+            "required": ["episode"],
+        }
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(prompt="x", schema=schema, provider="gemini", api_key="AIzaSy-x")
+
+        sent = mock.post.await_args.kwargs["json"]["generationConfig"]["responseSchema"]
+        runner_up = sent["properties"]["runner_up"]
+        assert runner_up["type"] == "object", f"expected scalar type, got {runner_up['type']!r}"
+        assert runner_up.get("nullable") is True
+        # Caller's original schema object must not be mutated in place.
+        assert schema["properties"]["runner_up"]["type"] == ["object", "null"]
+
+    def test_to_gemini_schema_recurses_into_array_items(self):
+        """Union-null types nested inside array ``items`` are also translated,
+        and plain scalar types / sibling keys are preserved untouched."""
+        from app.core.ai_client import _to_gemini_schema
+
+        translated = _to_gemini_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "episodes": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"note": {"type": ["string", "null"]}},
+                        },
+                    },
+                    "title": {"type": "string"},
+                },
+                "required": ["episodes"],
+            }
+        )
+
+        note = translated["properties"]["episodes"]["items"]["properties"]["note"]
+        assert note["type"] == "string"
+        assert note["nullable"] is True
+        assert translated["properties"]["title"]["type"] == "string"
+        assert translated["required"] == ["episodes"]
+
+    @pytest.mark.asyncio
     async def test_gemini_no_schema_still_works(self):
         from app.core.ai_client import complete_json
 
