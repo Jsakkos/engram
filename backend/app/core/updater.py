@@ -68,6 +68,8 @@ class UpdateChecker:
         self.download_progress: float = 0.0
         self.staging_path: Path | None = None
         self.error: str | None = None
+        self.last_update_error: str | None = None
+        self.last_update_success_version: str | None = None
         self._is_frozen: bool = is_frozen()
         self._current_version: str = __version__
         self._broadcaster = None  # injected by set_broadcaster()
@@ -78,6 +80,7 @@ class UpdateChecker:
 
     async def start(self) -> None:
         """Entry point — call once from the FastAPI lifespan as asyncio.create_task()."""
+        self._consume_update_result_marker()
         self._prune_staging()
         skipped_version = await self._load_skipped_version()
         await self._check(skipped_version)
@@ -127,6 +130,36 @@ class UpdateChecker:
         except Exception as exc:
             logger.debug(f"Could not load skipped_update_version: {exc}")
             return None
+
+    def _consume_update_result_marker(self, path: Path | None = None) -> None:
+        """Read + delete the Windows helper's result marker (~/.engram/update_result.txt)
+        and translate it into last_update_error / last_update_success_version. Best-effort."""
+        marker = path or (Path.home() / ".engram" / "update_result.txt")
+        if not marker.exists():
+            return
+        data: dict[str, str] = {}
+        try:
+            for line in marker.read_text(encoding="utf-8").splitlines():
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    data[key.strip()] = value.strip()
+        except OSError as exc:
+            logger.debug(f"Could not read update result marker: {exc}")
+            return
+        finally:
+            marker.unlink(missing_ok=True)
+
+        version = data.get("version") or "?"
+        if data.get("result") == "success":
+            self.last_update_success_version = version
+            logger.info(f"Update applied successfully to {version}")
+        elif data.get("result") == "failed":
+            step = data.get("step") or "unknown"
+            self.last_update_error = (
+                f"Update to {version} couldn't be applied automatically (step: {step}). "
+                "It'll retry on the next check, or download manually."
+            )
+            logger.warning(f"Update to {version} failed at step {step}")
 
     async def _check(self, skipped_version: str | None) -> None:
         """Query GitHub for the latest release and decide whether to download."""

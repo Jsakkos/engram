@@ -928,3 +928,35 @@ def test_restart_posix_appends_updated_flag(monkeypatch, tmp_path):
 
     checker._restart_linux_macos()
     assert "--updated" in captured["argv"]
+
+
+def test_consume_marker_success(tmp_path):
+    from app.core.updater import UpdateChecker
+
+    marker = tmp_path / "update_result.txt"
+    marker.write_text("result=success\nversion=9.9.9\n", encoding="utf-8")
+    c = UpdateChecker()
+    c._consume_update_result_marker(marker)
+    assert c.last_update_success_version == "9.9.9"
+    assert c.last_update_error is None
+    assert not marker.exists()  # consumed once
+
+
+def test_consume_marker_failed(tmp_path):
+    from app.core.updater import UpdateChecker
+
+    marker = tmp_path / "update_result.txt"
+    marker.write_text("result=failed\nversion=9.9.9\nstep=verify\n", encoding="utf-8")
+    c = UpdateChecker()
+    c._consume_update_result_marker(marker)
+    assert "9.9.9" in c.last_update_error and "verify" in c.last_update_error
+    assert c.last_update_success_version is None
+    assert not marker.exists()
+
+
+def test_consume_marker_absent_is_noop(tmp_path):
+    from app.core.updater import UpdateChecker
+
+    c = UpdateChecker()
+    c._consume_update_result_marker(tmp_path / "nope.txt")
+    assert c.last_update_error is None and c.last_update_success_version is None
