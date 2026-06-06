@@ -15,10 +15,18 @@ function status(overrides: Partial<UpdateStatus>): UpdateStatus {
     release_url: "https://example.com",
     download_progress: null,
     error: null,
+    last_update_error: null,
+    last_update_success_version: null,
     is_frozen: false,
     ...overrides,
   };
 }
+
+const baseFailureTest: UpdateStatus = {
+    state: "idle", current_version: "9.9.9", latest_version: null, release_notes: null,
+    release_url: "https://example/r", download_progress: null, error: null, is_frozen: true,
+    last_update_error: null, last_update_success_version: null,
+};
 
 describe("UpdateBanner", () => {
   afterEach(cleanup);
@@ -47,4 +55,23 @@ describe("UpdateBanner", () => {
     expect(screen.queryByText(/Restart now/i)).toBeNull();
     expect(screen.getByText(/dev mode/i)).toBeTruthy();
   });
+});
+
+it("renders a failure notice when last_update_error is set", () => {
+    render(
+        <UpdateBanner
+            updateStatus={{ ...baseFailureTest, last_update_error: "Update to 9.9.9 couldn't be applied (step: verify)." }}
+            onShowNotes={() => {}} onDismiss={() => {}}
+        />,
+    );
+    expect(screen.getByText(/couldn't be applied/i)).toBeTruthy();
+    const link = screen.getByRole("link", { name: /download manually/i }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("https://example/r");
+});
+
+it("renders nothing when neither ready nor a failure", () => {
+    const { container } = render(
+        <UpdateBanner updateStatus={baseFailureTest} onShowNotes={() => {}} onDismiss={() => {}} />,
+    );
+    expect(container.innerHTML).toBe("");
 });

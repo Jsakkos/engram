@@ -21,8 +21,11 @@ interface UpdateBannerProps {
 
 export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }: UpdateBannerProps) {
     const [restarting, setRestarting] = useState(false);
+    const [failureDismissed, setFailureDismissed] = useState(false);
 
-    if (!updateStatus || updateStatus.state !== "ready") return null;
+    const showReady = !!updateStatus && updateStatus.state === "ready";
+    const showFailure = !!updateStatus?.last_update_error && !failureDismissed;
+    if (!showReady && !showFailure) return null;
 
     const isFrozen = updateStatus.is_frozen;
 
@@ -59,6 +62,39 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
             toast.error("Failed to save skip preference.");
         }
     };
+
+    if (showFailure && !showReady) {
+        return (
+            <div
+                data-testid="update-failure-banner"
+                style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "10px 28px",
+                    background: `${sv.magenta}10`, borderBottom: `1px solid ${sv.magenta}55`,
+                    fontFamily: sv.mono, fontSize: 12, letterSpacing: "0.06em", color: sv.magenta,
+                }}
+            >
+                <X size={14} color={sv.magenta} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1 }}>{updateStatus!.last_update_error}</span>
+                {updateStatus!.release_url && (
+                    <a
+                        href={updateStatus!.release_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: sv.magenta, textTransform: "uppercase", fontSize: 10, letterSpacing: "0.14em" }}
+                    >
+                        Download manually
+                    </a>
+                )}
+                <button
+                    type="button"
+                    onClick={() => setFailureDismissed(true)}
+                    style={{ color: sv.inkDim, background: "transparent", border: "none", cursor: "pointer" }}
+                >
+                    <X size={11} />
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div
