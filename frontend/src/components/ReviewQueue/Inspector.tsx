@@ -43,8 +43,8 @@ export function Inspector({
     titleIndexById,
     isRematching,
     aiEpisodeMatchingEnabled,
-    llmFeedback = null,
-    isLlmMatching = false,
+    llmFeedback,
+    isLlmMatching,
     onAssign,
     onAction,
     onRematch,
@@ -65,8 +65,8 @@ export function Inspector({
     titleIndexById: Record<number, number>;
     isRematching: boolean;
     aiEpisodeMatchingEnabled: boolean;
-    llmFeedback?: LLMFeedback | null;
-    isLlmMatching?: boolean;
+    llmFeedback: LLMFeedback | null;
+    isLlmMatching: boolean;
     onAssign: (code: string) => void;
     onAction: (action: TitleAction) => void;
     onRematch: (titleId: number, source: string, deep?: boolean) => void;
