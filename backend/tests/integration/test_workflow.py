@@ -952,3 +952,53 @@ class TestLLMMatchEndpoint:
         body = r.json()
         assert body["reason"] == "cached"
         assert body["suggestion"]["episode"] == 9
+
+    @pytest.mark.asyncio
+    async def test_run_llm_match_imports_resolve(self, setup_db, monkeypatch):
+        """Regression: the real helper must import the curator singleton correctly.
+
+        The other tests in this class mock out ``_run_llm_match_for_title`` entirely,
+        so its function-local imports were never executed — which is exactly how a
+        wrong import (``from app.core.curator import episode_curator``; the singleton
+        is named ``curator``) shipped a permanently-broken endpoint that swallowed the
+        ImportError and returned ``reason="internal_error"`` with HTTP 200.
+
+        Here we call the REAL helper. We force an early, graceful ``None`` return by
+        disabling AI matching — but the curator import runs *before* that check, so
+        pre-fix this raises ImportError and post-fix it returns None.
+        """
+        from app.api.routes import _run_llm_match_for_title
+        from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
+
+        class _Config:
+            ai_episode_matching_enabled = False
+            ai_api_key = None
+            ai_provider = "gemini"
+            tmdb_api_key = ""
+
+        async def fake_config(*_args, **_kwargs):
+            return _Config()
+
+        # _run_llm_match_for_title imports get_config from this module at call time,
+        # so patching the module attribute before the call takes effect.
+        monkeypatch.setattr("app.services.config_service.get_config", fake_config)
+
+        job = DiscJob(
+            drive_id="TEST:",
+            volume_label="X_S1D1",
+            state=JobState.REVIEW_NEEDED,
+            content_type=ContentType.TV,
+            detected_title="The Expanse",
+            detected_season=1,
+        )
+        title = DiscTitle(
+            job_id=1,
+            title_index=0,
+            state=TitleState.REVIEW,
+            duration_seconds=1200,
+            file_path="/tmp/x.mkv",
+        )
+
+        # Must NOT raise ImportError; returns None because AI matching is disabled.
+        result = await _run_llm_match_for_title(title=title, job=job)
+        assert result is None

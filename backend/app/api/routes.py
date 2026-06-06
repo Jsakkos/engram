@@ -3352,7 +3352,7 @@ async def set_show_ordering(
 
 async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> dict | None:
     """Invoke the LLM episode matcher for a single title. Returns suggestion dict or None."""
-    from app.core.curator import episode_curator
+    from app.core.curator import curator as episode_curator
     from app.matcher.llm_episode_matcher import match_episode_via_llm
     from app.matcher.tmdb_client import fetch_show_id
     from app.services.config_service import get_config

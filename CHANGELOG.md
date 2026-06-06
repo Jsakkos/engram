@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The "Try LLM match" button in the review Inspector now works** — clicking it on a track in review did nothing useful: the backend failed instantly on a wrong internal import (it looked for an `episode_curator` that doesn't exist), caught the error, and returned a silent success, so the button appeared to do nothing and the failure only showed up in the logs. AI-assisted single-track matching from the review panel now runs the transcription and returns a suggestion as intended. (#347)
+
 ## [0.16.2] - 2026-06-05
 
 _Highlights: a fixes-only release — AI episode matching works again on Google Gemini, multi-season imports now match every episode correctly instead of dropping them into review, and tool detection no longer stalls the Settings screen on a busy optical drive._
