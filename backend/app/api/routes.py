@@ -615,7 +615,7 @@ class RosterEpisode(BaseModel):
 class OrderingOption(BaseModel):
     """One selectable output ordering for a show (#200)."""
 
-    ordering: str  # "aired" | "dvd" | "digital" | ...
+    ordering: str  # "aired" | "dvd" (v1 scope)
     label: str  # human label (TMDB group name, e.g. "DVD Order")
     tmdb_type: int  # TMDB episode-group type enum
     diverges: bool  # does this ordering renumber any matched episode on the disc

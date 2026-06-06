@@ -69,7 +69,8 @@ class TestProjectEpisode:
         assert episode_ordering.project_episode(FIREFLY, "dvd", 9, 99, "k") == (9, 99)
 
     def test_ordering_with_no_group_falls_back(self, firefly_tmdb):
-        # Firefly has no "digital" (type 4) group -> identity.
+        # "digital" is deferred (not in ALLOWED_ORDERINGS), so get_projection_map
+        # short-circuits to identity before any group lookup.
         assert episode_ordering.project_episode(FIREFLY, "digital", 1, 1, "k") == (1, 1)
 
     def test_missing_key_falls_back_without_fetching(self, firefly_tmdb):
