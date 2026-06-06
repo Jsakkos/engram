@@ -72,11 +72,30 @@ def _find_free_port(host: str, preferred: int, max_attempts: int = 20) -> int:
         return s.getsockname()[1]
 
 
+def _schedule_browser_open(url: str, *, updated: bool) -> None:
+    """Open the dashboard tab after startup — unless this is an update relaunch.
+
+    Normal launch: open after 1.5s. Update relaunch (--updated): the existing tab reconnects on
+    its own, so suppress the new tab; as a safeguard open one after 5s only if no WebSocket
+    client has connected (the old tab was closed, or _find_free_port picked a different port)."""
+    import threading
+    import webbrowser
+
+    if not updated:
+        threading.Timer(1.5, webbrowser.open, args=[url]).start()
+        return
+
+    def _open_if_no_client() -> None:
+        from app.api.websocket import manager
+
+        if not manager.active_connections:
+            webbrowser.open(url)
+
+    threading.Timer(5.0, _open_if_no_client).start()
+
+
 def main() -> None:
     try:
-        import threading
-        import webbrowser
-
         import uvicorn
         from loguru import logger
 
@@ -107,7 +126,7 @@ def main() -> None:
             # a valid client address); LAN clients use the address shown in the UI.
             browser_host = "localhost" if host == ALL_INTERFACES else host
             url = f"http://{browser_host}:{port}"
-            threading.Timer(1.5, webbrowser.open, args=[url]).start()
+            _schedule_browser_open(url, updated="--updated" in sys.argv[1:])
 
         uvicorn.run(
             app,
