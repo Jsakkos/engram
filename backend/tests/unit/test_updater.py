@@ -4,8 +4,11 @@ Patches async_session so no test touches engram.db.
 httpx is mocked via unittest.mock so no real network calls are made.
 """
 
+import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -994,3 +997,162 @@ async def test_broadcast_update_status_carries_marker_fields():
     payload = ws.sent[-1]
     assert payload["last_update_error"] == "boom"
     assert payload["last_update_success_version"] == "9.9.9"
+
+
+# ---------------------------------------------------------------------------
+# Task 8: End-to-end Windows swap via the real _spawn_detached_helper
+# ---------------------------------------------------------------------------
+
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows helper only")
+
+
+def _t8_make_build(root: Path, exe_name: str, marker_text: str) -> None:
+    """Create a fake onedir build at *root* with all four sentinels present."""
+    root.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(os.environ["COMSPEC"], root / exe_name)  # cmd clone -> IMAGENAME == exe_name
+    (root / "_internal" / "certifi").mkdir(parents=True, exist_ok=True)
+    (root / "_internal" / "app" / "static").mkdir(parents=True, exist_ok=True)
+    (root / "_internal" / "base_library.zip").write_text("z")
+    (root / "_internal" / "certifi" / "cacert.pem").write_text("ca")
+    (root / "_internal" / "app" / "static" / "index.html").write_text("<html>")
+    (root / "VERSION.txt").write_text(marker_text)
+
+
+def _t8_run_helper(
+    checker: UpdateChecker,
+    *,
+    src: Path,
+    install: Path,
+    new_dir: Path,
+    old_dir: Path,
+    log: Path,
+    result: Path,
+    exe: str,
+    pid: int,
+    version: str,
+) -> None:
+    """Render the bat, rewrite the self-delete to use the literal bat path, and spawn it."""
+    bat = checker._render_update_bat(
+        src=str(src),
+        install=str(install),
+        new_dir=str(new_dir),
+        old_dir=str(old_dir),
+        log_path=str(log),
+        exe=exe,
+        pid=pid,
+        version=version,
+        result_path=str(result),
+    )
+    bat_path = os.path.join(os.environ["TEMP"], f"engram_update_test_{pid}.bat")
+    # The rendered bat has '(goto) 2>nul & del "%~f0"' for the success self-delete.
+    # Rewrite it to delete THIS test bat by its literal path so it doesn't conflict
+    # with other runs.
+    bat = bat.replace('del "%~f0"', f'del "{bat_path}"')
+    with open(bat_path, "w", newline="\r\n") as f:
+        f.write(bat)
+    checker._spawn_detached_helper(["cmd", "/c", bat_path])
+
+
+def _t8_wait_for(predicate, timeout: float = 30.0) -> bool:
+    end = time.time() + timeout
+    while time.time() < end:
+        if predicate():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+@windows_only
+def test_windows_swap_succeeds_end_to_end(tmp_path):
+    """The real helper, spawned the real way, completes the swap and writes a success marker.
+
+    This is the keystone regression test: the original bug was that the helper hung
+    forever in the :wait loop because DETACHED_PROCESS (no console) made tasklist emit
+    nothing, so the PID-check pipe never matched and the wait never exited. The fix
+    switched to CREATE_NO_WINDOW (hidden console). This test spawns the real helper via
+    the real _spawn_detached_helper and asserts it finishes within 30 seconds.
+    """
+    exe = "engram_t8a.exe"
+    src = tmp_path / "stage" / "engram"
+    install = tmp_path / "app" / "engram"
+    _t8_make_build(src, exe, "NEW")
+    _t8_make_build(install, exe, "OLD")
+    log = tmp_path / "helper.log"
+    result = tmp_path / "update_result.txt"
+
+    # Launch a long-lived dummy "parent" whose IMAGENAME matches exe exactly (cmd clone).
+    parent = subprocess.Popen([str(install / exe), "/c", "ping -n 60 127.0.0.1 >nul"])
+    try:
+        checker = UpdateChecker()
+        _t8_run_helper(
+            checker,
+            src=src,
+            install=install,
+            new_dir=tmp_path / "app" / "engram.new",
+            old_dir=tmp_path / "app" / "engram.old",
+            log=log,
+            result=result,
+            exe=exe,
+            pid=parent.pid,
+            version="9.9.9",
+        )
+        time.sleep(2)  # let the helper enter the :wait loop before we kill the parent
+        parent.terminate()  # the :wait loop observes the exit and proceeds with the swap
+        ok = _t8_wait_for(lambda: result.exists())
+        log_text = log.read_text() if log.exists() else "<no log>"
+        assert ok, f"no result marker written within 30s; helper log:\n{log_text}"
+        text = result.read_text()
+        assert "result=success" in text, (
+            f"unexpected result:\n{text}\n--- helper log ---\n{log_text}"
+        )
+        assert (install / "VERSION.txt").read_text() == "NEW", "swap did not happen"
+    finally:
+        if parent.poll() is None:
+            parent.terminate()
+        subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
+
+
+@windows_only
+def test_windows_swap_failure_writes_marker_and_keeps_install(tmp_path):
+    """A missing sentinel causes verify to fail -> failure marker written, install left intact."""
+    exe = "engram_t8b.exe"
+    src = tmp_path / "stage" / "engram"
+    install = tmp_path / "app" / "engram"
+    _t8_make_build(src, exe, "NEW")
+    # Remove the index.html sentinel so the verify step in the bat fails.
+    (src / "_internal" / "app" / "static" / "index.html").unlink()
+    _t8_make_build(install, exe, "OLD")
+    log = tmp_path / "helper.log"
+    result = tmp_path / "update_result.txt"
+
+    parent = subprocess.Popen([str(install / exe), "/c", "ping -n 60 127.0.0.1 >nul"])
+    try:
+        checker = UpdateChecker()
+        _t8_run_helper(
+            checker,
+            src=src,
+            install=install,
+            new_dir=tmp_path / "app" / "engram.new",
+            old_dir=tmp_path / "app" / "engram.old",
+            log=log,
+            result=result,
+            exe=exe,
+            pid=parent.pid,
+            version="9.9.9",
+        )
+        time.sleep(2)
+        parent.terminate()
+        ok = _t8_wait_for(lambda: result.exists())
+        log_text = log.read_text() if log.exists() else "<no log>"
+        assert ok, f"no result marker written within 30s; helper log:\n{log_text}"
+        text = result.read_text()
+        assert "result=failed" in text, (
+            f"unexpected result:\n{text}\n--- helper log ---\n{log_text}"
+        )
+        assert (install / "VERSION.txt").read_text() == "OLD", (
+            "install was modified (should be untouched)"
+        )
+    finally:
+        if parent.poll() is None:
+            parent.terminate()
+        subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
