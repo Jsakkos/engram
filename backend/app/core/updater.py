@@ -601,6 +601,7 @@ class UpdateChecker:
         old_dir = install_dir.parent / f"{install_dir.name}.old-{version}"
         log_path = Path.home() / ".engram" / "update_helper.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path = Path.home() / ".engram" / "update_result.txt"
 
         temp_dir = Path(os.environ.get("TEMP", "C:\\Temp"))
         bat_path = temp_dir / "engram_update.bat"
@@ -614,6 +615,8 @@ class UpdateChecker:
             log_path=str(log_path),
             exe=Path(sys.executable).name,
             pid=pid,
+            version=version,
+            result_path=str(result_path),
         )
         # cmd.exe requires CRLF line endings (LF-only batch files mishandle labels/goto);
         # write them explicitly so the helper is valid regardless of host platform.
@@ -638,30 +641,21 @@ class UpdateChecker:
         log_path: str,
         exe: str,
         pid: int,
+        version: str,
+        result_path: str,
     ) -> str:
         """Render the Windows update helper batch script (pure — testable off-Windows).
 
-        Atomic + verified + recoverable swap, run after the parent PID ``pid`` exits:
+        Spawned with CREATE_NO_WINDOW (hidden console) so every command — including the
+        `tasklist | find` wait pipe — works; DETACHED_PROCESS (no console) deadlocked it.
 
-          1. ``robocopy`` the staged build (``src``) to a sibling ``new_dir`` — never
-             touches the live install. ``/MIR`` *replaces* rather than merges (so files
-             dropped in the new version don't linger); ``/R:3 /W:2`` retries files still
-             transiently locked just after the old process exits. robocopy "success" is
-             any exit code ``< 8``.
-          2. Verify the sentinel files every healthy onedir build must contain
-             (launcher, ``base_library.zip``, the certifi CA bundle, the bundled
-             frontend ``index.html``).
-          3. Swap with two same-volume renames: ``install`` -> ``old_dir``, then
-             ``new_dir`` -> ``install`` — each atomic, so the install is never a hybrid.
-          4. Relaunch ``exe``. On any failure (copy / verify / move) roll back to the
-             previous install and relaunch it.
-
-        Logs every step to ``log_path`` and only deletes itself on success, so a failed
-        run leaves the bat + log behind as evidence.
-
-        Built as a line list so only the path/pid lines interpolate; every line that
-        references a cmd variable (``%LOG%``, ``%ERRORLEVEL%``, ``%~f0`` …) is a plain
-        string and never meets Python's ``%`` handling — no ``%%`` doubling needed.
+        After the parent PID exits (bounded ~10s wait, filtered on PID *and* image name so a
+        reused PID can't wedge it): robocopy the staged build to a sibling `.new`, verify
+        sentinels, swap via two same-volume renames, relaunch with `--updated` (suppresses a
+        duplicate browser tab; the existing tab reconnects), and roll back on any failure. Every
+        terminal path writes a `result=...` marker to %RESULT% that the relaunched app reads to
+        toast success / show a failure notice. Logs every step to %LOG%; only deletes itself on
+        success.
         """
         lines = [
             "@echo off",
@@ -671,64 +665,69 @@ class UpdateChecker:
             f'set "NEWDIR={new_dir}"',
             f'set "OLDDIR={old_dir}"',
             f'set "LOG={log_path}"',
+            f'set "RESULT={result_path}"',
+            f'set "VER={version}"',
             f'set "EXE=%INSTALL%\\{exe}"',
+            'set "STEP=start"',
             f'echo [engram-update] start (pid {pid}) > "%LOG%"',
-            # Diagnostic context: %CD% here is the cwd we INHERITED from engram. If it
-            # equals %INSTALL%, the `cd /d` below is what saves the swap (see there).
             'echo [engram-update] cwd=%CD% >> "%LOG%"',
             'echo [engram-update] INSTALL=%INSTALL% NEWDIR=%NEWDIR% OLDDIR=%OLDDIR% >> "%LOG%"',
             'echo [engram-update] SRC=%SRC% EXE=%EXE% >> "%LOG%"',
-            # --- wait for the parent process to exit, then let file handles release ---
+            # --- wait for parent to exit; bounded (~10s), filtered on PID + image name ---
+            "set /a WAITED=0",
             ":wait",
-            f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL',
-            "if not errorlevel 1 (",
-            "    ping -n 2 127.0.0.1 >nul",
-            "    goto wait",
+            f'tasklist /FI "PID eq {pid}" /FI "IMAGENAME eq {exe}" 2>NUL | find /I "{pid}" >NUL',
+            "if errorlevel 1 goto exited",
+            "set /a WAITED+=1",
+            "if %WAITED% GEQ 10 (",
+            '    echo [engram-update] timed out waiting for exit >> "%LOG%"',
+            '    set "STEP=wait_timeout"',
+            "    goto fail",
             ")",
+            "ping -n 2 127.0.0.1 >nul",
+            "goto wait",
+            ":exited",
             'echo [engram-update] process exited; waiting for handles >> "%LOG%"',
             "ping -n 3 127.0.0.1 >nul",
             "ping -n 3 127.0.0.1 >nul",
-            # Move our OWN working directory off the install dir before the swap. A
-            # detached helper inherits the parent engram process's cwd, which for a
-            # double-clicked onedir exe is the install dir. A directory that is any
-            # process's current directory cannot be renamed, so without this the
-            # `move "%INSTALL%"` below fails with "being used by another process" and
-            # every restart silently rolls back (confirmed in an isolated swap harness).
-            # %TEMP% is guaranteed valid — this bat lives there.
+            # Move our cwd off the install dir before the swap (a process's cwd can't be renamed).
             'cd /d "%TEMP%"',
             'echo [engram-update] cwd(after cd)=%CD% >> "%LOG%"',
             # --- copy staged build to a sibling of the install (never in place) ---
             'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
             'echo [engram-update] robocopy "%SRC%" to "%NEWDIR%" >> "%LOG%"',
             'robocopy "%SRC%" "%NEWDIR%" /MIR /R:3 /W:2 /NP /NFL /NDL >> "%LOG%" 2>&1',
-            # Capture robocopy's exit BEFORE any other command (echo resets ERRORLEVEL),
-            # then both log and gate on the captured value. Success is < 8.
             "set RC=%ERRORLEVEL%",
             'echo [engram-update] robocopy exit=%RC% >> "%LOG%"',
+            'set "STEP=robocopy"',
             "if %RC% GEQ 8 goto fail",
             # --- verify the copied tree before touching the live install ---
-            'if not exist "%NEWDIR%\\engram.exe" goto fail',
+            'set "STEP=verify"',
+            f'if not exist "%NEWDIR%\\{exe}" goto fail',
             'if not exist "%NEWDIR%\\_internal\\base_library.zip" goto fail',
             'if not exist "%NEWDIR%\\_internal\\certifi\\cacert.pem" goto fail',
             'if not exist "%NEWDIR%\\_internal\\app\\static\\index.html" goto fail',
             # --- atomic swap: install -> .old, .new -> install ---
-            # Clear any stale .old from a prior failed run, else `move` below fails.
             'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
             'echo [engram-update] swapping install >> "%LOG%"',
+            'set "STEP=move_install"',
             'move "%INSTALL%" "%OLDDIR%" >> "%LOG%" 2>&1',
             "if errorlevel 1 goto fail_no_swap",
+            'set "STEP=move_new"',
             'move "%NEWDIR%" "%INSTALL%" >> "%LOG%" 2>&1',
             "if errorlevel 1 goto restore_old",
-            # --- success --- relaunch with cwd pinned to the (new) install dir, exactly
-            # as a double-click would, so nothing depends on the helper's %TEMP% cwd.
+            # --- success ---
             'echo [engram-update] success; relaunching >> "%LOG%"',
-            'start "" /D "%INSTALL%" "%EXE%"',
+            'echo result=success>"%RESULT%"',
+            'echo version=%VER%>>"%RESULT%"',
+            'start "" /D "%INSTALL%" "%EXE%" --updated',
             'echo [engram-update] done (success) >> "%LOG%"',
             'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
-            '(goto) 2>nul & del "%~f0"',  # exit batch context, then delete self (idiom)
-            # --- rollback paths (bat is NOT deleted — left with the log for diagnosis) ---
+            '(goto) 2>nul & del "%~f0"',
+            # --- rollback paths (bat NOT deleted — left with the log for diagnosis) ---
             ":restore_old",
             'echo [engram-update] swap failed; restoring previous install >> "%LOG%"',
+            'set "STEP=swap_restore"',
             'rmdir /S /Q "%INSTALL%" >nul 2>&1',
             'move "%OLDDIR%" "%INSTALL%" >> "%LOG%" 2>&1',
             "goto relaunch_old",
@@ -736,12 +735,15 @@ class UpdateChecker:
             'echo [engram-update] could not move install aside; left untouched >> "%LOG%"',
             "goto relaunch_old",
             ":fail",
-            'echo [engram-update] copy/verify failed; install untouched >> "%LOG%"',
+            'echo [engram-update] failed at step %STEP%; install untouched >> "%LOG%"',
             'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
             "goto relaunch_old",
             ":relaunch_old",
             'echo [engram-update] rolled back to previous install >> "%LOG%"',
-            'start "" /D "%INSTALL%" "%EXE%"',
+            'echo result=failed>"%RESULT%"',
+            'echo version=%VER%>>"%RESULT%"',
+            'echo step=%STEP%>>"%RESULT%"',
+            'start "" /D "%INSTALL%" "%EXE%" --updated',
             'echo [engram-update] done (rolled back) >> "%LOG%"',
             "endlocal",
         ]

@@ -684,6 +684,8 @@ _BAT_ARGS = dict(
     log_path=r"C:\Users\jonat\.engram\update_helper.log",
     exe="engram.exe",
     pid=28628,
+    version="0.16.0",
+    result_path=r"C:\Users\jonat\.engram\update_result.txt",
 )
 
 
@@ -762,7 +764,10 @@ class TestRenderUpdateBat:
         bat = self._bat()
         assert f'tasklist /FI "PID eq {_BAT_ARGS["pid"]}"' in bat
         assert "ping -n" in bat  # PID poll + post-exit grace
-        assert "timeout" not in bat  # timeout aborts in a console-less context
+        # The `timeout` CMD built-in aborts in a console-less context; must not be used as a
+        # command. The word may appear in log messages (e.g. "timed out"), so check for it as
+        # a standalone command token (newline + "timeout ") rather than a bare substring.
+        assert "\ntimeout " not in bat  # timeout cmd aborts in a console-less context
 
     def test_preserves_parens_in_paths(self):
         bat = self._bat()
@@ -862,3 +867,38 @@ def test_spawn_detached_helper_uses_create_no_window(monkeypatch):
     DETACHED_PROCESS = 0x00000008
     assert captured["flags"] & CREATE_NO_WINDOW, "must use CREATE_NO_WINDOW"
     assert not (captured["flags"] & DETACHED_PROCESS), "must NOT use DETACHED_PROCESS"
+
+
+def _bat():
+    return UpdateChecker._render_update_bat(
+        src=r"C:\stage\engram",
+        install=r"C:\app\engram",
+        new_dir=r"C:\app\engram.new",
+        old_dir=r"C:\app\engram.old",
+        log_path=r"C:\u\.engram\update_helper.log",
+        exe="engram.exe",
+        pid=4321,
+        version="9.9.9",
+        result_path=r"C:\u\.engram\update_result.txt",
+    )
+
+
+def test_render_bat_wait_is_bounded_and_image_filtered():
+    bat = _bat()
+    assert "IMAGENAME eq engram.exe" in bat  # don't wedge on a reused PID
+    assert "set /a WAITED" in bat  # bounded counter exists
+    assert "if %WAITED% GEQ 10" in bat  # ~10s cap
+
+
+def test_render_bat_relaunch_passes_updated_flag():
+    bat = _bat()
+    # both the success relaunch and the rollback relaunch suppress the new tab
+    assert bat.count('"%EXE%" --updated') == 2
+
+
+def test_render_bat_writes_result_marker():
+    bat = _bat()
+    assert 'echo result=success>"%RESULT%"' in bat
+    assert 'echo result=failed>"%RESULT%"' in bat
+    assert 'echo version=%VER%>>"%RESULT%"' in bat
+    assert 'echo step=%STEP%>>"%RESULT%"' in bat
