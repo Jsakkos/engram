@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **The review panel's episode-ordering picker now offers only Aired and DVD order** — the per-show ordering selector in the review queue could show extra buttons (digital, story-arc, production, TV) whenever a show happened to have those alternative orderings on TMDB, even though the global Episode Ordering setting only ever offered Aired and DVD. The two surfaces now agree: both offer just Aired and DVD. The other orderings are still recognized internally but no longer selectable, and matching, history, and the fingerprint network remain on canonical aired numbering as before. (#348)
 - **The "Try LLM match" button in the review Inspector now works** — clicking it on a track in review did nothing useful: the backend failed instantly on a wrong internal import (it looked for an `episode_curator` that doesn't exist), caught the error, and returned a silent success, so the button appeared to do nothing and the failure only showed up in the logs. AI-assisted single-track matching from the review panel now runs the transcription and returns a suggestion as intended. (#347)
 
 ## [0.16.2] - 2026-06-05

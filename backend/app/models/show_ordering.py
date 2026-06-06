@@ -25,7 +25,7 @@ class ShowOrderingPreference(SQLModel, table=True):
 
     # tmdb_id is the natural key — one preference per show.
     tmdb_id: int = Field(primary_key=True)
-    # One of episode_ordering.ALLOWED_ORDERINGS ("aired", "dvd", "digital", ...).
+    # One of episode_ordering.ALLOWED_ORDERINGS ("aired" or "dvd" in v1).
     ordering: str = Field(default="aired")
     # The resolved TMDB episode-group id for this ordering, cached so the
     # projection can skip re-resolving the group on every organize. NULL until

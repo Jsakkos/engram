@@ -39,6 +39,12 @@ class TestConfigOrderingPreference:
         resp = await client.put("/api/config", json={"episode_ordering_preference": "absolute"})
         assert resp.status_code == 422
 
+    @pytest.mark.parametrize("deferred", ["digital", "story_arc", "production", "tv"])
+    async def test_put_config_rejects_deferred_orderings(self, client, deferred):
+        # v1 scope is aired + DVD only; the other TMDB group types are deferred.
+        resp = await client.put("/api/config", json={"episode_ordering_preference": deferred})
+        assert resp.status_code == 422
+
     async def test_put_config_rejects_unknown(self, client):
         resp = await client.put("/api/config", json={"episode_ordering_preference": "bogus"})
         assert resp.status_code == 422

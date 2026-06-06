@@ -45,7 +45,7 @@ export interface RosterEpisode {
 
 /** One selectable output ordering for a show (#200). */
 export interface OrderingOption {
-    ordering: string; // "aired" | "dvd" | "digital" | ...
+    ordering: string; // "aired" | "dvd" (v1 scope)
     label: string; // human label (e.g. "DVD Order")
     tmdb_type: number;
     /** Whether this ordering renumbers any episode matched on this disc. */
