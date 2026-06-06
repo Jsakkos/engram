@@ -72,6 +72,18 @@ class DatabaseError(EngramError):
     pass
 
 
+class AIProviderError(EngramError):
+    """LLM provider call failed.
+
+    Raised when an AI provider request fails at the transport/HTTP layer
+    (rate-limit exhausted, auth, out-of-credits, provider 5xx, network). Lets
+    callers distinguish a provider failure from "the model ran and was not
+    confident" (which stays a plain ``None``/no-match result).
+    """
+
+    pass
+
+
 # Error Handling Decorator
 def handle_errors(
     *,

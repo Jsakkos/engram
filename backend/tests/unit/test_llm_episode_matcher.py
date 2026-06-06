@@ -187,3 +187,65 @@ class TestMatchEpisodeViaLLM:
                 tmdb_api_key="t",
             )
         assert result is None
+
+
+class TestMatchEpisodeViaLlmRaiseOnError:
+    @pytest.mark.asyncio
+    async def test_raise_on_error_propagates_aiprovidererror(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.core.errors import AIProviderError
+        from app.matcher.llm_episode_matcher import match_episode_via_llm
+
+        transcript = "the detective examined the case file carefully " * 20  # >500 chars
+        with (
+            patch(
+                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                return_value=[{"episode_number": 1, "name": "Pilot", "overview": "x"}],
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.complete_json",
+                AsyncMock(side_effect=AIProviderError("boom")),
+            ) as mock_cj,
+        ):
+            with pytest.raises(AIProviderError):
+                await match_episode_via_llm(
+                    transcript=transcript,
+                    show_name="X",
+                    season=1,
+                    tmdb_show_id="123",
+                    ai_provider="gemini",
+                    ai_api_key="k",
+                    tmdb_api_key="t",
+                    raise_on_error=True,
+                )
+        assert mock_cj.await_args.kwargs["raise_on_error"] is True
+
+    @pytest.mark.asyncio
+    async def test_default_threads_false_and_returns_none(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.matcher.llm_episode_matcher import match_episode_via_llm
+
+        transcript = "the detective examined the case file carefully " * 20
+        with (
+            patch(
+                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                return_value=[{"episode_number": 1, "name": "Pilot", "overview": "x"}],
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.complete_json",
+                AsyncMock(return_value=None),
+            ) as mock_cj,
+        ):
+            result = await match_episode_via_llm(
+                transcript=transcript,
+                show_name="X",
+                season=1,
+                tmdb_show_id="123",
+                ai_provider="gemini",
+                ai_api_key="k",
+                tmdb_api_key="t",
+            )
+        assert result is None
+        assert mock_cj.await_args.kwargs["raise_on_error"] is False

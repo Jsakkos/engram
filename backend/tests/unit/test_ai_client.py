@@ -324,3 +324,51 @@ class TestRateLimitRetry:
 
         assert result is None
         assert client.post.await_count == 4  # initial + 3 retries
+
+
+class TestCompleteJsonRaiseOnError:
+    @pytest.mark.asyncio
+    async def test_http_error_raises_aiprovidererror_when_flag_set(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({}, status=500)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError):
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="anthropic",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_none_by_default(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({}, status=500)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(prompt="x", schema=None, provider="anthropic", api_key="k")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_propagates_unwrapped_when_flag_set(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(side_effect=RuntimeError("boom"))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=client):
+            with pytest.raises(RuntimeError):
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="anthropic",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        # A non-transport error must NOT be coerced into AIProviderError.
+        assert not issubclass(RuntimeError, AIProviderError)

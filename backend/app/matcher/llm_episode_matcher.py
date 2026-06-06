@@ -86,8 +86,14 @@ async def match_episode_via_llm(
     ai_provider: str,
     ai_api_key: str,
     tmdb_api_key: str,
+    raise_on_error: bool = False,
 ) -> LLMEpisodeMatch | None:
-    """Run LLM episode matching. Returns None on any failure or zero-confidence."""
+    """Run LLM episode matching. Returns None on no-confident-match or empty response.
+
+    When ``raise_on_error`` is True, a provider/transport failure raises
+    ``AIProviderError`` (instead of being swallowed to None by ``complete_json``)
+    so callers can distinguish a provider outage from "no confident match".
+    """
     cleaned = _clean_subtitle_text(transcript)
     safe_show = sanitize_log_value(show_name)
     safe_season = sanitize_log_value(season)
@@ -126,6 +132,7 @@ async def match_episode_via_llm(
         provider=ai_provider,
         api_key=ai_api_key,
         max_tokens=512,
+        raise_on_error=raise_on_error,
     )
     if not raw:
         return None

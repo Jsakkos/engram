@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The review Inspector's "Try LLM match" endpoint now returns a differentiated `reason` (e.g. `ai_disabled`, `not_configured`, `no_season`, `show_not_found`, `transcription_failed`, `no_match`, `llm_error`) and uses HTTP 503 for retryable operational failures (matcher/transcription/LLM-provider errors) and 500 for unexpected errors, instead of reporting every failure as a 200. This lets the UI tell "AI matching is off / couldn't find a match" apart from "the LLM provider failed, retry". (#347 follow-up)
+
 ### Fixed
 
 - **The review panel's episode-ordering picker now offers only Aired and DVD order** — the per-show ordering selector in the review queue could show extra buttons (digital, story-arc, production, TV) whenever a show happened to have those alternative orderings on TMDB, even though the global Episode Ordering setting only ever offered Aired and DVD. The two surfaces now agree: both offer just Aired and DVD. The other orderings are still recognized internally but no longer selectable, and matching, history, and the fingerprint network remain on canonical aired numbering as before. (#348)
@@ -68,6 +72,9 @@ _Highlights: the community fingerprint network moved to a stable custom domain (
 ### Changed
 
 - **The fingerprint network moved to a stable custom domain** — Engram now contributes and identifies against `https://api.engramfp.com` by default, instead of the old `*.workers.dev` address. Existing installs pick up the new address automatically on update (unless you've set a custom server URL in Settings → Data Sharing); the old address keeps serving during the transition, so nothing breaks mid-migration. (#319)
+### Changed
+
+- The review Inspector's "Try LLM match" endpoint now returns a differentiated `reason` (e.g. `ai_disabled`, `not_configured`, `no_season`, `show_not_found`, `transcription_failed`, `no_match`, `llm_error`) and uses HTTP 503 for retryable operational failures (matcher/transcription/LLM-provider errors) and 500 for unexpected errors, instead of reporting every failure as a 200. This lets the UI tell "AI matching is off / couldn't find a match" apart from "the LLM provider failed, retry". (#347 follow-up)
 
 ## [0.15.1] - 2026-06-03
 

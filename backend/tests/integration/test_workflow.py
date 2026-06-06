@@ -5,6 +5,7 @@ and organization using simulation endpoints.
 """
 
 import asyncio
+import types
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -853,6 +854,48 @@ class TestReassignWithSource:
             assert refreshed.match_source == "user"
 
 
+async def _seed_review_title(detected_title="The Expanse", detected_season=1):
+    """Create a REVIEW_NEEDED TV job + one REVIEW title; return (job_id, title_id)."""
+    from app.database import async_session
+    from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
+
+    async with async_session() as s:
+        job = DiscJob(
+            drive_id="TEST:",
+            volume_label="X_S1D1",
+            state=JobState.REVIEW_NEEDED,
+            content_type=ContentType.TV,
+            detected_title=detected_title,
+            detected_season=detected_season,
+        )
+        s.add(job)
+        await s.commit()
+        await s.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=0,
+            state=TitleState.REVIEW,
+            duration_seconds=1200,
+            output_filename="/tmp/x.mkv",
+        )
+        s.add(title)
+        await s.commit()
+        await s.refresh(title)
+        return job.id, title.id
+
+
+def _fake_config(**overrides):
+    """A stand-in AppConfig for the LLM-match helper."""
+    base = dict(
+        ai_episode_matching_enabled=True,
+        ai_api_key="key",
+        ai_provider="gemini",
+        tmdb_api_key="tmdb",
+    )
+    base.update(overrides)
+    return types.SimpleNamespace(**base)
+
+
 class TestLLMMatchEndpoint:
     @pytest.mark.asyncio
     async def test_returns_suggestion_and_persists(self, client, setup_db, monkeypatch):
@@ -885,13 +928,17 @@ class TestLLMMatchEndpoint:
             await s.refresh(title)
 
         async def fake_run(**kwargs):
-            return {
-                "episode": 4,
-                "confidence": 0.88,
-                "reasoning": "r",
-                "runner_up": None,
-                "model": "gemini-2.5-flash-lite",
-            }
+            from app.api.routes import LLMMatchOutcome
+
+            return LLMMatchOutcome.ok(
+                {
+                    "episode": 4,
+                    "confidence": 0.88,
+                    "reasoning": "r",
+                    "runner_up": None,
+                    "model": "gemini-2.5-flash-lite",
+                }
+            )
 
         monkeypatch.setattr("app.api.routes._run_llm_match_for_title", fake_run)
 
@@ -955,33 +1002,29 @@ class TestLLMMatchEndpoint:
 
     @pytest.mark.asyncio
     async def test_run_llm_match_imports_resolve(self, setup_db, monkeypatch):
-        """Regression: the real helper must import the curator singleton correctly.
+        """Regression (#347): the real helper must import the curator singleton
+        correctly. The other endpoint tests mock ``_run_llm_match_for_title``
+        entirely, so its function-local imports never executed — which is how a
+        wrong import (``from app.core.curator import episode_curator``; the
+        singleton is named ``curator``) shipped a permanently-broken endpoint that
+        swallowed the ImportError and returned ``reason="internal_error"``.
 
-        The other tests in this class mock out ``_run_llm_match_for_title`` entirely,
-        so its function-local imports were never executed — which is exactly how a
-        wrong import (``from app.core.curator import episode_curator``; the singleton
-        is named ``curator``) shipped a permanently-broken endpoint that swallowed the
-        ImportError and returned ``reason="internal_error"`` with HTTP 200.
-
-        Here we call the REAL helper. We force an early, graceful ``None`` return by
-        disabling AI matching — but the curator import runs *before* that check, so
-        pre-fix this raises ImportError and post-fix it returns None.
+        Call the REAL helper and drive it past the config guards to the curator
+        import. A broken import would raise ImportError; reaching the graceful
+        ``matcher_unavailable`` outcome proves the singleton import resolved.
         """
+        from unittest.mock import AsyncMock
+
         from app.api.routes import _run_llm_match_for_title
+        from app.core.curator import curator as episode_curator
         from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
 
-        class _Config:
-            ai_episode_matching_enabled = False
-            ai_api_key = None
-            ai_provider = "gemini"
-            tmdb_api_key = ""
-
-        async def fake_config(*_args, **_kwargs):
-            return _Config()
-
-        # _run_llm_match_for_title imports get_config from this module at call time,
-        # so patching the module attribute before the call takes effect.
-        monkeypatch.setattr("app.services.config_service.get_config", fake_config)
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: False)
+        monkeypatch.setattr(episode_curator, "_matcher", None)
 
         job = DiscJob(
             drive_id="TEST:",
@@ -996,9 +1039,270 @@ class TestLLMMatchEndpoint:
             title_index=0,
             state=TitleState.REVIEW,
             duration_seconds=1200,
-            file_path="/tmp/x.mkv",
+            output_filename="/tmp/x.mkv",
         )
 
-        # Must NOT raise ImportError; returns None because AI matching is disabled.
+        # Must NOT raise ImportError; reaching matcher_unavailable proves the
+        # curator singleton import resolved.
         result = await _run_llm_match_for_title(title=title, job=job)
-        assert result is None
+        assert result.reason == "matcher_unavailable"
+
+    @pytest.mark.asyncio
+    async def test_ai_disabled_returns_200_reason(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config(ai_episode_matching_enabled=False)),
+        )
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 200
+        assert r.json() == {"suggestion": None, "reason": "ai_disabled"}
+
+    @pytest.mark.asyncio
+    async def test_not_configured_returns_200_reason(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        job_id, title_id = await _seed_review_title()
+        # Helper does a local `from app.services.config_service import get_config`, so
+        # patch the name on its source module — the local import resolves it at call time.
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config(ai_api_key="")),
+        )
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 200
+        assert r.json()["reason"] == "not_configured"
+
+    @pytest.mark.asyncio
+    async def test_no_show_returns_200_reason(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        job_id, title_id = await _seed_review_title(detected_title=None)
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 200
+        assert r.json()["reason"] == "no_show"
+
+    @pytest.mark.asyncio
+    async def test_no_season_returns_200_reason(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        job_id, title_id = await _seed_review_title(detected_season=None)
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 200
+        assert r.json()["reason"] == "no_season"
+
+    @pytest.mark.asyncio
+    async def test_matcher_unavailable_returns_503(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        from app.core.curator import curator as episode_curator
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: False)
+        monkeypatch.setattr(episode_curator, "_matcher", None)
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 503
+        assert r.json() == {"suggestion": None, "reason": "matcher_unavailable"}
+
+    @pytest.mark.asyncio
+    async def test_show_not_found_returns_200_reason(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.core.curator import curator as episode_curator
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: True)
+        monkeypatch.setattr(episode_curator, "_matcher", MagicMock())
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", lambda *a, **k: None)
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 200
+        assert r.json()["reason"] == "show_not_found"
+
+    @pytest.mark.asyncio
+    async def test_empty_transcript_returns_503(self, client, setup_db, monkeypatch):
+        # The file resolves but Whisper yields nothing -> transcription_failed.
+        # (The missing-file branch is covered separately below.)
+        from pathlib import Path
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.core.curator import curator as episode_curator
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        fake_matcher = MagicMock()
+        fake_matcher.transcribe_full.return_value = ""
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: True)
+        monkeypatch.setattr(episode_curator, "_matcher", fake_matcher)
+        # find_staging_file is locally imported inside _run_llm_match_for_title; patch the
+        # source module — the local import resolves the patched name at call time.
+        monkeypatch.setattr(
+            "app.services.ripping_helpers.find_staging_file",
+            lambda *a, **k: Path("/tmp/x.mkv"),
+        )
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", lambda *a, **k: "123")
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 503
+        assert r.json() == {"suggestion": None, "reason": "transcription_failed"}
+
+    @pytest.mark.asyncio
+    async def test_no_match_returns_200_reason(self, client, setup_db, monkeypatch):
+        from pathlib import Path
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.core.curator import curator as episode_curator
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        fake_matcher = MagicMock()
+        fake_matcher.transcribe_full.return_value = "a long transcript " * 50
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: True)
+        monkeypatch.setattr(episode_curator, "_matcher", fake_matcher)
+        monkeypatch.setattr(
+            "app.services.ripping_helpers.find_staging_file",
+            lambda *a, **k: Path("/tmp/x.mkv"),
+        )
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", lambda *a, **k: "123")
+        monkeypatch.setattr(
+            "app.matcher.llm_episode_matcher.match_episode_via_llm",
+            AsyncMock(return_value=None),
+        )
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 200
+        assert r.json()["reason"] == "no_match"
+
+    @pytest.mark.asyncio
+    async def test_llm_error_returns_503(self, client, setup_db, monkeypatch):
+        from pathlib import Path
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.core.curator import curator as episode_curator
+        from app.core.errors import AIProviderError
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        fake_matcher = MagicMock()
+        fake_matcher.transcribe_full.return_value = "a long transcript " * 50
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: True)
+        monkeypatch.setattr(episode_curator, "_matcher", fake_matcher)
+        monkeypatch.setattr(
+            "app.services.ripping_helpers.find_staging_file",
+            lambda *a, **k: Path("/tmp/x.mkv"),
+        )
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", lambda *a, **k: "123")
+        monkeypatch.setattr(
+            "app.matcher.llm_episode_matcher.match_episode_via_llm",
+            AsyncMock(side_effect=AIProviderError("boom")),
+        )
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 503
+        assert r.json() == {"suggestion": None, "reason": "llm_error"}
+
+    @pytest.mark.asyncio
+    async def test_internal_error_returns_500(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 500
+        assert r.json() == {"suggestion": None, "reason": "internal_error"}
+
+    @pytest.mark.asyncio
+    async def test_success_via_real_helper_persists(self, client, setup_db, monkeypatch):
+        import json
+        import types as _types
+        from pathlib import Path
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.core.curator import curator as episode_curator
+        from app.database import async_session
+        from app.models.disc_job import DiscTitle
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        fake_matcher = MagicMock()
+        fake_matcher.transcribe_full.return_value = "a long transcript " * 50
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: True)
+        monkeypatch.setattr(episode_curator, "_matcher", fake_matcher)
+        monkeypatch.setattr(
+            "app.services.ripping_helpers.find_staging_file",
+            lambda *a, **k: Path("/tmp/x.mkv"),
+        )
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", lambda *a, **k: "123")
+        fake_match = _types.SimpleNamespace(
+            episode=4, confidence=0.9, reasoning="r", runner_up=None, model="gemini"
+        )
+        monkeypatch.setattr(
+            "app.matcher.llm_episode_matcher.match_episode_via_llm",
+            AsyncMock(return_value=fake_match),
+        )
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["reason"] is None
+        assert body["suggestion"]["episode"] == 4
+
+        async with async_session() as s:
+            refreshed = await s.get(DiscTitle, title_id)
+            details = json.loads(refreshed.match_details or "{}")
+            assert details["llm_suggestion"]["episode"] == 4
+
+    @pytest.mark.asyncio
+    async def test_missing_file_returns_transcription_failed(self, client, setup_db, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.core.curator import curator as episode_curator
+
+        job_id, title_id = await _seed_review_title()
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(return_value=_fake_config()),
+        )
+        monkeypatch.setattr(episode_curator, "_ensure_initialized", lambda *a, **k: True)
+        monkeypatch.setattr(episode_curator, "_matcher", MagicMock())
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", lambda *a, **k: "123")
+        monkeypatch.setattr("app.services.ripping_helpers.find_staging_file", lambda *a, **k: None)
+
+        r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
+        assert r.status_code == 503
+        assert r.json() == {"suggestion": None, "reason": "transcription_failed"}
