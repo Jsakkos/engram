@@ -68,6 +68,7 @@ _Highlights: the community fingerprint network moved to a stable custom domain (
 ### Changed
 
 - **The fingerprint network moved to a stable custom domain** — Engram now contributes and identifies against `https://api.engramfp.com` by default, instead of the old `*.workers.dev` address. Existing installs pick up the new address automatically on update (unless you've set a custom server URL in Settings → Data Sharing); the old address keeps serving during the transition, so nothing breaks mid-migration. (#319)
+- **The review screen's "Try AI match" button now tells you what happened** — clicking *Try AI match* on a title in review runs AI episode matching in the background (often 1–3 minutes), but the button gave no signal: while it ran nothing changed on screen, and if the AI found no confident match or hit an error the screen silently refreshed and showed nothing. The button now shows a "Matching…" state while it runs, and reports the outcome right in the Inspector — the suggested episode on success, or a clear notice otherwise ("No confident AI match found." or "AI match failed — check the server log."). (#NNN)
 
 ## [0.15.1] - 2026-06-03
 
