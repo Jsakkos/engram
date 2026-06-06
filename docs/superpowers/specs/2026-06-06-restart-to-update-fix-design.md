@@ -92,21 +92,22 @@ update can't apply, it rolls back to the working old build, relaunches it, and s
 non-blocking notice. The pending update auto-retries on the next check.
 
 ### 2a. Bat writes a result marker (success and failure)
-The bat writes a single `~/.engram/update_result.json` before relaunching, on every terminal
-path:
+The bat writes a single `~/.engram/update_result.txt` before relaunching, on every terminal path.
+**Plain `key=value` lines** (not JSON — emitting JSON quotes/colons/`>` from cmd is fragile);
+parsed leniently in Python:
 
 - **Failure** labels (`:fail`, `:fail_no_swap`, `:restore_old`, new wait-timeout path):
-  `{ "result": "failed", "version": "<target>", "step": "<label>", "ts": "..." }`
-- **Success** path: `{ "result": "success", "version": "<target>", "ts": "..." }`
+  `result=failed` / `version=<target>` / `step=<label>`
+- **Success** path: `result=success` / `version=<target>`
 
-Written with `echo ... > "%RESULT%"` (file redirection works console-less; with §1a it is fully
-reliable). Startup reads it once and branches on `result` (§2b).
+Written with `echo key=value>"%RESULT%"` (first line) + `>>` appends (file redirection works
+console-less; with §1a it is fully reliable). Startup reads it once and branches on `result` (§2b).
 
 ### 2b. Startup reads the marker into status fields
 In `UpdateChecker`:
 - New instance fields (init in `__init__`): `self.last_update_error: str | None = None` and
   `self.last_update_success_version: str | None = None`.
-- `start()` reads `~/.engram/update_result.json` if present, **deletes it** (so it's consumed
+- `start()` reads `~/.engram/update_result.txt` if present, **deletes it** (so it's consumed
   once), then branches:
   - `"failed"` → `last_update_error` = human message ("Update to {version} couldn't be applied
     automatically (step: {step}). It'll retry on the next check, or download manually.").
@@ -134,10 +135,18 @@ In `UpdateChecker`:
   "new build ready to retry"). Update `UpdateBanner.test.tsx`.
 - **Success toast:** when `updateStatus.last_update_success_version` arrives, fire
   `toast.success("You're now on engram v{version}")` (sonner). Fired as a side-effect in the
-  update-status consumer (the hook/effect that handles the `update_status` WS message + the
-  initial `/api/updates/status` fetch), **deduped by version** via a ref/localStorage so it shows
-  once even though the field rides multiple status payloads (backend stays stateless — no
-  clear-after-broadcast needed).
+  update-status consumer (`App.tsx`, which already holds `updateStatus` from `useJobManagement`),
+  **deduped by version via `localStorage`** (key e.g. `engram:lastSuccessToastVersion`).
+  - localStorage, **not** a ref: a successful update changes `current_version`, which makes
+    `useJobManagement.syncUpdateStatus()` call `window.location.reload()` (the bundle-version
+    guard). That reload wipes any in-memory ref. A server-side field + localStorage dedupe is the
+    only combination that survives the reload yet fires exactly once. (This is also why the
+    backend marker is required — not merely convenient.)
+  - **Replace the existing dead toast effect.** `App.tsx` (~L147–156) has a
+    `pendingUpdateVersionRef` + `state === "up_to_date"` toast that never fires in practice (the
+    reload wipes the ref first). Remove that effect and the now-unused `pendingUpdateVersionRef`
+    plumbing (its two `onRestart` assignments) and replace it with the localStorage-deduped,
+    `last_update_success_version`-driven toast.
 
 ---
 
@@ -179,11 +188,11 @@ User clicks Restart now → POST /api/updates/restart
     → os._exit(0)
   helper: wait for <exe>(PID) to exit (bounded ~10s)
     → robocopy staged → .new ; verify sentinels ; move install→.old ; move .new→install
-    → on SUCCESS: write update_result.json{success,version}; start NEW exe --updated; del .old; del self
-    → on ANY failure (incl. wait-timeout): write update_result.json{failed,step}; restore old;
+    → on SUCCESS: write update_result.txt{success,version}; start NEW exe --updated; del .old; del self
+    → on ANY failure (incl. wait-timeout): write update_result.txt{failed,step}; restore old;
       start OLD exe --updated
 relaunched engram (old or new), no new tab:
-  UpdateChecker.start() reads + deletes update_result.json →
+  UpdateChecker.start() reads + deletes update_result.txt →
       failed  → last_update_error set
       success → last_update_success_version set
   → existing tab reconnects (or 5s safeguard opens one if none) →
