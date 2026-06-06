@@ -902,3 +902,29 @@ def test_render_bat_writes_result_marker():
     assert 'echo result=failed>"%RESULT%"' in bat
     assert 'echo version=%VER%>>"%RESULT%"' in bat
     assert 'echo step=%STEP%>>"%RESULT%"' in bat
+
+
+def test_restart_posix_appends_updated_flag(monkeypatch, tmp_path):
+    """POSIX exec-in-place re-runs run.py, which would open a 2nd browser tab; the
+    --updated flag suppresses it."""
+    import os
+    import shutil
+    import sys
+
+    from app.core.updater import UpdateChecker
+
+    staging = tmp_path / "stage"
+    (staging / "engram").mkdir(parents=True)
+    (staging / "engram" / "engram").write_text("binary")
+
+    checker = UpdateChecker()
+    checker.staging_path = staging
+
+    monkeypatch.setattr(shutil, "copy2", lambda *a, **k: None)
+    monkeypatch.setattr(os, "chmod", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["/app/engram"])
+    captured = {}
+    monkeypatch.setattr(os, "execv", lambda path, argv: captured.update(path=path, argv=argv))
+
+    checker._restart_linux_macos()
+    assert "--updated" in captured["argv"]

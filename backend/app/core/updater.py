@@ -563,8 +563,10 @@ class UpdateChecker:
         logger.info(f"Applying update: {sys.executable} -> {new_binary}")
         shutil.copy2(str(new_binary), sys.executable)
         os.chmod(sys.executable, 0o700)
-        # os.execv replaces the process image — same PID, same port, zero downtime
-        os.execv(sys.executable, sys.argv)
+        # Re-exec re-runs run.py, which would open a second browser tab; --updated suppresses
+        # it so the already-open tab just reconnects.
+        argv = sys.argv if "--updated" in sys.argv else [*sys.argv, "--updated"]
+        os.execv(sys.executable, argv)
 
     def _restart_windows(self) -> None:
         """Swap the staged build in for the live install via a detached .bat helper.
