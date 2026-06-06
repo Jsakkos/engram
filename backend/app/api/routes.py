@@ -10,6 +10,7 @@ import re
 import sys
 import zipfile
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -17,7 +18,7 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,7 @@ from sqlmodel import select
 
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
+from app.core.errors import AIProviderError
 from app.core.security import is_allowed_image_url, sanitize_log_value
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
@@ -3350,56 +3352,117 @@ async def set_show_ordering(
     return {"tmdb_id": tmdb_id, "ordering": request.ordering, "episode_group_id": group_id}
 
 
-async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> dict | None:
-    """Invoke the LLM episode matcher for a single title. Returns suggestion dict or None."""
-    from app.core.curator import curator as episode_curator
-    from app.matcher.llm_episode_matcher import match_episode_via_llm
-    from app.matcher.tmdb_client import fetch_show_id
+@dataclass(frozen=True)
+class LLMMatchOutcome:
+    """Result of an LLM-match attempt. ``reason is None`` means success."""
+
+    suggestion: dict | None
+    reason: str | None
+
+    @classmethod
+    def ok(cls, suggestion: dict) -> "LLMMatchOutcome":
+        return cls(suggestion=suggestion, reason=None)
+
+    @classmethod
+    def failed(cls, reason: str) -> "LLMMatchOutcome":
+        return cls(suggestion=None, reason=reason)
+
+
+# Operational failures the caller may retry (HTTP 503). Every other reason is a
+# deterministic config/data outcome returned as 200 with a differentiated reason.
+_LLM_MATCH_RETRYABLE_REASONS = frozenset(
+    {"matcher_unavailable", "transcription_failed", "llm_error"}
+)
+
+
+async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLMMatchOutcome:
+    """Invoke the LLM episode matcher for a single title.
+
+    Returns an :class:`LLMMatchOutcome` whose ``reason`` distinguishes each
+    failure mode (``ai_disabled``, ``not_configured``, ``no_show``, ``no_season``,
+    ``matcher_unavailable``, ``show_not_found``, ``transcription_failed``,
+    ``llm_error``, ``no_match``) or is ``None`` on success.
+    """
     from app.services.config_service import get_config
 
     config = await get_config()
-    if not config or not getattr(config, "ai_episode_matching_enabled", False):
-        return None
-    if not config.ai_api_key or not job.detected_title or not job.detected_season:
-        return None
+    if not config:
+        # Defensive: get_config() creates defaults rather than returning None, but
+        # if it ever can't, "not_configured" is truer than "feature turned off".
+        return LLMMatchOutcome.failed("not_configured")
+    if not getattr(config, "ai_episode_matching_enabled", False):
+        return LLMMatchOutcome.failed("ai_disabled")
+    if not config.ai_api_key:
+        return LLMMatchOutcome.failed("not_configured")
+    if not job.detected_title:
+        return LLMMatchOutcome.failed("no_show")
+    if not job.detected_season:
+        return LLMMatchOutcome.failed("no_season")
 
-    # Make sure the matcher is initialized for the show (so transcribe_full works)
+    from app.core.curator import curator as episode_curator
+    from app.matcher.llm_episode_matcher import match_episode_via_llm
+    from app.matcher.tmdb_client import fetch_show_id
+    from app.services.ripping_helpers import find_staging_file
+
+    # Make sure the matcher is initialized for the show (so transcribe_full works).
+    # 503/retryable fits the "still initializing" case; a permanent init failure
+    # (missing model weights / corrupt index) keeps returning this on retry.
     episode_curator._ensure_initialized(job.detected_title)
     if not episode_curator._matcher:
-        return None
+        return LLMMatchOutcome.failed("matcher_unavailable")
 
     tmdb_show_id = await asyncio.to_thread(fetch_show_id, job.detected_title)
     if not tmdb_show_id:
-        return None
+        return LLMMatchOutcome.failed("show_not_found")
 
-    transcript = await asyncio.to_thread(
-        episode_curator._matcher.transcribe_full, Path(title.file_path)
-    )
+    # Resolve the ripped file the way the matching pipeline does — handles moved/
+    # renamed staging files and re-matching an already-organized title. A missing
+    # file is folded into transcription_failed (no transcript can be produced).
+    file_path = find_staging_file(job, title)
+    if not file_path:
+        return LLMMatchOutcome.failed("transcription_failed")
+
+    transcript = await asyncio.to_thread(episode_curator._matcher.transcribe_full, file_path)
     if not transcript:
-        return None
+        return LLMMatchOutcome.failed("transcription_failed")
 
-    suggestion = await match_episode_via_llm(
-        transcript=transcript,
-        show_name=job.detected_title,
-        season=job.detected_season,
-        tmdb_show_id=str(tmdb_show_id),
-        ai_provider=config.ai_provider,
-        ai_api_key=config.ai_api_key,
-        tmdb_api_key=config.tmdb_api_key,
-    )
+    try:
+        suggestion = await match_episode_via_llm(
+            transcript=transcript,
+            show_name=job.detected_title,
+            season=job.detected_season,
+            tmdb_show_id=str(tmdb_show_id),
+            ai_provider=config.ai_provider,
+            ai_api_key=config.ai_api_key,
+            tmdb_api_key=config.tmdb_api_key,
+            raise_on_error=True,
+        )
+    except AIProviderError:
+        logger.warning(
+            "LLM match: provider error for title %s -> llm_error",
+            sanitize_log_value(title.id),
+            exc_info=True,
+        )
+        return LLMMatchOutcome.failed("llm_error")
+
     if not suggestion:
-        return None
-    return {
-        "episode": suggestion.episode,
-        "confidence": suggestion.confidence,
-        "reasoning": suggestion.reasoning,
-        "runner_up": (
-            {"episode": suggestion.runner_up.episode, "confidence": suggestion.runner_up.confidence}
-            if suggestion.runner_up is not None
-            else None
-        ),
-        "model": suggestion.model,
-    }
+        return LLMMatchOutcome.failed("no_match")
+    return LLMMatchOutcome.ok(
+        {
+            "episode": suggestion.episode,
+            "confidence": suggestion.confidence,
+            "reasoning": suggestion.reasoning,
+            "runner_up": (
+                {
+                    "episode": suggestion.runner_up.episode,
+                    "confidence": suggestion.runner_up.confidence,
+                }
+                if suggestion.runner_up is not None
+                else None
+            ),
+            "model": suggestion.model,
+        }
+    )
 
 
 @router.post("/jobs/{job_id}/titles/{title_id}/llm-match")
@@ -3426,21 +3489,26 @@ async def llm_match_title(
         return {"suggestion": cached, "reason": "cached"}
 
     try:
-        suggestion = await _run_llm_match_for_title(title=title, job=job)
+        outcome = await _run_llm_match_for_title(title=title, job=job)
     except Exception:
         logger.exception("LLM match endpoint failed for title %s", sanitize_log_value(title_id))
-        return {"suggestion": None, "reason": "internal_error"}
+        return JSONResponse(
+            status_code=500, content={"suggestion": None, "reason": "internal_error"}
+        )
 
-    if not suggestion:
-        return {"suggestion": None, "reason": "no_suggestion"}
+    if outcome.reason in _LLM_MATCH_RETRYABLE_REASONS:
+        return JSONResponse(status_code=503, content={"suggestion": None, "reason": outcome.reason})
+
+    if outcome.suggestion is None:
+        return {"suggestion": None, "reason": outcome.reason}
 
     # Persist into match_details for refresh durability
-    existing["llm_suggestion"] = suggestion
+    existing["llm_suggestion"] = outcome.suggestion
     title.match_details = json.dumps(existing)
     session.add(title)
     await session.commit()
 
-    return {"suggestion": suggestion, "reason": None}
+    return {"suggestion": outcome.suggestion, "reason": None}
 
 
 @router.post("/contributions/{job_id}/submit", dependencies=[Depends(require_localhost)])

@@ -65,7 +65,26 @@ export async function apiFetchBlob(input: RequestInfo | URL, init?: RequestInit)
 // Domain helpers
 // ---------------------------------------------------------------------------
 
-/** Shape returned by POST /api/jobs/{job_id}/titles/{title_id}/llm-match */
+/**
+ * Shape returned by `POST /api/jobs/{job_id}/titles/{title_id}/llm-match`.
+ *
+ * `reason` discriminates the outcome. By HTTP status:
+ * - **200** — `runLLMMatch` resolves with this shape. `reason` is one of:
+ *   - `null` — success; `suggestion` is populated and persisted server-side.
+ *   - `"cached"` — idempotent re-click; cached `suggestion` returned without re-transcribing.
+ *   - `"ai_disabled"` — AI episode matching is turned off in config.
+ *   - `"not_configured"` — enabled but no AI API key is set.
+ *   - `"no_show"` — the job has no detected show title.
+ *   - `"no_season"` — the job has no detected season.
+ *   - `"show_not_found"` — the show could not be resolved on TMDB.
+ *   - `"no_match"` — the model ran but produced no confident episode.
+ * - **503** — `runLLMMatch` THROWS `ApiError`; retryable operational failures.
+ *   `ApiError.body` carries the same `{ suggestion: null, reason }` JSON, where
+ *   `reason` is `"matcher_unavailable"`, `"transcription_failed"`, or `"llm_error"`
+ *   (the LLM provider call itself failed — rate-limit/credits/auth/5xx/network).
+ * - **500** — `runLLMMatch` THROWS `ApiError`; unexpected server error,
+ *   `reason: "internal_error"` (also in `ApiError.body`).
+ */
 export interface LLMMatchResult {
   suggestion: {
     episode: number;

@@ -13,6 +13,8 @@ import random
 
 import httpx
 
+from app.core.errors import AIProviderError
+
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
@@ -59,11 +61,18 @@ async def complete_json(
     api_key: str,
     model: str | None = None,
     max_tokens: int = 1024,
+    raise_on_error: bool = False,
 ) -> dict | None:
     """Send a prompt to an LLM provider and return its JSON response as a dict.
 
     Returns None on any failure (network, HTTP, malformed JSON). Callers must
     treat None as "no usable result" and fall back to other behaviour.
+
+    When ``raise_on_error`` is True, a transport/HTTP failure raises
+    ``AIProviderError`` and an unexpected (non-transport) error propagates as-is,
+    so callers can distinguish a provider outage from a genuine bug. The
+    early-return paths (empty ``api_key``, unknown provider) and an empty or
+    unparseable response body still return None regardless.
     """
     if not api_key:
         logger.debug("complete_json called with empty api_key; returning None")
@@ -102,9 +111,15 @@ async def complete_json(
         return await _with_429_retry(factory)
     except httpx.HTTPError as e:
         logger.warning("AI provider %s HTTP error: %s", provider, e, exc_info=True)
+        if raise_on_error:
+            raise AIProviderError(f"{provider} request failed: {e}") from e
         return None
     except Exception as e:
         logger.warning("AI provider %s unexpected error: %s", provider, e, exc_info=True)
+        if raise_on_error:
+            # Deliberate: let unexpected (non-transport) errors propagate unwrapped so
+            # callers classify them as internal errors, not retryable provider errors.
+            raise
         return None
 
 
