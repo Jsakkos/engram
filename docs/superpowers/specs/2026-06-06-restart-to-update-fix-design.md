@@ -70,9 +70,12 @@ neutral `cwd=tempfile.gettempdir()`.
 - `CREATE_NEW_PROCESS_GROUP` may be kept (harmless) or dropped; not load-bearing here.
 
 ### 1b. `_render_update_bat` — bound the wait and harden the PID check
-- **Bounded loop:** add an iteration counter (`set /a COUNT+=1`) with a cap (~60 iterations at
-  ~1s each = ~60s). Normal exit is 1–2s, so the cap never fires in practice but guarantees the
-  loop terminates. On cap, jump to the failure path (§2), not an infinite spin.
+- **Bounded loop:** add an iteration counter (`set /a COUNT+=1`) with a **~10s cap** (≈10
+  iterations at ~1s each). Normal exit is 1–2s, so the cap never fires in practice but guarantees
+  the loop terminates fast. The cap is a backstop, not expected latency — the legitimate restart
+  is dominated by robocopy, not the wait. If `os._exit(0)` hasn't dropped the process in 10s,
+  that *is* a failure, so on cap jump to the failure path (§2: rollback + relaunch old + marker),
+  never an infinite spin.
 - **Harden the liveness check:** filter on both PID and image name, using the bat's existing
   `exe` parameter (the launcher basename, e.g. `engram.exe`), so a reused PID held by an
   unrelated process can't keep the loop alive:
