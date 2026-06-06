@@ -170,6 +170,44 @@ class TestBuildOrderingOptions:
         assert opts["diverges"] is False
         assert [o["ordering"] for o in opts["options"]] == ["aired"]
 
+    def test_only_aired_and_dvd_surfaced_even_when_other_groups_exist(self):
+        # v1 scope is narrowed to aired + DVD: a show carrying digital/story-arc/
+        # production/tv groups that diverge must still surface ONLY aired + DVD,
+        # so the review-queue selector never shows more than two buttons.
+        groups = [
+            {"id": "g_dvd", "type": 3, "name": "DVD Order", "episode_count": 14, "group_count": 1},
+            {"id": "g_dig", "type": 4, "name": "Digital", "episode_count": 14, "group_count": 1},
+            {"id": "g_sto", "type": 5, "name": "Story Arc", "episode_count": 14, "group_count": 1},
+            {"id": "g_pro", "type": 6, "name": "Production", "episode_count": 14, "group_count": 1},
+            {"id": "g_tv", "type": 7, "name": "TV", "episode_count": 14, "group_count": 1},
+        ]
+        remap = {(1, 1): (1, 2), (1, 2): (1, 1)}  # every non-aired ordering diverges
+        with (
+            patch(
+                "app.core.episode_ordering.tmdb_client.fetch_episode_groups", return_value=groups
+            ),
+            patch("app.core.episode_ordering.get_projection_map", return_value=remap),
+        ):
+            opts = episode_ordering.build_ordering_options(
+                "999", 1, roster_pairs=[(1, 1), (1, 2)], matched_pairs=[(1, 1)], api_key="k"
+            )
+        orderings = [o["ordering"] for o in opts["options"]]
+        assert orderings == ["aired", "dvd"]
+        for deferred in ("digital", "story_arc", "production", "tv"):
+            assert deferred not in orderings
+
+
+@pytest.mark.unit
+class TestAllowedOrderingsScope:
+    """v1 selectable scope is narrowed to aired + DVD; everything else deferred."""
+
+    def test_allowed_orderings_are_exactly_aired_and_dvd(self):
+        assert episode_ordering.ALLOWED_ORDERINGS == frozenset({"aired", "dvd"})
+
+    @pytest.mark.parametrize("deferred", ["digital", "story_arc", "production", "tv", "absolute"])
+    def test_deferred_orderings_excluded(self, deferred):
+        assert deferred not in episode_ordering.ALLOWED_ORDERINGS
+
 
 @pytest.mark.unit
 class TestComputeDivergence:

@@ -48,17 +48,19 @@ _TMDB_TYPE_TO_ORDERING = {
 }
 _ORDERING_TO_TMDB_TYPE = {v: k for k, v in _TMDB_TYPE_TO_ORDERING.items()}
 
-# Orderings selectable in v1. Aired is the canonical default (identity, never
-# fetches a group). Absolute (type 2) is DEFERRED: it dissolves season
-# boundaries and anime corpora are frequently mislabeled — a separate follow-up.
+# Orderings selectable in v1: aired + DVD only. Aired is the canonical default
+# (identity, never fetches a group); DVD is the one alternative users actually
+# ask for (Firefly et al.) and the only one the Config UI exposes. The remaining
+# TMDB group types are recognized (see the type map above) but DEFERRED so the
+# review-queue selector never offers more than these two — keeping the per-show
+# selector in lock-step with the global Config dropdown:
+#   - absolute (type 2): dissolves season boundaries; anime corpora mislabeled
+#   - digital (4) / story_arc (5) / production (6) / tv (7): no demonstrated need
+# Re-enable one by adding its constant back to this frozenset (and the Config UI).
 ALLOWED_ORDERINGS = frozenset(
     {
         ORDERING_AIRED,
         ORDERING_DVD,
-        ORDERING_DIGITAL,
-        ORDERING_STORY_ARC,
-        ORDERING_PRODUCTION,
-        ORDERING_TV,
     }
 )
 
