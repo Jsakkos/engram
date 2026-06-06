@@ -91,46 +91,53 @@ Chosen failure contract: **relaunch the old version + notify.** The app never di
 update can't apply, it rolls back to the working old build, relaunches it, and surfaces a
 non-blocking notice. The pending update auto-retries on the next check.
 
-### 2a. Bat writes a result marker on failure
-Each failure label in the bat (`:fail`, `:fail_no_swap`, `:restore_old`, and the new
-wait-timeout path) writes `~/.engram/update_result.json` before relaunching the old build:
+### 2a. Bat writes a result marker (success and failure)
+The bat writes a single `~/.engram/update_result.json` before relaunching, on every terminal
+path:
 
-```
-{ "result": "failed", "version": "<target>", "step": "<label>", "ts": "<bat %DATE% %TIME%>" }
-```
+- **Failure** labels (`:fail`, `:fail_no_swap`, `:restore_old`, new wait-timeout path):
+  `{ "result": "failed", "version": "<target>", "step": "<label>", "ts": "..." }`
+- **Success** path: `{ "result": "success", "version": "<target>", "ts": "..." }`
 
 Written with `echo ... > "%RESULT%"` (file redirection works console-less; with §1a it is fully
-reliable). A success marker (`"result":"success"`) is **optional / nice-to-have** to drive a
-"You're now on vX" toast — not required for this change.
+reliable). Startup reads it once and branches on `result` (§2b).
 
-### 2b. Startup reads the marker into a sticky field
+### 2b. Startup reads the marker into status fields
 In `UpdateChecker`:
-- New instance field `self.last_update_error: str | None = None` (init in `__init__`).
-- `start()` reads `~/.engram/update_result.json` if present; on `"failed"`, set
-  `last_update_error` to a human message ("Update to {version} couldn't be applied automatically
-  (step: {step}). It'll retry on the next check, or download manually."), then **delete the
-  marker** so the notice shows once. The normal `_check()` still runs and may re-stage `READY`.
-- `last_update_error` is **separate from `state`** so a subsequent `READY` does not clobber the
-  failure notice.
+- New instance fields (init in `__init__`): `self.last_update_error: str | None = None` and
+  `self.last_update_success_version: str | None = None`.
+- `start()` reads `~/.engram/update_result.json` if present, **deletes it** (so it's consumed
+  once), then branches:
+  - `"failed"` → `last_update_error` = human message ("Update to {version} couldn't be applied
+    automatically (step: {step}). It'll retry on the next check, or download manually.").
+  - `"success"` → `last_update_success_version` = `version` (used for a "you're now on vX" toast).
+- The normal `_check()` still runs and may re-stage `READY`. Both fields are **separate from
+  `state`** so a subsequent `READY` doesn't clobber the failure notice or the success toast.
 
-### 2c. Surface `last_update_error` in BOTH REST and WS
+### 2c. Surface both fields in BOTH REST and WS
 > ⚠️ Known footgun (see `project_update_status_ws_rest_drift.md`): update fields must be added to
 > **both** `get_status` (REST) and `broadcast_update_status` (WS), and the UI reads update state
 > only from WS. Missing either side silently drops the field.
 
-- `UpdateChecker.get_status()` — add `"last_update_error": self.last_update_error`.
-- `EventBroadcaster.broadcast_update_status(...)` — add a `last_update_error: str | None = None`
-  parameter and include it in the `data` dict (same conditional pattern as `error`).
-- Every caller of `broadcast_update_status` (the `_broadcast()` helper in `updater.py`) passes
-  the field.
-- `frontend/src/types/index.ts` — add `last_update_error?: string | null` to `UpdateStatus`.
+- `UpdateChecker.get_status()` — add `"last_update_error"` and `"last_update_success_version"`.
+- `EventBroadcaster.broadcast_update_status(...)` — add `last_update_error` and
+  `last_update_success_version` params, included in `data` (same conditional pattern as `error`).
+- The `_broadcast()` helper in `updater.py` passes both.
+- `frontend/src/types/index.ts` — add `last_update_error?: string | null` and
+  `last_update_success_version?: string | null` to `UpdateStatus`.
 
-### 2d. Frontend failure variant
-`frontend/src/app/components/UpdateBanner.tsx` currently renders only when
-`state === "ready"`. Extend it to also render a **failure variant** (magenta accent, `sv.magenta`)
-when `updateStatus.last_update_error` is set: shows the message, a dismiss (X), and a "Download
-manually" link to `release_url`. Independent of the existing `ready` banner (both can be relevant:
-"last attempt failed" + "new build ready to retry"). Update `UpdateBanner.test.tsx` accordingly.
+### 2d. Frontend: failure banner + success toast
+- **Failure variant** in `frontend/src/app/components/UpdateBanner.tsx`: currently renders only
+  when `state === "ready"`. Extend it to also render a magenta (`sv.magenta`) variant when
+  `updateStatus.last_update_error` is set — message + dismiss (X) + "Download manually" link to
+  `release_url`. Independent of the `ready` banner (both can show: "last attempt failed" +
+  "new build ready to retry"). Update `UpdateBanner.test.tsx`.
+- **Success toast:** when `updateStatus.last_update_success_version` arrives, fire
+  `toast.success("You're now on engram v{version}")` (sonner). Fired as a side-effect in the
+  update-status consumer (the hook/effect that handles the `update_status` WS message + the
+  initial `/api/updates/status` fetch), **deduped by version** via a ref/localStorage so it shows
+  once even though the field rides multiple status payloads (backend stays stateless — no
+  clear-after-broadcast needed).
 
 ---
 
@@ -149,10 +156,11 @@ manually" link to `release_url`. Independent of the existing `ready` banner (bot
   before `main()`.)
 
 ### 3c. Safeguard: never strand the user without UI
-When `--updated` is set, schedule a delayed check (~5s) that opens a tab **only if no WebSocket
-client has connected** by then. Covers the two cases where the existing tab can't reconnect:
-the user closed it, or `_find_free_port` chose a different port than the old instance used.
-Implementation reads the live WS connection count (e.g. via `ws_manager` / `app.state`).
+When `--updated` is set, `run.py` schedules a `threading.Timer(5.0, ...)` that opens a tab **only
+if no WebSocket client has connected** by then — i.e. `len(manager.active_connections) == 0`,
+reading the singleton `from app.api.websocket import manager`. Covers the two cases where the
+existing tab can't reconnect: the user closed it, or `_find_free_port` picked a different port
+than the old instance used. (Confirmed cleanly importable; not awkward.)
 
 Rationale recorded: a backend cannot close a tab it opened via `webbrowser.open`, and browsers
 block `window.close()` on non-script-opened tabs — so "close the old tab" is unreliable.
@@ -161,22 +169,26 @@ only case it breaks.
 
 ---
 
-## 4. Data flow (Windows, failure case)
+## 4. Data flow (Windows)
 
 ```
 User clicks Restart now → POST /api/updates/restart
   → apply_update() re-verifies staged build → _restart_windows()
-    → render bat (bounded wait, IMAGENAME filter, --updated relaunch, marker on failure)
+    → render bat (bounded 10s wait, PID+IMAGENAME filter, --updated relaunch, result marker)
     → _spawn_detached_helper(CREATE_NO_WINDOW | BREAKAWAY)
     → os._exit(0)
-  helper: wait for engram.exe(PID) to exit (bounded)
+  helper: wait for <exe>(PID) to exit (bounded ~10s)
     → robocopy staged → .new ; verify sentinels ; move install→.old ; move .new→install
-    → on ANY failure: write update_result.json{failed,step}; restore old; start old exe --updated
-    → on success: start new exe --updated ; delete .old ; delete self
+    → on SUCCESS: write update_result.json{success,version}; start NEW exe --updated; del .old; del self
+    → on ANY failure (incl. wait-timeout): write update_result.json{failed,step}; restore old;
+      start OLD exe --updated
 relaunched engram (old or new), no new tab:
-  UpdateChecker.start() reads update_result.json → last_update_error set → marker deleted
-  → broadcast_update_status(... last_update_error) → existing tab reconnects → magenta banner
-  → _check() finds update still available → re-stage READY → cyan "ready" banner (retry)
+  UpdateChecker.start() reads + deletes update_result.json →
+      failed  → last_update_error set
+      success → last_update_success_version set
+  → existing tab reconnects (or 5s safeguard opens one if none) →
+      magenta failure banner  OR  green "you're now on vX" toast
+  → _check() runs; if update still pending → re-stage READY → cyan "ready" banner (retry)
 ```
 
 ## 5. Testing (closes the blind spot)
@@ -184,17 +196,25 @@ relaunched engram (old or new), no new tab:
 - **End-to-end Windows swap in the real spawn context** (the key test): spawn the actual helper
   via `_spawn_detached_helper`, pass a throwaway parent PID that exits, against a dummy install
   dir with a dummy `engram.exe` + sentinel tree. Assert: swap completes, new tree in place,
-  relaunch invoked. Inject a failure (e.g. unwritable target) and assert: rollback + marker
-  written. Windows-only (`@pytest.mark.skipif(sys.platform != "win32")`). This is the automated
-  form of the manual 2026-06-06 reproduction.
-- **`_render_update_bat` unit assertions:** bounded loop counter present; `IMAGENAME eq engram.exe`
-  filter; `--updated` on both relaunch lines; a marker write on each failure label.
+  relaunch invoked, **success marker written**. Inject a failure (e.g. unwritable target) and
+  assert: rollback + **failure marker written**. Windows-only
+  (`@pytest.mark.skipif(sys.platform != "win32")`). This is the automated form of the manual
+  2026-06-06 reproduction.
+- **`_render_update_bat` unit assertions:** bounded loop counter (~10 cap) present; PID +
+  `IMAGENAME eq <exe>` filter; `--updated` on both relaunch lines; a marker write on each failure
+  label **and** the success path.
 - **`_spawn_detached_helper` flags:** asserts `CREATE_NO_WINDOW` is set and `DETACHED_PROCESS` is
   not (via the same getattr-based flag resolution so it runs on non-Windows CI).
-- **`run.py` suppression:** with `--updated` + `is_frozen` mocked True, `webbrowser.open` is not
-  scheduled; without `--updated`, it is.
-- **Field plumbing:** `last_update_error` present in REST `get_status()` and in the WS
-  `update_status` payload built by `broadcast_update_status`.
+- **`run.py` suppression + safeguard:** with `--updated` + `is_frozen` mocked True,
+  `webbrowser.open` is not scheduled immediately; without `--updated`, it is. Safeguard: with
+  `--updated` and `manager.active_connections` empty after the timer, a tab is opened; non-empty,
+  it is not.
+- **Marker → fields:** `start()` reading a `failed` marker sets `last_update_error`; a `success`
+  marker sets `last_update_success_version`; the marker file is deleted after read.
+- **Field plumbing:** `last_update_error` and `last_update_success_version` present in REST
+  `get_status()` and in the WS `update_status` payload built by `broadcast_update_status`.
+- **Frontend:** success toast fires once per version (deduped) when
+  `last_update_success_version` is present; failure banner renders when `last_update_error` is set.
 - Existing updater unit tests continue to pass.
 
 ## Files touched
@@ -202,18 +222,17 @@ relaunched engram (old or new), no new tab:
 - `backend/app/core/updater.py` — `_spawn_detached_helper`, `_render_update_bat`,
   `_restart_linux_macos`, `__init__`, `start`, `get_status`, `_broadcast`.
 - `backend/app/services/event_broadcaster.py` — `broadcast_update_status` signature + payload.
-- `backend/run.py` — `--updated` suppression + no-client safeguard.
-- `frontend/src/types/index.ts` — `UpdateStatus.last_update_error`.
+- `backend/run.py` — `--updated` suppression + no-client safeguard (imports `manager`).
+- `frontend/src/types/index.ts` — `UpdateStatus.last_update_error` + `last_update_success_version`.
 - `frontend/src/app/components/UpdateBanner.tsx` (+ test) — failure variant.
+- Frontend update-status consumer (hook/effect handling the `update_status` WS message +
+  `/api/updates/status` fetch) — success toast, deduped by version.
 - `backend/tests/unit/test_updater.py` (+ a Windows-gated swap test).
 
 ## Risks / open notes
 
 - `CREATE_NO_WINDOW` + breakaway must still outlive the parent — verified in principle; the
   end-to-end test confirms it on CI.
-- The no-client safeguard depends on reading live WS connection count from `run.py`; if that's
-  awkward to reach at that layer, fall back to always-open-after-delay-unless-flag (slightly
-  less precise). Resolve during planning.
 - Chicken-and-egg: the fix only runs once the user is on a build containing it. Benign here — the
   user manually installs each latest release, so the first release with the fix is hand-installed
   and auto-update works from there forward.
