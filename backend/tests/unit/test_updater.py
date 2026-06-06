@@ -840,3 +840,25 @@ class TestRestartWindowsWiring:
         # Helper is launched via cmd /c <bat>, breakaway handled by _spawn_detached_helper.
         assert spawned["args"][:2] == ["cmd", "/c"]
         assert spawned["args"][2] == str(bat_path)
+
+
+def test_spawn_detached_helper_uses_create_no_window(monkeypatch):
+    """The helper must run in a hidden console (CREATE_NO_WINDOW), not console-less
+    DETACHED_PROCESS — a cmd pipe (tasklist | find) deadlocks without a console."""
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["flags"] = kwargs.get("creationflags", 0)
+
+        class _P:  # minimal stand-in
+            pass
+
+        return _P()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    UpdateChecker._spawn_detached_helper(["cmd", "/c", "x.bat"])
+
+    CREATE_NO_WINDOW = 0x08000000
+    DETACHED_PROCESS = 0x00000008
+    assert captured["flags"] & CREATE_NO_WINDOW, "must use CREATE_NO_WINDOW"
+    assert not (captured["flags"] & DETACHED_PROCESS), "must NOT use DETACHED_PROCESS"

@@ -758,10 +758,13 @@ class UpdateChecker:
         """
         # Resolve the Windows creationflags via getattr so this module stays
         # importable and unit-testable on non-Windows CI, where they're absent.
-        detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        # CREATE_NO_WINDOW gives the helper a HIDDEN console. DETACHED_PROCESS (no console
+        # at all) makes `tasklist` emit nothing and a cmd pipe (`tasklist | find`) deadlock,
+        # which hung the wait loop forever and was the real "restart bricks my install" bug.
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
         breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
-        base = detached | new_group
+        base = no_window | new_group
         # Pin a neutral working directory. Without an explicit cwd the detached helper
         # inherits engram's cwd — the install dir for a double-clicked onedir exe — and a
         # process whose cwd is a directory holds an open handle that blocks renaming it,
