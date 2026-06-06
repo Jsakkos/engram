@@ -3386,7 +3386,11 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     from app.services.config_service import get_config
 
     config = await get_config()
-    if not config or not getattr(config, "ai_episode_matching_enabled", False):
+    if not config:
+        # Defensive: get_config() creates defaults rather than returning None, but
+        # if it ever can't, "not_configured" is truer than "feature turned off".
+        return LLMMatchOutcome.failed("not_configured")
+    if not getattr(config, "ai_episode_matching_enabled", False):
         return LLMMatchOutcome.failed("ai_disabled")
     if not config.ai_api_key:
         return LLMMatchOutcome.failed("not_configured")
@@ -3400,7 +3404,9 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     from app.matcher.tmdb_client import fetch_show_id
     from app.services.ripping_helpers import find_staging_file
 
-    # Make sure the matcher is initialized for the show (so transcribe_full works)
+    # Make sure the matcher is initialized for the show (so transcribe_full works).
+    # 503/retryable fits the "still initializing" case; a permanent init failure
+    # (missing model weights / corrupt index) keeps returning this on retry.
     episode_curator._ensure_initialized(job.detected_title)
     if not episode_curator._matcher:
         return LLMMatchOutcome.failed("matcher_unavailable")
@@ -3435,6 +3441,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
         logger.warning(
             "LLM match: provider error for title %s -> llm_error",
             sanitize_log_value(title.id),
+            exc_info=True,
         )
         return LLMMatchOutcome.failed("llm_error")
 
