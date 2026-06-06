@@ -960,3 +960,37 @@ def test_consume_marker_absent_is_noop(tmp_path):
     c = UpdateChecker()
     c._consume_update_result_marker(tmp_path / "nope.txt")
     assert c.last_update_error is None and c.last_update_success_version is None
+
+
+def test_get_status_includes_marker_fields():
+    from app.core.updater import UpdateChecker
+
+    c = UpdateChecker()
+    c.last_update_error = "boom"
+    c.last_update_success_version = "9.9.9"
+    s = c.get_status()
+    assert s["last_update_error"] == "boom"
+    assert s["last_update_success_version"] == "9.9.9"
+
+
+from app.services.event_broadcaster import EventBroadcaster  # noqa: E402
+
+
+class _FakeWS:
+    def __init__(self):
+        self.sent = []
+
+    async def broadcast(self, data):
+        self.sent.append(data)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_update_status_carries_marker_fields():
+    ws = _FakeWS()
+    eb = EventBroadcaster(ws)
+    await eb.broadcast_update_status(
+        state="ready", last_update_error="boom", last_update_success_version="9.9.9"
+    )
+    payload = ws.sent[-1]
+    assert payload["last_update_error"] == "boom"
+    assert payload["last_update_success_version"] == "9.9.9"

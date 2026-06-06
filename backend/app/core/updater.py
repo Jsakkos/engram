@@ -84,6 +84,8 @@ class UpdateChecker:
         self._prune_staging()
         skipped_version = await self._load_skipped_version()
         await self._check(skipped_version)
+        if self.last_update_error or self.last_update_success_version:
+            await self._broadcast()
 
     def _prune_staging(self) -> None:
         """Delete staged update dirs for versions already installed (<= current).
@@ -489,6 +491,8 @@ class UpdateChecker:
                 self.download_progress if self.state == UpdateStatus.DOWNLOADING else None
             ),
             "error": self.error,
+            "last_update_error": self.last_update_error,
+            "last_update_success_version": self.last_update_success_version,
             "is_frozen": self._is_frozen,
         }
 
@@ -827,6 +831,8 @@ class UpdateChecker:
                 release_notes=self.release_notes,
                 release_url=self.release_url,
                 error=self.error,
+                last_update_error=self.last_update_error,
+                last_update_success_version=self.last_update_success_version,
             )
         except Exception as exc:
             logger.debug(f"Failed to broadcast update status: {exc}")
