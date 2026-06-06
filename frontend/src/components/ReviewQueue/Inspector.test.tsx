@@ -42,13 +42,14 @@ function makeJob(overrides: Partial<Job> = {}): Job {
 }
 
 function renderInspector(props: {
+    title?: DiscTitle;
     llmFeedback?: LLMFeedback | null;
     isLlmMatching?: boolean;
     aiEpisodeMatchingEnabled?: boolean;
 } = {}) {
     return render(
         <Inspector
-            title={makeTitle()}
+            title={props.title ?? makeTitle()}
             job={makeJob()}
             candidates={[]}
             suggestion={null}
@@ -92,5 +93,20 @@ describe('Inspector — AI match feedback', () => {
     it('shows the default Try AI match label when idle', () => {
         renderInspector({ isLlmMatching: false });
         expect(screen.getByRole('button', { name: /try ai match/i })).toBeInTheDocument();
+    });
+
+    it('hides the feedback notice when a suggestion is present', () => {
+        const title = makeTitle({
+            match_details: JSON.stringify({
+                llm_suggestion: { episode: 3, confidence: 0.9, reasoning: 'ok', runner_up: null },
+            }),
+        });
+        renderInspector({
+            title,
+            llmFeedback: { tone: 'warn', text: 'No confident AI match found.' },
+        });
+        // The suggestion card renders instead of the feedback notice.
+        expect(screen.getByText(/Suggested:/)).toBeInTheDocument();
+        expect(screen.queryByText(/No confident AI match found\./)).not.toBeInTheDocument();
     });
 });
