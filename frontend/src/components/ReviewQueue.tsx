@@ -15,6 +15,7 @@ import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
+import { llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
@@ -173,6 +174,8 @@ function ReviewQueue() {
     const [titleActions, setTitleActions] = useState<Record<number, TitleAction>>({});
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
     const [rematchNotice, setRematchNotice] = useState<string | null>(null);
+    const [llmFeedback, setLlmFeedback] = useState<Record<number, LLMFeedback | null>>({});
+    const [llmMatchingId, setLlmMatchingId] = useState<number | null>(null);
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
 
@@ -406,16 +409,35 @@ function ReviewQueue() {
     };
 
     // Run the LLM matcher for a single title, then refresh so the persisted
-    // llm_suggestion in match_details surfaces in the Inspector.
+    // llm_suggestion surfaces in the Inspector. The endpoint always returns 200,
+    // so a "silent" outcome (no_suggestion / internal_error) is reported via
+    // inline Inspector feedback rather than a thrown error. Pending + feedback
+    // are keyed by title id so they follow the selected title.
     const handleTryLLMMatch = async (titleId: number) => {
         if (!jobId) return;
         setError(null);
+        setLlmFeedback((prev) => ({ ...prev, [titleId]: null }));
+        setLlmMatchingId(titleId);
         try {
-            await runLLMMatch(parseInt(jobId), titleId);
+            const result = await runLLMMatch(parseInt(jobId), titleId);
             await fetchJobDetails();
+            const feedback = llmResultToFeedback(result);
+            if (feedback) {
+                setLlmFeedback((prev) => ({ ...prev, [titleId]: feedback }));
+            }
         } catch (err) {
             console.error('LLM match failed', err);
-            setError(err instanceof Error ? err.message : 'AI match failed');
+            setLlmFeedback((prev) => ({
+                ...prev,
+                [titleId]: {
+                    tone: 'error',
+                    text: err instanceof Error ? err.message : 'AI match failed.',
+                },
+            }));
+        } finally {
+            // Only clear if this title is still the in-flight one (a fast click on
+            // another title must not clear the wrong spinner).
+            setLlmMatchingId((cur) => (cur === titleId ? null : cur));
         }
     };
 
@@ -1096,6 +1118,8 @@ function ReviewQueue() {
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
+                                llmFeedback={llmFeedback[selectedTitle.id] ?? null}
+                                isLlmMatching={llmMatchingId === selectedTitle.id}
                                 onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}
                                 onAction={(a) => handleTitleAction(selectedTitle.id, a)}
                                 onRematch={handleRematch}
