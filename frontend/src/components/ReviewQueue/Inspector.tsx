@@ -6,6 +6,7 @@ import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
 import type { DiscTitle, Job } from '../../types';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
+import type { LLMFeedback } from './llmFeedback';
 import {
     confidenceColor,
     formatDuration,
@@ -42,6 +43,8 @@ export function Inspector({
     titleIndexById,
     isRematching,
     aiEpisodeMatchingEnabled,
+    llmFeedback = null,
+    isLlmMatching = false,
     onAssign,
     onAction,
     onRematch,
@@ -62,6 +65,8 @@ export function Inspector({
     titleIndexById: Record<number, number>;
     isRematching: boolean;
     aiEpisodeMatchingEnabled: boolean;
+    llmFeedback?: LLMFeedback | null;
+    isLlmMatching?: boolean;
     onAssign: (code: string) => void;
     onAction: (action: TitleAction) => void;
     onRematch: (titleId: number, source: string, deep?: boolean) => void;
@@ -193,6 +198,14 @@ export function Inspector({
                                 Accept AI suggestion
                             </SvActionButton>
                         </div>
+                    </div>
+                )}
+
+                {/* AI match feedback — silent outcomes (no confident match / error).
+                    Shares the suggestion slot; only shown when there is no suggestion. */}
+                {!llmSuggestion && llmFeedback && (
+                    <div style={{ marginBottom: 14 }}>
+                        <SvNotice tone={llmFeedback.tone}>› {llmFeedback.text}</SvNotice>
                     </div>
                 )}
 
@@ -361,9 +374,16 @@ export function Inspector({
                                 tone="cyan"
                                 size="sm"
                                 onClick={() => onTryLLMMatch(title.id)}
+                                disabled={isLlmMatching}
                                 title="Run AI episode matching"
                             >
-                                Try AI match
+                                {isLlmMatching ? (
+                                    <>
+                                        <IcoRetry size={11} className="animate-spin" /> Matching…
+                                    </>
+                                ) : (
+                                    'Try AI match'
+                                )}
                             </SvActionButton>
                         )}
                         {/* Per-track deep re-match — re-run the matcher on just this title
