@@ -88,6 +88,9 @@ def _schedule_browser_open(url: str, *, updated: bool) -> None:
     def _open_if_no_client() -> None:
         from app.api.websocket import manager
 
+        # Runs on a Timer thread while the event loop may mutate active_connections. The
+        # truthiness check is atomic under the GIL (no lock needed); the only race is a
+        # client connecting in the TOCTOU window, which at worst opens one extra tab.
         if not manager.active_connections:
             webbrowser.open(url)
 

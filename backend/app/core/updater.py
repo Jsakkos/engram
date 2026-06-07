@@ -149,7 +149,12 @@ class UpdateChecker:
             logger.debug(f"Could not read update result marker: {exc}")
             return
         finally:
-            marker.unlink(missing_ok=True)
+            # Best-effort: missing_ok only swallows FileNotFoundError; a PermissionError
+            # (hardened/locked file) must not escape finally and crash the checker task.
+            try:
+                marker.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.debug(f"Could not delete update result marker: {exc}")
 
         version = data.get("version") or "?"
         if data.get("result") == "success":

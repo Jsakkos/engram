@@ -1,7 +1,9 @@
 /**
- * UpdateBanner — slim top-of-page notification shown when a new version is staged.
+ * UpdateBanner — slim top-of-page notification(s) about the in-app updater.
  *
- * Visible only when updateStatus.state === 'ready'.
+ * Renders a cyan "ready to install" banner when updateStatus.state === 'ready', and/or a
+ * magenta "couldn't apply" notice when updateStatus.last_update_error is set. Both can show at
+ * once (a prior attempt failed AND a new build is already staged).
  * In dev mode (is_frozen = false) the "Restart now" button is hidden.
  */
 
@@ -16,10 +18,9 @@ interface UpdateBannerProps {
     updateStatus: UpdateStatus | null;
     onShowNotes: () => void;
     onDismiss: () => void;
-    onRestart?: () => void;
 }
 
-export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }: UpdateBannerProps) {
+export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBannerProps) {
     const [restarting, setRestarting] = useState(false);
     const [failureDismissed, setFailureDismissed] = useState(false);
 
@@ -30,7 +31,6 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
     const isFrozen = updateStatus.is_frozen;
 
     const handleRestart = async () => {
-        onRestart?.();
         setRestarting(true);
         try {
             await apiFetchVoid("/api/updates/restart", { method: "POST" });
@@ -63,40 +63,56 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
         }
     };
 
-    if (showFailure && !showReady) {
-        return (
-            <div
-                data-testid="update-failure-banner"
+    const failureBanner = showFailure ? (
+        <div
+            data-testid="update-failure-banner"
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 28px",
+                background: `${sv.magenta}10`,
+                borderBottom: `1px solid ${sv.magenta}55`,
+                fontFamily: sv.mono,
+                fontSize: 12,
+                letterSpacing: "0.06em",
+                color: sv.magenta,
+            }}
+        >
+            <X size={14} color={sv.magenta} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{updateStatus.last_update_error}</span>
+            {updateStatus.release_url && (
+                <a
+                    href={updateStatus.release_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                        color: sv.magenta,
+                        textTransform: "uppercase",
+                        fontSize: 10,
+                        letterSpacing: "0.14em",
+                    }}
+                >
+                    Download manually
+                </a>
+            )}
+            <button
+                type="button"
+                onClick={() => setFailureDismissed(true)}
+                title="Dismiss"
                 style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "10px 28px",
-                    background: `${sv.magenta}10`, borderBottom: `1px solid ${sv.magenta}55`,
-                    fontFamily: sv.mono, fontSize: 12, letterSpacing: "0.06em", color: sv.magenta,
+                    color: sv.inkDim,
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
                 }}
             >
-                <X size={14} color={sv.magenta} style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1 }}>{updateStatus!.last_update_error}</span>
-                {updateStatus!.release_url && (
-                    <a
-                        href={updateStatus!.release_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ color: sv.magenta, textTransform: "uppercase", fontSize: 10, letterSpacing: "0.14em" }}
-                    >
-                        Download manually
-                    </a>
-                )}
-                <button
-                    type="button"
-                    onClick={() => setFailureDismissed(true)}
-                    style={{ color: sv.inkDim, background: "transparent", border: "none", cursor: "pointer" }}
-                >
-                    <X size={11} />
-                </button>
-            </div>
-        );
-    }
+                <X size={11} />
+            </button>
+        </div>
+    ) : null;
 
-    return (
+    const readyBanner = showReady ? (
         <div
             data-testid="update-banner"
             style={{
@@ -186,5 +202,12 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss, onRestart }
                 </button>
             </div>
         </div>
+    ) : null;
+
+    return (
+        <>
+            {failureBanner}
+            {readyBanner}
+        </>
     );
 }

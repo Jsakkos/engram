@@ -965,6 +965,26 @@ def test_consume_marker_absent_is_noop(tmp_path):
     assert c.last_update_error is None and c.last_update_success_version is None
 
 
+def test_consume_marker_unlink_error_is_swallowed(tmp_path, monkeypatch):
+    """A non-FileNotFound OSError on unlink (e.g. PermissionError) must not escape the
+    best-effort consumer — the parsed result is still applied and start() can't crash."""
+    from pathlib import Path
+
+    from app.core.updater import UpdateChecker
+
+    marker = tmp_path / "update_result.txt"
+    marker.write_text("result=success\nversion=9.9.9\n", encoding="utf-8")
+
+    def boom(self, missing_ok=False):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(Path, "unlink", boom)
+
+    c = UpdateChecker()
+    c._consume_update_result_marker(marker)  # must not raise
+    assert c.last_update_success_version == "9.9.9"
+
+
 def test_get_status_includes_marker_fields():
     from app.core.updater import UpdateChecker
 

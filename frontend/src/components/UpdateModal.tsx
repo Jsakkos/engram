@@ -19,7 +19,6 @@ interface UpdateModalProps {
     updateStatus: UpdateStatus | null;
     onClose: () => void;
     onDismiss: () => void;
-    onRestart?: () => void;
 }
 
 export default function UpdateModal({
@@ -27,7 +26,6 @@ export default function UpdateModal({
     updateStatus,
     onClose,
     onDismiss,
-    onRestart,
 }: UpdateModalProps) {
     const [restarting, setRestarting] = useState(false);
 
@@ -41,7 +39,6 @@ export default function UpdateModal({
     }, [open, onClose]);
 
     const handleRestart = useCallback(async () => {
-        onRestart?.();
         setRestarting(true);
         try {
             await apiFetchVoid("/api/updates/restart", { method: "POST" });
@@ -59,7 +56,7 @@ export default function UpdateModal({
             }
             setRestarting(false);
         }
-    }, [onClose, onRestart, updateStatus]);
+    }, [onClose, updateStatus]);
 
     const handleSkip = useCallback(async () => {
         if (!updateStatus?.latest_version) return;

@@ -75,3 +75,18 @@ it("renders nothing when neither ready nor a failure", () => {
     );
     expect(container.innerHTML).toBe("");
 });
+
+it("renders BOTH the failure notice and the ready banner when a prior update failed and a new one is staged", () => {
+    render(
+        <UpdateBanner
+            updateStatus={status({
+                is_frozen: true,
+                last_update_error: "Update to 9.9.9 couldn't be applied (step: verify).",
+            })}
+            onShowNotes={() => {}}
+            onDismiss={() => {}}
+        />,
+    );
+    expect(screen.getByTestId("update-failure-banner")).toBeTruthy();
+    expect(screen.getByTestId("update-banner")).toBeTruthy();
+});
