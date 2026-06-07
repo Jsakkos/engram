@@ -44,6 +44,8 @@ function toUpdateStatus(raw: Omit<UpdateStatusMessage, 'type'>): UpdateStatus {
         release_url: raw.release_url ?? null,
         download_progress: raw.download_progress ?? null,
         error: raw.error ?? null,
+        last_update_error: raw.last_update_error ?? null,
+        last_update_success_version: raw.last_update_success_version ?? null,
         is_frozen: raw.is_frozen ?? false,
     };
 }

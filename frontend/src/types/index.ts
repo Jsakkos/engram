@@ -164,6 +164,8 @@ export interface UpdateStatusMessage {
     release_url?: string | null;
     download_progress?: number | null;
     error?: string | null;
+    last_update_error?: string | null;
+    last_update_success_version?: string | null;
     is_frozen?: boolean;
 }
 
@@ -176,6 +178,8 @@ export interface UpdateStatus {
     release_url: string | null;
     download_progress: number | null;
     error: string | null;
+    last_update_error: string | null;
+    last_update_success_version: string | null;
     is_frozen: boolean;
 }
 

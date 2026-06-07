@@ -4,8 +4,11 @@ Patches async_session so no test touches engram.db.
 httpx is mocked via unittest.mock so no real network calls are made.
 """
 
+import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -684,6 +687,8 @@ _BAT_ARGS = dict(
     log_path=r"C:\Users\jonat\.engram\update_helper.log",
     exe="engram.exe",
     pid=28628,
+    version="0.16.0",
+    result_path=r"C:\Users\jonat\.engram\update_result.txt",
 )
 
 
@@ -762,7 +767,10 @@ class TestRenderUpdateBat:
         bat = self._bat()
         assert f'tasklist /FI "PID eq {_BAT_ARGS["pid"]}"' in bat
         assert "ping -n" in bat  # PID poll + post-exit grace
-        assert "timeout" not in bat  # timeout aborts in a console-less context
+        # The `timeout` CMD built-in aborts in a console-less context; must not be used as a
+        # command. The word may appear in log messages (e.g. "timed out"), so check for it as
+        # a standalone command token (newline + "timeout ") rather than a bare substring.
+        assert "\ntimeout " not in bat  # timeout cmd aborts in a console-less context
 
     def test_preserves_parens_in_paths(self):
         bat = self._bat()
@@ -840,3 +848,331 @@ class TestRestartWindowsWiring:
         # Helper is launched via cmd /c <bat>, breakaway handled by _spawn_detached_helper.
         assert spawned["args"][:2] == ["cmd", "/c"]
         assert spawned["args"][2] == str(bat_path)
+
+
+def test_spawn_detached_helper_uses_create_no_window(monkeypatch):
+    """The helper must run in a hidden console (CREATE_NO_WINDOW), not console-less
+    DETACHED_PROCESS — a cmd pipe (tasklist | find) deadlocks without a console."""
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["flags"] = kwargs.get("creationflags", 0)
+
+        class _P:  # minimal stand-in
+            pass
+
+        return _P()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    UpdateChecker._spawn_detached_helper(["cmd", "/c", "x.bat"])
+
+    CREATE_NO_WINDOW = 0x08000000
+    DETACHED_PROCESS = 0x00000008
+    assert captured["flags"] & CREATE_NO_WINDOW, "must use CREATE_NO_WINDOW"
+    assert not (captured["flags"] & DETACHED_PROCESS), "must NOT use DETACHED_PROCESS"
+
+
+def _bat():
+    return UpdateChecker._render_update_bat(
+        src=r"C:\stage\engram",
+        install=r"C:\app\engram",
+        new_dir=r"C:\app\engram.new",
+        old_dir=r"C:\app\engram.old",
+        log_path=r"C:\u\.engram\update_helper.log",
+        exe="engram.exe",
+        pid=4321,
+        version="9.9.9",
+        result_path=r"C:\u\.engram\update_result.txt",
+    )
+
+
+def test_render_bat_wait_is_bounded_and_image_filtered():
+    bat = _bat()
+    assert "IMAGENAME eq engram.exe" in bat  # don't wedge on a reused PID
+    assert "set /a WAITED" in bat  # bounded counter exists
+    assert "if %WAITED% GEQ 10" in bat  # ~10s cap
+
+
+def test_render_bat_relaunch_passes_updated_flag():
+    bat = _bat()
+    # both the success relaunch and the rollback relaunch suppress the new tab
+    assert bat.count('"%EXE%" --updated') == 2
+
+
+def test_render_bat_writes_result_marker():
+    bat = _bat()
+    assert 'echo result=success>"%RESULT%"' in bat
+    assert 'echo result=failed>"%RESULT%"' in bat
+    assert 'echo version=%VER%>>"%RESULT%"' in bat
+    assert 'echo step=%STEP%>>"%RESULT%"' in bat
+
+
+def test_restart_posix_appends_updated_flag(monkeypatch, tmp_path):
+    """POSIX exec-in-place re-runs run.py, which would open a 2nd browser tab; the
+    --updated flag suppresses it."""
+    import os
+    import shutil
+    import sys
+
+    from app.core.updater import UpdateChecker
+
+    staging = tmp_path / "stage"
+    (staging / "engram").mkdir(parents=True)
+    (staging / "engram" / "engram").write_text("binary")
+
+    checker = UpdateChecker()
+    checker.staging_path = staging
+
+    monkeypatch.setattr(shutil, "copy2", lambda *a, **k: None)
+    monkeypatch.setattr(os, "chmod", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["/app/engram"])
+    captured = {}
+    monkeypatch.setattr(os, "execv", lambda path, argv: captured.update(path=path, argv=argv))
+
+    checker._restart_linux_macos()
+    assert "--updated" in captured["argv"]
+
+
+def test_consume_marker_success(tmp_path):
+    from app.core.updater import UpdateChecker
+
+    marker = tmp_path / "update_result.txt"
+    marker.write_text("result=success\nversion=9.9.9\n", encoding="utf-8")
+    c = UpdateChecker()
+    c._consume_update_result_marker(marker)
+    assert c.last_update_success_version == "9.9.9"
+    assert c.last_update_error is None
+    assert not marker.exists()  # consumed once
+
+
+def test_consume_marker_failed(tmp_path):
+    from app.core.updater import UpdateChecker
+
+    marker = tmp_path / "update_result.txt"
+    marker.write_text("result=failed\nversion=9.9.9\nstep=verify\n", encoding="utf-8")
+    c = UpdateChecker()
+    c._consume_update_result_marker(marker)
+    assert "9.9.9" in c.last_update_error and "verify" in c.last_update_error
+    assert c.last_update_success_version is None
+    assert not marker.exists()
+
+
+def test_consume_marker_absent_is_noop(tmp_path):
+    from app.core.updater import UpdateChecker
+
+    c = UpdateChecker()
+    c._consume_update_result_marker(tmp_path / "nope.txt")
+    assert c.last_update_error is None and c.last_update_success_version is None
+
+
+def test_consume_marker_unlink_error_is_swallowed(tmp_path, monkeypatch):
+    """A non-FileNotFound OSError on unlink (e.g. PermissionError) must not escape the
+    best-effort consumer — the parsed result is still applied and start() can't crash."""
+    from pathlib import Path
+
+    from app.core.updater import UpdateChecker
+
+    marker = tmp_path / "update_result.txt"
+    marker.write_text("result=success\nversion=9.9.9\n", encoding="utf-8")
+
+    def boom(self, missing_ok=False):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(Path, "unlink", boom)
+
+    c = UpdateChecker()
+    c._consume_update_result_marker(marker)  # must not raise
+    assert c.last_update_success_version == "9.9.9"
+
+
+def test_get_status_includes_marker_fields():
+    from app.core.updater import UpdateChecker
+
+    c = UpdateChecker()
+    c.last_update_error = "boom"
+    c.last_update_success_version = "9.9.9"
+    s = c.get_status()
+    assert s["last_update_error"] == "boom"
+    assert s["last_update_success_version"] == "9.9.9"
+
+
+from app.services.event_broadcaster import EventBroadcaster  # noqa: E402
+
+
+class _FakeWS:
+    def __init__(self):
+        self.sent = []
+
+    async def broadcast(self, data):
+        self.sent.append(data)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_update_status_carries_marker_fields():
+    ws = _FakeWS()
+    eb = EventBroadcaster(ws)
+    await eb.broadcast_update_status(
+        state="ready", last_update_error="boom", last_update_success_version="9.9.9"
+    )
+    payload = ws.sent[-1]
+    assert payload["last_update_error"] == "boom"
+    assert payload["last_update_success_version"] == "9.9.9"
+
+
+# ---------------------------------------------------------------------------
+# Task 8: End-to-end Windows swap via the real _spawn_detached_helper
+# ---------------------------------------------------------------------------
+
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows helper only")
+
+
+def _t8_make_build(root: Path, exe_name: str, marker_text: str) -> None:
+    """Create a fake onedir build at *root* with all four sentinels present."""
+    root.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(os.environ["COMSPEC"], root / exe_name)  # cmd clone -> IMAGENAME == exe_name
+    (root / "_internal" / "certifi").mkdir(parents=True, exist_ok=True)
+    (root / "_internal" / "app" / "static").mkdir(parents=True, exist_ok=True)
+    (root / "_internal" / "base_library.zip").write_text("z")
+    (root / "_internal" / "certifi" / "cacert.pem").write_text("ca")
+    (root / "_internal" / "app" / "static" / "index.html").write_text("<html>")
+    (root / "VERSION.txt").write_text(marker_text)
+
+
+def _t8_run_helper(
+    checker: UpdateChecker,
+    *,
+    src: Path,
+    install: Path,
+    new_dir: Path,
+    old_dir: Path,
+    log: Path,
+    result: Path,
+    exe: str,
+    pid: int,
+    version: str,
+) -> None:
+    """Render the bat, rewrite the self-delete to use the literal bat path, and spawn it."""
+    bat = checker._render_update_bat(
+        src=str(src),
+        install=str(install),
+        new_dir=str(new_dir),
+        old_dir=str(old_dir),
+        log_path=str(log),
+        exe=exe,
+        pid=pid,
+        version=version,
+        result_path=str(result),
+    )
+    bat_path = os.path.join(os.environ["TEMP"], f"engram_update_test_{pid}.bat")
+    # The rendered bat has '(goto) 2>nul & del "%~f0"' for the success self-delete.
+    # Rewrite it to delete THIS test bat by its literal path so it doesn't conflict
+    # with other runs.
+    bat = bat.replace('del "%~f0"', f'del "{bat_path}"')
+    with open(bat_path, "w", newline="\r\n") as f:
+        f.write(bat)
+    checker._spawn_detached_helper(["cmd", "/c", bat_path])
+
+
+def _t8_wait_for(predicate, timeout: float = 30.0) -> bool:
+    end = time.time() + timeout
+    while time.time() < end:
+        if predicate():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+@windows_only
+def test_windows_swap_succeeds_end_to_end(tmp_path):
+    """The real helper, spawned the real way, completes the swap and writes a success marker.
+
+    This is the keystone regression test: the original bug was that the helper hung
+    forever in the :wait loop because DETACHED_PROCESS (no console) made tasklist emit
+    nothing, so the PID-check pipe never matched and the wait never exited. The fix
+    switched to CREATE_NO_WINDOW (hidden console). This test spawns the real helper via
+    the real _spawn_detached_helper and asserts it finishes within 30 seconds.
+    """
+    exe = "engram_t8a.exe"
+    src = tmp_path / "stage" / "engram"
+    install = tmp_path / "app" / "engram"
+    _t8_make_build(src, exe, "NEW")
+    _t8_make_build(install, exe, "OLD")
+    log = tmp_path / "helper.log"
+    result = tmp_path / "update_result.txt"
+
+    # Launch a long-lived dummy "parent" whose IMAGENAME matches exe exactly (cmd clone).
+    parent = subprocess.Popen([str(install / exe), "/c", "ping -n 60 127.0.0.1 >nul"])
+    try:
+        checker = UpdateChecker()
+        _t8_run_helper(
+            checker,
+            src=src,
+            install=install,
+            new_dir=tmp_path / "app" / "engram.new",
+            old_dir=tmp_path / "app" / "engram.old",
+            log=log,
+            result=result,
+            exe=exe,
+            pid=parent.pid,
+            version="9.9.9",
+        )
+        time.sleep(2)  # let the helper enter the :wait loop before we kill the parent
+        parent.terminate()  # the :wait loop observes the exit and proceeds with the swap
+        ok = _t8_wait_for(lambda: result.exists())
+        log_text = log.read_text() if log.exists() else "<no log>"
+        assert ok, f"no result marker written within 30s; helper log:\n{log_text}"
+        text = result.read_text()
+        assert "result=success" in text, (
+            f"unexpected result:\n{text}\n--- helper log ---\n{log_text}"
+        )
+        assert (install / "VERSION.txt").read_text() == "NEW", "swap did not happen"
+    finally:
+        if parent.poll() is None:
+            parent.terminate()
+        subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
+
+
+@windows_only
+def test_windows_swap_failure_writes_marker_and_keeps_install(tmp_path):
+    """A missing sentinel causes verify to fail -> failure marker written, install left intact."""
+    exe = "engram_t8b.exe"
+    src = tmp_path / "stage" / "engram"
+    install = tmp_path / "app" / "engram"
+    _t8_make_build(src, exe, "NEW")
+    # Remove the index.html sentinel so the verify step in the bat fails.
+    (src / "_internal" / "app" / "static" / "index.html").unlink()
+    _t8_make_build(install, exe, "OLD")
+    log = tmp_path / "helper.log"
+    result = tmp_path / "update_result.txt"
+
+    parent = subprocess.Popen([str(install / exe), "/c", "ping -n 60 127.0.0.1 >nul"])
+    try:
+        checker = UpdateChecker()
+        _t8_run_helper(
+            checker,
+            src=src,
+            install=install,
+            new_dir=tmp_path / "app" / "engram.new",
+            old_dir=tmp_path / "app" / "engram.old",
+            log=log,
+            result=result,
+            exe=exe,
+            pid=parent.pid,
+            version="9.9.9",
+        )
+        time.sleep(2)
+        parent.terminate()
+        ok = _t8_wait_for(lambda: result.exists())
+        log_text = log.read_text() if log.exists() else "<no log>"
+        assert ok, f"no result marker written within 30s; helper log:\n{log_text}"
+        text = result.read_text()
+        assert "result=failed" in text, (
+            f"unexpected result:\n{text}\n--- helper log ---\n{log_text}"
+        )
+        assert (install / "VERSION.txt").read_text() == "OLD", (
+            "install was modified (should be untouched)"
+        )
+    finally:
+        if parent.poll() is None:
+            parent.terminate()
+        subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)

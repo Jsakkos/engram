@@ -206,6 +206,8 @@ class EventBroadcaster:
         release_notes: str | None = None,
         release_url: str | None = None,
         error: str | None = None,
+        last_update_error: str | None = None,
+        last_update_success_version: str | None = None,
     ) -> None:
         """Broadcast update availability status to all connected clients.
 
@@ -231,4 +233,8 @@ class EventBroadcaster:
             data["release_url"] = release_url
         if error is not None:
             data["error"] = error
+        if last_update_error is not None:
+            data["last_update_error"] = last_update_error
+        if last_update_success_version is not None:
+            data["last_update_success_version"] = last_update_success_version
         await self._ws.broadcast(data)
