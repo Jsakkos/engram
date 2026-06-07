@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-06-07
+
+_Highlights: a fixes-only release — the Windows "Restart to update" now runs to completion and actually installs the update, and the review panel's AI/LLM episode-matching button works again and clearly reports what it found._
+
 ### Changed
 
 - The review Inspector's "Try LLM match" endpoint now returns a differentiated `reason` (e.g. `ai_disabled`, `not_configured`, `no_season`, `show_not_found`, `transcription_failed`, `no_match`, `llm_error`) and uses HTTP 503 for retryable operational failures (matcher/transcription/LLM-provider errors) and 500 for unexpected errors, instead of reporting every failure as a 200. This lets the UI tell "AI matching is off / couldn't find a match" apart from "the LLM provider failed, retry". (#347 follow-up)
