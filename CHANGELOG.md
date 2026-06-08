@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-08
+
+_Highlights: episode matching can now run on an NVIDIA GPU (opt-in, with the CUDA runtime downloaded on demand) for dramatically faster transcription — and the dashboard's ASR badge now reports the device transcription actually runs on instead of claiming CUDA while silently falling back to the CPU._
+
 ### Added
 
 - **GPU acceleration for episode matching (NVIDIA, opt-in)** — Engram can now run Whisper transcription on an NVIDIA GPU instead of the CPU, which is dramatically faster for episode matching. Because the required CUDA libraries (cuDNN + cuBLAS) are ~1.2 GB, they are not bundled into the download; instead a new **GPU Acceleration** control in Settings → Matching detects your GPU and downloads the runtime on demand (one time, into `~/.engram/` so it survives app updates). Supported on Windows and Linux with an NVIDIA GPU; macOS and AMD GPUs continue to run on the CPU (the engine has no GPU path there). Takes effect after a backend restart.
