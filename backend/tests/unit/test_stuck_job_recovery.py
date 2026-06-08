@@ -548,7 +548,9 @@ async def test_recover_organizing_redrives_tv(tmp_path, monkeypatch):
 
     task = job_manager._active_jobs.get(job_id)
     assert task is not None
-    await task
+    # gather() (a call) rather than a bare `await task` (a name) so CodeQL's
+    # ineffectual-statement heuristic doesn't flag the await as having no effect.
+    await asyncio.gather(task)
     job_manager._active_jobs.pop(job_id, None)
 
     assert called == [job_id]
