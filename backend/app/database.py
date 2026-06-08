@@ -21,21 +21,42 @@ logger = logging.getLogger(__name__)
 _ALEMBIC_INI = Path(__file__).parent.parent / "alembic.ini"
 
 # Create async engine. echo is gated on the dedicated db_echo setting, NOT
-# debug — see Settings.db_echo for the rationale.
+# debug — see Settings.db_echo for the rationale. Pool sizing is lifted above
+# SQLAlchemy's async default (5 + 10 = 15) because a multi-season import fans out
+# 100+ concurrent DB-touching coroutines; see Settings.db_pool_size for the full
+# rationale on why a larger pool is safe for WAL SQLite.
 engine = create_async_engine(
     settings.database_url,
     echo=settings.db_echo,
     future=True,
     connect_args={"check_same_thread": False},  # Needed for SQLite
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_timeout=settings.db_pool_timeout,
 )
 
 
-@sqlalchemy.event.listens_for(engine.sync_engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Apply per-connection SQLite pragmas (registered as the engine 'connect' hook).
+
+    WAL + synchronous=NORMAL is the standard high-concurrency SQLite setup. The
+    busy_timeout is essential now that the pool allows many concurrent
+    connections: SQLite still permits only ONE writer at a time, so concurrent
+    committers (e.g. 7 seasons matching at once, plus a rip) contend for the
+    single write lock. With the default busy_timeout of 0, a writer that can't
+    immediately acquire the lock fails fast with "database is locked"; 30s makes
+    it WAIT and retry instead, turning the larger pool's write contention into
+    polite queueing rather than errors. Module-level (not a decorator closure) so
+    it can be unit-tested against a throwaway connection.
+    """
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
     cursor.close()
+
+
+sqlalchemy.event.listens_for(engine.sync_engine, "connect")(set_sqlite_pragma)
 
 
 # Async session factory
