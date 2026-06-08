@@ -52,6 +52,14 @@ class AppConfig(SQLModel, table=True):
     # Matching concurrency (limits parallel Whisper ASR tasks to avoid GPU OOM)
     max_concurrent_matches: int = 2
 
+    # GPU acceleration for ASR (faster-whisper/CTranslate2). Opt-in: when enabled AND an
+    # NVIDIA GPU is present AND the cuDNN/cuBLAS runtime has been downloaded to
+    # ~/.engram/cuda/, matching runs on the GPU. Off by default — the ~1.2 GB CUDA libraries
+    # are fetched on demand, not bundled. macOS/AMD have no CUDA path and stay on CPU.
+    enable_gpu_acceleration: bool = Field(
+        default=False, sa_column_kwargs={"server_default": text("0")}
+    )
+
     # FFmpeg path (empty string = use PATH)
     ffmpeg_path: str = ""
 

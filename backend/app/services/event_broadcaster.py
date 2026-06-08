@@ -238,3 +238,12 @@ class EventBroadcaster:
         if last_update_success_version is not None:
             data["last_update_success_version"] = last_update_success_version
         await self._ws.broadcast(data)
+
+    async def broadcast_gpu_status(self, download_state: dict) -> None:
+        """Broadcast CUDA-runtime download progress / GPU-acceleration state to all clients.
+
+        ``download_state`` is the dict from ``cuda_runtime.get_download_state()``:
+        ``{"state": "idle|downloading|installing|error", "downloaded": int, "total": int,
+        "error": str | None}``. The settings UI uses it to drive the download progress bar.
+        """
+        await self._ws.broadcast({"type": "gpu_status", "data": download_state})

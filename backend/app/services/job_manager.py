@@ -171,11 +171,32 @@ class JobManager:
         config = await get_config()
         await ensure_paths_exist(config)
 
+        # Resolve the effective ASR device ONCE, here, after (optionally) registering the
+        # CUDA runtime — every other call site reads this decision via detect_asr_device(),
+        # so the badge, the semaphore, and the model loader can't disagree. GPU is used only
+        # when the user enabled it AND an NVIDIA GPU is present AND the cuDNN/cuBLAS libs are
+        # installed and register cleanly; otherwise we stay on CPU.
+        from app.matcher.asr_models import (
+            gpu_detected,
+            resolve_asr_runtime,
+            set_asr_device,
+        )
+        from app.matcher.cuda_runtime import register_cuda_runtime
+
+        asr_device = "cpu"
+        if config.enable_gpu_acceleration and gpu_detected():
+            if register_cuda_runtime():
+                asr_device = "cuda"
+            else:
+                logger.warning(
+                    "GPU acceleration is enabled but the CUDA runtime libraries are not "
+                    "installed; falling back to CPU. Re-enable GPU in Settings to download them."
+                )
+        set_asr_device(asr_device)
+
         # Initialize matching concurrency limiter from REAL ASR capacity, so the
         # dashboard's MATCHING count can't exceed what can actually be transcribing.
-        from app.matcher.asr_models import detect_asr_device, resolve_asr_runtime
-
-        _asr_runtime = resolve_asr_runtime(detect_asr_device(), config.max_concurrent_matches)
+        _asr_runtime = resolve_asr_runtime(asr_device, config.max_concurrent_matches)
         self._matching.init_semaphore(_asr_runtime.workers)
 
         # Start timed staging cleanup if policy is "after_days"

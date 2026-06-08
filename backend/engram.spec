@@ -87,6 +87,13 @@ if os.path.isdir(static_dir):
 datas += collect_data_files("faster_whisper")
 datas += collect_data_files("ctranslate2")
 
+# NOTE: the NVIDIA CUDA *math* libraries (cuDNN 9 + cuBLAS, ~1.2 GB) are deliberately NOT
+# bundled. CTranslate2's own CUDA-capable extension ships inside the ctranslate2 wheel (so
+# get_cuda_device_count() works in the frozen build), but cuDNN/cuBLAS are huge and CTranslate2
+# dlopen's them lazily by name — invisible to PyInstaller's static analysis. Bundling them would
+# triple every download for the CPU-only majority. Instead they're fetched on demand, opt-in,
+# into ~/.engram/cuda/ at runtime — see app/matcher/cuda_runtime.py.
+
 # TLS CA bundle. httpx/requests load certifi.where() (-> certifi/cacert.pem) for
 # every HTTPS call. Collect it explicitly so the CA bundle can never silently drop
 # out from PyInstaller hook / certifi-version drift — a missing cacert.pem makes

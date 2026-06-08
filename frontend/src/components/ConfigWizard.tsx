@@ -5,6 +5,7 @@ import { FEATURES } from '../config/constants';
 import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
+import GpuAccelerationSetting from './GpuAccelerationSetting';
 import './ConfigWizard.css';
 
 interface ConfigWizardProps {
@@ -1251,6 +1252,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 after a backend restart.
                             </span>
                         </div>
+
+                        <GpuAccelerationSetting />
 
                         <div className="form-group">
                             <label htmlFor="conflictResolution">Default Conflict Resolution</label>

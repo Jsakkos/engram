@@ -209,6 +209,7 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
 - **Database migration**: Alembic with async SQLModel metadata. `render_as_batch=True` for SQLite. Existing databases auto-stamped at head on first startup. `app_config` always preserves data via backup/restore (independent of Alembic).
 - **DiscDB mapping persistence**: `discdb_mappings_json` column on `DiscJob` stores serialized `DiscDbTitleMapping` list. Persisted during identification, restored from DB on server startup via `_restore_discdb_mappings()`.
 - **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
+- **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
 
 ## TMDB Configuration
 
@@ -278,6 +279,7 @@ All WebSocket messages follow the format: `{"type": "...", "data": {...}}`
 | `title_matched` | `{"job_id": int, "title_id": int, ...}` | Successful title match |
 | `title_state_changed` | `{"job_id": int, "title_id": int, "state": str}` | Generic title state change |
 | `title_failed` | `{"job_id": int, "title_id": int, "error": str}` | Title processing failed |
+| `gpu_status` | `{"state": "idle"\|"downloading"\|"installing"\|"error", "downloaded": int, "total": int, "error": str\|null}` | CUDA-runtime download progress for GPU ASR (see `broadcast_gpu_status`) |
 
 ### Client → Server Messages
 
