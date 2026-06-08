@@ -107,6 +107,14 @@ class ConnectionManager:
         Only includes optional fields when they are not None, so the frontend
         merge ({...job, ...message}) won't overwrite existing values with
         defaults.
+
+        Known limitation: tmdb_id/tmdb_name/tmdb_year are intentionally not sent
+        here. The client relies on the REST job payload (GET /api/jobs) for those.
+        Re-identification normally moves the job out of review_needed, so the
+        identity-review UI re-evaluates from the state field alone; the only stale
+        window is the rare case where re-identify resolves to *another* same-name
+        collision (re-enters review_needed with a new tmdb_id) — the modal's
+        "Currently:" line then shows the previous show until the next REST poll.
         """
         data: dict = {
             "type": "job_update",

@@ -601,7 +601,7 @@ function MainDashboard() {
                   disc={disc}
                   onCancel={disc.state !== 'completed' && disc.state !== 'error' ? () => cancelJob(disc.id) : undefined}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
-                  onReview={disc.needsReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
+                  onReview={disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
                   onReIdentify={disc.needsReview && disc.title ? () => {
                     const job = jobs.find(j => String(j.id) === disc.id);
                     if (job) setReIdentifyTarget(job);
@@ -931,7 +931,7 @@ function CompactList({
               </span>
               {/* Actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {disc.needsReview && (disc.tracks?.length ?? 0) > 0 && (
+                {disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 && (
                   <CompactRowButton color={sv.yellow} onClick={() => onReview(disc.id)}>
                     Review
                   </CompactRowButton>

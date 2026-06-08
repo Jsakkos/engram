@@ -38,6 +38,17 @@ export function mapTitleStateToTrackState(
   return stateMap[titleState] || 'pending';
 }
 
+/** Count of same-name TMDB twins recorded on the job (0 when absent/malformed). */
+function countCandidates(candidatesJson?: string | null): number {
+  if (!candidatesJson) return 0;
+  try {
+    const parsed = JSON.parse(candidatesJson);
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData {
   // Determine media type - handle case-insensitively
   const contentTypeLower = job.content_type?.toLowerCase();
@@ -50,6 +61,22 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
   }
 
   const displayType = mediaType === 'movie' ? 'MOVIE' : mediaType === 'tv' ? 'TV' : 'DETECTING';
+
+  // "Identity review" = the disc is in review to confirm WHICH show it is, not to
+  // assign episodes. The episode review queue is a dead end here. Primary signal:
+  // a null tmdb_id (the analyst withholds the id for an ambiguous/unconfirmed
+  // disc). Fallback: a same-name collision (>=2 twins) the analyst kept a
+  // best-guess id for (the no-year-twin case) — but only while nothing has been
+  // ripped/matched yet, so a genuine post-rip wrong-show disc keeps its button.
+  const hasProcessedTitles = titles.some(
+    // 'failed' is intentionally excluded: a fully-failed job transitions to FAILED
+    // state (not review_needed), so the outer state guard makes this unreachable.
+    t => t.state === 'matched' || t.state === 'review' || t.state === 'completed',
+  );
+  const identityReview =
+    job.state === 'review_needed' &&
+    (job.tmdb_id == null ||
+      (countCandidates(job.candidates_json) >= 2 && !hasProcessedTitles));
 
   return {
     id: job.id.toString(),
@@ -69,6 +96,10 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     subtitleError: job.subtitle_error_message || undefined,
     conflictStatus: job.conflict_status || undefined,
     reviewReason: job.review_reason || undefined,
+    identityReview,
+    tmdbId: job.tmdb_id ?? null,
+    tmdbName: job.tmdb_name ?? null,
+    tmdbYear: job.tmdb_year ?? null,
     startedAt: job.created_at
       ? (job.created_at.endsWith('Z') || job.created_at.includes('+') ? job.created_at : job.created_at + 'Z')
       : undefined,

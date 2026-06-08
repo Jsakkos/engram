@@ -34,6 +34,10 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
     );
     const [season, setSeason] = useState<string>(String(job.detected_season || 1));
     const [tmdbId, setTmdbId] = useState<number | undefined>();
+    // First-air year of the selected TMDB result, retained alongside tmdbId so the
+    // confirmation line can show "Name (year) · TMDB #id". Cleared when the user
+    // types a manual title (no confirmed match anymore).
+    const [selectedYear, setSelectedYear] = useState<string | undefined>();
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<TmdbResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -77,6 +81,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
         setTitle(result.name);
         setContentType(result.type);
         setTmdbId(result.tmdb_id);
+        setSelectedYear(result.year || undefined);
         setSearchResults([]);
         setSearchQuery('');
     };
@@ -98,7 +103,8 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
         }
     }, [job.candidates_json]);
 
-    const candidateLabel = (c: Candidate) => (c.year ? `${c.name} (${c.year})` : c.name);
+    const candidateLabel = (c: Candidate) =>
+        `${c.name}${c.year ? ` (${c.year})` : ''} · #${c.tmdb_id}`;
 
     const selectCandidate = (c: Candidate) => {
         // Reuse the disc's detected content type (collisions are TV today, but
@@ -260,6 +266,23 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                         }}
                                     >
                                         {job.review_reason}
+                                    </p>
+                                )}
+                                {/* What the disc is identified as right now — only when
+                                    a TMDB id is committed (an ambiguous disc has none)
+                                    and the user hasn't yet picked a replacement, so they
+                                    can compare wrong-vs-right before re-identifying. */}
+                                {job.tmdb_id != null && tmdbId == null && (
+                                    <p
+                                        style={{
+                                            fontFamily: sv.mono,
+                                            fontSize: 11,
+                                            color: `${sv.yellow}99`,
+                                            margin: 0,
+                                        }}
+                                    >
+                                        Currently: {job.tmdb_name || job.detected_title}
+                                        {job.tmdb_year ? ` (${job.tmdb_year})` : ''} · TMDB #{job.tmdb_id}
                                     </p>
                                 )}
                             </div>
@@ -486,6 +509,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                 onChange={(e) => {
                                     setTitle(e.target.value);
                                     setTmdbId(undefined);
+                                    setSelectedYear(undefined);
                                 }}
                                 placeholder="e.g. Thunderbirds"
                                 style={inputStyle(!!title)}
@@ -494,6 +518,21 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                     (e.currentTarget.style.borderColor = title ? sv.lineHi : sv.lineMid)
                                 }
                             />
+                            {/* Confirms which TMDB show is selected (year + id) so the
+                                user isn't picking a same-name show blind. Only shown
+                                once a search result / candidate set the tmdbId. */}
+                            {tmdbId != null && (
+                                <span
+                                    style={{
+                                        fontFamily: sv.mono,
+                                        fontSize: 11,
+                                        color: sv.cyan,
+                                    }}
+                                >
+                                    Selected → {title}
+                                    {selectedYear ? ` (${selectedYear})` : ''} · TMDB #{tmdbId}
+                                </span>
+                            )}
                         </div>
 
                         {/* Media Type Toggle */}
