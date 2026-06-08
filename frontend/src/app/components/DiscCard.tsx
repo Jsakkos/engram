@@ -215,7 +215,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     // and the emphasis on the re-identify button. `tracksLoaded` gates out the
     // title-load race: titles resolve after the job list, so without this guard
     // the banner/emphasis could flash then vanish on first render / reconnect.
-    const identityReview = !!disc.identityReview && !!disc.tracksLoaded;
+    const showIdentityReview = !!disc.identityReview && !!disc.tracksLoaded;
 
     return (
       <motion.div
@@ -402,7 +402,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
                     onReportBug={onReportBug}
-                    emphasizeReIdentify={identityReview}
+                    emphasizeReIdentify={showIdentityReview}
                   />
                 </div>
               </div>
@@ -411,7 +411,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   help until the show is confirmed, so point the user at "Wrong
                   title?" instead and explain why (reuses the backend's
                   review_reason sentence). */}
-              {identityReview && (
+              {showIdentityReview && (
                 <div
                   role="alert"
                   style={{

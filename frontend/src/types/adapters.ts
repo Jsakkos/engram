@@ -69,6 +69,8 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
   // best-guess id for (the no-year-twin case) — but only while nothing has been
   // ripped/matched yet, so a genuine post-rip wrong-show disc keeps its button.
   const hasProcessedTitles = titles.some(
+    // 'failed' is intentionally excluded: a fully-failed job transitions to FAILED
+    // state (not review_needed), so the outer state guard makes this unreachable.
     t => t.state === 'matched' || t.state === 'review' || t.state === 'completed',
   );
   const identityReview =
