@@ -2,6 +2,14 @@
 
 Engram's distributable builds bundle the following third-party binaries.
 
+> **NVIDIA CUDA libraries (cuDNN, cuBLAS)** are *not* bundled. When a user opts in to GPU
+> acceleration, Engram downloads the official NVIDIA pip wheels at runtime (pinned + SHA256
+> verified in `backend/app/matcher/cuda_runtime.py`) into `~/.engram/cuda/`. These libraries
+> are NVIDIA redistributables governed by the
+> [NVIDIA CUDA EULA](https://docs.nvidia.com/cuda/eula/index.html); the user accepts that EULA
+> before the download. The binaries are redistributed unmodified and are not stored in this
+> repository or in Engram's build artifacts.
+
 ## Chromaprint (`fpcalc`)
 
 - **Component:** `fpcalc`, the command-line audio fingerprinter from Chromaprint.

@@ -112,9 +112,12 @@ cd backend
 uv sync --extra gpu
 ```
 
-An NVIDIA GPU is auto-detected and speeds up episode matching considerably. The prebuilt
-standalone and Docker builds are CPU-only — see [Performance & Hardware](docs/guide/performance.md)
-for GPU setup, storage recommendations, and concurrency tuning.
+An NVIDIA GPU speeds up episode matching considerably. GPU acceleration is opt-in: enable it in
+**Settings → Matching → GPU Acceleration**, which downloads the CUDA runtime on demand — this works
+in the prebuilt standalone build too (macOS and AMD GPUs run on CPU). The `uv sync --extra gpu` above
+is the from-source shortcut that installs those libraries via pip. See
+[Performance & Hardware](docs/guide/performance.md) for GPU setup, storage recommendations, and
+concurrency tuning.
 
 Then start the two dev servers in separate terminals:
 

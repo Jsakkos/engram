@@ -230,7 +230,7 @@ function MainDashboard() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <AsrStatusBadge />
+          <AsrStatusBadge onOpenSettings={() => setShowSettings(true)} />
           {/* View mode toggle */}
           <div style={{ display: "inline-flex", border: `1px solid ${sv.line}` }}>
             <button

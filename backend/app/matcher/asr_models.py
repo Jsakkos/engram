@@ -7,7 +7,6 @@ supporting OpenAI Whisper models via faster-whisper for efficient inference.
 
 import abc
 import hashlib
-import os
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -33,6 +32,48 @@ _model_cache_lock = threading.Lock()
 # Conservative parallel-stream cap on GPU (VRAM auto-sizing is a future enhancement).
 GPU_WORKER_CAP = 4
 
+# Process-wide resolved ASR device, decided ONCE at startup (job_manager.start) after the
+# CUDA runtime is registered. Before this is set, callers fall back to the raw driver probe.
+# Centralizing the decision here is what keeps the semaphore sizing, the /api/asr-status
+# badge, and the model loader from disagreeing — they all read detect_asr_device().
+_asr_device_override: str | None = None
+
+
+def set_asr_device(device: str | None) -> None:
+    """Pin the effective ASR device for the rest of the process (``None`` re-enables probing)."""
+    global _asr_device_override
+    _asr_device_override = device
+
+
+def gpu_detected() -> bool:
+    """True when an NVIDIA CUDA device is visible to the driver — ignores libs and override.
+
+    This is the hardware-capability probe (does a GPU exist?), distinct from
+    ``detect_asr_device()`` which reports the *usable* device. Used to decide whether to even
+    offer the GPU-acceleration toggle.
+    """
+    try:
+        return ctranslate2.get_cuda_device_count() > 0
+    except Exception:  # noqa: BLE001 — any probe failure means no usable GPU
+        return False
+
+
+def cuda_compute_type() -> str:
+    """Pick the best CUDA compute type CTranslate2 reports as supported.
+
+    Hardcoding ``float16`` fails on GPUs without Compute Capability ≥ 7.0 (e.g. Pascal), so
+    fall back to ``int8_float16`` then ``float32``. Degrades to ``float16`` if the probe is
+    unavailable (it always lists float16 on a working CUDA build).
+    """
+    try:
+        supported = set(ctranslate2.get_supported_compute_types("cuda"))
+    except Exception:  # noqa: BLE001 — probe failure (no CUDA): caller only reaches here on cuda
+        return "float16"
+    for candidate in ("float16", "int8_float16", "float32"):
+        if candidate in supported:
+            return candidate
+    return "float16"
+
 
 @dataclass(frozen=True)
 class AsrRuntime:
@@ -50,11 +91,15 @@ class AsrRuntime:
 
 
 def detect_asr_device() -> str:
-    """Return 'cuda' when a CUDA device is visible to ctranslate2, else 'cpu'."""
-    try:
-        return "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
-    except Exception:  # noqa: BLE001 — any probe failure means no usable GPU
-        return "cpu"
+    """Return the effective ASR device ('cuda' only when actually usable, else 'cpu').
+
+    Once ``set_asr_device()`` has run at startup this returns that resolved decision — which
+    accounts for whether the user enabled the GPU *and* the CUDA math libraries are installed,
+    not merely whether a GPU exists. Before startup it falls back to the raw driver probe.
+    """
+    if _asr_device_override is not None:
+        return _asr_device_override
+    return "cuda" if gpu_detected() else "cpu"
 
 
 def resolve_asr_runtime(device: str, requested_workers: int | None) -> AsrRuntime:
@@ -68,7 +113,7 @@ def resolve_asr_runtime(device: str, requested_workers: int | None) -> AsrRuntim
     if device == "cuda":
         return AsrRuntime(
             device="cuda",
-            compute_type="float16",
+            compute_type=cuda_compute_type(),
             workers=min(requested, GPU_WORKER_CAP),
             cpu_threads=None,
         )
@@ -94,10 +139,8 @@ class ASRModel(abc.ABC):
         self._model = None
 
     def _get_default_device(self) -> str:
-        """Get default device for this model type."""
-        if ctranslate2.get_cuda_device_count() > 0:
-            return "cuda"
-        return "cpu"
+        """Get default device for this model type (honors the startup-resolved override)."""
+        return detect_asr_device()
 
     @abc.abstractmethod
     def load(self):
@@ -191,8 +234,10 @@ class FasterWhisperModel(ASRModel):
 
         self.requested_workers = max(1, int(requested_workers or 1))
 
-        # Ensure NVIDIA libraries are in PATH for Windows CUDA support
-        if device == "cuda" or (device is None and ctranslate2.get_cuda_device_count() > 0):
+        # Register the CUDA math libraries (downloaded cache or dev pip packages) so
+        # CTranslate2 can dlopen them. Idempotent — startup already did this; this covers
+        # any model built before/without that path.
+        if device == "cuda" or (device is None and detect_asr_device() == "cuda"):
             _ensure_nvidia_libraries()
 
         super().__init__(model_name, device)
@@ -200,8 +245,9 @@ class FasterWhisperModel(ASRModel):
     def _get_compute_type(self) -> str:
         """Get optimal compute type for the device."""
         if self.device == "cuda":
-            # Use float16 for GPU (faster and lower memory)
-            return "float16"
+            # Best CUDA type the hardware supports (float16, or int8_float16/float32 on
+            # older GPUs) — must match resolve_asr_runtime so the cache key and badge agree.
+            return cuda_compute_type()
         else:
             # Use int8 for CPU (good balance of speed and accuracy)
             return "int8"
@@ -540,35 +586,16 @@ def list_available_models() -> dict:
 
 
 def _ensure_nvidia_libraries():
-    """
-    Ensure NVIDIA CUDA libraries are in the system PATH on Windows.
-    The nvidia-* pip packages do not automatically add their bin directories to PATH.
-    """
-    if os.name != "nt":
-        return
+    """Register the CUDA math libraries (downloaded cache, else dev pip packages).
 
+    Cross-platform: on Windows this adds the DLL directory; on Linux it preloads the .so
+    files into the global symbol namespace. Delegates to ``cuda_runtime.register_cuda_runtime``
+    so the on-demand download cache and the dev ``uv sync -E gpu`` packages are both honored.
+    Safe to call when nothing is installed (no-op).
+    """
     try:
-        import nvidia.cublas
-        import nvidia.cudnn
+        from app.matcher.cuda_runtime import register_cuda_runtime
 
-        nvidia_modules = [nvidia.cublas, nvidia.cudnn]
-
-        for module in nvidia_modules:
-            # Check if the module has a valid __file__ attribute that is not None
-            if hasattr(module, "__file__") and module.__file__:
-                # The DLLs are typically in the 'bin' directory relative to the module file
-                bin_dir = Path(module.__file__).parent / "bin"
-
-                # Ensure existing PATH is not None, though unlikely on Windows
-                existing_path = os.environ.get("PATH", "")
-
-                if bin_dir.exists() and str(bin_dir) not in existing_path:
-                    # Add to the BEGINNING of PATH to ensure these versions are found first
-                    os.environ["PATH"] = str(bin_dir) + os.pathsep + existing_path
-                    logger.debug(f"Added NVIDIA library path to environment: {bin_dir}")
-
-    except ImportError:
-        # Packages might not be installed, which is fine if not using CUDA
-        pass
-    except Exception as e:
-        logger.warning(f"Failed to add NVIDIA library paths: {e}")
+        register_cuda_runtime()
+    except Exception as e:  # noqa: BLE001 — registration is best-effort; load-time fallback covers it
+        logger.warning(f"Failed to register CUDA libraries: {e}", exc_info=True)

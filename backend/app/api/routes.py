@@ -263,6 +263,7 @@ class ConfigResponse(BaseModel):
     library_tv_path: str
     tmdb_api_key: str
     max_concurrent_matches: int
+    enable_gpu_acceleration: bool
     ffmpeg_path: str
     conflict_resolution_default: str
     # Analyst thresholds
@@ -342,6 +343,7 @@ class ConfigUpdate(BaseModel):
     library_tv_path: str | None = None
     tmdb_api_key: str | None = None
     max_concurrent_matches: int | None = None
+    enable_gpu_acceleration: bool | None = None
     ffmpeg_path: str | None = None
     conflict_resolution_default: str | None = None
     # Analyst thresholds
@@ -1115,6 +1117,7 @@ async def get_config() -> ConfigResponse:
         library_tv_path=config.library_tv_path,
         tmdb_api_key="***" if config.tmdb_api_key else "",  # Redacted
         max_concurrent_matches=config.max_concurrent_matches,
+        enable_gpu_acceleration=config.enable_gpu_acceleration,
         ffmpeg_path=config.ffmpeg_path,
         conflict_resolution_default=config.conflict_resolution_default,
         # Analyst thresholds
@@ -3662,22 +3665,146 @@ async def get_update_status():
     return update_checker.get_status()
 
 
+def _gpu_state(*, device: str, detected: bool, installed: bool, downloading: dict) -> str:
+    """Collapse the GPU situation into one badge state for the dashboard/settings UI."""
+    from app.matcher.cuda_runtime import is_supported_platform
+
+    # In-flight or failed download takes precedence so the field matches gpu_download.state.
+    if downloading.get("state") in ("downloading", "installing", "error"):
+        return downloading["state"]
+    if device == "cuda":
+        return "active"
+    if not is_supported_platform():
+        return "unsupported_os"  # macOS / non-NVIDIA arch — CTranslate2 has no GPU path
+    if detected:
+        # NVIDIA GPU present but not running on it: either not enabled or libs not downloaded.
+        return "available_not_installed" if not installed else "available_not_enabled"
+    return "unavailable"  # supported OS but no NVIDIA GPU
+
+
 @router.get("/asr-status")
 async def get_asr_status():
-    """Resolved ASR backend for the dashboard badge (read-only, no secrets)."""
-    from app.matcher.asr_models import detect_asr_device, resolve_asr_runtime
+    """Resolved ASR backend for the dashboard badge + GPU-acceleration settings (no secrets).
+
+    ``device`` is the *effective* device (what the model actually loads on), so the badge
+    can't claim CUDA while silently running on CPU. The ``gpu_*`` fields drive the opt-in
+    download toggle in settings.
+    """
+    from app.matcher.asr_models import detect_asr_device, gpu_detected, resolve_asr_runtime
+    from app.matcher.cuda_runtime import (
+        download_size_bytes,
+        get_download_state,
+        is_cuda_runtime_installed,
+    )
     from app.services.config_service import get_config as _get_app_config
 
     config = await _get_app_config()
-    runtime = resolve_asr_runtime(detect_asr_device(), config.max_concurrent_matches)
+    device = detect_asr_device()
+    runtime = resolve_asr_runtime(device, config.max_concurrent_matches)
+    detected = gpu_detected()
+    installed = is_cuda_runtime_installed()
+    download = get_download_state()
     return {
-        "device": runtime.device,
+        "device": device,
         "compute_type": runtime.compute_type,
         "model": "small",  # current hardcoded matcher default (EpisodeMatcher.model_name)
         "workers": runtime.workers,
         "cpu_threads": runtime.cpu_threads,
         "max_concurrent_matches": config.max_concurrent_matches,
+        # GPU acceleration (opt-in CUDA runtime download)
+        "gpu_detected": detected,
+        "gpu_enabled": config.enable_gpu_acceleration,
+        "gpu_runtime_installed": installed,
+        "gpu_download_size_bytes": download_size_bytes(),
+        "gpu_download": download,
+        "gpu_state": _gpu_state(
+            device=device, detected=detected, installed=installed, downloading=download
+        ),
     }
+
+
+async def _finish_gpu_enable(success: bool, error: str | None) -> None:
+    """Post-download hook: flip the config flag on success, broadcast the final state."""
+    from app.matcher.cuda_runtime import get_download_state
+    from app.services.config_service import update_config as update_db_config
+    from app.services.job_manager import event_broadcaster
+
+    if success:
+        # Persist the flag, but never let a DB error swallow the completion broadcast —
+        # the UI must still learn the download finished.
+        try:
+            await update_db_config(enable_gpu_acceleration=True)
+        except Exception:
+            logger.error("Failed to persist enable_gpu_acceleration flag", exc_info=True)
+    await event_broadcaster.broadcast_gpu_status(get_download_state())
+
+
+@router.post("/asr/gpu/enable")
+async def enable_gpu_acceleration():
+    """Enable GPU ASR: download the CUDA runtime if needed, then arm it for the next restart.
+
+    Rejected when the platform/hardware can't use CUDA. The ~1.2 GB cuDNN/cuBLAS download
+    runs in the background (progress via /api/asr-status + the ``gpu_status`` WS message);
+    activation takes effect on the next backend restart (registration must precede the first
+    model load, especially on Linux).
+    """
+    from app.matcher.asr_models import gpu_detected
+    from app.matcher.cuda_runtime import (
+        get_download_state,
+        is_cuda_runtime_installed,
+        is_supported_platform,
+        start_background_download,
+    )
+    from app.services.config_service import update_config as update_db_config
+    from app.services.job_manager import event_broadcaster
+
+    if not is_supported_platform():
+        raise HTTPException(
+            status_code=400,
+            detail="GPU acceleration requires an NVIDIA GPU on Windows or Linux "
+            "(CTranslate2 has no GPU path on macOS).",
+        )
+    if not gpu_detected():
+        raise HTTPException(status_code=400, detail="No NVIDIA GPU detected on this machine.")
+
+    # Already have the libraries (downloaded earlier, or dev `uv sync -E gpu`): just arm it.
+    if is_cuda_runtime_installed():
+        await update_db_config(enable_gpu_acceleration=True)
+        return {"status": "ready", "restart_required": True, "gpu_download": get_download_state()}
+
+    def _on_done(success: bool, error: str | None) -> None:
+        # Runs on the download thread; hop back to the event loop to touch DB + WS. Surface any
+        # failure of the coroutine itself (otherwise the discarded Future swallows it silently).
+        fut = asyncio.run_coroutine_threadsafe(_finish_gpu_enable(success, error), _loop)
+        fut.add_done_callback(
+            lambda f: (
+                logger.error("_finish_gpu_enable failed", exc_info=f.exception())
+                if f.exception()
+                else None
+            )
+        )
+
+    _loop = asyncio.get_running_loop()
+    started = start_background_download(on_done=_on_done)
+    await event_broadcaster.broadcast_gpu_status(get_download_state())
+    return {
+        "status": "downloading" if started else "already_downloading",
+        "restart_required": True,
+        "gpu_download": get_download_state(),
+    }
+
+
+@router.post("/asr/gpu/disable")
+async def disable_gpu_acceleration():
+    """Disable GPU ASR (revert to CPU on the next restart). The cached libraries are kept."""
+    from app.matcher.cuda_runtime import get_download_state
+    from app.services.config_service import update_config as update_db_config
+    from app.services.job_manager import event_broadcaster
+
+    await update_db_config(enable_gpu_acceleration=False)
+    # Broadcast so other connected clients (e.g. a second settings tab) don't show stale state.
+    await event_broadcaster.broadcast_gpu_status(get_download_state())
+    return {"status": "disabled", "restart_required": True, "gpu_download": get_download_state()}
 
 
 @router.post("/updates/skip")

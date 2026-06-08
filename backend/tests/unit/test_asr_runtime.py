@@ -3,15 +3,28 @@
 import threading
 from unittest.mock import patch
 
+import pytest
+
 from app.matcher.asr_models import (
     GPU_WORKER_CAP,
     AsrRuntime,
     FasterWhisperModel,
     _model_cache,
+    cuda_compute_type,
     detect_asr_device,
     get_cached_model,
+    gpu_detected,
     resolve_asr_runtime,
+    set_asr_device,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_asr_device_override():
+    """The effective-device override is a module global; reset it around every test."""
+    set_asr_device(None)
+    yield
+    set_asr_device(None)
 
 
 class TestDetectAsrDevice:
@@ -29,6 +42,52 @@ class TestDetectAsrDevice:
             side_effect=RuntimeError("no cuda runtime"),
         ):
             assert detect_asr_device() == "cpu"
+
+
+class TestEffectiveDeviceOverride:
+    """The honesty fix: detect_asr_device reports the *usable* device, not just the hardware."""
+
+    def test_override_wins_over_probe(self):
+        # A GPU is visible, but the startup decision pinned CPU (e.g. user hasn't enabled it
+        # or the CUDA libs aren't installed) — the badge/semaphore must read CPU.
+        with patch("app.matcher.asr_models.ctranslate2.get_cuda_device_count", return_value=1):
+            assert gpu_detected() is True
+            set_asr_device("cpu")
+            assert detect_asr_device() == "cpu"
+
+    def test_override_can_pin_cuda(self):
+        set_asr_device("cuda")
+        assert detect_asr_device() == "cuda"
+
+    def test_gpu_detected_ignores_override(self):
+        set_asr_device("cpu")
+        with patch("app.matcher.asr_models.ctranslate2.get_cuda_device_count", return_value=2):
+            assert gpu_detected() is True
+
+
+class TestCudaComputeType:
+    """Older GPUs (no Compute Capability >= 7.0) can't do float16 — pick a supported type."""
+
+    def test_prefers_float16_when_supported(self):
+        with patch(
+            "app.matcher.asr_models.ctranslate2.get_supported_compute_types",
+            return_value={"int8", "int8_float16", "float16", "float32"},
+        ):
+            assert cuda_compute_type() == "float16"
+
+    def test_falls_back_to_int8_float16_on_pascal(self):
+        with patch(
+            "app.matcher.asr_models.ctranslate2.get_supported_compute_types",
+            return_value={"int8", "int8_float16", "float32"},
+        ):
+            assert cuda_compute_type() == "int8_float16"
+
+    def test_falls_back_to_float16_when_probe_unavailable(self):
+        with patch(
+            "app.matcher.asr_models.ctranslate2.get_supported_compute_types",
+            side_effect=RuntimeError("no cuda"),
+        ):
+            assert cuda_compute_type() == "float16"
 
 
 class TestResolveAsrRuntimeCpu:
@@ -63,6 +122,17 @@ class TestResolveAsrRuntimeCpu:
 
 
 class TestResolveAsrRuntimeGpu:
+    @pytest.fixture(autouse=True)
+    def _stub_supported_compute_types(self):
+        # resolve_asr_runtime("cuda") asks ctranslate2 which compute types the GPU supports.
+        # On a CPU-only runner that probe returns a set without float16 (→ float32), so pin a
+        # float16-capable set to keep these worker-sizing tests hardware-independent.
+        with patch(
+            "app.matcher.asr_models.ctranslate2.get_supported_compute_types",
+            return_value={"float16", "int8_float16", "float32"},
+        ):
+            yield
+
     def test_caps_workers_at_gpu_cap(self):
         rt = resolve_asr_runtime("cuda", requested_workers=8)
         assert rt == AsrRuntime(

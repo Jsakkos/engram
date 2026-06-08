@@ -22,21 +22,42 @@ These are practical recommendations, not enforced minimums. Engram will start an
 
 ## GPU acceleration (faster-whisper ASR)
 
-Episode matching transcribes each ripped title with [faster-whisper](https://github.com/SYSTRAN/faster-whisper).
-Engram **auto-detects** your hardware — there's no device setting to configure:
+Episode matching transcribes each ripped title with [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
+which runs on NVIDIA CUDA via CTranslate2. GPU transcription is several times faster than CPU for
+the same model — the single biggest lever on matching throughput.
 
-- If a CUDA-capable NVIDIA GPU is visible, Engram uses it with the `float16` compute type.
-- Otherwise it runs on CPU with the `int8` compute type (quantized for speed).
-- If CUDA libraries are missing or fail to load at runtime, it **silently falls back to CPU** —
-  matching still works, just slower.
+GPU acceleration is **opt-in** and available on **Windows and Linux with an NVIDIA GPU**. macOS and
+AMD GPUs have no GPU path in the engine and always run on CPU (`int8`).
 
-GPU transcription is several times faster than CPU for the same model, which is the single
-biggest lever on matching throughput.
+### Enable it
+
+In **Settings → Matching → GPU Acceleration**:
+
+1. When an NVIDIA GPU is detected, Engram offers a one-time **Download & enable** (after you accept
+   the [NVIDIA CUDA EULA](https://docs.nvidia.com/cuda/eula/index.html)). The required cuDNN + cuBLAS
+   libraries (~1.2 GB) are **not** bundled into the build — they're fetched on demand into
+   `~/.engram/cuda/`, where they **persist across app updates** (like your database and subtitle
+   cache).
+2. The download runs in the background; you can keep using Engram while it completes.
+3. **Restart the backend** to activate. Matching then runs on the GPU using the best compute type
+   your card supports — `float16`, or `int8_float16`/`float32` on older GPUs (e.g. Pascal) that
+   can't do `float16`. CPU continues to use `int8`.
+
+This works in the **prebuilt standalone build** — the CUDA libraries are downloaded at runtime, not
+compiled in. (Developers running from source can instead install them via pip with
+`uv sync --extra gpu`; see below.)
+
+!!! note "Docker"
+    In a container, GPU access additionally requires the host NVIDIA driver, the
+    [NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit), and running with
+    `--gpus all`. With those in place the same in-app download applies. See the
+    [Docker guide](../deployment/docker.md).
 
 ### Verify which backend is active
 
-Engram exposes the resolved ASR runtime at **`GET /api/asr-status`** (also shown as the ASR badge
-on the dashboard). It returns no secrets and is the authoritative answer to "is my GPU being used?":
+Engram exposes the resolved ASR runtime at **`GET /api/asr-status`** (also shown as the ASR badge on
+the dashboard). The `device` field is the **effective** device — what transcription actually runs on
+— so the badge can't claim CUDA while silently falling back to CPU:
 
 ```bash
 curl http://localhost:8000/api/asr-status
@@ -49,25 +70,35 @@ curl http://localhost:8000/api/asr-status
   "model": "small",
   "workers": 4,
   "cpu_threads": null,
-  "max_concurrent_matches": 4
+  "max_concurrent_matches": 4,
+  "gpu_detected": true,
+  "gpu_enabled": true,
+  "gpu_runtime_installed": true,
+  "gpu_state": "active"
 }
 ```
 
-`device: "cpu"` means no GPU was detected — check your CUDA install if you expected otherwise.
+`gpu_state` tells you exactly where you stand:
 
-### Getting a GPU-enabled build
+- `active` — running on the GPU.
+- `available_not_enabled` / `available_not_installed` — an NVIDIA GPU is present but acceleration is
+  off, or the runtime hasn't been downloaded yet. The dashboard badge shows **CPU · GPU available →**;
+  click it to open Settings.
+- `downloading` / `installing` — the CUDA runtime download is in progress.
+- `unsupported_os` — macOS or another platform with no NVIDIA path.
+- `unavailable` — a supported OS with no NVIDIA GPU.
 
-GPU support ships with the CUDA extras when you run **from source**:
+### Running from source (developers)
+
+When running from source you can install the CUDA libraries via pip instead of the in-app download:
 
 ```bash
 cd backend
 uv sync --extra gpu
 ```
 
-!!! note "Standalone and Docker builds are CPU-only"
-    The prebuilt standalone executables and the Docker image are **CPU-only** today. To use an
-    NVIDIA GPU, run [from source](../getting-started/installation.md) with `uv sync --extra gpu`.
-    See the [Docker guide](../deployment/docker.md) for the container's GPU notes.
+Engram falls back to these pip-installed libraries automatically, so the GPU Acceleration setting
+reports the runtime already installed — just enable it and restart.
 
 ### Whisper model
 
