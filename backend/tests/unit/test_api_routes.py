@@ -151,6 +151,25 @@ class TestJobEndpoints:
         assert detail.status_code == 200
         assert detail.json()["candidates_json"] == payload
 
+    async def test_tmdb_identity_fields_exposed_in_job_response(self, client):
+        """The dashboard reads tmdb_id to suppress the dead-end episode-review
+        button, and the re-identify modal shows tmdb_name/tmdb_year. These must
+        survive the JobResponse serializer in both list and by-id endpoints —
+        present (even as null) for an unconfirmed disc, populated for a known one."""
+        confirmed = await _seed_job(tmdb_id=18409, tmdb_name="The Office", tmdb_year=2005)
+        unconfirmed = await _seed_job(volume_label="AMBIGUOUS", tmdb_id=None)
+
+        by_id = (await client.get(f"/api/jobs/{confirmed.id}")).json()
+        assert by_id["tmdb_id"] == 18409
+        assert by_id["tmdb_name"] == "The Office"
+        assert by_id["tmdb_year"] == 2005
+
+        listed = {j["id"]: j for j in (await client.get("/api/jobs")).json()}
+        # Null identity is present-as-null (not omitted), so `tmdb_id == null`
+        # is a reliable client-side discriminator.
+        assert listed[unconfirmed.id]["tmdb_id"] is None
+        assert listed[confirmed.id]["tmdb_id"] == 18409
+
     async def test_get_job_titles(self, client):
         job = await _seed_job()
         await _seed_titles(job.id, count=3)

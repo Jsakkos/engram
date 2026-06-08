@@ -131,6 +131,13 @@ class JobResponse(BaseModel):
     # Transient auto-resolution note set during conflict / review escalation
     # (e.g. "Resolving episode conflicts — pass 2 of 3"). Cleared on resolution.
     conflict_status: str | None = None
+    # Resolved TMDB identity. tmdb_id is null while identity is unconfirmed (e.g. a
+    # same-name collision the analyst withholds an id for) — the dashboard reads that
+    # to suppress the dead-end episode-review button, and the re-identify modal shows
+    # tmdb_name/tmdb_year/tmdb_id so the user can confirm which show is selected.
+    tmdb_id: int | None = None
+    tmdb_name: str | None = None
+    tmdb_year: int | None = None
     destination_mode: str = "library"
     created_at: datetime | str | None = None
 

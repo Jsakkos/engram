@@ -76,8 +76,18 @@ export interface DiscData {
   startedAt?: string;
   needsReview?: boolean;
   reviewReason?: string;
+  /** Review is about confirming the disc's IDENTITY (an ambiguous/unconfirmed
+   *  show), not assigning episodes. Derived in the adapter from a null tmdb_id
+   *  (or a same-name collision with no ripped titles). Drives the on-card hint
+   *  banner + "Wrong title?" emphasis and suppresses the dead-end review-queue
+   *  button. See transformJobToDiscData. */
+  identityReview?: boolean;
+  /** Resolved TMDB identity (null/absent until confirmed). */
+  tmdbId?: number | null;
+  tmdbName?: string | null;
+  tmdbYear?: number | null;
   /** Whether this disc's titles have been fetched yet (vs. genuinely empty).
-   *  Guards the pre-rip banner against the title-load race — see reviewPreRip. */
+   *  Guards the identity-review banner against the title-load race. */
   tracksLoaded?: boolean;
   conflictStatus?: string;
 }
@@ -196,13 +206,16 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
       disc.tracks?.filter(t => ["matched", "completed"].includes(t.state)).length ?? 0;
     const failedTrackCount = disc.tracks?.filter(t => t.state === "failed").length ?? 0;
 
-    // A disc that needs review but hasn't ripped yet (no tracks) has nothing to
-    // review in the queue — the only useful action is "Wrong title?" (re-identify).
-    // Drives both the on-card hint banner and the emphasis on the re-identify button.
-    // `tracksLoaded` gates out the title-load race: titles resolve after the job
-    // list, so a post-rip review_needed job momentarily has tracks=[] on first
-    // render — without this guard the banner/emphasis would flash then vanish.
-    const reviewPreRip = !!disc.needsReview && totalTrackCount === 0 && !!disc.tracksLoaded;
+    // A disc in review to confirm its IDENTITY (ambiguous/unconfirmed show) has
+    // nothing to do in the episode review queue — the only useful action is
+    // "Wrong title?" (re-identify). `identityReview` is derived in the adapter
+    // (null tmdb_id, or a same-name collision with no ripped titles) so it fires
+    // even though such discs DO have titles enumerated at scan time — the reason
+    // the old tracks-count check never triggered. Drives the on-card hint banner
+    // and the emphasis on the re-identify button. `tracksLoaded` gates out the
+    // title-load race: titles resolve after the job list, so without this guard
+    // the banner/emphasis could flash then vanish on first render / reconnect.
+    const identityReview = !!disc.identityReview && !!disc.tracksLoaded;
 
     return (
       <motion.div
@@ -389,15 +402,16 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
                     onReportBug={onReportBug}
-                    emphasizeReIdentify={reviewPreRip}
+                    emphasizeReIdentify={identityReview}
                   />
                 </div>
               </div>
 
-              {/* Ambiguous / unconfirmed identity, pre-rip — the review queue is
-                  empty until ripping, so point the user at "Wrong title?" instead
-                  and explain why (reuses the backend's review_reason sentence). */}
-              {reviewPreRip && (
+              {/* Ambiguous / unconfirmed identity — the episode review queue can't
+                  help until the show is confirmed, so point the user at "Wrong
+                  title?" instead and explain why (reuses the backend's
+                  review_reason sentence). */}
+              {identityReview && (
                 <div
                   role="alert"
                   style={{
@@ -419,8 +433,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   <span aria-hidden style={{ flexShrink: 0 }}>⚠</span>
                   <span>
                     {disc.reviewReason ||
-                      "This disc's identity needs confirming before ripping."}{" "}
-                    Use "Wrong title?" to pick the correct one.
+                      "This disc's identity isn't confirmed yet."}{" "}
+                    Use "Wrong title?" to pick the correct show.
                   </span>
                 </div>
               )}

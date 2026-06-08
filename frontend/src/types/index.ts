@@ -40,6 +40,15 @@ export interface Job {
     destination_mode?: string;
     created_at?: string;
     /**
+     * Resolved TMDB identity. `tmdb_id` is null while identity is unconfirmed
+     * (e.g. a same-name collision the analyst withheld an id for). The dashboard
+     * uses it to suppress the dead-end episode-review button, and the re-identify
+     * modal shows name/year/id so the user can confirm which show is selected.
+     */
+    tmdb_id?: number | null;
+    tmdb_name?: string | null;
+    tmdb_year?: number | null;
+    /**
      * Raw JSON string (from the API) of same-name TMDB candidates recorded at
      * identify time when >=2 shows share a name, e.g. Frasier 1993 + 2023 revival.
      * Each entry: `{ tmdb_id, name, year, popularity }`. Drives the quick-pick in

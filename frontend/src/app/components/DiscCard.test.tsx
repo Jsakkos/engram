@@ -32,15 +32,16 @@ afterEach(() => {
 });
 
 describe('DiscCard — review affordances', () => {
-  it('pre-rip review (no tracks): hides the review-queue button, keeps "Wrong title?", and shows the reason banner', () => {
+  it('identity review (no tracks): hides the review-queue button, keeps "Wrong title?", and shows the reason banner', () => {
     render(
       <DiscCard
         disc={makeDisc({
+          identityReview: true,
           tracks: [],
           reviewReason:
             '"Frasier" has multiple same-name shows on TMDB and the disc label has no year to tell them apart.',
         })}
-        // App passes onReview=undefined when there are no tracks to review yet.
+        // App passes onReview=undefined for an identity review.
         onReview={undefined}
         onReIdentify={vi.fn()}
       />,
@@ -60,14 +61,42 @@ describe('DiscCard — review affordances', () => {
     // ...and the card explains the ambiguity, pointing the user at "Wrong title?".
     expect(screen.getByText(/multiple same-name shows on TMDB/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/use "wrong title\?" to pick the correct one/i),
+      screen.getByText(/use "wrong title\?" to pick the correct show/i),
     ).toBeInTheDocument();
   });
 
-  it('post-rip review (has tracks): shows the review-queue button and no banner', () => {
+  it('identity review WITH enumerated (pending) tracks: still hides the button + shows the banner', () => {
+    // The real ambiguous-disc case (e.g. The Office): titles are enumerated at
+    // scan time, so the disc has tracks even before ripping. The old tracks===0
+    // gate never fired here; identityReview must drive the declutter regardless.
     render(
       <DiscCard
         disc={makeDisc({
+          identityReview: true,
+          tracks: [
+            { id: 't1', title: 'Title 0', duration: '22:14', state: 'pending', progress: 0 },
+            { id: 't2', title: 'Title 1', duration: '21:58', state: 'pending', progress: 0 },
+          ],
+          reviewReason: '"The Office" has multiple same-name shows on TMDB. Pick the correct one.',
+        })}
+        onReview={undefined}
+        onReIdentify={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /review needed — open review queue/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/use "wrong title\?" to pick the correct show/i),
+    ).toBeInTheDocument();
+  });
+
+  it('episode review (identity confirmed, has review tracks): shows the review-queue button and no banner', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({
+          identityReview: false,
           reviewReason: undefined,
           tracks: [
             { id: 't1', title: 'Title 0', duration: '22:14', state: 'review', progress: 0 },
@@ -82,17 +111,18 @@ describe('DiscCard — review affordances', () => {
       screen.getByRole('button', { name: /review needed — open review queue/i }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/use "wrong title\?" to pick the correct one/i),
+      screen.queryByText(/use "wrong title\?" to pick the correct show/i),
     ).not.toBeInTheDocument();
   });
 
-  it('titles not loaded yet: does not flash the pre-rip banner (title-load race)', () => {
-    // A post-rip review_needed job whose titles haven't been fetched yet looks
-    // identical to a pre-rip disc (tracks=[]). tracksLoaded=false must suppress
-    // the banner so it doesn't flash on page load / WebSocket reconnect.
+  it('titles not loaded yet: does not flash the identity-review banner (title-load race)', () => {
+    // A post-rip review_needed job whose titles haven't been fetched yet can have
+    // identityReview=true transiently (the adapter sees titles=[]). tracksLoaded=false
+    // must suppress the banner so it doesn't flash on page load / WebSocket reconnect.
     render(
       <DiscCard
         disc={makeDisc({
+          identityReview: true,
           tracks: [],
           tracksLoaded: false,
           reviewReason: 'some pending reason',
@@ -103,7 +133,7 @@ describe('DiscCard — review affordances', () => {
     );
 
     expect(
-      screen.queryByText(/use "wrong title\?" to pick the correct one/i),
+      screen.queryByText(/use "wrong title\?" to pick the correct show/i),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/some pending reason/i)).not.toBeInTheDocument();
   });
