@@ -113,14 +113,20 @@ Configuration is resolved in this priority order:
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `max_concurrent_matches` | Parallel episode matching jobs | `3` |
-| `conflict_resolution_default` | File conflict handling | `"skip"` |
+| `max_concurrent_matches` | Parallel episode-matching (ASR) tasks | `2` |
+| `matcher_min_confidence` | Minimum confidence to auto-accept an episode match | `0.6` |
+| `conflict_resolution_default` | File conflict handling | `"ask"` |
 
-The `conflict_resolution_default` field accepts one of three values:
+`max_concurrent_matches` is the main matching-throughput knob. It's clamped to your hardware and
+takes effect on restart — see [Performance & Hardware](../guide/performance.md#concurrency-tuning)
+for how to tune it for CPU vs GPU and bulk imports.
 
+The `conflict_resolution_default` field accepts one of four values:
+
+- `"ask"` -- prompt via the review queue (default)
 - `"skip"` -- skip files that already exist in the library
 - `"overwrite"` -- replace existing files
-- `"ask"` -- prompt via the review queue
+- `"rename"` -- keep both by writing a numbered `(vN)` variant
 
 ### AI-Powered Title Resolution
 
@@ -144,7 +150,30 @@ Controls how bonus content (behind-the-scenes, deleted scenes, etc.) is handled 
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `extras_policy` | How to handle extras | `"skip"` |
+| `extras_policy` | How to handle extras (`"keep"`, `"skip"`, `"ask"`) | `"keep"` |
+
+### Import Watch Folder
+
+Engram can auto-ingest pre-ripped MKV files dropped into a watched folder. See the
+[Import Watch Folder guide](../guide/import-watch-folder.md) for folder layouts and the full
+workflow.
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `import_watch_path` | Folder to watch for incoming MKV files (unset = disabled) | *(none)* |
+| `import_destination_mode` | `"library"` files imports into your Movies/TV libraries; `"in_place"` organizes them inside the watch folder | `"library"` |
+| `staging_watch_enabled` | Also auto-import folders dropped into the staging directory | `false` |
+
+### Staging Cleanup
+
+Controls when the staging directory is reclaimed after a job finishes. Watch-folder imports are
+never deleted regardless of this setting (the source folder is yours). See
+[sizing the staging directory](../guide/performance.md#sizing-the-staging-directory).
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `staging_cleanup_policy` | `"on_success"`, `"on_completion"`, `"manual"`, or `"after_days"` | `"on_success"` |
+| `staging_cleanup_days` | Retention period when policy is `"after_days"` | `7` |
 
 ### Naming Conventions
 

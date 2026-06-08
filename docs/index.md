@@ -88,6 +88,8 @@ Import Watch Folder/
 
 Season folders may be written `Season 1` or `Season 01`. When there's no season folder, matching searches every season of the show, which works but is slower.
 
+**→ Full walkthrough: [Import Watch Folder](guide/import-watch-folder.md)** — every layout, the import lifecycle, and why your source files are never deleted.
+
 ---
 
 <div style="text-align: center;" markdown>
