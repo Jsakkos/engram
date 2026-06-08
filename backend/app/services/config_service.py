@@ -60,16 +60,65 @@ async def get_config() -> AppConfig:
 _sync_engine = None
 
 
+def _build_sync_engine(sync_db_url: str):
+    """Build a synchronous engine configured like the async engine.
+
+    The synchronous twin of the async-pool fix (PR #356). ``get_config_sync()``
+    is called from worker threads across hot paths — the matcher's TMDB lookups,
+    the curator, the organizer, and per-job subtitle downloads. Under a
+    multi-season import those threads can brush SQLAlchemy's default sync pool
+    ceiling (pool_size 5 + max_overflow 10 = 15), and without a SQLite
+    ``busy_timeout`` a writer that loses the race for SQLite's single write lock
+    fails fast with "database is locked" instead of waiting. So this mirrors the
+    async engine in ``app/database.py``:
+
+    * Pool sizing from settings — but only for file-backed databases. SQLite
+      in-memory URLs resolve to ``SingletonThreadPool``/``StaticPool`` (a single
+      shared connection), which reject ``max_overflow``/``pool_timeout`` with a
+      ``TypeError``. The async engine sidesteps this because
+      ``create_async_engine`` defaults to ``AsyncAdaptedQueuePool`` even for
+      in-memory; the sync ``create_engine`` path does not. Production always uses
+      a file DB, but a dev pointing ``DATABASE_URL`` at ``:memory:`` must not crash.
+    * ``set_sqlite_pragma`` as the connect hook — registered unconditionally so
+      every connection (file or memory) gets WAL + ``busy_timeout``.
+    * ``check_same_thread=False`` to match the async engine: pooled sync
+      connections are handed between ``asyncio.to_thread`` workers, so a
+      connection may be used on a different thread than the one that opened it.
+    """
+    from sqlalchemy import event
+    from sqlalchemy.engine import make_url
+    from sqlmodel import create_engine
+
+    from app.config import settings
+    from app.database import set_sqlite_pragma
+
+    db_path = make_url(sync_db_url).database
+    is_memory = not db_path or db_path == ":memory:"
+
+    connect_args = {"check_same_thread": False}
+    if is_memory:
+        sync_engine = create_engine(sync_db_url, connect_args=connect_args)
+    else:
+        sync_engine = create_engine(
+            sync_db_url,
+            connect_args=connect_args,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_timeout=settings.db_pool_timeout,
+        )
+
+    event.listens_for(sync_engine, "connect")(set_sqlite_pragma)
+    return sync_engine
+
+
 def _get_sync_engine():
     """Get or create a cached synchronous engine for sync DB access."""
     global _sync_engine
     if _sync_engine is None:
-        from sqlmodel import create_engine
-
         from app.config import settings
 
         sync_db_url = settings.database_url.replace("+aiosqlite", "")
-        _sync_engine = create_engine(sync_db_url)
+        _sync_engine = _build_sync_engine(sync_db_url)
     return _sync_engine
 
 

@@ -10,8 +10,11 @@ app/database.py:set_sqlite_pragma.
 
 import sqlite3
 
+import sqlalchemy
+
 from app.config import settings
 from app.database import engine, set_sqlite_pragma
+from app.services.config_service import _build_sync_engine
 
 
 def test_engine_pool_sized_above_async_default():
@@ -49,3 +52,54 @@ def test_pragma_sets_synchronous_normal():
         assert synchronous == 1
     finally:
         conn.close()
+
+
+def test_sync_engine_pool_sized_above_async_default(tmp_path):
+    """The SYNC engine (config_service._build_sync_engine) must match the async pool.
+
+    The synchronous twin of the async-pool fix: get_config_sync() is called from
+    worker threads across hot paths (matcher TMDB lookups, curator, organizer,
+    subtitle downloads). A multi-season import can brush the old 5+10=15 default
+    ceiling. Pin the same settings-driven sizing for the file-backed (production)
+    engine.
+    """
+    db_file = (tmp_path / "pool.db").as_posix()
+    eng = _build_sync_engine(f"sqlite:///{db_file}")
+    try:
+        pool = eng.pool
+        assert pool.size() == settings.db_pool_size
+        # _max_overflow is a private SQLAlchemy attr (no public accessor); the
+        # same caveat as the async test applies on SQLAlchemy bumps.
+        assert pool._max_overflow == settings.db_max_overflow
+        assert settings.db_pool_size + settings.db_max_overflow > 15
+    finally:
+        eng.dispose()
+
+
+def test_sync_engine_registers_pragma_hook(tmp_path):
+    """The sync engine must wire set_sqlite_pragma so its connections get
+    busy_timeout (otherwise its writers fail fast with 'database is locked'
+    instead of waiting for SQLite's single writer lock — the whole point of the
+    fix). Without the connect hook a sync connection has busy_timeout=0.
+    """
+    db_file = (tmp_path / "pool.db").as_posix()
+    eng = _build_sync_engine(f"sqlite:///{db_file}")
+    try:
+        assert sqlalchemy.event.contains(eng, "connect", set_sqlite_pragma)
+    finally:
+        eng.dispose()
+
+
+def test_sync_engine_in_memory_does_not_crash_and_keeps_pragma():
+    """In-memory SQLite uses SingletonThreadPool, which rejects QueuePool sizing
+    kwargs (TypeError). The builder must NOT pass them for a memory URL — yet must
+    STILL register the pragma hook so even an in-memory DB gets busy_timeout. This
+    guards a dev who sets DATABASE_URL=sqlite:///:memory: from a startup crash on
+    the first get_config_sync() call.
+    """
+    eng = _build_sync_engine("sqlite:///:memory:")
+    try:
+        # No QueuePool sizing on a non-QueuePool — but the connect hook stays wired.
+        assert sqlalchemy.event.contains(eng, "connect", set_sqlite_pragma)
+    finally:
+        eng.dispose()
