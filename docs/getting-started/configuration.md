@@ -115,11 +115,16 @@ Configuration is resolved in this priority order:
 |-------|-------------|---------|
 | `max_concurrent_matches` | Parallel episode-matching (ASR) tasks | `2` |
 | `matcher_min_confidence` | Minimum confidence to auto-accept an episode match | `0.6` |
+| `enable_gpu_acceleration` | Run transcription on an NVIDIA GPU (opt-in; downloads the CUDA runtime) | `false` |
 | `conflict_resolution_default` | File conflict handling | `"ask"` |
 
 `max_concurrent_matches` is the main matching-throughput knob. It's clamped to your hardware and
 takes effect on restart — see [Performance & Hardware](../guide/performance.md#concurrency-tuning)
 for how to tune it for CPU vs GPU and bulk imports.
+
+`enable_gpu_acceleration` is best toggled from **Settings → Matching → GPU Acceleration** rather than
+edited directly, since enabling it triggers the one-time CUDA-runtime download. See
+[GPU acceleration](../guide/performance.md#gpu-acceleration-faster-whisper-asr).
 
 The `conflict_resolution_default` field accepts one of four values:
 
