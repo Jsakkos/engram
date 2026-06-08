@@ -9,6 +9,7 @@ app/database.py:set_sqlite_pragma.
 """
 
 import sqlite3
+import sys
 import threading
 import time
 
@@ -127,7 +128,12 @@ def test_sync_engine_built_once_under_concurrent_first_call(monkeypatch):
     can both observe `_sync_engine is None`, each build an engine, and leak the
     loser (now an up-to-100-connection pool). A threading.Lock closes the gap.
     """
-    import app.services.config_service as cs
+    # The module object, to patch its globals — fetched via sys.modules rather
+    # than a second `import ... as cs` so the module isn't imported two ways
+    # (CodeQL py/import-and-import-from). _get_sync_engine itself is imported by
+    # reference at the top, which is what lets it bypass the autouse fixture's
+    # lambda override.
+    cs = sys.modules[_get_sync_engine.__module__]
 
     build_count = {"n": 0}
     count_lock = threading.Lock()
