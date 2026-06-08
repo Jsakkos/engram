@@ -675,9 +675,24 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               {/* Organizing */}
               {disc.state === "organizing" && disc.tracks && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <PulseCaption color={sv.purple}>
-                    › ORGANIZING TO LIBRARY…
-                  </PulseCaption>
+                  {/* TV / multi-track: a real count-based bar (Organizing N of M).
+                      Single-file movie: an indeterminate pulse — a 0/1 bar would
+                      be meaningless for one large file moving over the NAS. */}
+                  {disc.mediaType === "tv" || disc.tracks.length > 1 ? (
+                    <SvProgressBar
+                      progress={
+                        disc.tracks.length
+                          ? (disc.tracks.filter(t => t.organizedTo).length / disc.tracks.length) * 100
+                          : 0
+                      }
+                      color="purple"
+                      label="ORGANIZING TO LIBRARY"
+                    />
+                  ) : (
+                    <PulseCaption color={sv.purple}>
+                      › ORGANIZING TO LIBRARY…
+                    </PulseCaption>
+                  )}
                   <div
                     style={{
                       display: "grid",

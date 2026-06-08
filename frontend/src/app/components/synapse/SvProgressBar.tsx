@@ -3,7 +3,7 @@ import { chunkedTicks, sv } from "./tokens";
 
 interface Props {
   progress: number;
-  color: "cyan" | "magenta" | "yellow" | "green";
+  color: "cyan" | "magenta" | "yellow" | "green" | "purple";
   label?: string;
 }
 
@@ -16,6 +16,8 @@ const COLOR: Record<Props["color"], { fg: string; secondary: string; glow: strin
   magenta: { fg: sv.magenta, secondary: sv.magentaHi, glow: sv.magenta },
   yellow:  { fg: sv.yellow,  secondary: sv.amber,     glow: sv.yellow  },
   green:   { fg: sv.green,   secondary: sv.greenDim,  glow: sv.green   },
+  // No purpleHi token — reuse purple for the gradient's second stop.
+  purple:  { fg: sv.purple,  secondary: sv.purple,    glow: sv.purple  },
 };
 
 /**

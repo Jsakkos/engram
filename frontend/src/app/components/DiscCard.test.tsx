@@ -138,3 +138,50 @@ describe('DiscCard — review affordances', () => {
     expect(screen.queryByText(/some pending reason/i)).not.toBeInTheDocument();
   });
 });
+
+describe('DiscCard — organizing', () => {
+  it('TV multi-track: shows a count-based progress bar (N of M organized)', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({
+          state: 'organizing',
+          mediaType: 'tv',
+          needsReview: false,
+          tracks: [
+            { id: 't0', title: 'S01E01', duration: '22:00', state: 'completed', progress: 100, organizedTo: '/tv/Show/S01E01.mkv' },
+            { id: 't1', title: 'S01E02', duration: '22:00', state: 'completed', progress: 100, organizedTo: '/tv/Show/S01E02.mkv' },
+            { id: 't2', title: 'S01E03', duration: '22:00', state: 'matched', progress: 100 },
+            { id: 't3', title: 'S01E04', duration: '22:00', state: 'matched', progress: 100 },
+          ],
+        })}
+        onReview={vi.fn()}
+        onReIdentify={vi.fn()}
+      />,
+    );
+
+    // 2 of 4 organized → a real 50% bar (not the indeterminate pulse).
+    const bar = screen.getByTestId('sv-bar-progress');
+    expect(bar).toHaveAttribute('data-value', '50');
+  });
+
+  it('single-file movie: shows an indeterminate pulse, not a 0/1 bar', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({
+          state: 'organizing',
+          mediaType: 'movie',
+          title: 'Inception',
+          needsReview: false,
+          tracks: [
+            { id: 't0', title: 'Main Feature', duration: '2:28:00', state: 'matched', progress: 100 },
+          ],
+        })}
+        onReview={vi.fn()}
+        onReIdentify={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('sv-bar-progress')).not.toBeInTheDocument();
+    expect(screen.getByText(/ORGANIZING TO LIBRARY/i)).toBeInTheDocument();
+  });
+});

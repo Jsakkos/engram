@@ -222,6 +222,29 @@ class JobStateMachine:
 
         return await self.transition(job, JobState.REVIEW_NEEDED, session, broadcast=broadcast)
 
+    async def transition_to_organizing(
+        self,
+        job: DiscJob,
+        session: AsyncSession,
+        broadcast: bool = True,
+    ) -> bool:
+        """Convenience method to transition to ORGANIZING state.
+
+        Entered before the (potentially long, blocking) move of files from staging
+        into the library so the UI reflects the organize phase instead of staying
+        on MATCHING. Same-state (already ORGANIZING) is allowed and re-broadcasts,
+        so the movie staging-import path that is already ORGANIZING is unaffected.
+
+        Args:
+            job: Job to transition
+            session: Database session
+            broadcast: Whether to broadcast the state change
+
+        Returns:
+            True if transition succeeded
+        """
+        return await self.transition(job, JobState.ORGANIZING, session, broadcast=broadcast)
+
     async def transition_to_completed(
         self,
         job: DiscJob,

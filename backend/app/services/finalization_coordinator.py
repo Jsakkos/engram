@@ -231,6 +231,9 @@ class FinalizationCoordinator:
         self._match_single_file: callable = None
         self._rematch_conflict: callable = None
         self._rematch_title: callable = None
+        # Watchdog heartbeat: reset a job's activity clock as each file organizes
+        # so a long NAS move in ORGANIZING isn't force-advanced mid-move.
+        self._note_activity: callable | None = None
 
         # Last scan depth attempted per job while auto-resolving. Transient (in
         # memory); cleared on resolution, exhaustion, or restart. Conflicts and
@@ -247,6 +250,7 @@ class FinalizationCoordinator:
         match_single_file=None,
         rematch_conflict=None,
         rematch_title=None,
+        note_activity=None,
     ) -> None:
         """Set cross-coordinator callbacks."""
         self._run_ripping = run_ripping
@@ -255,6 +259,7 @@ class FinalizationCoordinator:
         self._match_single_file = match_single_file
         self._rematch_conflict = rematch_conflict
         self._rematch_title = rematch_title
+        self._note_activity = note_activity
 
     def reset_conflict_passes(self, job_id: int) -> None:
         """Forget any in-progress auto-escalation for ``job_id`` (conflict + review).
@@ -626,25 +631,27 @@ class FinalizationCoordinator:
             await self._state_machine.transition_to_completed(job, session)
 
     async def finalize_disc_job(self, job_id: int):
-        """Run conflict resolution with cascading reassignment and organize matches."""
+        """Run conflict resolution with cascading reassignment and organize matches.
+
+        Split into three phases so the (potentially long, blocking) file moves do
+        NOT hold a DB connection — mirroring the movie path in ``job_manager``:
+
+        * **Phase 1** (short session): resolve episode conflicts, enter ORGANIZING
+          so the UI reflects the move, and capture what to organize as plain values.
+        * **Phase 2** (no session): perform the blocking ``shutil.move``s, emitting a
+          per-title update, a watchdog heartbeat, and count-based job progress.
+        * **Phase 3** (short session): persist outcomes and decide the final state.
+        """
         from app.core.organizer import organize_tv_episode, organize_tv_extras, tv_organizer
         from app.services.episode_ordering_service import resolve_show_ordering
 
         logger.info(f"Running conflict resolution for Job {job_id}")
 
+        # --- Phase 1: conflict resolution + capture (short session) ---
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
             titles = (await session.execute(statement)).scalars().all()
-
-            def _find_source_file(title):
-                if title.output_filename:
-                    p = Path(title.output_filename)
-                    if p.exists():
-                        return p
-                staging_path = Path(job.staging_path)
-                matches = list(staging_path.glob(f"*_t{title.title_index:02d}.mkv"))
-                return matches[0] if matches else None
 
             def _get_metrics(t):
                 score = 0.0
@@ -819,122 +826,221 @@ class FinalizationCoordinator:
             ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
             _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
             _tmdb_year = job.tmdb_year
+            _lib_path = _library_path_for_job(job, "tv")
+            _staging_path = job.staging_path
+            _detected_title = job.detected_title
+            _volume_label = job.volume_label
+            _detected_season = job.detected_season
+            _disc_number = job.disc_number
 
-            # Organize all MATCHED winners
-            extra_index = 1
-            for t in titles:
-                if t.state != TitleState.MATCHED or not t.matched_episode:
-                    continue
+            # Capture the MATCHED winners as plain values so the blocking move loop
+            # (Phase 2) holds no DB connection or detached ORM objects. Built from
+            # the post-conflict-resolution in-memory state (reassigned episodes
+            # included).
+            to_organize = [
+                {
+                    "id": t.id,
+                    "title_index": t.title_index,
+                    "matched_episode": t.matched_episode,
+                    "output_filename": t.output_filename,
+                    "match_confidence": t.match_confidence,
+                    "match_details": t.match_details,
+                }
+                for t in titles
+                if t.state == TitleState.MATCHED and t.matched_episode
+            ]
 
-                source_file = _find_source_file(t)
-                if not source_file:
-                    logger.error(f"Could not find source file for title {t.title_index}")
-                    t.state = TitleState.REVIEW
-                    session.add(t)
-                    continue
-
-                logger.info(f"Organizing Title {t.id} ({source_file.name}) -> {t.matched_episode}")
-
-                _lib_path = _library_path_for_job(job, "tv")
-                if t.matched_episode == "extra":
-                    # Mirror the review path (apply_review / process_matched_titles):
-                    # extras go to the season's Extras/ folder with "Extra tNN"
-                    # naming, NOT through organize_tv_episode (which rejects the
-                    # synthetic "extra" code as an invalid episode format).
-                    org_result = await asyncio.to_thread(
-                        organize_tv_extras,
-                        source_file,
-                        job.detected_title or job.volume_label,
-                        job.detected_season or 1,
-                        library_path=_lib_path,
-                        disc_number=job.disc_number or 1,
-                        extra_index=extra_index,
-                        title_index=t.title_index,
-                        tmdb_id=_tmdb_id_str,
-                        year=_tmdb_year,
-                    )
-                elif _lib_path:
-                    org_result = await asyncio.to_thread(
-                        organize_tv_episode,
-                        source_file,
-                        job.detected_title or job.volume_label,
-                        t.matched_episode,
-                        _lib_path,
-                        tmdb_id=_tmdb_id_str,
-                        ordering=ordering,
-                        episode_group_id=ordering_group_id,
-                        year=_tmdb_year,
-                    )
-                else:
-                    org_result = await asyncio.to_thread(
-                        tv_organizer.organize,
-                        source_file,
-                        job.detected_title,
-                        t.matched_episode,
-                        tmdb_id=_tmdb_id_str,
-                        ordering=ordering,
-                        episode_group_id=ordering_group_id,
-                        year=_tmdb_year,
-                    )
-
-                # Classification is independent of the file move: a failed extra
-                # still IS an extra and must keep is_extra=True so the episode
-                # re-match loop (_is_rematchable_review) skips it on the way to
-                # REVIEW. Set it before the success branch, not inside it.
-                t.is_extra = t.matched_episode == "extra"
-
-                if org_result["success"]:
-                    t.state = TitleState.COMPLETED
-                    t.organized_from = source_file.name
-                    t.organized_to = (
-                        str(org_result.get("final_path")) if org_result.get("final_path") else None
-                    )
-                    # Audit which output ordering was applied (#200) — episodes only;
-                    # matched_episode itself stays canonical. Extras bypass projection.
-                    if t.matched_episode != "extra" and ordering != "aired":
-                        t.episode_ordering = ordering
-                        t.episode_group_id = ordering_group_id
-                    # Advance the extras slot only on a confirmed write.
-                    if t.matched_episode == "extra":
-                        extra_index += 1
-                elif org_result.get("error_code") == "FILE_EXISTS":
-                    # The target already exists in the library — almost always a
-                    # duplicate disc track or a mis-matched extra. Record a
-                    # structured review reason (the Inspector renders a
-                    # "File exists" badge + message from match_details.error) so
-                    # the conflict surfaces in the UI instead of failing silently.
-                    # Mirror the other organize paths (movie / process_matched /
-                    # _finalize_tv) which already do this.
-                    t.state = TitleState.REVIEW
-                    t.match_details = _merge_match_details(
-                        t.match_details,
-                        {
-                            "error": "file_exists",
-                            "message": (
-                                f"{org_result['error']} — likely a duplicate or extra; "
-                                "reassign the episode or mark it as an Extra."
-                            ),
-                        },
-                    )
-                    logger.warning(f"Organization conflict for Title {t.id}: {org_result['error']}")
-                else:
-                    t.state = TitleState.REVIEW
-                    logger.error(f"Organize failed for Title {t.id}: {org_result['error']}")
-
-                session.add(t)
-
-                await ws_manager.broadcast_title_update(
-                    job_id,
-                    t.id,
-                    t.state.value,
-                    matched_episode=t.matched_episode,
-                    match_confidence=t.match_confidence,
-                    organized_from=t.organized_from,
-                    organized_to=t.organized_to,
-                    output_filename=t.output_filename,
-                    is_extra=t.is_extra,
-                    match_details=t.match_details,
+            # Enter ORGANIZING before the blocking move so the UI reflects the
+            # organize phase (a multi-episode move over a remote NAS can be slow)
+            # and the watchdog clock is reset off this transition. Same-state (the
+            # movie staging-import path is already ORGANIZING) re-broadcasts
+            # harmlessly. The transition's commit also flushes the conflict-loop
+            # reassignments. If somehow rejected, log and organize anyway — staged
+            # files must still be moved.
+            organizing_ok = await self._state_machine.transition_to_organizing(job, session)
+            if not organizing_ok:
+                logger.warning(
+                    f"Job {job_id}: could not enter ORGANIZING from {job.state.value}; "
+                    "organizing anyway"
                 )
+
+        # --- Phase 2: blocking file moves (no DB session held) ---
+        def _resolve_source_file(output_filename: str | None, title_index: int) -> Path | None:
+            if output_filename:
+                p = Path(output_filename)
+                if p.exists():
+                    return p
+            matches = list(Path(_staging_path).glob(f"*_t{title_index:02d}.mkv"))
+            return matches[0] if matches else None
+
+        results: dict[int, dict] = {}
+        extra_index = 1
+        total = len(to_organize)
+        for done, cap in enumerate(to_organize, start=1):
+            tid = cap["id"]
+            matched_episode = cap["matched_episode"]
+            is_extra = matched_episode == "extra"
+
+            source_file = _resolve_source_file(cap["output_filename"], cap["title_index"])
+            if not source_file:
+                logger.error(f"Could not find source file for title {cap['title_index']}")
+                # Preserve parity with the original: leave is_extra unchanged
+                # (None = don't touch) and do not broadcast for a missing source.
+                results[tid] = {
+                    "state": TitleState.REVIEW,
+                    "is_extra": None,
+                    "organized_from": None,
+                    "organized_to": None,
+                    "episode_ordering": None,
+                    "episode_group_id": None,
+                    "match_details": None,
+                }
+                if self._note_activity:
+                    self._note_activity(job_id)
+                await ws_manager.broadcast_job_update(
+                    job_id, None, progress=int(done / total * 100)
+                )
+                continue
+
+            logger.info(f"Organizing Title {tid} ({source_file.name}) -> {matched_episode}")
+
+            if is_extra:
+                # Mirror the review path (apply_review / process_matched_titles):
+                # extras go to the season's Extras/ folder with "Extra tNN" naming,
+                # NOT through organize_tv_episode (which rejects the synthetic
+                # "extra" code as an invalid episode format).
+                org_result = await asyncio.to_thread(
+                    organize_tv_extras,
+                    source_file,
+                    _detected_title or _volume_label,
+                    _detected_season or 1,
+                    library_path=_lib_path,
+                    disc_number=_disc_number or 1,
+                    extra_index=extra_index,
+                    title_index=cap["title_index"],
+                    tmdb_id=_tmdb_id_str,
+                    year=_tmdb_year,
+                )
+            elif _lib_path:
+                org_result = await asyncio.to_thread(
+                    organize_tv_episode,
+                    source_file,
+                    _detected_title or _volume_label,
+                    matched_episode,
+                    _lib_path,
+                    tmdb_id=_tmdb_id_str,
+                    ordering=ordering,
+                    episode_group_id=ordering_group_id,
+                    year=_tmdb_year,
+                )
+            else:
+                org_result = await asyncio.to_thread(
+                    tv_organizer.organize,
+                    source_file,
+                    _detected_title,
+                    matched_episode,
+                    tmdb_id=_tmdb_id_str,
+                    ordering=ordering,
+                    episode_group_id=ordering_group_id,
+                    year=_tmdb_year,
+                )
+
+            # Classification is independent of the file move: a failed extra still
+            # IS an extra and must keep is_extra=True so the episode re-match loop
+            # (_is_rematchable_review) skips it on the way to REVIEW.
+            result: dict = {
+                "state": None,
+                "is_extra": is_extra,
+                "organized_from": None,
+                "organized_to": None,
+                "episode_ordering": None,
+                "episode_group_id": None,
+                "match_details": None,  # only set on FILE_EXISTS
+            }
+
+            if org_result["success"]:
+                result["state"] = TitleState.COMPLETED
+                result["organized_from"] = source_file.name
+                result["organized_to"] = (
+                    str(org_result.get("final_path")) if org_result.get("final_path") else None
+                )
+                # Audit which output ordering was applied (#200) — episodes only;
+                # matched_episode itself stays canonical. Extras bypass projection.
+                if not is_extra and ordering != "aired":
+                    result["episode_ordering"] = ordering
+                    result["episode_group_id"] = ordering_group_id
+                # Advance the extras slot only on a confirmed write.
+                if is_extra:
+                    extra_index += 1
+            elif org_result.get("error_code") == "FILE_EXISTS":
+                # The target already exists in the library — almost always a
+                # duplicate disc track or a mis-matched extra. Record a structured
+                # review reason (the Inspector renders a "File exists" badge +
+                # message from match_details.error) so the conflict surfaces in the
+                # UI instead of failing silently. Mirror the other organize paths
+                # (movie / process_matched / _finalize_tv) which already do this.
+                result["state"] = TitleState.REVIEW
+                result["match_details"] = _merge_match_details(
+                    cap["match_details"],
+                    {
+                        "error": "file_exists",
+                        "message": (
+                            f"{org_result['error']} — likely a duplicate or extra; "
+                            "reassign the episode or mark it as an Extra."
+                        ),
+                    },
+                )
+                logger.warning(f"Organization conflict for Title {tid}: {org_result['error']}")
+            else:
+                result["state"] = TitleState.REVIEW
+                logger.error(f"Organize failed for Title {tid}: {org_result['error']}")
+
+            results[tid] = result
+
+            await ws_manager.broadcast_title_update(
+                job_id,
+                tid,
+                result["state"].value,
+                matched_episode=matched_episode,
+                match_confidence=cap["match_confidence"],
+                organized_from=result["organized_from"],
+                organized_to=result["organized_to"],
+                output_filename=cap["output_filename"],
+                is_extra=is_extra,
+                match_details=result["match_details"] or cap["match_details"],
+            )
+            # Watchdog heartbeat + count-based progress for the organizing UI.
+            # Use ws_manager directly (state=None ⇒ unchanged) to match the title
+            # broadcast above and avoid awaiting a non-async broadcaster mock.
+            if self._note_activity:
+                self._note_activity(job_id)
+            await ws_manager.broadcast_job_update(job_id, None, progress=int(done / total * 100))
+
+        # --- Phase 3: persist outcomes + final state (fresh session) ---
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            titles = (
+                (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                .scalars()
+                .all()
+            )
+
+            for t in titles:
+                res = results.get(t.id)
+                if not res:
+                    continue
+                t.state = res["state"]
+                if res["is_extra"] is not None:
+                    t.is_extra = res["is_extra"]
+                if res["state"] == TitleState.COMPLETED:
+                    t.organized_from = res["organized_from"]
+                    t.organized_to = res["organized_to"]
+                    if res["episode_ordering"] is not None:
+                        t.episode_ordering = res["episode_ordering"]
+                        t.episode_group_id = res["episode_group_id"]
+                if res["match_details"] is not None:
+                    t.match_details = res["match_details"]
+                session.add(t)
 
             await session.commit()
 

@@ -506,3 +506,67 @@ def test_phase_timeout_reads_config():
     # Resting / untimed states have no ceiling.
     assert job_manager._phase_timeout(cfg, JobState.REVIEW_NEEDED) is None
     assert job_manager._phase_timeout(cfg, JobState.IDLE) is None
+
+
+# --- ORGANIZING restart recovery -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cleanup_stale_jobs_spares_organizing(tmp_path):
+    """A job interrupted mid-move (ORGANIZING) must NOT be failed on startup —
+    _recover_organizing_jobs re-drives it instead."""
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.ORGANIZING)
+
+    await job_manager._cleanup_stale_jobs()
+
+    assert (await _job(job_id)).state == JobState.ORGANIZING
+
+
+@pytest.mark.asyncio
+async def test_cleanup_stale_jobs_still_fails_matching(tmp_path):
+    """Regression guard: non-resumable phases (MATCHING) are still failed on restart."""
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.MATCHING)
+
+    await job_manager._cleanup_stale_jobs()
+
+    assert (await _job(job_id)).state == JobState.FAILED
+
+
+@pytest.mark.asyncio
+async def test_recover_organizing_redrives_tv(tmp_path, monkeypatch):
+    """A stranded TV ORGANIZING job re-runs the idempotent finalize (in the background)."""
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.ORGANIZING)
+
+    called: list[int] = []
+
+    async def fake_finalize(jid):
+        called.append(jid)
+
+    monkeypatch.setattr(job_manager._finalization, "finalize_disc_job", fake_finalize)
+
+    await job_manager._recover_organizing_jobs()
+
+    task = job_manager._active_jobs.get(job_id)
+    assert task is not None
+    await task
+    job_manager._active_jobs.pop(job_id, None)
+
+    assert called == [job_id]
+
+
+@pytest.mark.asyncio
+async def test_recover_organizing_fails_movie(tmp_path, monkeypatch):
+    """A stranded movie ORGANIZING job is failed (no idempotent re-organize path)."""
+    job_id = await _make_job(tmp_path, content_type=ContentType.MOVIE, state=JobState.ORGANIZING)
+
+    called: list[int] = []
+
+    async def fake_finalize(jid):
+        called.append(jid)
+
+    monkeypatch.setattr(job_manager._finalization, "finalize_disc_job", fake_finalize)
+
+    await job_manager._recover_organizing_jobs()
+
+    assert (await _job(job_id)).state == JobState.FAILED
+    assert called == []  # finalize never invoked for a movie
