@@ -9,12 +9,14 @@ app/database.py:set_sqlite_pragma.
 """
 
 import sqlite3
+import threading
+import time
 
 import sqlalchemy
 
 from app.config import settings
 from app.database import engine, set_sqlite_pragma
-from app.services.config_service import _build_sync_engine
+from app.services.config_service import _build_sync_engine, _get_sync_engine
 
 
 def test_engine_pool_sized_above_async_default():
@@ -103,3 +105,62 @@ def test_sync_engine_in_memory_does_not_crash_and_keeps_pragma():
         assert sqlalchemy.event.contains(eng, "connect", set_sqlite_pragma)
     finally:
         eng.dispose()
+
+
+def test_sync_engine_forwards_db_echo(tmp_path, monkeypatch):
+    """Faithful mirror of the async engine: db_echo must flow through to the sync
+    engine, so DB_ECHO=true traces config-service queries too instead of silently
+    omitting them. Off by default (db_echo=False), so normal runs are unaffected.
+    """
+    monkeypatch.setattr(settings, "db_echo", True)
+    db_file = (tmp_path / "echo.db").as_posix()
+    eng = _build_sync_engine(f"sqlite:///{db_file}")
+    try:
+        assert eng.echo == settings.db_echo
+    finally:
+        eng.dispose()
+
+
+def test_sync_engine_built_once_under_concurrent_first_call(monkeypatch):
+    """Double-checked locking: concurrent first callers must build exactly ONE
+    engine. get_config_sync() runs in asyncio.to_thread workers, so two threads
+    can both observe `_sync_engine is None`, each build an engine, and leak the
+    loser (now an up-to-100-connection pool). A threading.Lock closes the gap.
+    """
+    import app.services.config_service as cs
+
+    build_count = {"n": 0}
+    count_lock = threading.Lock()
+
+    def slow_build(_url):
+        with count_lock:
+            build_count["n"] += 1
+        # Widen the race window so a *missing* lock reliably builds more than once.
+        time.sleep(0.05)
+        return object()  # sentinel "engine"; never connected, so nothing to dispose
+
+    # Call the REAL _get_sync_engine (imported by reference, so it bypasses the
+    # autouse fixture's lambda override), but feed it a fake builder + a fresh
+    # None cache so the double-check actually runs.
+    monkeypatch.setattr(cs, "_build_sync_engine", slow_build)
+    monkeypatch.setattr(cs, "_sync_engine", None)
+
+    n = 12
+    barrier = threading.Barrier(n)
+    results = []
+    results_lock = threading.Lock()
+
+    def worker():
+        barrier.wait()  # release all threads into _get_sync_engine() together
+        eng = _get_sync_engine()
+        with results_lock:
+            results.append(eng)
+
+    threads = [threading.Thread(target=worker) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert build_count["n"] == 1
+    assert all(r is results[0] for r in results)

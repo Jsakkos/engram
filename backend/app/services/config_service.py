@@ -6,6 +6,7 @@ Provides functions to get and update configuration stored in SQLite.
 import asyncio
 import logging
 import sys
+import threading
 from pathlib import Path
 
 from sqlmodel import select
@@ -58,6 +59,11 @@ async def get_config() -> AppConfig:
 
 
 _sync_engine = None
+# Guards the lazy build of _sync_engine. get_config_sync() is called from
+# asyncio.to_thread workers, so two threads can both observe `_sync_engine is
+# None` on first call and each build an engine — leaking the loser (an
+# up-to-100-connection pool). The lock makes the build happen exactly once.
+_sync_engine_lock = threading.Lock()
 
 
 def _build_sync_engine(sync_db_url: str):
@@ -97,10 +103,11 @@ def _build_sync_engine(sync_db_url: str):
 
     connect_args = {"check_same_thread": False}
     if is_memory:
-        sync_engine = create_engine(sync_db_url, connect_args=connect_args)
+        sync_engine = create_engine(sync_db_url, echo=settings.db_echo, connect_args=connect_args)
     else:
         sync_engine = create_engine(
             sync_db_url,
+            echo=settings.db_echo,
             connect_args=connect_args,
             pool_size=settings.db_pool_size,
             max_overflow=settings.db_max_overflow,
@@ -112,13 +119,20 @@ def _build_sync_engine(sync_db_url: str):
 
 
 def _get_sync_engine():
-    """Get or create a cached synchronous engine for sync DB access."""
+    """Get or create a cached synchronous engine for sync DB access.
+
+    Double-checked locking: the outer check keeps the steady-state path lock-free,
+    while the lock ensures concurrent first callers (asyncio.to_thread workers)
+    build the engine exactly once rather than racing and leaking duplicates.
+    """
     global _sync_engine
     if _sync_engine is None:
-        from app.config import settings
+        with _sync_engine_lock:
+            if _sync_engine is None:
+                from app.config import settings
 
-        sync_db_url = settings.database_url.replace("+aiosqlite", "")
-        _sync_engine = _build_sync_engine(sync_db_url)
+                sync_db_url = settings.database_url.replace("+aiosqlite", "")
+                _sync_engine = _build_sync_engine(sync_db_url)
     return _sync_engine
 
 
