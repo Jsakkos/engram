@@ -30,23 +30,24 @@ up front (show **and** season), the better and faster the matching.
 
 ```text
 import_watch_path/
-├── The Expanse/              ← 1. Show → Season subfolders  (recommended)
+├── The Expanse/              ← Show → Season subfolders  (recommended)
 │   ├── Season 01/
 │   │   ├── episode.mkv
 │   │   └── episode.mkv
 │   └── Season 02/
 │       └── ...
-├── THE_OFFICE_S1D1/          ← 3. Per-disc / loose subfolder (ARM-style)
+├── THE_OFFICE_S1D1/          ← Per-disc / loose subfolder (ARM-style)
 │   ├── title_t00.mkv
 │   └── title_t01.mkv
-└── loose_episode.mkv         ← 4. Flat: loose files at the root
+└── loose_episode.mkv         ← Flat: loose files at the root
 ```
 
 1. **Show → Season subfolders** — `Show Name/Season 01/*.mkv`. **Recommended.** Both the show and
    the season are read straight from the folder names, which gives the most accurate matching.
 2. **Watch folder is the show** — point `import_watch_path` directly at a single show's folder that
    contains `Season NN` subfolders (`import_watch_path/Season 01/*.mkv`). The show name comes from
-   the watch folder itself, the season from the subfolder.
+   the watch folder itself, the season from the subfolder. *(Not shown in the tree above — this
+   layout points `import_watch_path` at the show root itself rather than at a parent folder.)*
 3. **Per-disc / loose subfolder** — any subfolder of MKVs that isn't a season folder (e.g. an ARM
    per-disc dump like `THE_OFFICE_S1D1/`). With no season hint, Engram identifies the show and
    episodes from the content and matches **across all seasons** — this works but is slower.
@@ -63,9 +64,9 @@ import_watch_path/
 
 Engram doesn't grab files the instant they appear — that would catch them mid-copy. Instead it
 waits for a folder to go **stable**: the MKV count and total size must be unchanged across two
-consecutive polls before an import fires. In practice that's a few seconds after a copy finishes,
-which is what lets you drop in large files (or have ARM write them) without Engram starting too
-early.
+consecutive polls before an import fires. With the poll interval at roughly two seconds, that means
+a folder is picked up about **four or more seconds after the last file finishes copying** — which is
+what lets you drop in large files (or have ARM write them) without Engram starting too early.
 
 Each stable folder becomes one job. A multi-season show in layout 1 produces **one job per season
 folder**.
