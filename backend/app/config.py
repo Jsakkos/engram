@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     # timeouts; see PR #267). Off by default; set DB_ECHO=true for local SQL tracing.
     db_echo: bool = False
 
+    # Database connection pool sizing. SQLAlchemy's async default (pool_size 5 +
+    # max_overflow 10 = 15 connections) is too small for this app's peak
+    # concurrency: a multi-season import fans out one matching task per title
+    # across every active job (7 seasons × ~22 episodes ≈ 100+ DB-touching
+    # coroutines), plus a concurrent rip's identification and the dashboard. When
+    # simultaneous checkouts exceed the ceiling, the next session waits
+    # db_pool_timeout seconds and raises QueuePool TimeoutError. SQLite in WAL
+    # mode handles many concurrent connections safely — reads are concurrent and
+    # writes serialize at the SQLite level (via busy_timeout, see database.py),
+    # independent of pool size — so a larger pool trades only memory/threads, not
+    # correctness. Overflow connections are created on demand and discarded when
+    # returned, so steady-state cost stays near db_pool_size. Env-overridable.
+    db_pool_size: int = 20
+    db_max_overflow: int = 80
+    db_pool_timeout: int = 30
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000

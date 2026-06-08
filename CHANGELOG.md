@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Processing many jobs at once no longer crashes with a database timeout** — importing several seasons while another disc is ripping could exhaust Engram's database connection pool (`QueuePool limit of size 5 overflow 10 reached, connection timed out`), which stalled episode matching and the dashboard. The connection pool is now sized for that concurrency (and waits politely for SQLite's single-writer lock instead of failing with "database is locked"), and episode matching no longer keeps a database connection open while it looks up episode runtimes over the network. Takes effect after a backend restart.
+
 ## [0.17.0] - 2026-06-08
 
 _Highlights: episode matching can now run on an NVIDIA GPU (opt-in, with the CUDA runtime downloaded on demand) for dramatically faster transcription — and the dashboard's ASR badge now reports the device transcription actually runs on instead of claiming CUDA while silently falling back to the CPU._

@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import time
+from collections import defaultdict
 from datetime import UTC
 from pathlib import Path
 
@@ -150,6 +151,13 @@ class MatchingCoordinator:
         # Shared state (moved from JobManager)
         self._discdb_mappings: dict[int, list] = {}
         self._episode_runtimes: dict[int, list[int]] = {}
+        # Per-job lock guarding the runtimes cache population. Collapses the
+        # cold-window stampede where many titles of one job fetch runtimes at
+        # once (see _episode_runtimes_for_job). defaultdict creates each lock
+        # synchronously on first access, so there is no create-time race on the
+        # single event loop. asyncio.Lock() binds to the loop lazily (py3.11),
+        # so constructing it here (no running loop) is safe.
+        self._episode_runtimes_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._subtitle_ready: dict[int, asyncio.Event] = {}
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
@@ -174,6 +182,7 @@ class MatchingCoordinator:
         ``on_terminal_state`` callback signature.
         """
         self._episode_runtimes.pop(job_id, None)
+        self._episode_runtimes_locks.pop(job_id, None)
         self._discdb_mappings.pop(job_id, None)
         self._subtitle_ready.pop(job_id, None)
         task = self._subtitle_tasks.pop(job_id, None)
@@ -682,38 +691,61 @@ class MatchingCoordinator:
                 await self._check_job_completion(session, job_id)
             return
 
-        # 4. Duration pre-filter
-        async with async_session() as session:
-            job = await session.get(DiscJob, job_id)
-            title = await session.get(DiscTitle, title_id)
-            if job and title and job.detected_season:
-                try:
-                    runtimes = await self._episode_runtimes_for_job(job)
-                    if runtimes and title.duration_seconds:
-                        title_minutes = title.duration_seconds / 60
-                        if not _duration_matches_episode_runtime(title_minutes, runtimes):
-                            handled = await self._handle_extras(
-                                job_id,
-                                title_id,
-                                title,
-                                job,
-                                file_path,
-                                title_minutes,
-                                runtimes,
-                                session,
-                            )
-                            if handled:
-                                return
-                except Exception as e:
-                    # Surface the full traceback: a silently-failing TMDB runtime
-                    # fetch here disables automatic extras detection (the pre-filter
-                    # is the only thing that flags non-episode bonus tracks before
-                    # the matcher tries to force them onto an episode).
-                    logger.warning(
-                        f"[MATCH] Title {title_id} (Job {job_id}): duration pre-filter failed: {e}. "
-                        f"Proceeding with matching normally.",
-                        exc_info=True,
-                    )
+        # 4. Duration pre-filter. Fetch episode runtimes WITHOUT a DB connection
+        # held: the lookup can hit TMDB over the network, and holding a pooled
+        # connection across that round-trip — across every title of every active
+        # job — is what exhausted the connection pool. Mirror the rip path: read
+        # the scalars under a brief session, release it, do the network work,
+        # then reopen only to act on the result.
+        try:
+            job_tmdb_id: int | None = None
+            job_detected_title: str | None = None
+            job_detected_season: int | None = None
+            title_duration: float | None = None
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                title = await session.get(DiscTitle, title_id)
+                if job and title and job.detected_season:
+                    job_tmdb_id = job.tmdb_id
+                    job_detected_title = job.detected_title
+                    job_detected_season = job.detected_season
+                    title_duration = title.duration_seconds
+
+            if job_detected_season:
+                # No connection held across this (possibly networked) lookup.
+                runtimes = await self._episode_runtimes_for_job(
+                    job_id, job_tmdb_id, job_detected_title, job_detected_season
+                )
+                if runtimes and title_duration:
+                    title_minutes = title_duration / 60
+                    if not _duration_matches_episode_runtime(title_minutes, runtimes):
+                        # Re-fetch under a fresh session: _handle_extras writes.
+                        async with async_session() as session:
+                            job = await session.get(DiscJob, job_id)
+                            title = await session.get(DiscTitle, title_id)
+                            if job and title:
+                                handled = await self._handle_extras(
+                                    job_id,
+                                    title_id,
+                                    title,
+                                    job,
+                                    file_path,
+                                    title_minutes,
+                                    runtimes,
+                                    session,
+                                )
+                                if handled:
+                                    return
+        except Exception as e:
+            # Surface the full traceback: a silently-failing TMDB runtime
+            # fetch here disables automatic extras detection (the pre-filter
+            # is the only thing that flags non-episode bonus tracks before
+            # the matcher tries to force them onto an episode).
+            logger.warning(
+                f"[MATCH] Title {title_id} (Job {job_id}): duration pre-filter failed: {e}. "
+                f"Proceeding with matching normally.",
+                exc_info=True,
+            )
 
         # 5. Acquire semaphore to limit concurrent matching
         if self._match_semaphore is not None:
@@ -755,39 +787,60 @@ class MatchingCoordinator:
                 self._match_semaphore.release()
                 logger.info(f"[MATCH] Title {title_id} (Job {job_id}): released match semaphore")
 
-    async def _episode_runtimes_for_job(self, job: DiscJob) -> list[int]:
+    async def _episode_runtimes_for_job(
+        self,
+        job_id: int,
+        tmdb_id: int | None,
+        detected_title: str | None,
+        detected_season: int | None,
+    ) -> list[int]:
         """Episode runtimes (minutes) for the job's season, cached per job.
 
-        Backs the duration pre-filter that flags non-episode bonus tracks as
-        extras before the matcher tries to force them onto an episode.
+        Takes scalars rather than a ``DiscJob`` so the caller can release its DB
+        session before this (network) TMDB lookup: holding a pooled connection
+        across the round-trip, across every title of every active job, is what
+        exhausted the connection pool. Backs the duration pre-filter that flags
+        non-episode bonus tracks as extras before the matcher forces them onto an
+        episode.
         """
-        if job.id in self._episode_runtimes:
-            return self._episode_runtimes[job.id]
+        if job_id in self._episode_runtimes:
+            return self._episode_runtimes[job_id]
 
-        from app.matcher.tmdb_client import (
-            fetch_season_episode_runtimes,
-            fetch_show_id,
-        )
+        # Collapse the cold-window stampede: in a multi-season import, every
+        # title of a job hits this at once. The lock makes only the first caller
+        # perform the (network) TMDB fetch; the rest await it and read the
+        # populated cache via the double-check below. Because the caller already
+        # released its DB session, a title waiting on this lock holds no pooled
+        # connection — without that ordering the lock would merely convert a
+        # connection-per-fetch storm into a connection-per-waiter storm.
+        async with self._episode_runtimes_locks[job_id]:
+            if job_id in self._episode_runtimes:
+                return self._episode_runtimes[job_id]
 
-        # Prefer the job's authoritative tmdb_id (e.g. set when the user
-        # re-identified a same-name collision in review). Re-resolving by name
-        # here would return the dominant same-name twin (Frasier 1993 #3452,
-        # 24×23min) instead of the re-identified revival (#195241, 10 eps),
-        # whose real episodes would then fail the duration filter and be
-        # misclassified as extras. Sibling to PR #282's curator/chromaprint/LLM
-        # threading.
-        if job.tmdb_id:
-            show_id = str(job.tmdb_id)
-        else:
-            show_id = await asyncio.to_thread(fetch_show_id, job.detected_title)
-        if show_id:
-            runtimes = await asyncio.to_thread(
-                fetch_season_episode_runtimes, show_id, job.detected_season
+            from app.matcher.tmdb_client import (
+                fetch_season_episode_runtimes,
+                fetch_show_id,
             )
-        else:
-            runtimes = []
-        self._episode_runtimes[job.id] = runtimes
-        return runtimes
+
+            # Prefer the job's authoritative tmdb_id (e.g. set when the user
+            # re-identified a same-name collision in review). Re-resolving by name
+            # here would return the dominant same-name twin (Frasier 1993 #3452,
+            # 24×23min) instead of the re-identified revival (#195241, 10 eps),
+            # whose real episodes would then fail the duration filter and be
+            # misclassified as extras. Sibling to PR #282's curator/chromaprint/LLM
+            # threading.
+            if tmdb_id:
+                show_id = str(tmdb_id)
+            else:
+                show_id = await asyncio.to_thread(fetch_show_id, detected_title)
+            if show_id:
+                runtimes = await asyncio.to_thread(
+                    fetch_season_episode_runtimes, show_id, detected_season
+                )
+            else:
+                runtimes = []
+            self._episode_runtimes[job_id] = runtimes
+            return runtimes
 
     async def _converge_job_to_matching(self, session, job_id: int) -> None:
         """Ensure the parent job reflects MATCHING the moment a title starts matching.

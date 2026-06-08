@@ -8,6 +8,7 @@ stubbed.
 
 import asyncio
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 
@@ -625,7 +626,9 @@ class TestEpisodeRuntimesShowIdentity:
             await session.commit()
             await session.refresh(job)
 
-            runtimes = await coord._episode_runtimes_for_job(job)
+            runtimes = await coord._episode_runtimes_for_job(
+                job.id, job.tmdb_id, job.detected_title, job.detected_season
+            )
 
         assert runtimes == [22, 22, 22]
         # The known id flowed straight through — NOT the name-resolved twin (3452).
@@ -656,11 +659,58 @@ class TestEpisodeRuntimesShowIdentity:
             await session.commit()
             await session.refresh(job)
 
-            runtimes = await coord._episode_runtimes_for_job(job)
+            runtimes = await coord._episode_runtimes_for_job(
+                job.id, job.tmdb_id, job.detected_title, job.detected_season
+            )
 
         assert runtimes == [23, 23]
         fake_fetch_id.assert_called_once_with("Frasier")
         assert captured["show_id"] == "3452"
+
+
+@pytest.mark.unit
+class TestEpisodeRuntimesCacheConcurrency:
+    """When many titles of the same job hit the duration pre-filter at once (the
+    cold window of a multi-season import), the episode-runtimes lookup must
+    collapse to a SINGLE TMDB fetch. A stampede here means one in-flight TMDB
+    round-trip per title — and, in the caller, one held DB connection per title
+    across that round-trip — which is the connection-pool exhaustion aggravator
+    this fix targets.
+    """
+
+    async def test_concurrent_calls_for_same_job_fetch_once(self, monkeypatch):
+        coord = _make_coord()
+        calls: list[tuple] = []
+
+        def slow_runtimes(show_id, season):
+            # Append (GIL-atomic) BEFORE sleeping so a stampede records every
+            # entrant; the sleep keeps the first fetch in-flight long enough for
+            # all concurrent callers to race past the cache check.
+            calls.append((show_id, season))
+            time.sleep(0.05)
+            return [22, 22, 22]
+
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_season_episode_runtimes", slow_runtimes)
+        monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", MagicMock(return_value="999"))
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job.tmdb_id = 195241
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+
+            results = await asyncio.gather(
+                *[
+                    coord._episode_runtimes_for_job(
+                        job.id, job.tmdb_id, job.detected_title, job.detected_season
+                    )
+                    for _ in range(8)
+                ]
+            )
+
+        assert all(r == [22, 22, 22] for r in results)
+        assert len(calls) == 1, f"expected one fetch, got {len(calls)} (stampede)"
 
 
 @pytest.mark.unit
