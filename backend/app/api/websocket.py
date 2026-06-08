@@ -119,8 +119,13 @@ class ConnectionManager:
         data: dict = {
             "type": "job_update",
             "job_id": job_id,
-            "state": state,
         }
+        # state=None means "unchanged" (progress-only updates, e.g. during the
+        # organize file-move). Omit it so the frontend merge ({...job, ...message})
+        # doesn't blank the current state to null — which would drop the card out
+        # of its state-gated render (e.g. the ORGANIZING view) mid-move.
+        if state is not None:
+            data["state"] = state
         if progress is not None:
             data["progress_percent"] = progress
         if speed is not None:

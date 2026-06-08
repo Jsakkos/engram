@@ -95,6 +95,36 @@ class TestDeferOrganization:
             assert w.organized_to is None
             assert ll.state == TitleState.REVIEW
 
+    async def test_review_path_never_broadcasts_organizing(self, monkeypatch, tmp_path):
+        """A disc that defers to review must NOT flicker through ORGANIZING — the
+        state transition is gated behind the review-deferral guard."""
+        from app.api.websocket import manager as ws_manager
+
+        wfile = tmp_path / "winner.mkv"
+        wfile.write_bytes(b"x")
+        job = await _seed_job()
+        await _seed_title(job.id, 7, "S01E14", 0.9, votes=9, output=str(wfile))
+        await _seed_title(job.id, 8, "S01E14", 0.5, votes=4)  # no runner_ups → REVIEW
+
+        from app.services.job_manager import job_manager
+
+        states: list = []
+
+        async def _spy(job_id, state=None, *a, **k):
+            if state is not None:
+                states.append(state)
+
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", _spy)
+        monkeypatch.setattr(
+            "app.core.organizer.tv_organizer.organize",
+            lambda *a, **k: {"success": True, "final_path": "/lib/x.mkv"},
+        )
+
+        await job_manager._finalization.finalize_disc_job(job.id)
+
+        assert JobState.ORGANIZING.value not in states
+        assert JobState.REVIEW_NEEDED.value in states
+
     async def test_detects_padded_unpadded_collision(self, monkeypatch, tmp_path):
         """S01E14 vs S1E14 are the same episode and must be treated as a conflict.
 

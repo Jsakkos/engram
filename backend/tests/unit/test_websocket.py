@@ -95,6 +95,25 @@ class TestMessageBroadcasting:
         assert call_args["state"] == "ripping"
         assert call_args["progress_percent"] == 50.0
 
+    async def test_broadcast_job_update_omits_state_when_none(
+        self, connection_manager, mock_websocket
+    ):
+        """A progress-only update (state=None) must OMIT the state key, not send
+        state=null — otherwise the frontend merge ({...job, ...message}) blanks the
+        job's current state and drops the card out of its state-gated render (e.g.
+        the ORGANIZING view) mid file-move."""
+        await connection_manager.connect(mock_websocket)
+
+        await connection_manager.broadcast_job_update(job_id=1, state=None, progress=75.0)
+
+        json_text = mock_websocket.send_text.call_args[0][0]
+        call_args = json.loads(json_text)
+
+        assert call_args["type"] == "job_update"
+        assert call_args["job_id"] == 1
+        assert "state" not in call_args  # omitted, not null
+        assert call_args["progress_percent"] == 75.0
+
     async def test_broadcast_title_update(self, connection_manager, mock_websocket):
         """Test broadcasting title state updates."""
         await connection_manager.connect(mock_websocket)

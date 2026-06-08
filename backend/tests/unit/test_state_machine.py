@@ -207,6 +207,34 @@ class TestConvenienceMethods:
         assert sample_job.state == JobState.REVIEW_NEEDED
         assert sample_job.review_reason == "Ambiguous content"
 
+    async def test_transition_to_organizing(
+        self, state_machine, sample_job, mock_session, mock_broadcaster
+    ):
+        """Test transition_to_organizing convenience method (MATCHING -> ORGANIZING)."""
+        sample_job.state = JobState.MATCHING
+
+        result = await state_machine.transition_to_organizing(sample_job, mock_session)
+
+        assert result is True
+        assert sample_job.state == JobState.ORGANIZING
+        mock_broadcaster.broadcast_job_state_changed.assert_called_once_with(
+            sample_job.id, JobState.ORGANIZING
+        )
+
+    async def test_transition_to_organizing_idempotent_when_already_organizing(
+        self, state_machine, sample_job, mock_session, mock_broadcaster
+    ):
+        """Already-ORGANIZING (movie staging-import path) re-broadcasts harmlessly."""
+        sample_job.state = JobState.ORGANIZING
+
+        result = await state_machine.transition_to_organizing(sample_job, mock_session)
+
+        assert result is True
+        assert sample_job.state == JobState.ORGANIZING
+        mock_broadcaster.broadcast_job_state_changed.assert_called_once_with(
+            sample_job.id, JobState.ORGANIZING
+        )
+
     async def test_transition_to_completed(
         self, state_machine, sample_job, mock_session, mock_broadcaster
     ):

@@ -137,6 +137,7 @@ class JobManager:
             match_single_file=self._matching.match_single_file,
             rematch_conflict=self._matching.rematch_conflict,
             rematch_title=self._matching.rematch_single_title,
+            note_activity=self._note_activity,
         )
         self._simulation.set_callbacks(
             subtitle_ready=self._matching._subtitle_ready,
@@ -159,6 +160,7 @@ class JobManager:
 
         await self._cleanup_stale_jobs()
         await self._restore_discdb_mappings()
+        await self._recover_organizing_jobs()
 
         self._drive_monitor.set_async_callback(
             self._on_drive_event,
@@ -230,12 +232,16 @@ class JobManager:
         )
 
     async def _cleanup_stale_jobs(self) -> None:
-        """Mark stale jobs as FAILED on startup."""
+        """Mark stale jobs as FAILED on startup.
+
+        ORGANIZING is intentionally excluded: a job interrupted mid-move has its
+        files partly in the library and is recoverable. ``_recover_organizing_jobs``
+        (run right after this) re-drives those jobs instead of failing them.
+        """
         stale_states = [
             JobState.IDENTIFYING,
             JobState.RIPPING,
             JobState.MATCHING,
-            JobState.ORGANIZING,
         ]
         async with async_session() as session:
             result = await session.execute(select(DiscJob).where(DiscJob.state.in_(stale_states)))
@@ -272,6 +278,50 @@ class JobManager:
                     job.id, [DiscDbTitleMapping(**m) for m in mappings_data]
                 )
                 logger.info(f"Restored {len(mappings_data)} DiscDB mappings for job {job.id}")
+
+    async def _recover_organizing_jobs(self) -> None:
+        """Resume jobs left mid-move in ORGANIZING after a restart.
+
+        ``_cleanup_stale_jobs`` deliberately leaves ORGANIZING jobs alone so this
+        can claim them. A TV job re-runs the idempotent ``finalize_disc_job`` (its
+        organize loop skips titles that already COMPLETED and re-resolves source
+        files), spawned as a background task so a slow NAS move doesn't block
+        startup. Movie organizing has no standalone idempotent re-organize entry
+        point, so a stranded movie is failed (the prior cleanup behavior).
+        """
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob).where(DiscJob.state == JobState.ORGANIZING)
+            )
+            # Capture (id, content_type) before the session closes.
+            jobs = [(j.id, j.content_type) for j in result.scalars()]
+
+        for job_id, content_type in jobs:
+            if content_type == ContentType.TV:
+                logger.info(
+                    f"Recovering job {job_id} stranded in ORGANIZING: re-running finalization"
+                )
+                task = asyncio.create_task(
+                    with_job_log_context(job_id, self._recover_organizing_tv(job_id))
+                )
+                task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
+                self._active_jobs[job_id] = task
+            else:
+                logger.warning(
+                    f"Recovering movie job {job_id} stranded in ORGANIZING: no idempotent "
+                    "re-organize path; marking FAILED"
+                )
+                await self._fail_job(
+                    job_id, "Server restarted while organizing; please re-run the job"
+                )
+
+    async def _recover_organizing_tv(self, job_id: int) -> None:
+        """Re-drive an idempotent TV finalization; fail the job if it errors."""
+        try:
+            await self._finalization.finalize_disc_job(job_id)
+        except Exception as e:
+            logger.exception(f"Recovery of ORGANIZING job {job_id} failed: {e}")
+            await self._fail_job(job_id, f"Organize recovery failed: {e}")
 
     async def reload_staging_watcher(self) -> None:
         """Stop and restart the staging/import watcher with the current DB config."""

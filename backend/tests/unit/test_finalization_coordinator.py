@@ -141,6 +141,35 @@ class TestFinalizeDiscJob:
         assert all(t.state == TitleState.COMPLETED for t in titles.values())
         assert mock_organize.call_count == 2
 
+    async def test_passes_through_organizing_before_completed(self, tmp_path, mock_organize):
+        """The auto-finalize path must broadcast ORGANIZING (before COMPLETED) so the
+        UI reflects the file move, and fire a watchdog heartbeat per organized title."""
+        f0 = tmp_path / "show_t00.mkv"
+        f0.write_text("")
+        job_id = await _seed_job(
+            [(0, "S01E01", str(f0), TitleState.MATCHED)], staging=str(tmp_path)
+        )
+
+        coord = _make_coord()
+        events: list[str] = []
+        coord._broadcaster.broadcast_job_state_changed.side_effect = lambda jid, state: (
+            events.append(f"state:{state.value}")
+        )
+        coord._broadcaster.broadcast_job_completed.side_effect = lambda jid: events.append(
+            "completed"
+        )
+        notes: list[int] = []
+        coord._note_activity = lambda jid: notes.append(jid)
+
+        await coord.finalize_disc_job(job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.COMPLETED
+        assert "state:organizing" in events
+        assert events.index("state:organizing") < events.index("completed")
+        # One watchdog heartbeat per organized title.
+        assert notes == [job_id]
+
     async def test_conflict_reassigns_loser_via_runner_up(self, tmp_path, mock_organize):
         f0 = tmp_path / "show_t00.mkv"
         f1 = tmp_path / "show_t01.mkv"

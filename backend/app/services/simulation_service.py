@@ -740,6 +740,33 @@ class SimulationService:
             )
             await ws_manager.broadcast_job_update(job_id, job.state.value, progress=0)
         else:
+            # Mirror the real auto-finalize flow: pass through ORGANIZING (with a
+            # per-track organized_to broadcast so the dashboard's N/M counter
+            # climbs) before completing. Without this the sim jumps
+            # MATCHING→COMPLETED and E2E / state-sequence checks never observe
+            # ORGANIZING — the very gap this feature closes.
+            await self._state_machine.transition_to_organizing(job, session, broadcast=False)
+            await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value, progress=0)
+            total = len(titles)
+            for idx, title in enumerate(titles, start=1):
+                title_db = await session.get(DiscTitle, title.id)
+                if title_db and title_db.state == TitleState.COMPLETED:
+                    title_db.organized_to = (
+                        f"/library/tv/{job.detected_title or job.volume_label}/"
+                        f"{title_db.matched_episode or 'episode'}.mkv"
+                    )
+                    session.add(title_db)
+                    await session.commit()
+                    await ws_manager.broadcast_title_update(
+                        job_id,
+                        title_db.id,
+                        title_db.state.value,
+                        organized_to=title_db.organized_to,
+                    )
+                await ws_manager.broadcast_job_update(
+                    job_id, None, progress=int(idx / total * 100) if total else 100
+                )
+                await asyncio.sleep(0.1)
             job.progress_percent = 100.0
             result = await self._state_machine.transition_to_completed(job, session)
             logger.info(
