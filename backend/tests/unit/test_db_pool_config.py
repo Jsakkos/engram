@@ -18,6 +18,9 @@ def test_engine_pool_sized_above_async_default():
     """The pool must be sized from settings, comfortably above the 5+10 default."""
     pool = engine.sync_engine.pool
     assert pool.size() == settings.db_pool_size
+    # _max_overflow is a private SQLAlchemy attr (no public accessor for the
+    # overflow ceiling exists); if a future upgrade renames it this assertion
+    # turns into an AttributeError — verify on SQLAlchemy bumps.
     assert pool._max_overflow == settings.db_max_overflow
 
     # The whole point of the fix: the ceiling must exceed the old default of 15

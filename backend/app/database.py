@@ -50,10 +50,14 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     it can be unit-tested against a throwaway connection.
     """
     cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL")
-    cursor.execute("PRAGMA busy_timeout=30000")
-    cursor.close()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+    finally:
+        # Close even if a PRAGMA raises (e.g. journal_mode=WAL on a read-only
+        # path) so the cursor never leaks.
+        cursor.close()
 
 
 sqlalchemy.event.listens_for(engine.sync_engine, "connect")(set_sqlite_pragma)
