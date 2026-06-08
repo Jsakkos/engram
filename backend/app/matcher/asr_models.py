@@ -598,4 +598,4 @@ def _ensure_nvidia_libraries():
 
         register_cuda_runtime()
     except Exception as e:  # noqa: BLE001 — registration is best-effort; load-time fallback covers it
-        logger.warning(f"Failed to register CUDA libraries: {e}")
+        logger.warning(f"Failed to register CUDA libraries: {e}", exc_info=True)

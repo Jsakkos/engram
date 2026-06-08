@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ASR_CYAN as CYAN, type AsrStatus, gpuDownloadGb as gb } from "../app/components/asrStatus";
 
 /**
  * Self-contained GPU-acceleration control for the settings wizard.
@@ -9,37 +10,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * config save can never accidentally kick off the download). Activation takes effect after a
  * backend restart. Only NVIDIA on Windows/Linux is supported; macOS/AMD stay on CPU.
  */
-
-type GpuDownload = {
-    state: "idle" | "downloading" | "installing" | "error";
-    downloaded: number;
-    total: number;
-    error: string | null;
-};
-
-type AsrStatus = {
-    device: string;
-    compute_type: string;
-    gpu_detected: boolean;
-    gpu_enabled: boolean;
-    gpu_runtime_installed: boolean;
-    gpu_download_size_bytes: number;
-    gpu_download: GpuDownload;
-    gpu_state:
-        | "active"
-        | "available_not_enabled"
-        | "available_not_installed"
-        | "downloading"
-        | "installing"
-        | "unsupported_os"
-        | "unavailable";
-};
-
-const CYAN = "#22d3ee";
-
-function gb(bytes: number): string {
-    return `${(bytes / 1e9).toFixed(1)} GB`;
-}
 
 export default function GpuAccelerationSetting() {
     const [status, setStatus] = useState<AsrStatus | null>(null);
@@ -183,7 +153,7 @@ export default function GpuAccelerationSetting() {
                 </>
             )}
 
-            {s === "available_not_installed" && (
+            {(s === "available_not_installed" || s === "error") && (
                 <>
                     <span className="form-hint">
                         An NVIDIA GPU is available. Enabling downloads the cuDNN + cuBLAS runtime

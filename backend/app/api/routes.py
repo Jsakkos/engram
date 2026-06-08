@@ -3669,7 +3669,8 @@ def _gpu_state(*, device: str, detected: bool, installed: bool, downloading: dic
     """Collapse the GPU situation into one badge state for the dashboard/settings UI."""
     from app.matcher.cuda_runtime import is_supported_platform
 
-    if downloading.get("state") in ("downloading", "installing"):
+    # In-flight or failed download takes precedence so the field matches gpu_download.state.
+    if downloading.get("state") in ("downloading", "installing", "error"):
         return downloading["state"]
     if device == "cuda":
         return "active"
@@ -3729,7 +3730,12 @@ async def _finish_gpu_enable(success: bool, error: str | None) -> None:
     from app.services.job_manager import event_broadcaster
 
     if success:
-        await update_db_config(enable_gpu_acceleration=True)
+        # Persist the flag, but never let a DB error swallow the completion broadcast —
+        # the UI must still learn the download finished.
+        try:
+            await update_db_config(enable_gpu_acceleration=True)
+        except Exception:
+            logger.error("Failed to persist enable_gpu_acceleration flag", exc_info=True)
     await event_broadcaster.broadcast_gpu_status(get_download_state())
 
 
@@ -3767,8 +3773,16 @@ async def enable_gpu_acceleration():
         return {"status": "ready", "restart_required": True, "gpu_download": get_download_state()}
 
     def _on_done(success: bool, error: str | None) -> None:
-        # Runs on the download thread; hop back to the event loop to touch DB + WS.
-        asyncio.run_coroutine_threadsafe(_finish_gpu_enable(success, error), _loop)
+        # Runs on the download thread; hop back to the event loop to touch DB + WS. Surface any
+        # failure of the coroutine itself (otherwise the discarded Future swallows it silently).
+        fut = asyncio.run_coroutine_threadsafe(_finish_gpu_enable(success, error), _loop)
+        fut.add_done_callback(
+            lambda f: (
+                logger.error("_finish_gpu_enable failed", exc_info=f.exception())
+                if f.exception()
+                else None
+            )
+        )
 
     _loop = asyncio.get_running_loop()
     started = start_background_download(on_done=_on_done)
@@ -3785,8 +3799,11 @@ async def disable_gpu_acceleration():
     """Disable GPU ASR (revert to CPU on the next restart). The cached libraries are kept."""
     from app.matcher.cuda_runtime import get_download_state
     from app.services.config_service import update_config as update_db_config
+    from app.services.job_manager import event_broadcaster
 
     await update_db_config(enable_gpu_acceleration=False)
+    # Broadcast so other connected clients (e.g. a second settings tab) don't show stale state.
+    await event_broadcaster.broadcast_gpu_status(get_download_state())
     return {"status": "disabled", "restart_required": True, "gpu_download": get_download_state()}
 
 

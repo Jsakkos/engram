@@ -332,6 +332,8 @@ def _register_dir(lib_dir: Path) -> bool:
         try:
             os.add_dll_directory(str(lib_dir))
         except (OSError, AttributeError):
+            # Non-fatal: a missing/invalid dir or a Python without add_dll_directory just
+            # means we rely on the PATH prepend below to make the DLLs discoverable.
             pass
         existing = os.environ.get("PATH", "")
         if str(lib_dir) not in existing:
@@ -445,15 +447,19 @@ def start_background_download(on_done=None) -> bool:
         )
 
     def _run():
+        def _progress(done: int, total: int) -> None:
+            # Once all bytes are in, download_cuda_runtime extracts + atomically installs —
+            # report that as the "installing" phase the UI renders separately.
+            phase = "installing" if total and done >= total else "downloading"
+            _set_download_state(phase, done, total)
+
         try:
-            download_cuda_runtime(
-                progress_cb=lambda done, total: _set_download_state("downloading", done, total)
-            )
+            download_cuda_runtime(progress_cb=_progress)
             _set_download_state("idle", 0, 0, None)
             if on_done:
                 on_done(True, None)
-        except BaseException as exc:  # noqa: BLE001 - surface any failure to the UI
-            logger.error(f"CUDA runtime download failed: {exc}")
+        except Exception as exc:  # noqa: BLE001 - surface any failure to the UI
+            logger.error(f"CUDA runtime download failed: {exc}", exc_info=True)
             _set_download_state("error", 0, 0, str(exc))
             if on_done:
                 on_done(False, str(exc))

@@ -122,6 +122,17 @@ class TestResolveAsrRuntimeCpu:
 
 
 class TestResolveAsrRuntimeGpu:
+    @pytest.fixture(autouse=True)
+    def _stub_supported_compute_types(self):
+        # resolve_asr_runtime("cuda") asks ctranslate2 which compute types the GPU supports.
+        # On a CPU-only runner that probe returns a set without float16 (→ float32), so pin a
+        # float16-capable set to keep these worker-sizing tests hardware-independent.
+        with patch(
+            "app.matcher.asr_models.ctranslate2.get_supported_compute_types",
+            return_value={"float16", "int8_float16", "float32"},
+        ):
+            yield
+
     def test_caps_workers_at_gpu_cap(self):
         rt = resolve_asr_runtime("cuda", requested_workers=8)
         assert rt == AsrRuntime(

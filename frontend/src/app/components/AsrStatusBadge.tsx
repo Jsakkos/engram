@@ -1,36 +1,5 @@
 import { useEffect, useState } from "react";
-
-type GpuDownload = {
-  state: "idle" | "downloading" | "installing" | "error";
-  downloaded: number;
-  total: number;
-  error: string | null;
-};
-
-type AsrStatus = {
-  device: string;
-  compute_type: string;
-  model: string;
-  workers: number;
-  cpu_threads: number | null;
-  max_concurrent_matches: number;
-  gpu_detected?: boolean;
-  gpu_enabled?: boolean;
-  gpu_runtime_installed?: boolean;
-  gpu_state?:
-    | "active"
-    | "available_not_enabled"
-    | "available_not_installed"
-    | "downloading"
-    | "installing"
-    | "unsupported_os"
-    | "unavailable";
-  gpu_download?: GpuDownload;
-};
-
-const CYAN = "#22d3ee";
-const AMBER = "#f5a623";
-const GRAY = "#8893a8";
+import { ASR_AMBER as AMBER, ASR_CYAN as CYAN, ASR_GRAY as GRAY, type AsrStatus } from "./asrStatus";
 
 /**
  * Read-only chip showing the *effective* ASR backend. Crucially it reports the device the
@@ -90,14 +59,20 @@ export function AsrStatusBadge({ onOpenSettings }: { onOpenSettings?: () => void
   } else if (gpuState === "installing") {
     accent = CYAN;
     label = "ASR: GPU installing…";
-  } else if (gpuState === "available_not_enabled" || gpuState === "available_not_installed") {
+  } else if (
+    gpuState === "available_not_enabled" ||
+    gpuState === "available_not_installed" ||
+    gpuState === "error"
+  ) {
     accent = AMBER;
     label = "ASR: CPU · GPU available →";
     clickable = true;
     title =
-      gpuState === "available_not_installed"
-        ? "An NVIDIA GPU is available. Click to enable GPU acceleration in Settings (one-time ~1.2 GB download)."
-        : "An NVIDIA GPU is available but acceleration is off. Click to enable it in Settings.";
+      gpuState === "error"
+        ? "The GPU runtime download failed. Click to retry in Settings."
+        : gpuState === "available_not_installed"
+          ? "An NVIDIA GPU is available. Click to enable GPU acceleration in Settings (one-time ~1.2 GB download)."
+          : "An NVIDIA GPU is available but acceleration is off. Click to enable it in Settings.";
   } else {
     // cpu / unavailable / unsupported_os
     label = `ASR: CPU · ${status.compute_type} · ${status.workers}w`;

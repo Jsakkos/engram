@@ -26,6 +26,11 @@ def test_downloading_overrides_everything():
     assert _state("cpu", True, True, download={"state": "installing"}) == "installing"
 
 
+def test_failed_download_surfaces_as_error():
+    # gpu_state must agree with gpu_download.state so the field doesn't hide a failed download.
+    assert _state("cpu", True, False, download={"state": "error"}) == "error"
+
+
 def test_gpu_present_but_libs_missing():
     assert _state("cpu", detected=True, installed=False) == "available_not_installed"
 
