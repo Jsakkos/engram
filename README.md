@@ -112,6 +112,10 @@ cd backend
 uv sync --extra gpu
 ```
 
+An NVIDIA GPU is auto-detected and speeds up episode matching considerably. The prebuilt
+standalone and Docker builds are CPU-only — see [Performance & Hardware](docs/guide/performance.md)
+for GPU setup, storage recommendations, and concurrency tuning.
+
 Then start the two dev servers in separate terminals:
 
 ```bash
@@ -167,7 +171,7 @@ See the [configuration guide](docs/getting-started/configuration.md) for the ful
 Full documentation is published at **[jsakkos.github.io/engram](https://jsakkos.github.io/engram/)**.
 
 - **Getting started** — [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md) · [Simulation](docs/getting-started/simulation.md) · [Troubleshooting](docs/troubleshooting.md)
-- **User guide** — [Dashboard](docs/guide/dashboard.md) · [Review Queue](docs/guide/review-queue.md) · [Job History](docs/guide/history.md) · [Linux / macOS setup](docs/guide/linux-setup.md)
+- **User guide** — [Dashboard](docs/guide/dashboard.md) · [Import Watch Folder](docs/guide/import-watch-folder.md) · [Performance & Hardware](docs/guide/performance.md) · [Review Queue](docs/guide/review-queue.md) · [Job History](docs/guide/history.md) · [Linux / macOS setup](docs/guide/linux-setup.md)
 - **Architecture** — [Overview](docs/architecture/overview.md) · [State Machine](docs/architecture/state-machine.md) · [WebSocket Protocol](docs/architecture/websocket.md)
 - **API reference** — [REST Endpoints](docs/api/rest.md) · [Data Models](docs/api/models.md)
 - **Development** — [Contributing](CONTRIBUTING.md) · [Testing](docs/development/testing.md) · [Subtitle Cache Build](docs/development/subtitle-cache.md)
