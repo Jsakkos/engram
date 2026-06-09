@@ -221,6 +221,7 @@ class JobDetailResponse(BaseModel):
     classification_confidence: float = 0.0
     tmdb_id: int | None = None
     tmdb_name: str | None = None
+    tmdb_year: int | None = None
     is_ambiguous_movie: bool = False
     # TheDiscDB
     content_hash: str | None = None
@@ -795,6 +796,7 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "classification_confidence": job.classification_confidence,
         "tmdb_id": job.tmdb_id,
         "tmdb_name": job.tmdb_name,
+        "tmdb_year": job.tmdb_year,
         "is_ambiguous_movie": job.is_ambiguous_movie,
         "content_hash": job.content_hash,
         "discdb_slug": job.discdb_slug,

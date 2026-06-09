@@ -170,6 +170,20 @@ class TestJobEndpoints:
         assert listed[unconfirmed.id]["tmdb_id"] is None
         assert listed[confirmed.id]["tmdb_id"] == 18409
 
+    async def test_tmdb_identity_fields_exposed_in_job_detail(self, client):
+        """The history drill-down (JobDetailResponse) must also carry the full
+        TMDB identity — including tmdb_year — so the detail panel can render
+        "Name (year) · TMDB #id" like the re-identify modal. JobDetailResponse
+        is hand-assembled via build_job_detail() (not from_attributes), so each
+        field needs an entry in both the model AND the dict or it's silently
+        dropped at the serializer."""
+        confirmed = await _seed_job(tmdb_id=18409, tmdb_name="The Office", tmdb_year=2005)
+
+        detail = (await client.get(f"/api/jobs/{confirmed.id}/detail")).json()
+        assert detail["tmdb_id"] == 18409
+        assert detail["tmdb_name"] == "The Office"
+        assert detail["tmdb_year"] == 2005
+
     async def test_get_job_titles(self, client):
         job = await _seed_job()
         await _seed_titles(job.id, count=3)
