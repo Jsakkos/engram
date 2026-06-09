@@ -121,8 +121,8 @@ def _tv_titles(count: int = 6, duration: int = 2870) -> list[TitleInfo]:
     ]
 
 
-def test_analyst_without_name_hint_gives_garbled_name():
-    """Without name_hint the analyst parses the volume label and gets a garbled name."""
+def test_analyst_without_disc_title_keeps_garbled_label_name():
+    """Without a DINFO disc_title, an extra-leading-words TMDB name (Star Trek: ...) is not corroborated by the concatenated label, so the garbled label name is kept."""
     tmdb = TmdbSignal(
         content_type=ContentType.TV,
         confidence=0.85,
@@ -132,14 +132,15 @@ def test_analyst_without_name_hint_gives_garbled_name():
     analyst = DiscAnalyst()
     result = analyst.analyze(_tv_titles(), "STRANGENEWWORLDS_SEASON3", tmdb_signal=tmdb)
 
-    # TMDB ID is propagated even without name_hint
+    # TMDB ID is still propagated even without a disc_title
     assert result.tmdb_id == 99966
     # But detected_name comes from garbled volume label
+    # Deferred case: collapsed "strangenewworlds" != "startrekstrangenewworlds"
     assert result.detected_name == "Strangenewworlds"
 
 
-def test_analyst_with_name_hint_uses_correct_name():
-    """With name_hint the analyst uses it directly; TMDB name flows through cleanly."""
+def test_analyst_with_disc_title_adopts_tmdb_name():
+    """With a DINFO disc_title that corroborates the TMDB name, the authoritative TMDB name flows through cleanly."""
     tmdb = TmdbSignal(
         content_type=ContentType.TV,
         confidence=0.85,
@@ -160,7 +161,7 @@ def test_analyst_with_name_hint_uses_correct_name():
     assert result.content_type == ContentType.TV
 
 
-def test_analyst_name_hint_still_propagates_tmdb_id_on_type_conflict():
+def test_analyst_disc_title_still_propagates_tmdb_id_on_type_conflict():
     """Even when heuristic and TMDB disagree on type, tmdb_id is set."""
     tmdb = TmdbSignal(
         content_type=ContentType.MOVIE,  # disagrees with heuristic TV
