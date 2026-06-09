@@ -10,6 +10,7 @@ import re
 import time
 from collections import defaultdict
 from datetime import UTC
+from enum import StrEnum
 from pathlib import Path
 
 from sqlmodel import select
@@ -135,6 +136,37 @@ _MATCH_SOURCE_TO_CONTRIB: dict[str, str] = {
     "ai_llm": "engram_asr",
     "user": "user_review",
 }
+
+
+class FileWaitResult(StrEnum):
+    """Outcome of waiting for a ripped title file to finalize on disk."""
+
+    READY = "ready"  # Complete, or stable at a plausible size — safe to match.
+    TRUNCATED = "truncated"  # Stable far below the scanned size — an aborted rip.
+    TIMEOUT = "timeout"  # Never stabilized within the timeout budget.
+
+
+# A ripped file that has stopped growing for this long is treated as final by
+# the ripper even if it is smaller than the disc-scan size estimate. Comfortably
+# longer than MakeMKV's longest mid-title write pause (a few seconds while it
+# retries a marginal sector) but a tiny fraction of the old size-proportional
+# timeout that let a truncated title wedge a job for hours.
+TRUNCATED_STABLE_GRACE_SECONDS = 90.0
+
+# Fast path: once a stable file reaches this fraction of the scanned size we
+# accept it as complete without waiting out the grace window.
+READY_SIZE_RATIO = 0.85
+
+# A file that stops growing below this fraction of the scanned size is judged a
+# truncated/aborted rip (e.g. an uncorrectable disc read error) rather than a
+# legitimately small title.
+TRUNCATED_SIZE_RATIO = 0.5
+
+INCOMPLETE_RIP_MESSAGE = (
+    "Incomplete rip: the ripped file is far smaller than the disc-scan size "
+    "estimate, which usually means an uncorrectable disc read error aborted the "
+    "rip. Clean the disc and re-rip this title."
+)
 
 
 class MatchingCoordinator:
@@ -1436,28 +1468,39 @@ class MatchingCoordinator:
         title_id: int,
         job_id: int,
         timeout: float | None = None,
-    ) -> bool:
-        """Wait until a ripped file is fully written and ready for processing."""
+    ) -> FileWaitResult:
+        """Wait until a ripped file is finalized on disk.
+
+        Returns READY when the file is complete (or has stopped growing at a
+        plausible size), TRUNCATED when it has clearly stopped far below the
+        scanned size (an aborted rip), or TIMEOUT if it never stabilized.
+        """
         from app.services.config_service import get_config
 
         config = await get_config()
         check_interval = config.ripping_file_poll_interval
         required_stable = config.ripping_stability_checks
 
-        # Get expected size from DB
+        # Expected (disc-scan estimate) size from the DB.
         expected_size = 0
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)
             if title and title.file_size_bytes:
                 expected_size = title.file_size_bytes
 
-        # Calculate dynamic timeout based on file size
         if timeout is None:
             if expected_size > 0:
                 base_timeout = (expected_size / (1024 * 1024)) * 2
                 timeout = max(config.ripping_file_ready_timeout, base_timeout)
             else:
                 timeout = config.ripping_file_ready_timeout
+
+        # Consecutive stable polls after which a still-undersized file is judged
+        # final (the rip has stopped), bounded well under `timeout`.
+        grace_checks = max(
+            required_stable,
+            int(TRUNCATED_STABLE_GRACE_SECONDS / check_interval) + 1,
+        )
 
         last_size = -1
         stable_count = 0
@@ -1469,22 +1512,37 @@ class MatchingCoordinator:
             f"timeout {timeout:.0f}s)"
         )
 
+        def _readable() -> bool:
+            try:
+                with open(file_path, "rb") as _f:
+                    _f.read(1)
+                return True
+            except PermissionError:
+                logger.debug(
+                    f"[MATCH] Title {title_id} (Job {job_id}): size stable but file "
+                    f"still locked ({file_path.name}) — waiting..."
+                )
+                return False
+
+        async def _broadcast(progress: float, actual: int) -> None:
+            await ws_manager.broadcast_title_update(
+                job_id,
+                title_id,
+                TitleState.QUEUED.value,
+                match_stage="waiting_for_file",
+                match_progress=progress,
+                expected_size_bytes=expected_size,
+                actual_size_bytes=actual,
+            )
+
         while time.monotonic() - start < timeout:
             if not file_path.exists():
                 logger.debug(
                     f"[MATCH] Title {title_id} (Job {job_id}): file not yet on disk, "
                     f"waiting... ({file_path.name})"
                 )
+                await _broadcast(0.0, 0)
                 await asyncio.sleep(check_interval)
-                await ws_manager.broadcast_title_update(
-                    job_id,
-                    title_id,
-                    TitleState.RIPPING.value,
-                    match_stage="waiting_for_file",
-                    match_progress=0.0,
-                    expected_size_bytes=expected_size,
-                    actual_size_bytes=0,
-                )
                 continue
 
             try:
@@ -1498,46 +1556,52 @@ class MatchingCoordinator:
 
             if current_size > 0 and current_size == last_size:
                 stable_count += 1
-
-                size_matches_expected = True
-                if expected_size > 0:
-                    size_ratio = current_size / expected_size
-                    size_matches_expected = size_ratio >= 0.85
+                size_ratio = current_size / expected_size if expected_size > 0 else 1.0
 
                 logger.debug(
                     f"[MATCH] Title {title_id} (Job {job_id}): file size stable "
                     f"({current_size / 1024 / 1024:.0f} MB) — check {stable_count}/{required_stable}"
                     + (
-                        f" — size {size_ratio * 100:.1f}% of expected {expected_size / 1024 / 1024:.0f} MB"
+                        f" — {size_ratio * 100:.1f}% of expected {expected_size / 1024 / 1024:.0f} MB"
                         if expected_size > 0
                         else ""
                     )
                 )
 
-                if stable_count >= required_stable and size_matches_expected:
-                    try:
-                        with open(file_path, "rb") as _f:
-                            _f.read(1)
-                    except PermissionError:
-                        logger.debug(
-                            f"[MATCH] Title {title_id} (Job {job_id}): size stable but "
-                            f"file still locked ({file_path.name}) — waiting..."
+                # Fast path: complete-enough and briefly stable.
+                if stable_count >= required_stable and size_ratio >= READY_SIZE_RATIO:
+                    if _readable():
+                        logger.info(
+                            f"[MATCH] Title {title_id} (Job {job_id}): file ready "
+                            f"({current_size / 1024 / 1024:.0f} MB, stable for "
+                            f"{stable_count * check_interval:.0f}s): {file_path.name}"
                         )
-                        stable_count = 0
-                        await asyncio.sleep(check_interval)
-                        continue
-                    logger.info(
-                        f"[MATCH] Title {title_id} (Job {job_id}): file ready "
-                        f"({current_size / 1024 / 1024:.0f} MB, stable for "
-                        f"{stable_count * check_interval:.0f}s): {file_path.name}"
-                    )
-                    return True
-                elif stable_count >= required_stable and not size_matches_expected:
-                    logger.debug(
-                        f"[MATCH] Title {title_id} (Job {job_id}): file size stable but only "
-                        f"{current_size / 1024 / 1024:.0f} MB of expected "
-                        f"{expected_size / 1024 / 1024:.0f} MB ({size_ratio * 100:.1f}%) — still writing"
-                    )
+                        return FileWaitResult.READY
+                    stable_count = 0
+
+                # Slow path: the file has stopped growing for the whole grace
+                # window but never reached the scanned size. The rip is done —
+                # decide whether it is merely smaller than projected or truncated.
+                elif stable_count >= grace_checks:
+                    if _readable():
+                        if expected_size > 0 and size_ratio < TRUNCATED_SIZE_RATIO:
+                            logger.warning(
+                                f"[MATCH] Title {title_id} (Job {job_id}): file stopped at "
+                                f"{current_size / 1024 / 1024:.0f} MB "
+                                f"({size_ratio * 100:.1f}% of expected "
+                                f"{expected_size / 1024 / 1024:.0f} MB), stable for "
+                                f"{stable_count * check_interval:.0f}s — treating as a "
+                                f"truncated/incomplete rip: {file_path.name}"
+                            )
+                            return FileWaitResult.TRUNCATED
+                        logger.warning(
+                            f"[MATCH] Title {title_id} (Job {job_id}): file stable at "
+                            f"{current_size / 1024 / 1024:.0f} MB "
+                            f"({size_ratio * 100:.1f}% of expected) for "
+                            f"{stable_count * check_interval:.0f}s — proceeding with match: "
+                            f"{file_path.name}"
+                        )
+                        return FileWaitResult.READY
                     stable_count = 0
             else:
                 if stable_count > 0:
@@ -1549,21 +1613,11 @@ class MatchingCoordinator:
 
             last_size = current_size
 
-            # Broadcast wait progress
             if expected_size > 0:
                 wait_progress = min(99.0, (current_size / expected_size) * 100.0)
             else:
                 wait_progress = min(99.0, (stable_count / required_stable) * 100.0)
-
-            await ws_manager.broadcast_title_update(
-                job_id,
-                title_id,
-                TitleState.RIPPING.value,
-                match_stage="waiting_for_file",
-                match_progress=wait_progress,
-                expected_size_bytes=expected_size,
-                actual_size_bytes=current_size,
-            )
+            await _broadcast(wait_progress, current_size)
 
             await asyncio.sleep(check_interval)
 
@@ -1572,7 +1626,7 @@ class MatchingCoordinator:
             f"[MATCH] Title {title_id} (Job {job_id}): timed out waiting for file "
             f"after {elapsed:.0f}s: {file_path.name}"
         )
-        return False
+        return FileWaitResult.TIMEOUT
 
     def on_match_task_done(self, task: asyncio.Task, job_id: int, title_id: int) -> None:
         """Handle matching task completion/failure."""
