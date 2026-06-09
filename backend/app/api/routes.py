@@ -2153,6 +2153,16 @@ async def reset_all_jobs(session: AsyncSession = Depends(get_session)) -> dict:
     return {"status": "reset", "deleted_count": result.rowcount}
 
 
+@router.post("/simulate/seed-incomplete-rip", dependencies=[Depends(require_debug)])
+async def simulate_seed_incomplete_rip(
+    volume_label: str = "DAMAGED_DISC_S1D1",
+) -> dict:
+    """Seed a REVIEW_NEEDED job with one incomplete_rip title. Debug mode only."""
+    from app.services.job_manager import job_manager
+
+    return await job_manager._simulation.seed_incomplete_rip(volume_label)
+
+
 @router.post("/simulate/insert-disc-from-staging", dependencies=[Depends(require_debug)])
 async def simulate_insert_disc_from_staging(
     staging_path: str,
