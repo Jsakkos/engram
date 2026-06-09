@@ -420,40 +420,7 @@ class IdentificationCoordinator:
                 # before the user disambiguates.
                 if job.content_type == ContentType.TV and job.detected_title and not _collision:
                     if job.detected_season is None:
-                        # Disc label carried no season (box-set labels like
-                        # "Eureka D3"). A single-season show needs no prompt;
-                        # otherwise park the job for a season pick BEFORE
-                        # ripping — downstream, an unknown season used to skip
-                        # subtitle download entirely and dead-end every title
-                        # in review (#370). Resumes via set_name_and_resume.
-                        seasons = await self._resolve_all_season_numbers(
-                            job.detected_title, tmdb_id=job.tmdb_id
-                        )
-                        if len(seasons) == 1:
-                            job.detected_season = 1
-                            await session.commit()
-                        else:
-                            reason = (
-                                f"Identified as '{job.detected_title}' but the season "
-                                f"could not be detected from the disc label — select a "
-                                f"season to continue."
-                            )
-                            await self._state_machine.transition_to_review(
-                                job, session, reason=reason, broadcast=False
-                            )
-                            await ws_manager.broadcast_job_update(
-                                job_id,
-                                JobState.REVIEW_NEEDED.value,
-                                content_type=job.content_type.value,
-                                detected_title=job.detected_title,
-                                detected_season=None,
-                                total_titles=job.total_titles,
-                                review_reason=reason,
-                            )
-                            logger.info(
-                                f"Job {job_id}: season unknown for "
-                                f"'{job.detected_title}', prompting user for season"
-                            )
+                        if await self._gate_unknown_season_disc(job, session, job_id):
                             return
                     await self._start_tv_subtitle_prefetch(job)
 
@@ -532,6 +499,44 @@ class IdentificationCoordinator:
             except Exception as e:
                 logger.exception(f"Error identifying disc for job {job_id}")
                 await self._state_machine.transition_to_failed(job, session, str(e))
+
+    async def _gate_unknown_season_disc(self, job, session, job_id: int) -> bool:
+        """Resolve the unknown-season fate of a TV disc (#370).
+
+        Single-season show → auto-pin S1 and continue. Multi-season (or
+        unresolvable) → park in REVIEW_NEEDED with the season prompt and
+        return True so the caller stops before ripping.
+        """
+        # Disc label carried no season (box-set labels like
+        # "Eureka D3"). A single-season show needs no prompt;
+        # otherwise park the job for a season pick BEFORE
+        # ripping — downstream, an unknown season used to skip
+        # subtitle download entirely and dead-end every title
+        # in review (#370). Resumes via set_name_and_resume.
+        seasons = await self._resolve_all_season_numbers(job.detected_title, tmdb_id=job.tmdb_id)
+        if len(seasons) == 1:
+            job.detected_season = 1
+            await session.commit()
+            return False
+        reason = (
+            f"Identified as '{job.detected_title}' but the season "
+            f"could not be detected from the disc label — select a "
+            f"season to continue."
+        )
+        await self._state_machine.transition_to_review(job, session, reason=reason, broadcast=False)
+        await ws_manager.broadcast_job_update(
+            job_id,
+            JobState.REVIEW_NEEDED.value,
+            content_type=job.content_type.value,
+            detected_title=job.detected_title,
+            detected_season=None,
+            total_titles=job.total_titles,
+            review_reason=reason,
+        )
+        logger.info(
+            f"Job {job_id}: season unknown for '{job.detected_title}', prompting user for season"
+        )
+        return True
 
     async def _resolve_all_season_numbers(
         self, title: str, tmdb_id: int | None = None
