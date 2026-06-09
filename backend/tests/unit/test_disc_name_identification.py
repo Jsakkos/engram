@@ -318,3 +318,77 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
     assert analysis.tmdb_id == 99966
     assert analysis.detected_season == 3
     assert call_count["n"] == 2  # once for garbled label, once for disc name
+
+
+@pytest.mark.asyncio
+async def test_run_classification_uses_disc_name_when_label_resolves(monkeypatch):
+    """DINFO corrects a garbled-but-resolved label (BREAKINGBADS2 -> Breaking Bad)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
+
+    coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    analyst = DiscAnalyst()
+    analyst.set_config(AppConfig())
+    coordinator._analyst = analyst
+    coordinator._get_discdb_mappings = MagicMock(return_value=[])
+    coordinator._set_discdb_mappings = MagicMock()
+
+    titles = _tv_titles()
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "fake-key"
+    mock_config.ai_identification_enabled = False
+    mock_config.ai_api_key = None
+    mock_config.discdb_enabled = False
+    mock_config.analyst_movie_min_duration = 80 * 60
+    mock_config.analyst_tv_duration_variance = 2 * 60
+    mock_config.analyst_tv_min_cluster_size = 3
+    mock_config.analyst_tv_min_duration = 18 * 60
+    mock_config.analyst_tv_max_duration = 70 * 60
+    mock_config.analyst_movie_dominance_threshold = 0.6
+
+    bb_signal = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1396,
+        tmdb_name="Breaking Bad",
+    )
+
+    call_count = {"n": 0}
+
+    def fake_classify_from_tmdb(name: str, api_key: str):
+        call_count["n"] += 1
+        if name == "Breakingbad":
+            return bb_signal  # label-derived name resolves (via TMDB variation)
+        return None
+
+    mock_job = MagicMock()
+    mock_job.volume_label = "BREAKINGBADS2"
+    mock_job.detected_season = None
+    mock_job.content_hash = None
+    mock_job.discdb_slug = None
+    mock_job.discdb_disc_slug = None
+    mock_job.discdb_mappings_json = None
+    mock_job.play_all_indices_json = None
+
+    mock_session = AsyncMock()
+
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+    ):
+        analysis = await coordinator._run_classification(
+            mock_job,
+            job_id=1,
+            titles=titles,
+            session=mock_session,
+            disc_name="Breaking Bad: Season 2: Disc 1",
+        )
+
+    assert analysis.detected_name == "Breaking Bad"
+    assert analysis.detected_season == 2
+    assert analysis.tmdb_id == 1396
+    assert call_count["n"] == 1  # only the label query; no disc-name fallback call

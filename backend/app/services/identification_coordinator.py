@@ -1132,22 +1132,28 @@ class IdentificationCoordinator:
                     f"{tmdb_signal.tmdb_name}"
                 )
 
-        # DINFO disc-name TMDB fallback — when the volume label gives a garbled name
-        # (e.g. STRANGENEWWORLDS), try MakeMKV's disc display name from DINFO:6 instead.
+        # Parse the MakeMKV DINFO disc name unconditionally (when present). Its
+        # clean, human-readable title is used to corroborate the TMDB name and as a
+        # better base name than the volume label — even when the volume label
+        # already resolved on TMDB (the BREAKINGBADS2 -> "Breaking Bad" case).
         disc_name_title: str | None = None
         disc_name_season: int | None = None
-        if not tmdb_signal and disc_name and config.tmdb_api_key:
+        if disc_name:
             parsed_title, parsed_season = DiscAnalyst._parse_disc_name(disc_name)
             if parsed_title:
-                disc_tmdb_signal = _try_tmdb(parsed_title, "TMDB disc-name fallback failed")
-                if disc_tmdb_signal:
-                    tmdb_signal = disc_tmdb_signal
-                    disc_name_title = parsed_title
-                    disc_name_season = parsed_season
-                    logger.info(
-                        f"Job {job_id}: TMDB fallback via disc name '{parsed_title}' succeeded "
-                        f"(label '{job.volume_label}' gave garbled name)"
-                    )
+                disc_name_title = parsed_title
+                disc_name_season = parsed_season
+
+        # DINFO disc-name TMDB fallback — when the volume label gave no TMDB signal,
+        # resolve identity from the disc name instead.
+        if not tmdb_signal and disc_name_title and config.tmdb_api_key:
+            disc_tmdb_signal = _try_tmdb(disc_name_title, "TMDB disc-name fallback failed")
+            if disc_tmdb_signal:
+                tmdb_signal = disc_tmdb_signal
+                logger.info(
+                    f"Job {job_id}: TMDB fallback via disc name '{disc_name_title}' succeeded "
+                    f"(label '{job.volume_label}' gave garbled name)"
+                )
 
         # AI-powered identification fallback (not for staging)
         ai_identified_name = None
@@ -1186,13 +1192,14 @@ class IdentificationCoordinator:
             except Exception as e:
                 logger.warning(f"Job {job_id}: AI identification failed: {e}", exc_info=True)
 
-        # Analyze disc content — pass disc_name_title as name_hint when available so the
-        # analyst uses it directly instead of re-parsing the (potentially garbled) volume label.
+        # Analyze disc content — pass disc_name_title so the analyst uses the clean
+        # DINFO title as the base name and as a corroboration signal for the
+        # authoritative TMDB name (instead of the garbled volume-label parse).
         analysis = self._analyst.analyze(
             titles,
             job.volume_label,
             tmdb_signal=tmdb_signal,
-            name_hint=disc_name_title or None,
+            disc_title=disc_name_title or None,
         )
 
         # If the disc-name fallback found a season the volume label didn't have, propagate it
