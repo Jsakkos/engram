@@ -19,9 +19,30 @@ describe('getRerippableState', () => {
     expect(s.attempts).toBe(2);
   });
 
-  it('returns not-rerippable for match-level review and bad input', () => {
+  it('returns not-rerippable for a match-level review code (low_confidence)', () => {
     expect(getRerippableState(JSON.stringify({ error: 'low_confidence' })).isRerippable).toBe(false);
+  });
+
+  it('returns not-rerippable for null input', () => {
     expect(getRerippableState(null).isRerippable).toBe(false);
+  });
+
+  it('returns not-rerippable for unparseable input', () => {
     expect(getRerippableState('not json').isRerippable).toBe(false);
+  });
+
+  it('attempts defaults to 0 when rerip_attempts is absent from an incomplete_rip payload', () => {
+    const md = JSON.stringify({ error: 'incomplete_rip', rerip_eligible: true });
+    const s = getRerippableState(md);
+    expect(s.isRerippable).toBe(true);
+    expect(s.attempts).toBe(0);
+  });
+
+  it('rip_stalled with rerip_eligible true yields autoEligible true', () => {
+    const md = JSON.stringify({ error: 'rip_stalled', rerip_eligible: true, rerip_attempts: 1 });
+    const s = getRerippableState(md);
+    expect(s.isRerippable).toBe(true);
+    expect(s.autoEligible).toBe(true);
+    expect(s.attempts).toBe(1);
   });
 });

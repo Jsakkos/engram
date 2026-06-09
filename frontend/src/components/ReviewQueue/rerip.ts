@@ -18,6 +18,7 @@ const EMPTY: RerippableState = {
   autoEligible: false,
   attempts: 0,
 };
+Object.freeze(EMPTY);
 
 /** Parse a title's `match_details` JSON into its re-rip state (Feature C). */
 export function getRerippableState(matchDetails?: string | null): RerippableState {

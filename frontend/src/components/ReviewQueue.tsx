@@ -17,6 +17,8 @@ import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
 import { llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
+import { getRerippableState } from './ReviewQueue/rerip';
+import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
@@ -781,6 +783,13 @@ function ReviewQueue() {
                                 animate={{ opacity: 1, y: 0 }}
                             >
                                 <SvPanel pad={20}>
+                                    {(() => {
+                                        const md = typeof title.match_details === 'string' ? title.match_details : title.match_details ? JSON.stringify(title.match_details) : null;
+                                        const rerip = getRerippableState(md);
+                                        return rerip.isRerippable ? (
+                                            <DamagedTrackNotice jobId={parseInt(jobId!)} titleId={title.id} state={rerip} />
+                                        ) : null;
+                                    })()}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
                                         {/* Title info */}
                                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1105,6 +1114,14 @@ function ReviewQueue() {
                             <SvLabel>Inspector{selectedTitle ? ` — title #${selectedTitle.title_index}` : ''}</SvLabel>
                         </div>
                         {selectedTitle ? (
+                            <>
+                            {(() => {
+                                const md = typeof selectedTitle.match_details === 'string' ? selectedTitle.match_details : selectedTitle.match_details ? JSON.stringify(selectedTitle.match_details) : null;
+                                const rerip = getRerippableState(md);
+                                return rerip.isRerippable ? (
+                                    <DamagedTrackNotice jobId={parseInt(jobId!)} titleId={selectedTitle.id} state={rerip} />
+                                ) : null;
+                            })()}
                             <Inspector
                                 title={selectedTitle}
                                 job={job}
@@ -1127,6 +1144,7 @@ function ReviewQueue() {
                                 onTryLLMMatch={handleTryLLMMatch}
                                 onAcceptLLMSuggestion={handleAcceptLLMSuggestion}
                             />
+                            </>
                         ) : (
                             <SvPanel pad={24}>
                                 <div style={{ ...monoLabelStyle, textAlign: 'center' }}>
