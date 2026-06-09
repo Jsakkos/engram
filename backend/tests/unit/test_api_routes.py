@@ -171,12 +171,9 @@ class TestJobEndpoints:
         assert listed[confirmed.id]["tmdb_id"] == 18409
 
     async def test_tmdb_identity_fields_exposed_in_job_detail(self, client):
-        """The history drill-down (JobDetailResponse) must also carry the full
-        TMDB identity — including tmdb_year — so the detail panel can render
-        "Name (year) · TMDB #id" like the re-identify modal. JobDetailResponse
-        is hand-assembled via build_job_detail() (not from_attributes), so each
-        field needs an entry in both the model AND the dict or it's silently
-        dropped at the serializer."""
+        """build_job_detail() assembles the detail dict manually, so tmdb_year must be
+        declared in JobDetailResponse AND added to the dict — Pydantic silently drops a
+        field present in only one of the two."""
         confirmed = await _seed_job(tmdb_id=18409, tmdb_name="The Office", tmdb_year=2005)
 
         detail = (await client.get(f"/api/jobs/{confirmed.id}/detail")).json()
