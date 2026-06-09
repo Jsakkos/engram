@@ -1140,7 +1140,11 @@ class EpisodeMatcher:
         # Remove duplicates while preserving order
         reference_files = list(dict.fromkeys(reference_files))
         logger.debug(f"Found {len(reference_files)} reference files for season {season_number}")
-        self.reference_files_cache[cache_key] = reference_files
+        # Never cache an EMPTY corpus: references can arrive later in this
+        # process's lifetime (retry-subtitles, mid-job download), and a cached
+        # empty hit would mask them for every subsequent match (#370).
+        if reference_files:
+            self.reference_files_cache[cache_key] = reference_files
         return reference_files
 
     def _model_config(self) -> dict:
