@@ -7,6 +7,7 @@ size-proportional timeout (which wedged job #99 / Breaking Bad S2 t02 for ~4.3h)
 """
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -158,3 +159,93 @@ async def test_growing_file_is_never_truncated(tmp_path, monkeypatch):
     )
     assert result == FileWaitResult.READY
     assert result != FileWaitResult.TRUNCATED
+
+
+async def _seed_queued_title() -> tuple[int, int]:
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="F:",
+            volume_label="SHOW_S2D1",
+            content_type=ContentType.TV,
+            state=JobState.MATCHING,
+            detected_title="Some Show",
+            detected_season=2,
+            disc_number=1,
+            staging_path="/tmp/staging",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=2,
+            duration_seconds=2819,
+            file_size_bytes=8_200_000_000,
+            state=TitleState.QUEUED,
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+        return job.id, title.id
+
+
+async def _reload_title(title_id: int) -> DiscTitle:
+    async with _unit_session_factory() as session:
+        return await session.get(DiscTitle, title_id)
+
+
+@pytest.mark.asyncio
+async def test_truncated_result_routes_title_to_review(monkeypatch):
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_queued_title()
+    coord = _make_coord()
+    coord._check_job_completion = AsyncMock()
+    handled = await coord._handle_file_wait_result(
+        FileWaitResult.TRUNCATED, job_id, title_id, Path("t02.mkv")
+    )
+    assert handled is True
+    title = await _reload_title(title_id)
+    assert title.state == TitleState.REVIEW
+    assert "Incomplete rip" in (title.match_details or "")
+    coord._check_job_completion.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_timeout_result_fails_title(monkeypatch):
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_queued_title()
+    coord = _make_coord()
+    coord._check_job_completion = AsyncMock()
+    handled = await coord._handle_file_wait_result(
+        FileWaitResult.TIMEOUT, job_id, title_id, Path("t02.mkv")
+    )
+    assert handled is True
+    title = await _reload_title(title_id)
+    assert title.state == TitleState.FAILED
+    coord._check_job_completion.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ready_result_proceeds(monkeypatch):
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_queued_title()
+    coord = _make_coord()
+    coord._check_job_completion = AsyncMock()
+    handled = await coord._handle_file_wait_result(
+        FileWaitResult.READY, job_id, title_id, Path("t02.mkv")
+    )
+    assert handled is False
+    title = await _reload_title(title_id)
+    assert title.state == TitleState.QUEUED  # untouched — caller proceeds to match
+
+
+@pytest.mark.asyncio
+async def test_legacy_truthy_result_proceeds(monkeypatch):
+    # Existing integration tests patch _wait_for_file_ready to return True;
+    # the dispatcher must treat any non-TRUNCATED/non-TIMEOUT value as "proceed".
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_queued_title()
+    coord = _make_coord()
+    coord._check_job_completion = AsyncMock()
+    handled = await coord._handle_file_wait_result(True, job_id, title_id, Path("t02.mkv"))
+    assert handled is False

@@ -708,19 +708,8 @@ class MatchingCoordinator:
             )
 
         # 3. Wait for the file to be fully written before matching
-        file_ready = await self._wait_for_file_ready(file_path, title_id, job_id)
-        if not file_ready:
-            logger.error(
-                f"[MATCH] Title {title_id} (Job {job_id}): file never became ready, "
-                f"skipping match for {file_path.name}"
-            )
-            async with async_session() as session:
-                title = await session.get(DiscTitle, title_id)
-                if title:
-                    title.state = TitleState.FAILED
-                    session.add(title)
-                    await session.commit()
-                await self._check_job_completion(session, job_id)
+        wait_result = await self._wait_for_file_ready(file_path, title_id, job_id)
+        if await self._handle_file_wait_result(wait_result, job_id, title_id, file_path):
             return
 
         # 4. Duration pre-filter. Fetch episode runtimes WITHOUT a DB connection
@@ -1461,6 +1450,43 @@ class MatchingCoordinator:
         )
         await self._check_job_completion(session, job_id)
         return True
+
+    async def _handle_file_wait_result(
+        self,
+        wait_result: FileWaitResult,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+    ) -> bool:
+        """Act on a `_wait_for_file_ready` outcome.
+
+        Returns True if the title was routed to review/failed and the caller
+        must stop processing it; False to proceed with matching. Any value that
+        is not TRUNCATED or TIMEOUT (e.g. a legacy ``True`` from older test
+        stubs) is treated as READY.
+        """
+        if wait_result == FileWaitResult.TRUNCATED:
+            # Reuse the standard failure convention: routes the (still-active)
+            # title to REVIEW with a structured match_details reason and runs
+            # the job-completion check so the rest of the disc can finish.
+            await self._handle_match_failure(job_id, title_id, INCOMPLETE_RIP_MESSAGE)
+            return True
+
+        if wait_result == FileWaitResult.TIMEOUT:
+            logger.error(
+                f"[MATCH] Title {title_id} (Job {job_id}): file never became ready, "
+                f"skipping match for {file_path.name}"
+            )
+            async with async_session() as session:
+                title = await session.get(DiscTitle, title_id)
+                if title:
+                    title.state = TitleState.FAILED
+                    session.add(title)
+                    await session.commit()
+                await self._check_job_completion(session, job_id)
+            return True
+
+        return False
 
     async def _wait_for_file_ready(
         self,
