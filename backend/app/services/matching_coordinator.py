@@ -1587,9 +1587,14 @@ class MatchingCoordinator:
                 stable_count += 1
                 size_ratio = current_size / expected_size if expected_size > 0 else 1.0
 
+                # A full-size file only needs `required_stable` checks (fast
+                # path); an undersized one counts up to `grace_checks` before the
+                # slow-path decision. Log whichever threshold actually applies so
+                # the line doesn't read like a runaway loop (e.g. "check 19/3").
+                size_threshold = required_stable if size_ratio >= READY_SIZE_RATIO else grace_checks
                 logger.debug(
                     f"[MATCH] Title {title_id} (Job {job_id}): file size stable "
-                    f"({current_size / 1024 / 1024:.0f} MB) — check {stable_count}/{required_stable}"
+                    f"({current_size / 1024 / 1024:.0f} MB) — check {stable_count}/{size_threshold}"
                     + (
                         f" — {size_ratio * 100:.1f}% of expected {expected_size / 1024 / 1024:.0f} MB"
                         if expected_size > 0
@@ -1599,7 +1604,7 @@ class MatchingCoordinator:
 
                 # Fast path: complete-enough and briefly stable.
                 if stable_count >= required_stable and size_ratio >= READY_SIZE_RATIO:
-                    if _readable():
+                    if await asyncio.to_thread(_readable):
                         logger.info(
                             f"[MATCH] Title {title_id} (Job {job_id}): file ready "
                             f"({current_size / 1024 / 1024:.0f} MB, stable for "
@@ -1612,7 +1617,7 @@ class MatchingCoordinator:
                 # window but never reached the scanned size. The rip is done —
                 # decide whether it is merely smaller than projected or truncated.
                 elif stable_count >= grace_checks:
-                    if _readable():
+                    if await asyncio.to_thread(_readable):
                         if expected_size > 0 and size_ratio < TRUNCATED_SIZE_RATIO:
                             logger.warning(
                                 f"[MATCH] Title {title_id} (Job {job_id}): file stopped at "
