@@ -481,6 +481,9 @@ class JobManager:
             self._drive_locks[drive_letter] = asyncio.Lock()
 
         async with self._drive_locks[drive_letter]:
+            # Fingerprint the inserted disc so dedup can tell two same-labelled
+            # discs apart (e.g. season Disc 1 vs Disc 2 both 'BREAKINGBADS2').
+            new_hash = await self._compute_disc_hash(drive_letter)
             async with async_session() as session:
                 # Disc-required jobs (the disc is physically in the drive) always
                 # block a new job. Ripping EJECTS the disc + calls notify_ejected()
@@ -513,7 +516,10 @@ class JobManager:
                         j
                         for j in active_jobs
                         if j.state in disc_required_states
-                        or (j.state in post_eject_states and j.volume_label == volume_label)
+                        or (
+                            j.state in post_eject_states
+                            and self._same_disc(j, volume_label, new_hash)
+                        )
                     ),
                     None,
                 )
@@ -546,6 +552,7 @@ class JobManager:
                     volume_label=volume_label,
                     staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
+                    content_hash=new_hash,
                 )
 
                 session.add(job)
