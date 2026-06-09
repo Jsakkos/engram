@@ -1,8 +1,100 @@
 """Unit tests for single-track re-rip (Feature C)."""
 
-from app.models.disc_job import DiscTitle
+import json
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from app.api.websocket import manager as ws_manager
+from app.models import DiscJob, JobState
+from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.services import matching_coordinator as mc
+from app.services.job_state_machine import JobStateMachine
+from app.services.matching_coordinator import (
+    RERIP_MAX_ATTEMPTS,
+    MatchingCoordinator,
+)
+from tests.unit.conftest import _unit_session_factory
 
 
 def test_disc_title_has_rerip_attempts_default_zero():
     t = DiscTitle(job_id=1, title_index=0, duration_seconds=100)
     assert t.rerip_attempts == 0
+
+
+@pytest.fixture(autouse=True)
+def _patch_session(monkeypatch):
+    monkeypatch.setattr(mc, "async_session", _unit_session_factory)
+
+
+def _make_coord() -> MatchingCoordinator:
+    broadcaster = MagicMock()
+    coord = MatchingCoordinator(broadcaster, JobStateMachine(broadcaster))
+    coord._check_job_completion = AsyncMock()
+    return coord
+
+
+async def _seed_title(state: TitleState, attempts: int = 0) -> tuple[int, int]:
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="F:",
+            volume_label="SHOW_S2D1",
+            content_type=ContentType.TV,
+            state=JobState.MATCHING,
+            staging_path="/tmp/staging",
+            content_hash="ABC123",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=2,
+            duration_seconds=2819,
+            state=state,
+            rerip_attempts=attempts,
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+        return job.id, title.id
+
+
+async def _reload(title_id: int) -> DiscTitle:
+    async with _unit_session_factory() as session:
+        return await session.get(DiscTitle, title_id)
+
+
+@pytest.mark.asyncio
+async def test_route_marks_review_with_code_and_eligible(monkeypatch):
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_title(TitleState.QUEUED, attempts=0)
+    coord = _make_coord()
+    await coord.route_rip_failure_to_review(job_id, title_id, "incomplete_rip", "boom")
+    title = await _reload(title_id)
+    assert title.state == TitleState.REVIEW
+    d = json.loads(title.match_details)
+    assert d["error"] == "incomplete_rip"
+    assert d["rerip_eligible"] is True
+    assert d["rerip_attempts"] == 0
+    coord._check_job_completion.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_route_marks_ineligible_at_cap(monkeypatch):
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_title(TitleState.RIPPING, attempts=RERIP_MAX_ATTEMPTS)
+    coord = _make_coord()
+    await coord.route_rip_failure_to_review(job_id, title_id, "incomplete_rip", "boom")
+    d = json.loads((await _reload(title_id)).match_details)
+    assert d["rerip_eligible"] is False
+    assert "stopped after" in d["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_route_ignores_terminal_title(monkeypatch):
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_title(TitleState.MATCHED)
+    coord = _make_coord()
+    await coord.route_rip_failure_to_review(job_id, title_id, "incomplete_rip", "boom")
+    assert (await _reload(title_id)).state == TitleState.MATCHED  # untouched
