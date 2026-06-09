@@ -17,6 +17,7 @@ and files everything into your media library -- automatically.
 [![Release](https://img.shields.io/github/v/release/Jsakkos/engram?style=flat-square&color=06b6d4)](https://github.com/Jsakkos/engram/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/Jsakkos/engram/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Jsakkos/engram/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/Jsakkos/engram?style=flat-square&color=ec4899)](https://github.com/Jsakkos/engram/blob/main/LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/G8fjjGswdc)
 
 </div>
 
@@ -95,6 +96,7 @@ Season folders may be written `Season 1` or `Season 01`. When there's no season 
 <div style="text-align: center;" markdown>
 
 [Get Started](getting-started/installation.md){ .md-button .md-button--primary }
+[Join Discord](https://discord.gg/G8fjjGswdc){ .md-button }
 [API Reference](api/rest.md){ .md-button }
 [Architecture](architecture/overview.md){ .md-button }
 [Brand System](development/brand.md){ .md-button }
