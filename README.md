@@ -16,6 +16,7 @@
   <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/github/v/release/Jsakkos/engram?style=flat-square&color=06b6d4" alt="Release" /></a>
   <a href="https://github.com/Jsakkos/engram/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Jsakkos/engram/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Jsakkos/engram?style=flat-square&color=ec4899" alt="License" /></a>
+  <a href="https://discord.gg/G8fjjGswdc"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" /></a>
   <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/badges/docs/badges/windows-downloads.json&style=flat-square" alt="Windows Downloads" /></a>
   <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/badges/docs/badges/linux-downloads.json&style=flat-square" alt="Linux Downloads" /></a>
   <a href="https://github.com/Jsakkos/engram/releases"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Jsakkos/engram/badges/docs/badges/macos-downloads.json&style=flat-square" alt="macOS Downloads" /></a>
@@ -179,6 +180,10 @@ Full documentation is published at **[jsakkos.github.io/engram](https://jsakkos.
 - **API reference** — [REST Endpoints](docs/api/rest.md) · [Data Models](docs/api/models.md)
 - **Development** — [Contributing](CONTRIBUTING.md) · [Testing](docs/development/testing.md) · [Subtitle Cache Build](docs/development/subtitle-cache.md)
 - **[Changelog](CHANGELOG.md)**
+
+## Community
+
+Questions, ideas, or just want to share what you're ripping? Join the Engram community on **[Discord](https://discord.gg/G8fjjGswdc)**. It's the fastest way to get help, follow development, and talk to other users. For bugs and feature requests, [open an issue](https://github.com/Jsakkos/engram/issues).
 
 ## License
 
