@@ -4,7 +4,7 @@ Tests TV vs Movie detection heuristics with various title patterns,
 including TMDB signal integration.
 """
 
-from app.core.analyst import DiscAnalyst, TitleInfo
+from app.core.analyst import DiscAnalyst, TitleInfo, _names_are_similar
 from app.core.tmdb_classifier import TmdbSignal
 from app.models.app_config import AppConfig
 from app.models.disc_job import ContentType
@@ -622,26 +622,21 @@ class TestNamesAreSimilar:
     """Whitespace/punctuation-insensitive title similarity (BREAKINGBADS2 bug)."""
 
     def test_concatenated_label_matches_spaced_title(self):
-        from app.core.analyst import _names_are_similar
-
         assert _names_are_similar("Breakingbad", "Breaking Bad") is True
 
     def test_concatenated_multiword_label_matches(self):
-        from app.core.analyst import _names_are_similar
-
         assert _names_are_similar("Strangenewworlds", "Strange New Worlds") is True
 
     def test_punctuation_difference_still_matches(self):
-        from app.core.analyst import _names_are_similar
-
         assert _names_are_similar("Star Trek Picard", "Star Trek: Picard") is True
 
     def test_unrelated_concatenated_name_rejected(self):
-        from app.core.analyst import _names_are_similar
-
         assert _names_are_similar("Breakingbad", "Friends") is False
 
     def test_unrelated_spaced_names_rejected(self):
-        from app.core.analyst import _names_are_similar
-
         assert _names_are_similar("The Italian Job", "Idioms Origins Volume 1") is False
+
+    def test_collapsed_equality_only_match(self):
+        # Jaccard is 0 here ("startrekpicard" is a single token with no overlap),
+        # so this only passes via the whitespace-insensitive collapsed path.
+        assert _names_are_similar("Startrekpicard", "Star Trek: Picard") is True
