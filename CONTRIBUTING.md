@@ -1,5 +1,7 @@
 # Contributing to Engram
 
+Have a question or want to talk through an idea before you start? Join us on [Discord](https://discord.gg/G8fjjGswdc) — it's the quickest way to reach the maintainers and other contributors.
+
 ## Local development setup
 
 ### Prerequisites

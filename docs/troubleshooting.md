@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common setup and runtime issues, and how to resolve them. If something here doesn't cover your problem, open an [issue](https://github.com/Jsakkos/engram/issues) — a [diagnostics bundle](#diagnostics-bundle) makes it much easier to help.
+Common setup and runtime issues, and how to resolve them. If something here doesn't cover your problem, ask on [Discord](https://discord.gg/G8fjjGswdc) or open an [issue](https://github.com/Jsakkos/engram/issues) — a [diagnostics bundle](#diagnostics-bundle) makes it much easier to help.
 
 ## FFmpeg not detected (Windows)
 
