@@ -317,3 +317,16 @@ async def test_rerip_title_manual_rejects_wrong_disc(monkeypatch):
 
     with pytest.raises(ValueError, match="different disc"):
         await job_manager.rerip_title_manual(job_id, title_id)
+
+
+@pytest.mark.asyncio
+async def test_rerip_title_manual_rejects_busy_job(monkeypatch):
+    """Manual re-rip is rejected when the job isn't settled in REVIEW_NEEDED."""
+    from app.services.job_manager import job_manager
+
+    job_id, title_id = await _seed_rerip_job(eligible=True, state=JobState.MATCHING)
+    monkeypatch.setattr(job_manager, "_compute_disc_hash", AsyncMock(return_value="ABC123"))
+    monkeypatch.setattr(job_manager, "rerip_titles", AsyncMock())
+
+    with pytest.raises(ValueError, match="not awaiting re-rip review"):
+        await job_manager.rerip_title_manual(job_id, title_id)

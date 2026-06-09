@@ -1600,6 +1600,10 @@ class JobManager:
                 raise ValueError("Job or title not found")
             if title.state != TitleState.REVIEW:
                 raise ValueError("Title is not awaiting re-rip")
+            if job.state != JobState.REVIEW_NEEDED:
+                # rerip_titles can only transition REVIEW_NEEDED -> RIPPING; a
+                # busy job (RIPPING/MATCHING/ORGANIZING) would silently no-op.
+                raise ValueError("Job is not awaiting re-rip review")
             drive_id = job.drive_id
             job_hash = job.content_hash
 
