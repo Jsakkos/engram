@@ -90,6 +90,8 @@ export interface DiscData {
    *  Guards the identity-review banner against the title-load race. */
   tracksLoaded?: boolean;
   conflictStatus?: string;
+  /** True when at least one title on this disc has a rip-level failure (re-rippable). */
+  hasDamagedTrack?: boolean;
 }
 
 interface DiscCardProps {
@@ -363,6 +365,22 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   discLabel={disc.discLabel}
                 />
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {disc.hasDamagedTrack && (
+                    <span
+                      data-testid="disccard-damaged-badge"
+                      title="One or more tracks failed to rip and may need re-ripping"
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.2em",
+                        color: sv.magenta,
+                        textShadow: `0 0 6px ${sv.magenta}66`,
+                      }}
+                    >
+                      Damaged track
+                    </span>
+                  )}
                   {failedTrackCount > 0 && (
                     <span
                       title="Some tracks failed during ripping"
