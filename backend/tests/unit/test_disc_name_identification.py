@@ -95,6 +95,10 @@ def test_parse_disc_info_no_cinfo_returns_empty_string():
         ("Supernatural Season 11 - Disc 2", "Supernatural", 11),
         # Disc-only name: clean the title, no season.
         ("Firefly Disc 1", "Firefly", None),
+        # Colon-separated "Title: Season N: Disc M" (some Blu-ray DINFO names).
+        ("Breaking Bad: Season 2: Disc 1", "Breaking Bad", 2),
+        # Generic placeholder disc names carry no title.
+        ("Blu-ray disc", None, None),
         ("", None, None),
         ("  ", None, None),
     ],

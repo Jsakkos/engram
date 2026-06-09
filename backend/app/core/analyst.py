@@ -70,6 +70,11 @@ def _collapsed(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
+def _is_generic_disc_name(name: str) -> bool:
+    """True if a DINFO disc name is a generic placeholder (e.g. 'Blu-ray disc')."""
+    return re.sub(r"[^A-Z0-9]", "", name.upper()) in _GENERIC_VOLUME_LABELS
+
+
 def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
     """Return True if two title strings refer to the same title.
 
@@ -869,16 +874,17 @@ class DiscAnalyst:
         name = disc_name.strip()
         season: int | None = None
 
-        # Strip a trailing disc indicator with OR without parentheses/dash:
-        # "(Disc 1)", "Disc 1", "- Disc 1", "Disk 1", "Disc1". Without this, a
-        # space-separated "Disc N" survives and leaves "Season N" mid-string,
-        # so the end-anchored season patterns below never match (issue #303).
+        # Strip a trailing disc indicator with OR without parentheses/dash/colon:
+        # "(Disc 1)", "Disc 1", "- Disc 1", ": Disc 1", "Disk 1", "Disc1".
         name = re.sub(
-            r"\s*[-–]?\s*\(?\s*Dis[ck]\s*\d+\s*\)?\s*$", "", name, flags=re.IGNORECASE
+            r"\s*[-–:]?\s*\(?\s*Dis[ck]\s*\d+\s*\)?\s*$", "", name, flags=re.IGNORECASE
         ).strip()
 
-        # Extract "- Season N" or "Season N" suffix
-        m = re.search(r"\s*[-–]\s*Season\s+(\d+)\s*$", name, re.IGNORECASE)
+        # Extract a trailing "- Season N" / ": Season N" / "Season N" suffix. The
+        # dash/colon variant is tried first so the separator is consumed cleanly
+        # (e.g. "Breaking Bad: Season 2" -> "Breaking Bad"). Colons *inside* a title
+        # are untouched because these patterns are anchored to the end of the string.
+        m = re.search(r"\s*[-–:]\s*Season\s+(\d+)\s*$", name, re.IGNORECASE)
         if m:
             season = int(m.group(1))
             name = name[: m.start()].strip()
@@ -888,8 +894,11 @@ class DiscAnalyst:
                 season = int(m.group(1))
                 name = name[: m.start()].strip()
 
-        # Reject empty or clearly generic results
-        if not name or len(name) < 2:
+        # Trim any leftover trailing separator punctuation (e.g. a dangling colon).
+        name = name.rstrip(" :-–").strip()
+
+        # Reject empty, too-short, or generic placeholder results.
+        if not name or len(name) < 2 or _is_generic_disc_name(name):
             return None, None
 
         return name, season
