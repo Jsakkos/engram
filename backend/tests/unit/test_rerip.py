@@ -284,3 +284,36 @@ async def test_find_rerip_job_excludes_ineligible_and_busy():
     await _seed_rerip_job(eligible=True, hash_="OTHER", state=JobState.MATCHING)  # still busy
     assert await job_manager._find_rerip_job("ABC123") is None
     assert await job_manager._find_rerip_job("OTHER") is None
+
+
+@pytest.mark.asyncio
+async def test_rerip_title_manual_verifies_hash_and_spawns(monkeypatch):
+    import asyncio
+
+    from app.services.job_manager import job_manager
+
+    job_id, title_id = await _seed_rerip_job(eligible=False)  # cap reached: manual bypasses it
+
+    monkeypatch.setattr(job_manager, "_compute_disc_hash", AsyncMock(return_value="ABC123"))
+    spawned = {}
+
+    async def fake_rerip(jid, tids):
+        spawned["args"] = (jid, tids)
+
+    monkeypatch.setattr(job_manager, "rerip_titles", fake_rerip)
+
+    await job_manager.rerip_title_manual(job_id, title_id)
+    await asyncio.sleep(0)
+    assert spawned["args"] == (job_id, [title_id])
+
+
+@pytest.mark.asyncio
+async def test_rerip_title_manual_rejects_wrong_disc(monkeypatch):
+    from app.services.job_manager import job_manager
+
+    job_id, title_id = await _seed_rerip_job(eligible=True)
+    monkeypatch.setattr(job_manager, "_compute_disc_hash", AsyncMock(return_value="WRONG"))
+    monkeypatch.setattr(job_manager, "rerip_titles", AsyncMock())
+
+    with pytest.raises(ValueError, match="different disc"):
+        await job_manager.rerip_title_manual(job_id, title_id)

@@ -896,6 +896,24 @@ async def skip_title(
     return {"status": "skipped", "job_id": job.id, "title_id": title_id, "target": target}
 
 
+@router.post("/jobs/{job_id}/titles/{title_id}/rerip")
+async def rerip_title(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Manually re-rip a single rip-failed title using the disc in the drive."""
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.rerip_title_manual(job.id, title_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"status": "reripping", "job_id": job.id, "title_id": title_id}
+
+
 @router.post("/jobs/{job_id}/review")
 async def submit_review(
     review: ReviewRequest,

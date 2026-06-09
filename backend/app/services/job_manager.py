@@ -1586,6 +1586,35 @@ class JobManager:
         except (OSError, RuntimeError) as e:
             logger.warning(f"Job {job_id}: eject after re-rip failed: {e}")
 
+    async def rerip_title_manual(self, job_id: int, title_id: int) -> None:
+        """Manually re-rip one title using the disc currently in the drive.
+
+        Verifies the inserted disc matches the job by ContentHash and bypasses
+        the automatic retry cap (the user explicitly asked). Spawns the re-rip in
+        the background so the request returns promptly (Feature C).
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            title = await session.get(DiscTitle, title_id)
+            if not job or not title or title.job_id != job_id:
+                raise ValueError("Job or title not found")
+            if title.state != TitleState.REVIEW:
+                raise ValueError("Title is not awaiting re-rip")
+            drive_id = job.drive_id
+            job_hash = job.content_hash
+
+        current_hash = await self._compute_disc_hash(drive_id)
+        if not current_hash:
+            raise ValueError("No readable disc in the drive — insert the matching disc first")
+        if job_hash and current_hash != job_hash:
+            raise ValueError("A different disc is in the drive — insert the original disc")
+
+        task = asyncio.create_task(
+            with_job_log_context(job_id, self.rerip_titles(job_id, [title_id]))
+        )
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
+        self._active_jobs[job_id] = task
+
     async def _run_ripping(self, job_id: int) -> None:
         """Execute the ripping process.
 
