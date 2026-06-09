@@ -61,19 +61,34 @@ def _title_tokens(s: str) -> set[str]:
     return {w.lower() for w in re.sub(r"[^\w\s]", "", s).split() if len(w) > 1}
 
 
-def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
-    """Return True if two title strings share enough word tokens (Jaccard similarity).
+def _collapsed(s: str) -> str:
+    """Lowercase a title with all non-alphanumeric characters removed.
 
-    Prevents TMDB from replacing a parsed name with a completely unrelated title.
-    Examples:
-      "Logical Volume Id" vs "Idioms Origins Volume 1" -> ~0.14 -> rejected
-      "Star Trek Picard" vs "Star Trek: Picard" -> 0.67 -> accepted
-      "The Grandmaster" vs "Grandmaster" -> 0.50 -> accepted (at threshold)
+    Lets us recognize that a separator-less volume label and a spaced title are
+    the same name: "Breakingbad" and "Breaking Bad" both collapse to "breakingbad".
+    """
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
+    """Return True if two title strings refer to the same title.
+
+    Two acceptance paths:
+      1. Word-token Jaccard >= threshold (handles punctuation / word-order noise).
+      2. Whitespace/punctuation-insensitive equality (handles a separator-less
+         volume label vs. a spaced title, e.g. "Breakingbad" == "Breaking Bad").
+
+    Path 2 is conservative: it only matches names that are identical once spacing
+    and punctuation are removed, so it never makes unrelated titles match
+    ("breakingbad" != "friends").
     """
     a_tok, b_tok = _title_tokens(a), _title_tokens(b)
     if not a_tok or not b_tok:
         return True  # Can't compare — allow override
-    return len(a_tok & b_tok) / len(a_tok | b_tok) >= threshold
+    if len(a_tok & b_tok) / len(a_tok | b_tok) >= threshold:
+        return True
+    a_collapsed, b_collapsed = _collapsed(a), _collapsed(b)
+    return bool(a_collapsed) and a_collapsed == b_collapsed
 
 
 @dataclass

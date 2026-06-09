@@ -616,3 +616,32 @@ class TestTmdbSignalConflict:
         # With weak/no heuristic, TMDB should be able to override
         # (exact behavior depends on what heuristic produces for this title set)
         assert result.tmdb_id == 12345
+
+
+class TestNamesAreSimilar:
+    """Whitespace/punctuation-insensitive title similarity (BREAKINGBADS2 bug)."""
+
+    def test_concatenated_label_matches_spaced_title(self):
+        from app.core.analyst import _names_are_similar
+
+        assert _names_are_similar("Breakingbad", "Breaking Bad") is True
+
+    def test_concatenated_multiword_label_matches(self):
+        from app.core.analyst import _names_are_similar
+
+        assert _names_are_similar("Strangenewworlds", "Strange New Worlds") is True
+
+    def test_punctuation_difference_still_matches(self):
+        from app.core.analyst import _names_are_similar
+
+        assert _names_are_similar("Star Trek Picard", "Star Trek: Picard") is True
+
+    def test_unrelated_concatenated_name_rejected(self):
+        from app.core.analyst import _names_are_similar
+
+        assert _names_are_similar("Breakingbad", "Friends") is False
+
+    def test_unrelated_spaced_names_rejected(self):
+        from app.core.analyst import _names_are_similar
+
+        assert _names_are_similar("The Italian Job", "Idioms Origins Volume 1") is False
