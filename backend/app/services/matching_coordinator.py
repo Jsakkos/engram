@@ -1483,6 +1483,9 @@ class MatchingCoordinator:
                     title.state = TitleState.FAILED
                     session.add(title)
                     await session.commit()
+                    await ws_manager.broadcast_title_update(
+                        job_id, title_id, TitleState.FAILED.value
+                    )
                 await self._check_job_completion(session, job_id)
             return True
 

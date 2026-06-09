@@ -222,6 +222,7 @@ async def test_timeout_result_fails_title(monkeypatch):
     assert handled is True
     title = await _reload_title(title_id)
     assert title.state == TitleState.FAILED
+    assert title.match_details is None  # TIMEOUT leaves match_details unset (unlike TRUNCATED)
     coord._check_job_completion.assert_awaited()
 
 
