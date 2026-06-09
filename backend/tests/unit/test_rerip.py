@@ -98,3 +98,26 @@ async def test_route_ignores_terminal_title(monkeypatch):
     coord = _make_coord()
     await coord.route_rip_failure_to_review(job_id, title_id, "incomplete_rip", "boom")
     assert (await _reload(title_id)).state == TitleState.MATCHED  # untouched
+
+
+@pytest.mark.asyncio
+async def test_on_title_error_routes_to_review_not_failed(monkeypatch):
+    """A ripping stall now holds the title in REVIEW (rip_stalled), not FAILED."""
+    from app.services.job_manager import job_manager
+
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    job_id, title_id = await _seed_title(TitleState.RIPPING)
+    # Real coordinator with a stubbed completion check.
+    job_manager._matching._check_job_completion = AsyncMock()
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title_id)
+        sorted_titles = [title]
+
+    await job_manager._on_title_error(job_id, 1, "disc dirty", sorted_titles)
+
+    t = await _reload(title_id)
+    assert t.state == TitleState.REVIEW
+    d = json.loads(t.match_details)
+    assert d["error"] == "rip_stalled"
+    assert d["rerip_eligible"] is True

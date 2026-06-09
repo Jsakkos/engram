@@ -1759,34 +1759,20 @@ class JobManager:
                 await self._fail_job(job_id, result.error_message)
                 return
 
-            # Fallback: mark stalled titles as FAILED
+            # Fallback: a stalled title is a rip-level failure → REVIEW
+            # (re-rippable), not FAILED, so the job holds in REVIEW_NEEDED.
             if result.stalled_titles:
-                async with async_session() as stall_session:
-                    for cmd_idx in result.stalled_titles:
-                        list_idx = cmd_idx - 1
-                        if 0 <= list_idx < len(stall_title_list):
-                            stalled_title = stall_title_list[list_idx]
-                            db_title = await stall_session.get(DiscTitle, stalled_title.id)
-                            if db_title and db_title.state not in (
-                                TitleState.COMPLETED,
-                                TitleState.MATCHED,
-                                TitleState.FAILED,
-                            ):
-                                db_title.state = TitleState.FAILED
-                                db_title.match_details = json.dumps(
-                                    {"reason": STALL_FAILURE_REASON}
-                                )
-                                logger.warning(
-                                    f"Job {safe_job}: title {db_title.title_index} "
-                                    f"marked FAILED (ripping stall, fallback)"
-                                )
-                                await ws_manager.broadcast_title_update(
-                                    job_id,
-                                    db_title.id,
-                                    TitleState.FAILED.value,
-                                    error=STALL_FAILURE_REASON,
-                                )
-                    await stall_session.commit()
+                for cmd_idx in result.stalled_titles:
+                    list_idx = cmd_idx - 1
+                    if 0 <= list_idx < len(stall_title_list):
+                        stalled_title = stall_title_list[list_idx]
+                        logger.warning(
+                            f"Job {safe_job}: title {stalled_title.title_index} "
+                            f"stalled (fallback) → REVIEW (re-rippable)"
+                        )
+                        await self._matching.route_rip_failure_to_review(
+                            job_id, stalled_title.id, "rip_stalled", STALL_FAILURE_REASON
+                        )
 
             # Eject disc and reset sentinel state so a new disc insert is detected
             try:
@@ -2120,24 +2106,11 @@ class JobManager:
             return
 
         stalled_title = sorted_titles[list_idx]
-        async with async_session() as session:
-            db_title = await session.get(DiscTitle, stalled_title.id)
-            if not db_title:
-                return
-            if db_title.state in (TitleState.COMPLETED, TitleState.MATCHED):
-                return
-
-            db_title.state = TitleState.FAILED
-            db_title.match_details = json.dumps({"reason": reason})
-            await session.commit()
-
-            logger.warning(f"Job {job_id}: title {db_title.title_index} marked FAILED ({reason})")
-            await ws_manager.broadcast_title_update(
-                job_id,
-                db_title.id,
-                TitleState.FAILED.value,
-                error=reason,
-            )
+        # A ripping stall is a rip-level failure: route to REVIEW (re-rippable),
+        # not FAILED, so the job holds in REVIEW_NEEDED (Feature C).
+        await self._matching.route_rip_failure_to_review(
+            job_id, stalled_title.id, "rip_stalled", reason
+        )
 
     async def _backfill_unmatched_titles(
         self, job_id: int, staging_dir: Path, sorted_titles: list[DiscTitle]
