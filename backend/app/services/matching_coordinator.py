@@ -1597,9 +1597,13 @@ class MatchingCoordinator:
                         logger.warning(
                             f"[MATCH] Title {title_id} (Job {job_id}): file stable at "
                             f"{current_size / 1024 / 1024:.0f} MB "
-                            f"({size_ratio * 100:.1f}% of expected) for "
-                            f"{stable_count * check_interval:.0f}s — proceeding with match: "
-                            f"{file_path.name}"
+                            + (
+                                f"({size_ratio * 100:.1f}% of expected) "
+                                if expected_size > 0
+                                else ""
+                            )
+                            + f"for {stable_count * check_interval:.0f}s — proceeding "
+                            f"with match: {file_path.name}"
                         )
                         return FileWaitResult.READY
                     stable_count = 0

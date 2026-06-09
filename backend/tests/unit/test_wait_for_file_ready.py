@@ -6,6 +6,7 @@ bail out quickly (FileWaitResult.TRUNCATED) instead of spinning to the
 size-proportional timeout (which wedged job #99 / Breaking Bad S2 t02 for ~4.3h).
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,11 +19,6 @@ from app.services import matching_coordinator as mc
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import FileWaitResult, MatchingCoordinator
 from tests.unit.conftest import _unit_session_factory
-
-
-@pytest.fixture(autouse=True)
-def _patch_session(monkeypatch):
-    monkeypatch.setattr(mc, "async_session", _unit_session_factory)
 
 
 def _make_coord() -> MatchingCoordinator:
@@ -136,3 +132,29 @@ async def test_wait_broadcasts_queued_not_ripping(tmp_path, monkeypatch):
     assert states, "expected at least one title broadcast during the wait"
     assert TitleState.RIPPING.value not in states
     assert TitleState.QUEUED.value in states
+
+
+@pytest.mark.asyncio
+async def test_growing_file_is_never_truncated(tmp_path, monkeypatch):
+    """A file still being written (size growing) must never be judged TRUNCATED."""
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    # Large grace window so transient scheduling jitter can't accumulate enough
+    # stable polls to trip truncation while the file is still growing.
+    monkeypatch.setattr(mc, "TRUNCATED_STABLE_GRACE_SECONDS", 0.2)
+    _patch_config(monkeypatch, poll=0.01, stable=2, timeout=2.0)
+    title_id = await _seed_title(expected_bytes=1000)
+    f = tmp_path / "growing.mkv"
+    f.write_bytes(b"x" * 100)
+
+    async def _grow():
+        for size in range(200, 1001, 100):  # 200..1000 bytes
+            await asyncio.sleep(0.02)
+            f.write_bytes(b"x" * size)
+
+    coord = _make_coord()
+    _, result = await asyncio.gather(
+        _grow(),
+        coord._wait_for_file_ready(f, title_id, job_id=1, timeout=2.0),
+    )
+    assert result == FileWaitResult.READY
+    assert result != FileWaitResult.TRUNCATED
