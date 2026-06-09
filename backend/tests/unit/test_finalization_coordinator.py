@@ -30,6 +30,13 @@ FRASIER_CANDS = json.dumps(
     ]
 )
 
+EUREKA_CANDS = json.dumps(
+    [
+        {"tmdb_id": 4620, "name": "Eureka", "year": "2006", "popularity": 60.0},
+        {"tmdb_id": 153312, "name": "Eureka!", "year": "2022", "popularity": 4.0},
+    ]
+)
+
 
 @pytest.fixture(autouse=True)
 def _patch_session_and_ws(monkeypatch):
@@ -73,6 +80,7 @@ async def _seed_job(
     tmdb_id=None,
     candidates_json=None,
     duration=1380,
+    subtitle_status="completed",
 ) -> int:
     """Seed a job with the given (title_index, episode, output_filename, title_state) titles."""
     md = match_details_by_idx or {}
@@ -87,6 +95,7 @@ async def _seed_job(
             staging_path=staging,
             tmdb_id=tmdb_id,
             candidates_json=candidates_json,
+            subtitle_status=subtitle_status,
         )
         session.add(job)
         await session.commit()
@@ -565,6 +574,7 @@ class TestDetectWrongShow:
             tmdb_id=3452,
             tmdb_name="Frasier",
             candidates_json=FRASIER_CANDS,
+            subtitle_status="completed",
         )
         base.update(kw)
         return DiscJob(**base)
@@ -608,6 +618,22 @@ class TestDetectWrongShow:
     def test_none_for_movie(self):
         titles = [self._ttl(0), self._ttl(1)]
         assert _detect_wrong_show(self._job(content_type=ContentType.MOVIE), titles) is None
+
+    def test_none_when_subtitles_never_delivered(self):
+        # #370 (Eureka D3): the download never started -> status None. With no
+        # reference corpus, all-unmatched is the expected outcome for the RIGHT
+        # show too — naming the twin would mislead.
+        titles = [self._ttl(0), self._ttl(1), self._ttl(2)]
+        assert _detect_wrong_show(self._job(subtitle_status=None), titles) is None
+
+    def test_none_when_subtitle_download_failed(self):
+        titles = [self._ttl(0), self._ttl(1)]
+        assert _detect_wrong_show(self._job(subtitle_status="failed"), titles) is None
+
+    def test_partial_download_still_detects(self):
+        # A partial corpus is still a corpus — the aggregate signal stands.
+        titles = [self._ttl(0), self._ttl(1)]
+        assert _detect_wrong_show(self._job(subtitle_status="partial"), titles) is not None
 
 
 @pytest.mark.unit
@@ -806,6 +832,71 @@ class TestWrongShowRoutingInCompletion:
         assert depths == [full, full]
         assert 25 not in depths and 50 not in depths
         assert all(t.state == TitleState.MATCHED for t in titles.values())
+
+
+@pytest.mark.unit
+class TestNoReferenceSubtitlesRouting:
+    """All-unmatched + the subtitle pipeline never delivered references (#370):
+    route straight to review with an honest, actionable reason — no twin
+    advisory, no deep re-match escalation against an empty corpus."""
+
+    async def test_routes_to_honest_review_reason(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=4620,
+            candidates_json=EUREKA_CANDS,
+            subtitle_status=None,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "no reference subtitles" in job.review_reason.lower()
+        # No misleading twin advisory…
+        assert "2022" not in (job.review_reason or "")
+        # …and no escalation pass was dispatched against the empty corpus.
+        assert coord._review_passes.get(job_id) is None
+        coord.finalize_disc_job.assert_not_called()
+
+    async def test_failed_download_also_gets_honest_reason(self, tmp_path):
+        job_id = await _seed_job(
+            [(0, None, None, TitleState.REVIEW), (1, None, None, TitleState.REVIEW)],
+            staging=str(tmp_path),
+            subtitle_status="failed",
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "no reference subtitles" in job.review_reason.lower()
+
+    async def test_completed_subtitles_keep_normal_review_routing(self, tmp_path):
+        # With a delivered corpus and no twin, the generic review path is intact.
+        job_id = await _seed_job(
+            [(0, None, None, TitleState.REVIEW), (1, None, None, TitleState.REVIEW)],
+            staging=str(tmp_path),
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "manual episode assignment" in job.review_reason
 
 
 @pytest.mark.unit

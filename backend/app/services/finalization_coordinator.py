@@ -37,8 +37,18 @@ def _detect_wrong_show(job, titles) -> dict | None:
     matched nothing), never an absolute per-chunk score, so it's robust to the
     structurally-low chunk-cosine scale. A merely low-confidence disc still carries
     an episode code, so it is excluded here and handled by the normal review path.
+
+    Gated on a delivered subtitle corpus (``subtitle_status`` completed/partial):
+    see ``_no_reference_subtitles`` for the no-corpus sibling branch (#370).
     """
     if job.content_type != ContentType.TV:
+        return None
+
+    # A wholesale match failure only implicates the WRONG SHOW if matching had
+    # a reference corpus to fail against. When the subtitle pipeline never
+    # delivered anything (download never started, or found nothing), zero
+    # matches is the expected outcome for the RIGHT show too (#370).
+    if job.subtitle_status not in ("completed", "partial"):
         return None
 
     try:
@@ -79,6 +89,23 @@ def _wrong_show_review_reason(detection: dict, job) -> str:
         f"{detection['unmatched']} episodes matched its subtitles. This is likely a "
         f"different same-named show; did you mean {twin}? Re-identify to fix."
     )
+
+
+def _no_reference_subtitles(job, titles) -> bool:
+    """True when a TV disc's wholesale match failure is explained by the subtitle
+    pipeline never delivering references (#370: download failed outright, or the
+    all-seasons escape hatch found nothing for any season).
+
+    Requires ALL episode candidates unmatched: a disc with even one successful
+    match clearly had a usable corpus, whatever the status field says. Pure — no
+    DB/IO.
+    """
+    if job.content_type != ContentType.TV:
+        return False
+    if job.subtitle_status in ("completed", "partial"):
+        return False
+    episode_candidates = [t for t in titles if t.is_selected and not t.is_extra]
+    return bool(episode_candidates) and all(t.matched_episode is None for t in episode_candidates)
 
 
 def _library_path_for_job(job, content_type: str) -> "Path | None":
@@ -568,6 +595,23 @@ class FinalizationCoordinator:
         # pass also comes back empty. Titles aren't mutated within this call, so
         # the verdict stays valid down to the branch below.
         wrong_show = _detect_wrong_show(job, titles)
+
+        # No reference subtitles ever arrived (#370): matching could not have
+        # succeeded, and deep re-match escalation would just burn ASR passes
+        # against an empty corpus. Route straight to review with an honest,
+        # actionable reason (the wrong-show advisory above is already gated).
+        if _no_reference_subtitles(job, titles):
+            show = job.tmdb_name or job.detected_title or "this show"
+            reason = (
+                f"Episode matching couldn't run: no reference subtitles were "
+                f"available for {show}. Retry the subtitle download (or add an "
+                f"OpenSubtitles API key in Settings), then re-match — or assign "
+                f"episodes manually below."
+            )
+            logger.warning(f"Job {job_id}: {reason}")
+            await self._clear_review_state(session, job)
+            await self._state_machine.transition_to_review(job, session, reason=reason)
+            return
 
         # Auto-resolve same-episode collisions before any manual review: deep
         # re-match contested titles at escalating scan density until the tie
