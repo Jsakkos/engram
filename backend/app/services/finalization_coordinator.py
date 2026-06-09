@@ -600,6 +600,9 @@ class FinalizationCoordinator:
         # succeeded, and deep re-match escalation would just burn ASR passes
         # against an empty corpus. Route straight to review with an honest,
         # actionable reason (the wrong-show advisory above is already gated).
+        # A still-"downloading" status lands here too, deliberately: titles only
+        # go all-terminal mid-download via force-advance or the subtitle-wait
+        # timeout, and in both cases "retry the download" is the right advice.
         if _no_reference_subtitles(job, titles):
             show = job.tmdb_name or job.detected_title or "this show"
             reason = (
