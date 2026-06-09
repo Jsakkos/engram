@@ -95,6 +95,10 @@ def test_parse_disc_info_no_cinfo_returns_empty_string():
         ("Supernatural Season 11 - Disc 2", "Supernatural", 11),
         # Disc-only name: clean the title, no season.
         ("Firefly Disc 1", "Firefly", None),
+        # Colon-separated "Title: Season N: Disc M" (some Blu-ray DINFO names).
+        ("Breaking Bad: Season 2: Disc 1", "Breaking Bad", 2),
+        # Generic placeholder disc names carry no title.
+        ("Blu-ray disc", None, None),
         ("", None, None),
         ("  ", None, None),
     ],
@@ -106,7 +110,7 @@ def test_parse_disc_name(disc_name, expected_title, expected_season):
 
 
 # ---------------------------------------------------------------------------
-# Analyst: name_hint bypasses _names_are_similar guard
+# Analyst: TMDB name adopted when corroborated by label OR DINFO disc title
 # ---------------------------------------------------------------------------
 
 
@@ -117,8 +121,8 @@ def _tv_titles(count: int = 6, duration: int = 2870) -> list[TitleInfo]:
     ]
 
 
-def test_analyst_without_name_hint_gives_garbled_name():
-    """Without name_hint the analyst parses the volume label and gets a garbled name."""
+def test_analyst_without_disc_title_keeps_garbled_label_name():
+    """Without a DINFO disc_title, an extra-leading-words TMDB name (Star Trek: ...) is not corroborated by the concatenated label, so the garbled label name is kept."""
     tmdb = TmdbSignal(
         content_type=ContentType.TV,
         confidence=0.85,
@@ -128,14 +132,15 @@ def test_analyst_without_name_hint_gives_garbled_name():
     analyst = DiscAnalyst()
     result = analyst.analyze(_tv_titles(), "STRANGENEWWORLDS_SEASON3", tmdb_signal=tmdb)
 
-    # TMDB ID is propagated even without name_hint
+    # TMDB ID is still propagated even without a disc_title
     assert result.tmdb_id == 99966
     # But detected_name comes from garbled volume label
+    # Deferred case: collapsed "strangenewworlds" != "startrekstrangenewworlds"
     assert result.detected_name == "Strangenewworlds"
 
 
-def test_analyst_with_name_hint_uses_correct_name():
-    """With name_hint the analyst uses it directly; TMDB name flows through cleanly."""
+def test_analyst_with_disc_title_adopts_tmdb_name():
+    """With a DINFO disc_title that corroborates the TMDB name, the authoritative TMDB name flows through cleanly."""
     tmdb = TmdbSignal(
         content_type=ContentType.TV,
         confidence=0.85,
@@ -147,7 +152,7 @@ def test_analyst_with_name_hint_uses_correct_name():
         _tv_titles(),
         "STRANGENEWWORLDS_SEASON3",
         tmdb_signal=tmdb,
-        name_hint="Star Trek: Strange New Worlds",
+        disc_title="Star Trek: Strange New Worlds",
     )
 
     assert result.detected_name == "Star Trek: Strange New Worlds"
@@ -156,7 +161,7 @@ def test_analyst_with_name_hint_uses_correct_name():
     assert result.content_type == ContentType.TV
 
 
-def test_analyst_name_hint_still_propagates_tmdb_id_on_type_conflict():
+def test_analyst_disc_title_still_propagates_tmdb_id_on_type_conflict():
     """Even when heuristic and TMDB disagree on type, tmdb_id is set."""
     tmdb = TmdbSignal(
         content_type=ContentType.MOVIE,  # disagrees with heuristic TV
@@ -169,10 +174,67 @@ def test_analyst_name_hint_still_propagates_tmdb_id_on_type_conflict():
         _tv_titles(),
         "STRANGENEWWORLDS_SEASON3",
         tmdb_signal=tmdb,
-        name_hint="Some Film",
+        disc_title="Some Film",
     )
 
     assert result.tmdb_id == 12345
+
+
+def test_analyst_adopts_tmdb_name_for_concatenated_label():
+    """BREAKINGBADS2 -> 'Breakingbad' must be corrected to TMDB 'Breaking Bad'."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1396,
+        tmdb_name="Breaking Bad",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(_tv_titles(), "BREAKINGBADS2", tmdb_signal=tmdb)
+
+    assert result.detected_name == "Breaking Bad"
+    assert result.detected_season == 2
+    assert result.tmdb_id == 1396
+
+
+def test_analyst_adopts_tmdb_name_when_disc_title_corroborates():
+    """A clean DINFO disc title corroborates the TMDB name as well."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1396,
+        tmdb_name="Breaking Bad",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(
+        _tv_titles(),
+        "BREAKINGBADS2",
+        tmdb_signal=tmdb,
+        disc_title="Breaking Bad",
+    )
+
+    assert result.detected_name == "Breaking Bad"
+    assert result.tmdb_id == 1396
+
+
+def test_analyst_keeps_base_name_when_tmdb_uncorroborated():
+    """A spurious TMDB name matching neither on-disc signal must not override."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=999,
+        tmdb_name="Some Unrelated Show",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(
+        _tv_titles(),
+        "BREAKINGBADS2",
+        tmdb_signal=tmdb,
+        disc_title="Breaking Bad",
+    )
+
+    # Neither "Breakingbad" nor "Breaking Bad" matches "Some Unrelated Show",
+    # so the DINFO-preferred base name is kept rather than the TMDB name.
+    assert result.detected_name == "Breaking Bad"
 
 
 # ---------------------------------------------------------------------------
@@ -256,3 +318,77 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
     assert analysis.tmdb_id == 99966
     assert analysis.detected_season == 3
     assert call_count["n"] == 2  # once for garbled label, once for disc name
+
+
+@pytest.mark.asyncio
+async def test_run_classification_uses_disc_name_when_label_resolves(monkeypatch):
+    """DINFO corrects a garbled-but-resolved label (BREAKINGBADS2 -> Breaking Bad)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
+
+    coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    analyst = DiscAnalyst()
+    analyst.set_config(AppConfig())
+    coordinator._analyst = analyst
+    coordinator._get_discdb_mappings = MagicMock(return_value=[])
+    coordinator._set_discdb_mappings = MagicMock()
+
+    titles = _tv_titles()
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "fake-key"
+    mock_config.ai_identification_enabled = False
+    mock_config.ai_api_key = None
+    mock_config.discdb_enabled = False
+    mock_config.analyst_movie_min_duration = 80 * 60
+    mock_config.analyst_tv_duration_variance = 2 * 60
+    mock_config.analyst_tv_min_cluster_size = 3
+    mock_config.analyst_tv_min_duration = 18 * 60
+    mock_config.analyst_tv_max_duration = 70 * 60
+    mock_config.analyst_movie_dominance_threshold = 0.6
+
+    bb_signal = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1396,
+        tmdb_name="Breaking Bad",
+    )
+
+    call_count = {"n": 0}
+
+    def fake_classify_from_tmdb(name: str, api_key: str):
+        call_count["n"] += 1
+        if name == "Breakingbad":
+            return bb_signal  # label-derived name resolves (via TMDB variation)
+        return None
+
+    mock_job = MagicMock()
+    mock_job.volume_label = "BREAKINGBADS2"
+    mock_job.detected_season = None
+    mock_job.content_hash = None
+    mock_job.discdb_slug = None
+    mock_job.discdb_disc_slug = None
+    mock_job.discdb_mappings_json = None
+    mock_job.play_all_indices_json = None
+
+    mock_session = AsyncMock()
+
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+    ):
+        analysis = await coordinator._run_classification(
+            mock_job,
+            job_id=1,
+            titles=titles,
+            session=mock_session,
+            disc_name="Breaking Bad: Season 2: Disc 1",
+        )
+
+    assert analysis.detected_name == "Breaking Bad"
+    assert analysis.detected_season == 2
+    assert analysis.tmdb_id == 1396
+    assert call_count["n"] == 1  # only the label query; no disc-name fallback call

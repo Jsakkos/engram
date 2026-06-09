@@ -13,7 +13,9 @@ from app.models.disc_job import ContentType
 logger = logging.getLogger(__name__)
 
 # Generic Windows/disc placeholder volume labels that carry no meaningful title information.
-# Normalized form: uppercased with underscores and spaces removed.
+# Normalized form: uppercased with non-alphanumerics removed. (_parse_volume_label
+# strips only underscores/spaces; _is_generic_disc_name strips all punctuation so it
+# also matches DINFO names like "Blu-ray disc".)
 _GENERIC_VOLUME_LABELS: frozenset[str] = frozenset(
     {
         "LOGICALVOLUMEID",
@@ -61,19 +63,39 @@ def _title_tokens(s: str) -> set[str]:
     return {w.lower() for w in re.sub(r"[^\w\s]", "", s).split() if len(w) > 1}
 
 
-def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
-    """Return True if two title strings share enough word tokens (Jaccard similarity).
+def _collapsed(s: str) -> str:
+    """Lowercase a title with all non-alphanumeric characters removed.
 
-    Prevents TMDB from replacing a parsed name with a completely unrelated title.
-    Examples:
-      "Logical Volume Id" vs "Idioms Origins Volume 1" -> ~0.14 -> rejected
-      "Star Trek Picard" vs "Star Trek: Picard" -> 0.67 -> accepted
-      "The Grandmaster" vs "Grandmaster" -> 0.50 -> accepted (at threshold)
+    Lets us recognize that a separator-less volume label and a spaced title are
+    the same name: "Breakingbad" and "Breaking Bad" both collapse to "breakingbad".
+    """
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def _is_generic_disc_name(name: str) -> bool:
+    """True if a DINFO disc name is a generic placeholder (e.g. 'Blu-ray disc')."""
+    return re.sub(r"[^A-Z0-9]", "", name.upper()) in _GENERIC_VOLUME_LABELS
+
+
+def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
+    """Return True if two title strings refer to the same title.
+
+    Two acceptance paths:
+      1. Word-token Jaccard >= threshold (handles punctuation / word-order noise).
+      2. Whitespace/punctuation-insensitive equality (handles a separator-less
+         volume label vs. a spaced title, e.g. "Breakingbad" == "Breaking Bad").
+
+    Path 2 is conservative: it only matches names that are identical once spacing
+    and punctuation are removed, so it never makes unrelated titles match
+    ("breakingbad" != "friends").
     """
     a_tok, b_tok = _title_tokens(a), _title_tokens(b)
     if not a_tok or not b_tok:
         return True  # Can't compare — allow override
-    return len(a_tok & b_tok) / len(a_tok | b_tok) >= threshold
+    if len(a_tok & b_tok) / len(a_tok | b_tok) >= threshold:
+        return True
+    a_collapsed, b_collapsed = _collapsed(a), _collapsed(b)
+    return bool(a_collapsed) and a_collapsed == b_collapsed
 
 
 @dataclass
@@ -247,7 +269,7 @@ class DiscAnalyst:
         titles: list[TitleInfo],
         volume_label: str = "",
         tmdb_signal=None,
-        name_hint: str | None = None,
+        disc_title: str | None = None,
     ) -> DiscAnalysisResult:
         """Analyze a list of titles to determine content type.
 
@@ -255,9 +277,9 @@ class DiscAnalyst:
             titles: List of title information from MakeMKV
             volume_label: The disc's volume label (e.g., "THE_OFFICE_S1")
             tmdb_signal: Optional TmdbSignal from TMDB lookup
-            name_hint: Override for detected_name when a better source than the volume
-                label is available (e.g., MakeMKV's DINFO disc name). Bypasses the
-                _names_are_similar guard so the TMDB name flows through cleanly.
+            disc_title: Parsed MakeMKV DINFO disc title, when available. Used as the
+                base display name (preferred over the volume-label parse) and as an
+                additional signal that corroborates the authoritative TMDB name.
 
         Returns:
             Analysis result with content type and confidence
@@ -282,28 +304,36 @@ class DiscAnalyst:
 
         # Try to extract show name, season, and disc from volume label
         label_name, detected_season, detected_disc = self._parse_volume_label(volume_label)
-        # name_hint (e.g. from MakeMKV DINFO) overrides the volume-label-parsed name
-        detected_name = name_hint if name_hint else label_name
+
+        # Base display name: prefer the MakeMKV DINFO disc title (human-readable,
+        # properly spaced) over the filesystem-constrained volume-label parse.
+        detected_name = disc_title or label_name
 
         # If we found a season pattern (S01D02), it's very likely a TV show
         is_likely_tv = detected_season is not None
         if is_likely_tv:
             logger.info(f"Volume label indicates TV (season {detected_season})")
 
-        # Use TMDB name only if it's semantically related to the parsed name.
-        # name_hint already comes from a trusted source (DINFO), so bypass the guard for it.
+        # TMDB is the authoritative name source, but only adopt it when an on-disc
+        # signal corroborates it: the volume-label name OR the DINFO disc title,
+        # compared whitespace-insensitively so a separator-less label like
+        # "Breakingbad" still corroborates "Breaking Bad". This keeps a wrong TMDB
+        # match from silently overriding while letting a right one through.
         effective_name = detected_name
         if tmdb_signal and tmdb_signal.tmdb_name:
-            if (
-                name_hint
-                or detected_name is None
-                or _names_are_similar(detected_name, tmdb_signal.tmdb_name)
-            ):
-                effective_name = tmdb_signal.tmdb_name
+            tmdb_name = tmdb_signal.tmdb_name
+            corroborated = (
+                detected_name is None
+                or (label_name is not None and _names_are_similar(label_name, tmdb_name))
+                or (disc_title is not None and _names_are_similar(disc_title, tmdb_name))
+            )
+            if corroborated:
+                effective_name = tmdb_name
             else:
                 logger.warning(
-                    f"TMDB name '{tmdb_signal.tmdb_name}' is dissimilar to parsed name "
-                    f"'{detected_name}' — ignoring TMDB name override"
+                    f"TMDB name '{tmdb_name}' corroborated by neither the volume-label "
+                    f"name '{label_name}' nor the disc title '{disc_title}' — "
+                    f"keeping '{detected_name}'"
                 )
 
         # ALWAYS check for movie first (content overrides label)
@@ -841,10 +871,11 @@ class DiscAnalyst:
           "The Office - Season 2"
           "Supernatural Season 11 Disc 2"   # space- or dash-separated disc, no parens
           "Inception"
+          "Breaking Bad: Season 2: Disc 1"   # colon-separated title/season/disc
 
-        The trailing disc indicator is accepted with or without parentheses or a
-        dash ("(Disc 1)", "Disc 1", "- Disc 1"), so the season is recovered even
-        when it sits ahead of a bare "Disc N" suffix.
+        The trailing disc indicator is accepted with or without parentheses, a
+        dash, or a colon ("(Disc 1)", "Disc 1", "- Disc 1", ": Disc 1"). Generic
+        placeholder names (e.g. "Blu-ray disc") return (None, None).
 
         Returns (show_title, season), either may be None if not found.
         """
@@ -854,16 +885,17 @@ class DiscAnalyst:
         name = disc_name.strip()
         season: int | None = None
 
-        # Strip a trailing disc indicator with OR without parentheses/dash:
-        # "(Disc 1)", "Disc 1", "- Disc 1", "Disk 1", "Disc1". Without this, a
-        # space-separated "Disc N" survives and leaves "Season N" mid-string,
-        # so the end-anchored season patterns below never match (issue #303).
+        # Strip a trailing disc indicator with OR without parentheses/dash/colon:
+        # "(Disc 1)", "Disc 1", "- Disc 1", ": Disc 1", "Disk 1", "Disc1".
         name = re.sub(
-            r"\s*[-–]?\s*\(?\s*Dis[ck]\s*\d+\s*\)?\s*$", "", name, flags=re.IGNORECASE
+            r"\s*[-–:]?\s*\(?\s*Dis[ck]\s*\d+\s*\)?\s*$", "", name, flags=re.IGNORECASE
         ).strip()
 
-        # Extract "- Season N" or "Season N" suffix
-        m = re.search(r"\s*[-–]\s*Season\s+(\d+)\s*$", name, re.IGNORECASE)
+        # Extract a trailing "- Season N" / ": Season N" / "Season N" suffix. The
+        # dash/colon variant is tried first so the separator is consumed cleanly
+        # (e.g. "Breaking Bad: Season 2" -> "Breaking Bad"). Colons *inside* a title
+        # are untouched because these patterns are anchored to the end of the string.
+        m = re.search(r"\s*[-–:]\s*Season\s+(\d+)\s*$", name, re.IGNORECASE)
         if m:
             season = int(m.group(1))
             name = name[: m.start()].strip()
@@ -873,8 +905,11 @@ class DiscAnalyst:
                 season = int(m.group(1))
                 name = name[: m.start()].strip()
 
-        # Reject empty or clearly generic results
-        if not name or len(name) < 2:
+        # Trim any leftover trailing separator punctuation (e.g. a dangling colon).
+        name = name.rstrip(" :-–").strip()
+
+        # Reject empty, too-short, or generic placeholder results.
+        if not name or len(name) < 2 or _is_generic_disc_name(name):
             return None, None
 
         return name, season
