@@ -170,6 +170,17 @@ class TestJobEndpoints:
         assert listed[unconfirmed.id]["tmdb_id"] is None
         assert listed[confirmed.id]["tmdb_id"] == 18409
 
+    async def test_tmdb_identity_fields_exposed_in_job_detail(self, client):
+        """build_job_detail() assembles the detail dict manually, so tmdb_year must be
+        declared in JobDetailResponse AND added to the dict — Pydantic silently drops a
+        field present in only one of the two."""
+        confirmed = await _seed_job(tmdb_id=18409, tmdb_name="The Office", tmdb_year=2005)
+
+        detail = (await client.get(f"/api/jobs/{confirmed.id}/detail")).json()
+        assert detail["tmdb_id"] == 18409
+        assert detail["tmdb_name"] == "The Office"
+        assert detail["tmdb_year"] == 2005
+
     async def test_get_job_titles(self, client):
         job = await _seed_job()
         await _seed_titles(job.id, count=3)

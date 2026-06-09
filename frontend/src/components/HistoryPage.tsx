@@ -84,6 +84,7 @@ interface JobDetail {
   classification_confidence: number;
   tmdb_id: number | null;
   tmdb_name: string | null;
+  tmdb_year?: number | null;
   is_ambiguous_movie: boolean;
   content_hash: string | null;
   discdb_slug: string | null;
@@ -577,7 +578,14 @@ function JobDetailPanel({
                     <ConfidenceBar value={detail.classification_confidence} />
                   </div>
                   {detail.tmdb_id && (
-                    <KvRow label="TMDB" value={detail.tmdb_name || `ID ${detail.tmdb_id}`} />
+                    <KvRow
+                      label="TMDB"
+                      value={
+                        detail.tmdb_name
+                          ? `${detail.tmdb_name}${detail.tmdb_year ? ` (${detail.tmdb_year})` : ""}`
+                          : `ID ${detail.tmdb_id}`
+                      }
+                    />
                   )}
                   {detail.is_ambiguous_movie && (
                     <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.amber }}>
