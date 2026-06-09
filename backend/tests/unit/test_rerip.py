@@ -230,3 +230,57 @@ async def test_rerip_titles_bails_when_job_not_transitionable(monkeypatch, tmp_p
     t = await _reload(title_id)
     assert t.rerip_attempts == 0  # untouched
     assert t.state == TitleState.REVIEW
+
+
+async def _seed_rerip_job(*, eligible: bool, hash_="ABC123", state=JobState.REVIEW_NEEDED):
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="F:",
+            volume_label="SHOW_S2D1",
+            content_type=ContentType.TV,
+            state=state,
+            staging_path="/tmp/staging",
+            content_hash=hash_,
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=2,
+            duration_seconds=2819,
+            state=TitleState.REVIEW,
+            match_details=json.dumps({"error": "incomplete_rip", "rerip_eligible": eligible}),
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+        return job.id, title.id
+
+
+@pytest.mark.asyncio
+async def test_find_rerip_job_hash_match_eligible():
+    from app.services.job_manager import job_manager
+
+    job_id, title_id = await _seed_rerip_job(eligible=True)
+    found = await job_manager._find_rerip_job("ABC123")
+    assert found == (job_id, [title_id])
+
+
+@pytest.mark.asyncio
+async def test_find_rerip_job_hash_mismatch():
+    from app.services.job_manager import job_manager
+
+    await _seed_rerip_job(eligible=True)
+    assert await job_manager._find_rerip_job("DIFFERENT") is None
+    assert await job_manager._find_rerip_job(None) is None
+
+
+@pytest.mark.asyncio
+async def test_find_rerip_job_excludes_ineligible_and_busy():
+    from app.services.job_manager import job_manager
+
+    await _seed_rerip_job(eligible=False)  # cap reached
+    await _seed_rerip_job(eligible=True, hash_="OTHER", state=JobState.MATCHING)  # still busy
+    assert await job_manager._find_rerip_job("ABC123") is None
+    assert await job_manager._find_rerip_job("OTHER") is None

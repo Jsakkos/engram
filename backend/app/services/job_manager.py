@@ -39,6 +39,7 @@ from app.services.identification_coordinator import IdentificationCoordinator
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     INCOMPLETE_RIP_MESSAGE,
+    RIP_FAILURE_ERROR_CODES,
     STRICT_MIN_VOTES,
     STRICT_SCAN_POINTS,
     MatchingCoordinator,
@@ -80,6 +81,19 @@ def _strip_review_flags(match_details: str | None) -> str | None:
         return match_details
     cleaned = {k: v for k, v in parsed.items() if k not in _REVIEW_REASON_KEYS}
     return json.dumps(cleaned) if cleaned else None
+
+
+def _is_auto_rerippable(title: "DiscTitle") -> bool:
+    """True if a REVIEW title is a rip failure still eligible for an auto re-rip."""
+    if not title.match_details:
+        return False
+    try:
+        details = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if not isinstance(details, dict):
+        return False
+    return bool(details.get("rerip_eligible")) and details.get("error") in RIP_FAILURE_ERROR_CODES
 
 
 # Create domain-specific event broadcaster
@@ -489,6 +503,23 @@ class JobManager:
             # that contends that lock is the insert sentinel — and the sentinel is
             # what triggered this call, so nothing else is waiting on it here.
             new_hash = await self._compute_disc_hash(drive_letter)
+            # Feature C: a reinsert of the SAME disc (hash match) with re-rippable
+            # titles re-rips just those titles instead of spawning a new job.
+            rerip = await self._find_rerip_job(new_hash)
+            if rerip is not None:
+                rerip_job_id, rerip_title_ids = rerip
+                logger.info(
+                    f"Disc reinserted (hash match) for job {rerip_job_id}; re-ripping "
+                    f"{len(rerip_title_ids)} failed title(s) instead of creating a new job."
+                )
+                task = asyncio.create_task(
+                    with_job_log_context(
+                        rerip_job_id, self.rerip_titles(rerip_job_id, rerip_title_ids)
+                    )
+                )
+                task.add_done_callback(lambda t, jid=rerip_job_id: self._on_task_done(t, jid))
+                self._active_jobs[rerip_job_id] = task
+                return
             async with async_session() as session:
                 # Disc-required jobs (the disc is physically in the drive) always
                 # block a new job. Ripping EJECTS the disc + calls notify_ejected()
@@ -574,6 +605,36 @@ class JobManager:
                 # Stamp the cooldown only after the task is scheduled, so a failure
                 # to spawn it doesn't silently block retries for the next 15s.
                 self._last_job_created_at[drive_letter] = time.monotonic()
+
+    async def _find_rerip_job(self, new_hash: str | None) -> tuple[int, list[int]] | None:
+        """Find a REVIEW_NEEDED job for this disc with auto-re-rippable titles.
+
+        Returns ``(job_id, [title_id])`` when the inserted disc's ContentHash
+        matches a settled job holding rip-failed titles still eligible for an
+        automatic re-rip; ``None`` for a different/unfingerprintable disc, a job
+        still actively matching, or no eligible titles (Feature C).
+        """
+        if not new_hash:
+            return None
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob).where(
+                    DiscJob.content_hash == new_hash,
+                    DiscJob.state == JobState.REVIEW_NEEDED,
+                )
+            )
+            jobs = sorted(result.scalars().all(), key=lambda j: j.id, reverse=True)
+            for job in jobs:
+                titles_res = await session.execute(
+                    select(DiscTitle).where(
+                        DiscTitle.job_id == job.id,
+                        DiscTitle.state == TitleState.REVIEW,
+                    )
+                )
+                eligible = [t.id for t in titles_res.scalars().all() if _is_auto_rerippable(t)]
+                if eligible:
+                    return job.id, eligible
+        return None
 
     async def create_job_from_staging(
         self,
