@@ -591,6 +591,31 @@ class TestDownloadSubtitlesAllSeasons:
 
         assert coord._subtitle_ready[job_id].is_set()
 
+    async def test_passes_tmdb_id_to_each_season_download(self, monkeypatch):
+        """Callers that know the show's tmdb_id must key every per-season download
+        by it, or the name-resolver can pick a same-name twin (#370)."""
+        coord = _make_coord()
+        seen: list[tuple[int, int | None]] = []
+
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
+
+        def fake_download(show, season, tmdb_id=None):
+            seen.append((season, tmdb_id))
+            return {"episodes": [{"status": "downloaded"}], "show_name": show}
+
+        monkeypatch.setattr("app.matcher.testing_service.download_subtitles", fake_download)
+        async with _unit_session_factory() as session:
+            job, _t = await _seed(session)
+            job_id = job.id
+        coord._subtitle_ready[job_id] = asyncio.Event()
+
+        await coord.download_subtitles_all_seasons(job_id, "Eureka", [1, 2], tmdb_id=4620)
+
+        assert seen == [(1, 4620), (2, 4620)]
+
 
 @pytest.mark.unit
 class TestEpisodeRuntimesShowIdentity:

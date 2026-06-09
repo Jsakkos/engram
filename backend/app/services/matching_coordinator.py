@@ -239,12 +239,12 @@ class MatchingCoordinator:
         )
 
     def start_subtitle_download_all_seasons(
-        self, job_id: int, show_name: str, seasons: list[int]
+        self, job_id: int, show_name: str, seasons: list[int], tmdb_id: int | None = None
     ) -> None:
-        """Start a background download spanning multiple seasons (unknown-season import)."""
+        """Start a background download spanning multiple seasons (unknown season)."""
         self._subtitle_ready[job_id] = asyncio.Event()
         self._subtitle_tasks[job_id] = asyncio.create_task(
-            self.download_subtitles_all_seasons(job_id, show_name, seasons)
+            self.download_subtitles_all_seasons(job_id, show_name, seasons, tmdb_id=tmdb_id)
         )
 
     async def restart_subtitle_download(
@@ -1704,7 +1704,7 @@ class MatchingCoordinator:
             await self._check_job_completion(session, job_id)
 
     async def download_subtitles_all_seasons(
-        self, job_id: int, show_name: str, seasons: list[int]
+        self, job_id: int, show_name: str, seasons: list[int], tmdb_id: int | None = None
     ) -> None:
         """Download references for every candidate season (unknown-season import).
 
@@ -1738,7 +1738,9 @@ class MatchingCoordinator:
             episode_total = 0
             for season in seasons:
                 try:
-                    result = await asyncio.to_thread(download_subtitles, show_name, season)
+                    result = await asyncio.to_thread(
+                        download_subtitles, show_name, season, tmdb_id=tmdb_id
+                    )
                 except Exception as e:  # noqa: BLE001 — one season failing must not abort the rest
                     logger.warning(f"Subtitle download failed for {show_name} S{season}: {e}")
                     continue
