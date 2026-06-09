@@ -38,6 +38,7 @@ from app.services.finalization_coordinator import FinalizationCoordinator
 from app.services.identification_coordinator import IdentificationCoordinator
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
+    INCOMPLETE_RIP_MESSAGE,
     STRICT_MIN_VOTES,
     STRICT_SCAN_POINTS,
     MatchingCoordinator,
@@ -1396,6 +1397,126 @@ class JobManager:
                 f"Failed to transition title {title_id} out of RIPPING (Job {job_id})",
                 exc_info=True,
             )
+
+    async def rerip_titles(self, job_id: int, title_ids: list[int]) -> None:
+        """Re-rip specific rip-failed titles using the disc currently in the drive.
+
+        Reuses the normal rip→match→complete machinery for a focused subset:
+        transitions the job back to RIPPING (also blocking spurious reinserts),
+        deletes each title's stale staging file so MakeMKV overwrites cleanly,
+        re-rips only ``title_ids``, and lets the existing title-complete/-error
+        callbacks drive re-matching and completion (Feature C).
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            titles = []
+            for tid in title_ids:
+                t = await session.get(DiscTitle, tid)
+                if t and t.job_id == job_id and t.state == TitleState.REVIEW:
+                    titles.append(t)
+            if not titles:
+                logger.info(f"Job {job_id}: no eligible titles to re-rip ({title_ids})")
+                return
+
+            # Un-hide a cleared job that is being actively re-processed.
+            if job.cleared_at is not None:
+                job.cleared_at = None
+                session.add(job)
+
+            # REVIEW_NEEDED -> RIPPING (valid; also makes a spurious reinsert an
+            # unconditional drive-busy block during the re-rip).
+            await state_machine.transition(job, JobState.RIPPING, session)
+
+            staging_dir = Path(job.staging_path)
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            drive_id = job.drive_id
+
+            for t in titles:
+                t.rerip_attempts = (t.rerip_attempts or 0) + 1
+                t.state = TitleState.RIPPING
+                if t.output_filename:
+                    old = Path(t.output_filename)
+                    try:
+                        if old.exists():
+                            old.unlink()
+                    except OSError as e:
+                        logger.warning(f"Job {job_id}: could not remove stale file {old}: {e}")
+                t.output_filename = None
+                session.add(t)
+                await ws_manager.broadcast_title_update(job_id, t.id, TitleState.RIPPING.value)
+            await session.commit()
+
+            subset_sorted = sorted(titles, key=lambda x: x.title_index)
+            rip_indices = [t.title_index for t in subset_sorted]
+            for t in subset_sorted:
+                session.expunge(t)
+
+        self._note_activity(job_id)
+
+        def on_title_complete(idx: int, path: Path):
+            future = asyncio.run_coroutine_threadsafe(
+                self._on_title_ripped(job_id, idx, path, subset_sorted), self._loop
+            )
+
+            def _check(fut):
+                try:
+                    fut.result(timeout=30)
+                except Exception as e:  # noqa: BLE001 — surface, never swallow
+                    logger.exception(f"[RERIP] _on_title_ripped failed (Job {job_id}): {e}")
+
+            future.add_done_callback(_check)
+
+        def on_title_error(cmd_idx: int, reason: str):
+            list_idx = cmd_idx - 1
+            if not (0 <= list_idx < len(subset_sorted)):
+                logger.error(f"Job {job_id}: re-rip title error cmd_idx={cmd_idx} out of range")
+                return
+            title_id_err = subset_sorted[list_idx].id
+            asyncio.run_coroutine_threadsafe(
+                self._matching.route_rip_failure_to_review(
+                    job_id, title_id_err, "rip_stalled", reason
+                ),
+                self._loop,
+            )
+
+        from app.core.discdb_exporter import get_makemkv_log_dir
+        from app.services.config_service import get_config
+
+        cfg = await get_config()
+        stall_timeout = cfg.ripping_stall_timeout if cfg else 120.0
+
+        result = await self._extractor.rip_titles(
+            drive_id,
+            staging_dir,
+            title_indices=rip_indices,
+            title_complete_callback=on_title_complete,
+            stall_timeout=stall_timeout,
+            title_error_callback=on_title_error,
+            log_dir=get_makemkv_log_dir(job_id),
+            job_id=job_id,
+        )
+
+        # A clean MakeMKV failure (disc unreadable) returns success=False without
+        # a per-title stall callback — route any still-RIPPING title back to review.
+        if not result.success:
+            async with async_session() as session:
+                for t in subset_sorted:
+                    db_t = await session.get(DiscTitle, t.id)
+                    if db_t and db_t.state == TitleState.RIPPING:
+                        await self._matching.route_rip_failure_to_review(
+                            job_id, t.id, "incomplete_rip", INCOMPLETE_RIP_MESSAGE
+                        )
+
+        # Free the drive for the next disc.
+        try:
+            from app.core.sentinel import eject_disc
+
+            await asyncio.to_thread(eject_disc, drive_id)
+            self._drive_monitor.notify_ejected(drive_id)
+        except (OSError, RuntimeError) as e:
+            logger.warning(f"Job {job_id}: eject after re-rip failed: {e}")
 
     async def _run_ripping(self, job_id: int) -> None:
         """Execute the ripping process.

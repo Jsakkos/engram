@@ -121,3 +121,60 @@ async def test_on_title_error_routes_to_review_not_failed(monkeypatch):
     d = json.loads(t.match_details)
     assert d["error"] == "rip_stalled"
     assert d["rerip_eligible"] is True
+
+
+@pytest.mark.asyncio
+async def test_rerip_titles_transitions_deletes_and_rips(monkeypatch, tmp_path):
+    from app.core.extractor import RipResult
+    from app.services.job_manager import job_manager
+
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+    # Seed a REVIEW_NEEDED job with one incomplete_rip REVIEW title + a stale file.
+    stale = tmp_path / "show_t02.mkv"
+    stale.write_bytes(b"truncated")
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="F:",
+            volume_label="SHOW_S2D1",
+            content_type=ContentType.TV,
+            state=JobState.REVIEW_NEEDED,
+            staging_path=str(tmp_path),
+            content_hash="ABC123",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=2,
+            duration_seconds=2819,
+            state=TitleState.REVIEW,
+            output_filename=str(stale),
+            rerip_attempts=0,
+            match_details=json.dumps({"error": "incomplete_rip", "rerip_eligible": True}),
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+        job_id, title_id = job.id, title.id
+
+    captured = {}
+
+    async def fake_rip_titles(drive, output_dir, title_indices=None, **kw):
+        captured["drive"] = drive
+        captured["indices"] = title_indices
+        return RipResult(success=True, output_files=[], error_message=None, stalled_titles=None)
+
+    monkeypatch.setattr(job_manager._extractor, "rip_titles", fake_rip_titles)
+    monkeypatch.setattr(job_manager, "_drive_monitor", MagicMock())
+    monkeypatch.setattr("app.core.sentinel.eject_disc", lambda d: None)
+
+    await job_manager.rerip_titles(job_id, [title_id])
+
+    assert captured["indices"] == [2]
+    assert captured["drive"] == "F:"
+    assert not stale.exists()  # stale file deleted before re-rip
+    t = await _reload(title_id)
+    assert t.rerip_attempts == 1
