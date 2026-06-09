@@ -31,7 +31,7 @@ from app.core.security import is_allowed_image_url, sanitize_log_value
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
-from app.matcher.tmdb_client import fetch_season_episodes
+from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 
@@ -653,6 +653,9 @@ class SeasonRosterResponse(BaseModel):
     show_id: int | None = None
     episodes: list[RosterEpisode] = []
     reason: str | None = None
+    # Season picker (#370): total seasons for the show, populated only while the
+    # job's season is unknown (no extra TMDB call on the normal detected path).
+    season_count: int | None = None
     # Episode ordering (#200)
     ordering_available: bool = False
     ordering_diverges: bool = False
@@ -664,32 +667,54 @@ class SeasonRosterResponse(BaseModel):
 async def get_season_roster(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
+    season: int | None = Query(
+        default=None, ge=0, description="Override season (unknown-season picker, #370)"
+    ),
 ) -> SeasonRosterResponse:
-    """Season episode list with per-episode coverage for the review UI."""
+    """Season episode list with per-episode coverage for the review UI.
+
+    ``?season=N`` overrides the job's detected season so the review page can
+    browse rosters for discs whose label carried no season (#370).
+    """
     if job.content_type != ContentType.TV:
         return SeasonRosterResponse(available=False, reason="Not a TV disc")
-    if not job.tmdb_id or job.detected_season is None:
+
+    effective_season = season if season is not None else job.detected_season
+
+    # Season-picker support (#370): while the job's season is unknown, report
+    # how many seasons exist so the prompt/picker can render options. The
+    # lookup is best-effort decoration — a TMDB failure must not break review.
+    season_count: int | None = None
+    if job.tmdb_id and job.detected_season is None:
+        try:
+            season_count = await asyncio.to_thread(get_number_of_seasons, str(job.tmdb_id))
+        except Exception:  # noqa: BLE001 — picker is best-effort decoration
+            season_count = None
+
+    if not job.tmdb_id or effective_season is None:
         return SeasonRosterResponse(
             available=False,
-            season_number=job.detected_season,
+            season_number=effective_season,
             show_id=job.tmdb_id,
+            season_count=season_count,
             reason="Show or season not identified yet",
         )
 
-    season = job.detected_season
+    season_num = effective_season
     from app.services.config_service import get_config
 
     config = await get_config()
     # fetch_season_episodes does a synchronous requests.get; run it off the
     # event loop so a slow TMDB call doesn't stall other requests / WS pushes.
     episodes_raw = await asyncio.to_thread(
-        fetch_season_episodes, str(job.tmdb_id), season, config.tmdb_api_key
+        fetch_season_episodes, str(job.tmdb_id), season_num, config.tmdb_api_key
     )
     if not episodes_raw:
         return SeasonRosterResponse(
             available=False,
-            season_number=season,
+            season_number=season_num,
             show_id=job.tmdb_id,
+            season_count=season_count,
             reason="Could not load season episodes from TMDB",
         )
 
@@ -702,7 +727,7 @@ async def get_season_roster(
         if not title.matched_episode:
             continue
         match = _EPISODE_CODE_RE.search(title.matched_episode)
-        if not match or int(match.group(1)) != season:
+        if not match or int(match.group(1)) != season_num:
             continue
         assigned.setdefault(int(match.group(2)), []).append(title.id)
 
@@ -711,7 +736,7 @@ async def get_season_roster(
 
     episodes = [
         RosterEpisode(
-            episode_code=f"S{season:02d}E{ep['episode_number']:02d}",
+            episode_code=f"S{season_num:02d}E{ep['episode_number']:02d}",
             episode_number=ep["episode_number"],
             name=ep.get("name") or "",
             status=(
@@ -735,12 +760,12 @@ async def get_season_roster(
     from app.services.episode_ordering_service import resolve_show_ordering
 
     current_ordering, _ = await resolve_show_ordering(job.tmdb_id, session)
-    roster_pairs = [(season, ep["episode_number"]) for ep in episodes_raw]
-    matched_pairs = [(season, ep_num) for ep_num in present]
+    roster_pairs = [(season_num, ep["episode_number"]) for ep in episodes_raw]
+    matched_pairs = [(season_num, ep_num) for ep_num in present]
     ordering_data = await asyncio.to_thread(
         episode_ordering.build_ordering_options,
         str(job.tmdb_id),
-        season,
+        season_num,
         roster_pairs,
         matched_pairs,
         config.tmdb_api_key,
@@ -749,8 +774,9 @@ async def get_season_roster(
 
     return SeasonRosterResponse(
         available=True,
-        season_number=season,
+        season_number=season_num,
         show_id=job.tmdb_id,
+        season_count=season_count,
         episodes=episodes,
         ordering_available=ordering_data["available"],
         ordering_diverges=ordering_data["diverges"],

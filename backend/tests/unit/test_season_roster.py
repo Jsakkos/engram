@@ -158,6 +158,61 @@ class TestSeasonRoster:
         assert data["episodes"] == []
         assert data["reason"]
 
+    async def test_unknown_season_reports_season_count_for_picker(self, client):
+        """detected_season=None → available:false but show_id + season_count are
+        present so the season prompt / review picker can render options (#370)."""
+        await _seed_config()
+        job = await _seed_tv_job(detected_season=None)
+
+        with patch("app.api.routes.get_number_of_seasons", return_value=5):
+            response = await client.get(f"/api/jobs/{job.id}/season-roster")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available"] is False
+        assert data["show_id"] == 12345
+        assert data["season_count"] == 5
+
+    async def test_unknown_season_count_failure_degrades_gracefully(self, client):
+        """A TMDB hiccup on the count lookup must not 500 the roster."""
+        await _seed_config()
+        job = await _seed_tv_job(detected_season=None)
+
+        with patch("app.api.routes.get_number_of_seasons", side_effect=RuntimeError("tmdb down")):
+            response = await client.get(f"/api/jobs/{job.id}/season-roster")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available"] is False
+        assert data["season_count"] is None
+
+    async def test_season_override_loads_that_seasons_roster(self, client):
+        """?season=2 on an unknown-season job loads season 2's episodes (#370)."""
+        await _seed_config()
+        job = await _seed_tv_job(detected_season=None)
+        await _seed_title(job.id, 0, "S02E01")
+
+        seen: dict = {}
+
+        def fake_fetch(show_id, season, api_key):
+            seen["season"] = season
+            return _FAKE_EPISODES
+
+        with (
+            patch("app.api.routes.fetch_season_episodes", side_effect=fake_fetch),
+            patch("app.api.routes.get_number_of_seasons", return_value=5),
+        ):
+            response = await client.get(f"/api/jobs/{job.id}/season-roster?season=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert seen["season"] == 2
+        assert data["available"] is True
+        assert data["season_number"] == 2
+        assert data["season_count"] == 5
+        episodes = {ep["episode_code"]: ep for ep in data["episodes"]}
+        assert episodes["S02E01"]["status"] == "assigned"
+
     async def test_roster_without_groups_does_not_surface_ordering(self, client):
         """The 90% case: a show with no episode groups -> selector stays hidden."""
         await _seed_config()
