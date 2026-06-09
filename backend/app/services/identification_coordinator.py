@@ -418,19 +418,44 @@ class IdentificationCoordinator:
                 # ambiguous (same-name collision) or a no-year twin needs disambiguation.
                 # Downloading by the tentative name would fetch the wrong show's subtitles
                 # before the user disambiguates.
-                if (
-                    job.content_type == ContentType.TV
-                    and job.detected_title
-                    and job.detected_season
-                    and not _collision
-                ):
-                    self._start_subtitle_download(
-                        job_id, job.detected_title, job.detected_season, job.tmdb_id
-                    )
-                    logger.info(
-                        f"Job {job_id}: starting subtitle download for "
-                        f"{job.detected_title} S{job.detected_season}"
-                    )
+                if job.content_type == ContentType.TV and job.detected_title and not _collision:
+                    if job.detected_season is None:
+                        # Disc label carried no season (box-set labels like
+                        # "Eureka D3"). A single-season show needs no prompt;
+                        # otherwise park the job for a season pick BEFORE
+                        # ripping — downstream, an unknown season used to skip
+                        # subtitle download entirely and dead-end every title
+                        # in review (#370). Resumes via set_name_and_resume.
+                        seasons = await self._resolve_all_season_numbers(
+                            job.detected_title, tmdb_id=job.tmdb_id
+                        )
+                        if len(seasons) == 1:
+                            job.detected_season = 1
+                            await session.commit()
+                        else:
+                            reason = (
+                                f"Identified as '{job.detected_title}' but the season "
+                                f"could not be detected from the disc label — select a "
+                                f"season to continue."
+                            )
+                            await self._state_machine.transition_to_review(
+                                job, session, reason=reason, broadcast=False
+                            )
+                            await ws_manager.broadcast_job_update(
+                                job_id,
+                                JobState.REVIEW_NEEDED.value,
+                                content_type=job.content_type.value,
+                                detected_title=job.detected_title,
+                                detected_season=None,
+                                total_titles=job.total_titles,
+                                review_reason=reason,
+                            )
+                            logger.info(
+                                f"Job {job_id}: season unknown for "
+                                f"'{job.detected_title}', prompting user for season"
+                            )
+                            return
+                    await self._start_tv_subtitle_prefetch(job)
 
                 if analysis.needs_review:
                     # Special handling for Ambiguous Movies
@@ -508,16 +533,20 @@ class IdentificationCoordinator:
                 logger.exception(f"Error identifying disc for job {job_id}")
                 await self._state_machine.transition_to_failed(job, session, str(e))
 
-    async def _resolve_all_season_numbers(self, title: str) -> list[int]:
-        """Resolve 1..N season numbers for a show via TMDB (unknown-season import).
+    async def _resolve_all_season_numbers(
+        self, title: str, tmdb_id: int | None = None
+    ) -> list[int]:
+        """Resolve 1..N season numbers for a show via TMDB (unknown season).
 
-        Returns an empty list when the show can't be resolved; callers then rely on
-        the precomputed cache / already-downloaded references during matching.
+        Uses ``tmdb_id`` directly when the job already resolved it — re-resolving
+        by name can pick the dominant same-name twin (#370). Returns an empty list
+        when the show can't be resolved; callers then rely on the precomputed
+        cache / already-downloaded references during matching.
         """
         try:
             from app.matcher.tmdb_client import fetch_show_id, get_number_of_seasons
 
-            show_id = await asyncio.to_thread(fetch_show_id, title)
+            show_id = str(tmdb_id) if tmdb_id else await asyncio.to_thread(fetch_show_id, title)
             if not show_id:
                 return []
             count = await asyncio.to_thread(get_number_of_seasons, show_id)
@@ -526,6 +555,35 @@ class IdentificationCoordinator:
         except Exception as e:  # noqa: BLE001 — best-effort; fall back to cache at match time
             logger.debug(f"Could not resolve season count for '{title}': {e}")
         return []
+
+    async def _start_tv_subtitle_prefetch(self, job) -> None:
+        """Kick off the background reference-subtitle download for a TV job.
+
+        Known season → that season only. Unknown season (the user chose "match
+        across all seasons" in the season prompt, or a flat import folder) →
+        prefetch EVERY season so matching can search across all of them instead
+        of silently skipping the download and dead-ending in review (#370).
+        """
+        if job.detected_season:
+            self._start_subtitle_download(
+                job.id, job.detected_title, job.detected_season, job.tmdb_id
+            )
+            logger.info(
+                f"Job {job.id}: starting subtitle download for "
+                f"{job.detected_title} S{job.detected_season}"
+            )
+        elif self._start_subtitle_download_all_seasons:
+            all_seasons = await self._resolve_all_season_numbers(
+                job.detected_title, tmdb_id=job.tmdb_id
+            )
+            if all_seasons:
+                logger.info(
+                    f"Job {job.id}: season unknown for '{job.detected_title}'; "
+                    f"prefetching subtitles for seasons {all_seasons}"
+                )
+                self._start_subtitle_download_all_seasons(
+                    job.id, job.detected_title, all_seasons, tmdb_id=job.tmdb_id
+                )
 
     async def _resolve_missing_tmdb_id(self, job: DiscJob) -> TmdbSignal | None:
         """Resolve a missing ``tmdb_id`` from a job's known title (caller commits).
@@ -764,24 +822,11 @@ class IdentificationCoordinator:
                     return
 
                 # Skip ripping — files already exist. Proceed to matching/organization.
+                # Imports keep automatic all-seasons prefetch (flat folders genuinely
+                # span seasons); only physical discs get the season prompt.
                 if job.content_type == ContentType.TV:
-                    # Start subtitle download
-                    if job.detected_title and job.detected_season:
-                        self._start_subtitle_download(
-                            job_id, job.detected_title, job.detected_season, job.tmdb_id
-                        )
-                    elif job.detected_title and self._start_subtitle_download_all_seasons:
-                        # Season unknown (flat import folder): prefetch references for
-                        # every season so the curator can match across all of them.
-                        all_seasons = await self._resolve_all_season_numbers(job.detected_title)
-                        if all_seasons:
-                            logger.info(
-                                f"Job {job_id}: season unknown for '{job.detected_title}'; "
-                                f"prefetching subtitles for seasons {all_seasons}"
-                            )
-                            self._start_subtitle_download_all_seasons(
-                                job_id, job.detected_title, all_seasons
-                            )
+                    if job.detected_title:
+                        await self._start_tv_subtitle_prefetch(job)
 
                     # Transition to MATCHING and kick off per-title matching. Gate
                     # all downstream work on the transition succeeding: if it was
@@ -915,6 +960,14 @@ class IdentificationCoordinator:
             # ambiguous same-name twins are left null. Committed atomically with the
             # RIPPING transition below (the resolver does not commit).
             await self._resolve_missing_tmdb_id(job)
+            # The season prompt and the unreadable-label prompt both resume
+            # through here — kick the reference-subtitle prefetch now that the
+            # identity is final. (This path previously never started a download
+            # at all; #370.) A season the user left unset ("match across all
+            # seasons") falls through to the all-seasons prefetch.
+            if job.content_type == ContentType.TV and job.detected_title:
+                await self._start_tv_subtitle_prefetch(job)
+            job.review_reason = None
             job.state = JobState.RIPPING
             job.updated_at = datetime.now(UTC)
             await session.commit()
