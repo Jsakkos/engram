@@ -483,6 +483,10 @@ class JobManager:
         async with self._drive_locks[drive_letter]:
             # Fingerprint the inserted disc so dedup can tell two same-labelled
             # discs apart (e.g. season Disc 1 vs Disc 2 both 'BREAKINGBADS2').
+            # The probe runs off-thread; its brief retry wait (~1s worst case for
+            # a cold disc) happens under the per-drive lock, but the only thing
+            # that contends that lock is the insert sentinel — and the sentinel is
+            # what triggered this call, so nothing else is waiting on it here.
             new_hash = await self._compute_disc_hash(drive_letter)
             async with async_session() as session:
                 # Disc-required jobs (the disc is physically in the drive) always

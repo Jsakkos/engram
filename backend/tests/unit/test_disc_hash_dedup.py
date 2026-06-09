@@ -121,6 +121,10 @@ def _isolate_create(monkeypatch):
         "app.services.config_service.get_config",
         AsyncMock(return_value=SimpleNamespace(staging_path="/tmp/staging")),
     )
+    # Default the disc fingerprint so the fixture is self-contained — without
+    # this a future test could hit real disk I/O on a fake drive and silently
+    # fall into the None-hash label-fallback path. Individual tests override it.
+    monkeypatch.setattr(jm_mod, "compute_content_hash", lambda drive: "DEADBEEF")
     job_manager._drive_locks.clear()
     job_manager._last_job_created_at.clear()
     job_manager._active_jobs.clear()
