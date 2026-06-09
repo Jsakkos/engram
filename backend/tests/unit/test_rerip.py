@@ -108,7 +108,7 @@ async def test_on_title_error_routes_to_review_not_failed(monkeypatch):
     monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
     job_id, title_id = await _seed_title(TitleState.RIPPING)
     # Real coordinator with a stubbed completion check.
-    job_manager._matching._check_job_completion = AsyncMock()
+    monkeypatch.setattr(job_manager._matching, "_check_job_completion", AsyncMock())
 
     async with _unit_session_factory() as session:
         title = await session.get(DiscTitle, title_id)
