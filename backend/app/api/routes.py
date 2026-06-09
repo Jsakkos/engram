@@ -1349,8 +1349,12 @@ async def get_job_poster(job: DiscJob = Depends(get_job_or_404)) -> dict:
 
     try:
         if job.tmdb_id:
-            detail_url = f"https://api.themoviedb.org/3/{media}/{job.tmdb_id}"
-            response = requests.get(detail_url, headers=headers, params=params, timeout=10)
+            # int() sanitizes the id into the URL (no path/host injection, and clears
+            # CodeQL's partial-SSRF taint); the guard above ensures it is set.
+            detail_url = f"https://api.themoviedb.org/3/{media}/{int(job.tmdb_id)}"
+            response = await asyncio.to_thread(
+                requests.get, detail_url, headers=headers, params=params, timeout=10
+            )
             if response.status_code == 200:
                 poster_path = response.json().get("poster_path")
                 if poster_path:
@@ -1361,13 +1365,15 @@ async def get_job_poster(job: DiscJob = Depends(get_job_or_404)) -> dict:
             return {"poster_url": None}
         search_url = f"https://api.themoviedb.org/3/search/{media}"
         params["query"] = job.detected_title
-        response = requests.get(search_url, headers=headers, params=params, timeout=10)
+        response = await asyncio.to_thread(
+            requests.get, search_url, headers=headers, params=params, timeout=10
+        )
         if response.status_code == 200:
             results = response.json().get("results", [])
             if results and results[0].get("poster_path"):
                 return {"poster_url": f"{BASE_IMAGE_URL}{results[0]['poster_path']}"}
     except Exception as e:
-        logger.warning(f"Error fetching poster: {e}")
+        logger.warning(f"Error fetching poster: {e}", exc_info=True)
 
     return {"poster_url": None}
 

@@ -1199,7 +1199,7 @@ class IdentificationCoordinator:
             titles,
             job.volume_label,
             tmdb_signal=tmdb_signal,
-            disc_title=disc_name_title or None,
+            disc_title=disc_name_title,
         )
 
         # If the disc-name fallback found a season the volume label didn't have, propagate it
