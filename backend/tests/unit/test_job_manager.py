@@ -487,6 +487,10 @@ class TestCreateJobForDiscDedup:
     def _neutralize(self, monkeypatch):
         # A created job must not spawn a real disc-identification task.
         monkeypatch.setattr(job_manager._identification, "identify_disc", AsyncMock())
+        # These tests exercise label-based dedup; stub the disc-hash probe to
+        # None (no fingerprint → label fallback) so they don't pay real disk I/O
+        # plus retry sleeps probing a fake drive.
+        monkeypatch.setattr(job_manager, "_compute_disc_hash", AsyncMock(return_value=None))
         # Start each test with clean per-drive cooldown + lock state.
         job_manager._last_job_created_at.clear()
         job_manager._drive_locks.clear()
