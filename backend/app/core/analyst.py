@@ -13,7 +13,9 @@ from app.models.disc_job import ContentType
 logger = logging.getLogger(__name__)
 
 # Generic Windows/disc placeholder volume labels that carry no meaningful title information.
-# Normalized form: uppercased with underscores and spaces removed.
+# Normalized form: uppercased with non-alphanumerics removed. (_parse_volume_label
+# strips only underscores/spaces; _is_generic_disc_name strips all punctuation so it
+# also matches DINFO names like "Blu-ray disc".)
 _GENERIC_VOLUME_LABELS: frozenset[str] = frozenset(
     {
         "LOGICALVOLUMEID",
@@ -861,10 +863,11 @@ class DiscAnalyst:
           "The Office - Season 2"
           "Supernatural Season 11 Disc 2"   # space- or dash-separated disc, no parens
           "Inception"
+          "Breaking Bad: Season 2: Disc 1"   # colon-separated title/season/disc
 
-        The trailing disc indicator is accepted with or without parentheses or a
-        dash ("(Disc 1)", "Disc 1", "- Disc 1"), so the season is recovered even
-        when it sits ahead of a bare "Disc N" suffix.
+        The trailing disc indicator is accepted with or without parentheses, a
+        dash, or a colon ("(Disc 1)", "Disc 1", "- Disc 1", ": Disc 1"). Generic
+        placeholder names (e.g. "Blu-ray disc") return (None, None).
 
         Returns (show_title, season), either may be None if not found.
         """
