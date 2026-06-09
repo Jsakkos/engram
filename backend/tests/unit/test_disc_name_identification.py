@@ -110,7 +110,7 @@ def test_parse_disc_name(disc_name, expected_title, expected_season):
 
 
 # ---------------------------------------------------------------------------
-# Analyst: name_hint bypasses _names_are_similar guard
+# Analyst: TMDB name adopted when corroborated by label OR DINFO disc title
 # ---------------------------------------------------------------------------
 
 
@@ -151,7 +151,7 @@ def test_analyst_with_name_hint_uses_correct_name():
         _tv_titles(),
         "STRANGENEWWORLDS_SEASON3",
         tmdb_signal=tmdb,
-        name_hint="Star Trek: Strange New Worlds",
+        disc_title="Star Trek: Strange New Worlds",
     )
 
     assert result.detected_name == "Star Trek: Strange New Worlds"
@@ -173,10 +173,67 @@ def test_analyst_name_hint_still_propagates_tmdb_id_on_type_conflict():
         _tv_titles(),
         "STRANGENEWWORLDS_SEASON3",
         tmdb_signal=tmdb,
-        name_hint="Some Film",
+        disc_title="Some Film",
     )
 
     assert result.tmdb_id == 12345
+
+
+def test_analyst_adopts_tmdb_name_for_concatenated_label():
+    """BREAKINGBADS2 -> 'Breakingbad' must be corrected to TMDB 'Breaking Bad'."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1396,
+        tmdb_name="Breaking Bad",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(_tv_titles(), "BREAKINGBADS2", tmdb_signal=tmdb)
+
+    assert result.detected_name == "Breaking Bad"
+    assert result.detected_season == 2
+    assert result.tmdb_id == 1396
+
+
+def test_analyst_adopts_tmdb_name_when_disc_title_corroborates():
+    """A clean DINFO disc title corroborates the TMDB name as well."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1396,
+        tmdb_name="Breaking Bad",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(
+        _tv_titles(),
+        "BREAKINGBADS2",
+        tmdb_signal=tmdb,
+        disc_title="Breaking Bad",
+    )
+
+    assert result.detected_name == "Breaking Bad"
+    assert result.tmdb_id == 1396
+
+
+def test_analyst_keeps_base_name_when_tmdb_uncorroborated():
+    """A spurious TMDB name matching neither on-disc signal must not override."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=999,
+        tmdb_name="Some Unrelated Show",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(
+        _tv_titles(),
+        "BREAKINGBADS2",
+        tmdb_signal=tmdb,
+        disc_title="Breaking Bad",
+    )
+
+    # Neither "Breakingbad" nor "Breaking Bad" matches "Some Unrelated Show",
+    # so the DINFO-preferred base name is kept rather than the TMDB name.
+    assert result.detected_name == "Breaking Bad"
 
 
 # ---------------------------------------------------------------------------

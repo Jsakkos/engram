@@ -269,7 +269,7 @@ class DiscAnalyst:
         titles: list[TitleInfo],
         volume_label: str = "",
         tmdb_signal=None,
-        name_hint: str | None = None,
+        disc_title: str | None = None,
     ) -> DiscAnalysisResult:
         """Analyze a list of titles to determine content type.
 
@@ -277,9 +277,9 @@ class DiscAnalyst:
             titles: List of title information from MakeMKV
             volume_label: The disc's volume label (e.g., "THE_OFFICE_S1")
             tmdb_signal: Optional TmdbSignal from TMDB lookup
-            name_hint: Override for detected_name when a better source than the volume
-                label is available (e.g., MakeMKV's DINFO disc name). Bypasses the
-                _names_are_similar guard so the TMDB name flows through cleanly.
+            disc_title: Parsed MakeMKV DINFO disc title, when available. Used as the
+                base display name (preferred over the volume-label parse) and as an
+                additional signal that corroborates the authoritative TMDB name.
 
         Returns:
             Analysis result with content type and confidence
@@ -304,28 +304,36 @@ class DiscAnalyst:
 
         # Try to extract show name, season, and disc from volume label
         label_name, detected_season, detected_disc = self._parse_volume_label(volume_label)
-        # name_hint (e.g. from MakeMKV DINFO) overrides the volume-label-parsed name
-        detected_name = name_hint if name_hint else label_name
+
+        # Base display name: prefer the MakeMKV DINFO disc title (human-readable,
+        # properly spaced) over the filesystem-constrained volume-label parse.
+        detected_name = disc_title or label_name
 
         # If we found a season pattern (S01D02), it's very likely a TV show
         is_likely_tv = detected_season is not None
         if is_likely_tv:
             logger.info(f"Volume label indicates TV (season {detected_season})")
 
-        # Use TMDB name only if it's semantically related to the parsed name.
-        # name_hint already comes from a trusted source (DINFO), so bypass the guard for it.
+        # TMDB is the authoritative name source, but only adopt it when an on-disc
+        # signal corroborates it: the volume-label name OR the DINFO disc title,
+        # compared whitespace-insensitively so a separator-less label like
+        # "Breakingbad" still corroborates "Breaking Bad". This keeps a wrong TMDB
+        # match from silently overriding while letting a right one through.
         effective_name = detected_name
         if tmdb_signal and tmdb_signal.tmdb_name:
-            if (
-                name_hint
-                or detected_name is None
-                or _names_are_similar(detected_name, tmdb_signal.tmdb_name)
-            ):
-                effective_name = tmdb_signal.tmdb_name
+            tmdb_name = tmdb_signal.tmdb_name
+            corroborated = (
+                detected_name is None
+                or (label_name is not None and _names_are_similar(label_name, tmdb_name))
+                or (disc_title is not None and _names_are_similar(disc_title, tmdb_name))
+            )
+            if corroborated:
+                effective_name = tmdb_name
             else:
                 logger.warning(
-                    f"TMDB name '{tmdb_signal.tmdb_name}' is dissimilar to parsed name "
-                    f"'{detected_name}' — ignoring TMDB name override"
+                    f"TMDB name '{tmdb_name}' corroborated by neither the volume-label "
+                    f"name '{label_name}' nor the disc title '{disc_title}' — "
+                    f"keeping '{detected_name}'"
                 )
 
         # ALWAYS check for movie first (content overrides label)
