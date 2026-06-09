@@ -19,7 +19,11 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
-from app.core.extractor import STALL_FAILURE_REASON, MakeMKVExtractor
+from app.core.extractor import (
+    STALL_FAILURE_REASON,
+    MakeMKVExtractor,
+    compute_content_hash,
+)
 from app.core.log_context import with_job_log_context
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
@@ -43,6 +47,12 @@ from app.services.ripping_helpers import (
     resolve_title_from_filename,
 )
 from app.services.simulation_service import SimulationService
+
+# Per-disc ContentHash is computable the instant a disc mounts (validated on
+# real hardware: +0.00s after mount, 4/4 inserts). The retry exists only for a
+# cold disc that is mounted-but-not-yet-readable and is essentially never used.
+_DISC_HASH_RETRY_ATTEMPTS = 3
+_DISC_HASH_RETRY_DELAY = 0.5  # seconds between attempts
 
 logger = logging.getLogger(__name__)
 
@@ -436,12 +446,48 @@ class JobManager:
 
     # --- Job Creation ---
 
+    async def _compute_disc_hash(self, drive_letter: str) -> str | None:
+        """Best-effort per-disc ContentHash at insert time.
+
+        Retries briefly to cover a disc that is mounted but not yet fully
+        readable; real-disc testing showed the hash is ready ~instantly after
+        mount, so the retry is rarely exercised. Runs off-thread so the disc
+        I/O never blocks the event loop.
+        """
+        for attempt in range(_DISC_HASH_RETRY_ATTEMPTS):
+            content_hash = await asyncio.to_thread(compute_content_hash, drive_letter)
+            if content_hash:
+                return content_hash
+            if attempt < _DISC_HASH_RETRY_ATTEMPTS - 1:
+                await asyncio.sleep(_DISC_HASH_RETRY_DELAY)
+        return None
+
+    @staticmethod
+    def _same_disc(job: DiscJob, volume_label: str, new_hash: str | None) -> bool:
+        """True if `job` is the same physical disc as the one just inserted.
+
+        Prefers the per-disc ContentHash (a different hash means a different
+        disc). Falls back to volume-label equality when either fingerprint is
+        absent — conservative: a same-labelled disc with no readable hash is
+        treated as the same disc, so we never spawn a duplicate job.
+        """
+        if new_hash and job.content_hash:
+            return job.content_hash == new_hash
+        return job.volume_label == volume_label
+
     async def _create_job_for_disc(self, drive_letter: str, volume_label: str) -> None:
         """Create a new job when a disc is inserted."""
         if drive_letter not in self._drive_locks:
             self._drive_locks[drive_letter] = asyncio.Lock()
 
         async with self._drive_locks[drive_letter]:
+            # Fingerprint the inserted disc so dedup can tell two same-labelled
+            # discs apart (e.g. season Disc 1 vs Disc 2 both 'BREAKINGBADS2').
+            # The probe runs off-thread; its brief retry wait (~1s worst case for
+            # a cold disc) happens under the per-drive lock, but the only thing
+            # that contends that lock is the insert sentinel — and the sentinel is
+            # what triggered this call, so nothing else is waiting on it here.
+            new_hash = await self._compute_disc_hash(drive_letter)
             async with async_session() as session:
                 # Disc-required jobs (the disc is physically in the drive) always
                 # block a new job. Ripping EJECTS the disc + calls notify_ejected()
@@ -474,7 +520,10 @@ class JobManager:
                         j
                         for j in active_jobs
                         if j.state in disc_required_states
-                        or (j.state in post_eject_states and j.volume_label == volume_label)
+                        or (
+                            j.state in post_eject_states
+                            and self._same_disc(j, volume_label, new_hash)
+                        )
                     ),
                     None,
                 )
@@ -507,6 +556,7 @@ class JobManager:
                     volume_label=volume_label,
                     staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
+                    content_hash=new_hash,
                 )
 
                 session.add(job)
