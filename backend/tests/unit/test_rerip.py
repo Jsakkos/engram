@@ -178,3 +178,55 @@ async def test_rerip_titles_transitions_deletes_and_rips(monkeypatch, tmp_path):
     assert not stale.exists()  # stale file deleted before re-rip
     t = await _reload(title_id)
     assert t.rerip_attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_rerip_titles_bails_when_job_not_transitionable(monkeypatch, tmp_path):
+    """A job that can't transition to RIPPING (e.g. still MATCHING / double-fire)
+    must not re-rip — titles stay untouched."""
+    from app.services.job_manager import job_manager
+
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="F:",
+            volume_label="X",
+            content_type=ContentType.TV,
+            state=JobState.MATCHING,
+            staging_path=str(tmp_path),
+            content_hash="ABC123",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=2,
+            duration_seconds=100,
+            state=TitleState.REVIEW,
+            rerip_attempts=0,
+            match_details=json.dumps({"error": "incomplete_rip", "rerip_eligible": True}),
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+        job_id, title_id = job.id, title.id
+
+    called = {"rip": False}
+
+    async def fake_rip_titles(*a, **k):
+        called["rip"] = True
+        from app.core.extractor import RipResult
+
+        return RipResult(success=True, output_files=[], error_message=None, stalled_titles=None)
+
+    monkeypatch.setattr(job_manager._extractor, "rip_titles", fake_rip_titles)
+
+    await job_manager.rerip_titles(job_id, [title_id])
+
+    assert called["rip"] is False  # bailed before ripping
+    t = await _reload(title_id)
+    assert t.rerip_attempts == 0  # untouched
+    assert t.state == TitleState.REVIEW

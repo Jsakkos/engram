@@ -1426,8 +1426,15 @@ class JobManager:
                 session.add(job)
 
             # REVIEW_NEEDED -> RIPPING (valid; also makes a spurious reinsert an
-            # unconditional drive-busy block during the re-rip).
-            await state_machine.transition(job, JobState.RIPPING, session)
+            # unconditional drive-busy block during the re-rip). Bail if the job
+            # can't transition (e.g. a double sentinel fire while already RIPPING):
+            # transition() returns False and makes no state change.
+            if not await state_machine.transition(job, JobState.RIPPING, session):
+                logger.warning(
+                    f"Job {job_id}: cannot re-rip — invalid transition from "
+                    f"{job.state.value} to RIPPING; skipping."
+                )
+                return
 
             staging_dir = Path(job.staging_path)
             staging_dir.mkdir(parents=True, exist_ok=True)
