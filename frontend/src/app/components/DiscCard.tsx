@@ -378,7 +378,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                         textShadow: `0 0 6px ${sv.magenta}66`,
                       }}
                     >
-                      Damaged track
+                      DAMAGED TRACK
                     </span>
                   )}
                   {failedTrackCount > 0 && (

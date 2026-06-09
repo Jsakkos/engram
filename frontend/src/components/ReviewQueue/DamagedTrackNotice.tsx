@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { reripTitle } from '../../api/client';
 import { sv } from '../../app/components/synapse';
+import { IcoError } from '../../app/components/icons';
 import type { RerippableState } from './rerip';
 
 interface Props {
@@ -42,6 +43,9 @@ export function DamagedTrackNotice({ jobId, titleId, state }: Props) {
     >
       <div
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
           fontFamily: sv.mono,
           fontSize: 11,
           fontWeight: 700,
@@ -51,7 +55,8 @@ export function DamagedTrackNotice({ jobId, titleId, state }: Props) {
           marginBottom: 6,
         }}
       >
-        ⚠ Damaged track
+        <IcoError size={13} color={sv.magenta} />
+        Damaged track
       </div>
       <p
         style={{

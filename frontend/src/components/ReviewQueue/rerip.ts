@@ -38,3 +38,17 @@ export function getRerippableState(matchDetails?: string | null): RerippableStat
     return EMPTY;
   }
 }
+
+/** Convenience: normalize a title's raw `match_details` field (string | object |
+ *  null | undefined) before parsing it. Centralizes the field-shape assumption. */
+export function getRerippableStateFromTitle(
+  matchDetails: string | object | null | undefined,
+): RerippableState {
+  const s =
+    typeof matchDetails === 'string'
+      ? matchDetails
+      : matchDetails == null
+        ? null
+        : JSON.stringify(matchDetails);
+  return getRerippableState(s);
+}

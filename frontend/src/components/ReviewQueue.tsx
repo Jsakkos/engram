@@ -17,7 +17,7 @@ import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
 import { llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
-import { getRerippableState } from './ReviewQueue/rerip';
+import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
@@ -784,8 +784,7 @@ function ReviewQueue() {
                             >
                                 <SvPanel pad={20}>
                                     {(() => {
-                                        const md = typeof title.match_details === 'string' ? title.match_details : title.match_details ? JSON.stringify(title.match_details) : null;
-                                        const rerip = getRerippableState(md);
+                                        const rerip = getRerippableStateFromTitle(title.match_details);
                                         return rerip.isRerippable ? (
                                             <DamagedTrackNotice jobId={parseInt(jobId!)} titleId={title.id} state={rerip} />
                                         ) : null;
@@ -1116,8 +1115,7 @@ function ReviewQueue() {
                         {selectedTitle ? (
                             <>
                             {(() => {
-                                const md = typeof selectedTitle.match_details === 'string' ? selectedTitle.match_details : selectedTitle.match_details ? JSON.stringify(selectedTitle.match_details) : null;
-                                const rerip = getRerippableState(md);
+                                const rerip = getRerippableStateFromTitle(selectedTitle.match_details);
                                 return rerip.isRerippable ? (
                                     <DamagedTrackNotice jobId={parseInt(jobId!)} titleId={selectedTitle.id} state={rerip} />
                                 ) : null;

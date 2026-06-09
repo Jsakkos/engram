@@ -45,4 +45,12 @@ describe('getRerippableState', () => {
     expect(s.autoEligible).toBe(true);
     expect(s.attempts).toBe(1);
   });
+
+  it('detects a cap-reached incomplete_rip title as rerippable but not auto', () => {
+    const md = JSON.stringify({ error: 'incomplete_rip', rerip_eligible: false, rerip_attempts: 3 });
+    const s = getRerippableState(md);
+    expect(s.isRerippable).toBe(true);
+    expect(s.autoEligible).toBe(false);
+    expect(s.attempts).toBe(3);
+  });
 });
