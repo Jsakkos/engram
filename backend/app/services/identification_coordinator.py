@@ -1092,7 +1092,12 @@ class IdentificationCoordinator:
 
                 if is_staging:
                     content_hash = None
+                elif job.content_hash:
+                    # Set at insert (_create_job_for_disc); reuse it.
+                    content_hash = job.content_hash
                 else:
+                    # Backfill: a job created before this change, or a cold-disc
+                    # insert that missed the hash. Cheap (glob + stat).
                     from app.core.extractor import compute_content_hash
 
                     content_hash = await asyncio.to_thread(compute_content_hash, job.drive_id)
