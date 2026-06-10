@@ -6,6 +6,7 @@ import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
+import { requestTmdbValidation } from '../utils/tmdbValidation';
 import './ConfigWizard.css';
 
 interface ConfigWizardProps {
@@ -171,7 +172,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
     const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, ai: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, ai: false});
-    const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid', error?: string}>({status: 'idle'});
+    // 'error' ("couldn't check") is deliberately distinct from 'invalid' ("token
+    // rejected"): conflating them sent users hunting for a token problem that may
+    // not exist (#243). 'error' never counts as validated, but the gate still
+    // lets the user continue without TMDB.
+    const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string}>({status: 'idle'});
     // Inline validation for manually-entered tool paths (MakeMKV/FFmpeg), keyed by
     // the config field. Without this, a hand-typed override was saved blind — no
     // confirmation it actually points at a working binary.
@@ -434,21 +439,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
             return;
         }
         setTmdbValidation({status: 'testing'});
-        try {
-            const response = await fetch('/api/validate/tmdb', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ api_key: key }),
-            });
-            const result = await response.json();
-            if (result.valid) {
-                setTmdbValidation({status: 'valid'});
-            } else {
-                setTmdbValidation({status: 'invalid', error: result.error || 'Invalid token'});
-            }
-        } catch {
-            setTmdbValidation({status: 'invalid', error: 'Failed to reach validation endpoint'});
-        }
+        // requestTmdbValidation tells "token rejected" apart from "couldn't reach
+        // the endpoint" and console.errors the underlying cause for either failure
+        // (#243). The returned discriminated union maps straight onto our state.
+        setTmdbValidation(await requestTmdbValidation(key));
     };
 
     // Validate a manually-entered tool path against the backend, which actually
@@ -837,6 +831,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                                 )}
                                 {tmdbValidation.status === 'invalid' && (
                                     <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {tmdbValidation.error}</span>
+                                )}
+                                {/* "Couldn't check" — amber, not red: the token wasn't rejected,
+                                    the check itself failed. Distinct from 'invalid' (#243). */}
+                                {tmdbValidation.status === 'error' && (
+                                    <span style={{color: '#f59e0b', fontSize: '0.85rem'}}>⚠ {tmdbValidation.error}</span>
                                 )}
                             </div>
                             <span className="form-hint">

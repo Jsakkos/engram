@@ -117,8 +117,13 @@ async def test_tv_import_advances_to_matching_and_broadcasts(tmp_path, monkeypat
         job = await session.get(DiscJob, job_id)
         assert job.state == JobState.MATCHING
 
-    # UI gets the job-level matching signal.
-    module_ws.broadcast_job_update.assert_any_await(job_id, JobState.MATCHING.value)
+    # UI gets the job-level matching signal. Asserted by filter (not
+    # assert_any_await) so it tolerates extra kwargs the broadcast carries —
+    # e.g. tmdb_degraded_reason when no TMDB key is configured (#243).
+    assert any(
+        job_id in c.args and JobState.MATCHING.value in c.args
+        for c in module_ws.broadcast_job_update.await_args_list
+    )
 
     # Each of the 3 titles broadcasts QUEUED immediately so tracks render as
     # "waiting for a slot" instead of after the first match (the QUEUED→MATCHING

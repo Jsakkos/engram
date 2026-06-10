@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **TMDB token onboarding no longer fails silently** — the setup wizard's TMDB field showed `eyJhbGci…` as placeholder text, which is the literal opening of *every* TMDB Read Access Token, so an empty field looked already-filled and users could finish setup having never entered a token — then spend ages debugging silent matching failures. The placeholder is now plain instructions, the token auto-validates as soon as you leave the field (inline ✓/✗ — no "Test Token" hunt), and first-run setup won't pass the TMDB step until the token validates or you explicitly choose to continue without it. The dashboard also shows a dismissible warning while no TMDB token is configured, and an active disc whose classification fell back to heuristics because the key is missing or rejected now says so on its card ("TMDB API key not configured — classification ran in heuristic-only mode") instead of silently degrading. Token validation also now tells "couldn't reach the validation service" apart from "token rejected", so a backend hiccup no longer reads as a bad token. (#243)
+
 ## [0.18.0] - 2026-06-10
 
 _Highlights: a damaged track can now be recovered without re-ripping the whole disc — clean the disc, reinsert it, and Engram re-rips just that title — and box-set discs that don't reveal their season now prompt you to pick one up front instead of dead-ending every episode in Needs Review._

@@ -17,7 +17,14 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError
-from app.core.tmdb_classifier import TmdbSignal, classify_from_tmdb, should_flag_no_year
+from app.core.tmdb_classifier import (
+    TMDB_DEGRADED_AUTH_FAILED,
+    TMDB_DEGRADED_NOT_CONFIGURED,
+    TmdbAuthError,
+    TmdbSignal,
+    classify_from_tmdb,
+    should_flag_no_year,
+)
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -225,6 +232,7 @@ class IdentificationCoordinator:
                 # Persist classification metadata
                 job.classification_confidence = analysis.confidence
                 job.classification_source = analysis.classification_source
+                job.tmdb_degraded_reason = getattr(analysis, "tmdb_degraded_reason", None)
                 job.tmdb_id = analysis.tmdb_id
                 job.tmdb_name = analysis.tmdb_name
                 job.candidates_json = _candidates_json_from_signal(tmdb_signal)
@@ -341,6 +349,7 @@ class IdentificationCoordinator:
                         content_type=(job.content_type.value if job.content_type else None),
                         total_titles=job.total_titles,
                         review_reason="Disc label unreadable. Please enter the title to continue.",
+                        tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                     )
                     logger.info(
                         f"Job {job_id}: no title detected (volume label: '{job.volume_label}'), "
@@ -393,6 +402,11 @@ class IdentificationCoordinator:
                         f"may have words merged without separators. "
                         f"Please enter the correct show title."
                     )
+                    # When the real cause is a missing/rejected key, say so instead
+                    # of blaming the label (#243). Appended — the NamePromptModal
+                    # keys on the "merged without separators" substring above.
+                    if job.tmdb_degraded_reason:
+                        reason = f"{reason} Note: {job.tmdb_degraded_reason}"
                     await self._state_machine.transition_to_review(
                         job,
                         session,
@@ -407,6 +421,7 @@ class IdentificationCoordinator:
                         detected_season=job.detected_season,
                         total_titles=job.total_titles,
                         review_reason=reason,
+                        tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                     )
                     logger.info(
                         f"Job {job_id}: TMDB lookup failed for '{job.detected_title}' "
@@ -484,6 +499,7 @@ class IdentificationCoordinator:
                     detected_season=job.detected_season,
                     total_titles=job.total_titles,
                     review_reason=analysis.review_reason,
+                    tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                 )
 
                 if analysis.needs_review:
@@ -533,6 +549,7 @@ class IdentificationCoordinator:
             detected_season=None,
             total_titles=job.total_titles,
             review_reason=reason,
+            tmdb_degraded_reason=job.tmdb_degraded_reason or "",
         )
         logger.info(
             f"Job {job_id}: season unknown for '{job.detected_title}', prompting user for season"
@@ -617,12 +634,22 @@ class IdentificationCoordinator:
 
         config = await get_config()
         if not config.tmdb_api_key:
+            job.tmdb_degraded_reason = TMDB_DEGRADED_NOT_CONFIGURED
             return None
 
         try:
             signal = await asyncio.to_thread(
                 classify_from_tmdb, job.detected_title, config.tmdb_api_key
             )
+        except TmdbAuthError as e:
+            # Surfaced on the job so the matcher's degraded results name the
+            # real cause instead of looking like a missing show (#243).
+            job.tmdb_degraded_reason = TMDB_DEGRADED_AUTH_FAILED
+            logger.warning(
+                f"Job {job.id}: TMDB rejected the API key while resolving "
+                f"'{job.detected_title}', proceeding with null tmdb_id: {e}"
+            )
+            return None
         except Exception as e:
             logger.warning(
                 f"Job {job.id}: TMDB resolution failed for '{job.detected_title}', "
@@ -631,7 +658,12 @@ class IdentificationCoordinator:
             )
             return None
 
-        if not signal or not signal.tmdb_id:
+        if not signal:
+            return signal
+        # The lookup succeeded, so the key works — clear any stale degraded
+        # marker recorded at identify time (#243).
+        job.tmdb_degraded_reason = None
+        if not signal.tmdb_id:
             return signal
 
         # Mirror the caller's collision gate: don't auto-pick an ambiguous twin, nor a
@@ -715,6 +747,7 @@ class IdentificationCoordinator:
                 job.updated_at = datetime.now(UTC)
                 job.classification_confidence = analysis.confidence
                 job.classification_source = analysis.classification_source or "staging_import"
+                job.tmdb_degraded_reason = getattr(analysis, "tmdb_degraded_reason", None)
                 job.tmdb_id = analysis.tmdb_id
                 job.tmdb_name = analysis.tmdb_name
                 _signal = getattr(analysis, "_tmdb_signal", None)
@@ -773,6 +806,7 @@ class IdentificationCoordinator:
                         content_type=(job.content_type.value if job.content_type else None),
                         total_titles=job.total_titles,
                         review_reason="Could not determine title. Please enter the title to continue.",
+                        tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                     )
                     return
 
@@ -820,6 +854,7 @@ class IdentificationCoordinator:
                         detected_season=job.detected_season,
                         total_titles=job.total_titles,
                         review_reason=reason,
+                        tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                     )
                     logger.info(
                         f"Job {job_id}: same-name collision for '{job.detected_title}' "
@@ -844,7 +879,11 @@ class IdentificationCoordinator:
                         job, JobState.MATCHING, session, broadcast=False
                     )
                     if succeeded:
-                        await ws_manager.broadcast_job_update(job_id, JobState.MATCHING.value)
+                        await ws_manager.broadcast_job_update(
+                            job_id,
+                            JobState.MATCHING.value,
+                            tmdb_degraded_reason=job.tmdb_degraded_reason or "",
+                        )
 
                         # Queue matching for each title
                         db_titles = (
@@ -1051,6 +1090,18 @@ class IdentificationCoordinator:
                             job.tmdb_id = _signal.tmdb_id
                             if _signal.tmdb_name:
                                 job.detected_title = _signal.tmdb_name
+                        if _signal:
+                            # The lookup worked, so any earlier "key absent/rejected"
+                            # marker from identify time is stale — clear it (#243).
+                            job.tmdb_degraded_reason = None
+                    else:
+                        job.tmdb_degraded_reason = TMDB_DEGRADED_NOT_CONFIGURED
+                except TmdbAuthError:
+                    job.tmdb_degraded_reason = TMDB_DEGRADED_AUTH_FAILED
+                    logger.warning(
+                        f"Job {job_id}: TMDB rejected the API key during re-identify of "
+                        f"'{title}', continuing with user-provided title"
+                    )
                 except Exception:
                     logger.warning(
                         f"Job {job_id}: TMDB re-lookup failed for '{title}', "
@@ -1103,6 +1154,7 @@ class IdentificationCoordinator:
                 content_type=job.content_type.value,
                 detected_title=job.detected_title,
                 detected_season=job.detected_season,
+                tmdb_degraded_reason=job.tmdb_degraded_reason or "",
             )
 
             logger.info(
@@ -1127,16 +1179,31 @@ class IdentificationCoordinator:
         config = await get_config()
         self._analyst.set_config(config)
 
+        # Why the TMDB stage was unavailable for this job, if it was (#243 P3).
+        # Pre-set when no key is stored; flipped to the auth message the moment a
+        # lookup is rejected. Cleared at the end if a TMDB signal was obtained.
+        tmdb_degraded_reason: str | None = (
+            None if config.tmdb_api_key else TMDB_DEGRADED_NOT_CONFIGURED
+        )
+
         def _try_tmdb(name: str, context: str):
             """Run a TMDB lookup, swallowing and logging failures.
 
             ``context`` distinguishes the warning message between call sites.
             Returns the TMDB signal, or None on failure / no API key.
             """
+            nonlocal tmdb_degraded_reason
             if not config.tmdb_api_key:
                 return None
             try:
                 return classify_from_tmdb(name, config.tmdb_api_key)
+            except TmdbAuthError as e:
+                # Bad/expired key — not a transient lookup failure. Remember the
+                # cause so it can be surfaced on the job instead of letting the
+                # fall-through look like "show not found".
+                logger.warning(f"Job {job_id}: {context}: {e}")
+                tmdb_degraded_reason = TMDB_DEGRADED_AUTH_FAILED
+                return None
             except Exception as e:
                 logger.warning(f"Job {job_id}: {context}: {e}")
                 return None
@@ -1310,5 +1377,8 @@ class IdentificationCoordinator:
         # (used by identify_disc for catalog number detection)
         analysis._discdb_signal = discdb_signal
         analysis._tmdb_signal = tmdb_signal
+        # A signal can only exist when the key worked, so it trumps any earlier
+        # degraded marker (and the no-key preset can never coexist with one).
+        analysis.tmdb_degraded_reason = None if tmdb_signal else tmdb_degraded_reason
 
         return analysis

@@ -37,6 +37,12 @@ export interface Job {
     subtitles_failed?: number;
     review_reason?: string | null;
     conflict_status?: string | null;
+    /**
+     * Human-readable cause set by the backend when classification ran WITHOUT
+     * TMDB (key absent or rejected); null/absent when TMDB participated. The
+     * DiscCard renders it verbatim in its degraded-mode alert (#243).
+     */
+    tmdb_degraded_reason?: string | null;
     destination_mode?: string;
     created_at?: string;
     /**
@@ -112,6 +118,9 @@ export interface JobUpdate {
     detected_season?: number;
     review_reason?: string | null;
     conflict_status?: string | null;
+    /** "" forwarded by the backend clears the field on the {...job, ...message}
+     *  merge; absent means unchanged (#243). */
+    tmdb_degraded_reason?: string | null;
 }
 
 export interface TitleUpdate {

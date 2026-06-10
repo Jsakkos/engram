@@ -86,7 +86,10 @@ function MainDashboard() {
       if (!data.setup_complete) {
         setShowOnboarding(true);
       }
-      setTmdbConfigured(!!data.tmdb_api_key);
+      // Drive the health banner from the explicit backend boolean, not the
+      // redacted ("***"/"") key value, so it can't be fooled by a change to the
+      // redaction sentinel (#243).
+      setTmdbConfigured(data.tmdb_configured ?? !!data.tmdb_api_key);
       // Fetch contribution stats for nav badge
       if (FEATURES.DISCDB && data.discdb_contributions_enabled) {
         try {

@@ -101,6 +101,7 @@ class ConnectionManager:
         detected_season: int | None = None,
         review_reason: str | None = None,
         conflict_status: str | None = None,
+        tmdb_degraded_reason: str | None = None,
     ) -> None:
         """Broadcast a job status update.
 
@@ -148,6 +149,10 @@ class ConnectionManager:
             data["review_reason"] = review_reason
         if conflict_status is not None:
             data["conflict_status"] = conflict_status
+        # "" is forwarded deliberately: it CLEARS the field on the frontend merge
+        # (e.g. after a re-identify with a now-working key); None means "unchanged".
+        if tmdb_degraded_reason is not None:
+            data["tmdb_degraded_reason"] = tmdb_degraded_reason
         await self.broadcast(data)
 
     async def broadcast_drive_event(

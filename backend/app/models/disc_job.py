@@ -108,6 +108,10 @@ class DiscJob(SQLModel, table=True):
     )
     review_reason: str | None = None  # Human-readable reason why review is needed
     conflict_status: str | None = None  # Transient note while auto-resolving episode conflicts
+    # Why classification ran without TMDB (key absent/rejected) — shown verbatim
+    # on the job card so degraded heuristic-only results name their cause (#243).
+    # None when TMDB participated normally.
+    tmdb_degraded_reason: str | None = None
 
     # Title information (JSON stored as string for simplicity)
     titles_json: str | None = None  # List of titles with durations

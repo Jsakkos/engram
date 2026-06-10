@@ -131,6 +131,9 @@ class JobResponse(BaseModel):
     # Transient auto-resolution note set during conflict / review escalation
     # (e.g. "Resolving episode conflicts — pass 2 of 3"). Cleared on resolution.
     conflict_status: str | None = None
+    # Why classification ran without TMDB (key absent/rejected); None when TMDB
+    # participated. Rendered verbatim by the DiscCard degraded-mode alert (#243).
+    tmdb_degraded_reason: str | None = None
     # Resolved TMDB identity. tmdb_id is null while identity is unconfirmed (e.g. a
     # same-name collision the analyst withholds an id for) — the dashboard reads that
     # to suppress the dead-end episode-review button, and the re-identify modal shows
@@ -216,6 +219,9 @@ class JobDetailResponse(BaseModel):
     # / "Deep re-matching low-confidence titles — pass 1 of 3"). Set while the
     # finalization coordinator is auto-escalating; cleared on resolution.
     conflict_status: str | None = None
+    # Why classification ran without TMDB (key absent/rejected); None when TMDB
+    # participated normally (#243).
+    tmdb_degraded_reason: str | None = None
     # Classification
     classification_source: str = "heuristic"
     classification_confidence: float = 0.0
@@ -270,6 +276,10 @@ class ConfigResponse(BaseModel):
     library_movies_path: str
     library_tv_path: str
     tmdb_api_key: str
+    # Whether a TMDB key is stored. The key itself is redacted ("***"/"") above,
+    # so the dashboard health banner reads this boolean instead of sniffing the
+    # masked value (#243).
+    tmdb_configured: bool
     max_concurrent_matches: int
     enable_gpu_acceleration: bool
     ffmpeg_path: str
@@ -823,6 +833,7 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "review_reason": job.review_reason,
         "candidates_json": job.candidates_json,
         "conflict_status": job.conflict_status,
+        "tmdb_degraded_reason": job.tmdb_degraded_reason,
         "classification_source": job.classification_source,
         "classification_confidence": job.classification_confidence,
         "tmdb_id": job.tmdb_id,
@@ -1174,6 +1185,7 @@ async def get_config() -> ConfigResponse:
         library_movies_path=config.library_movies_path,
         library_tv_path=config.library_tv_path,
         tmdb_api_key="***" if config.tmdb_api_key else "",  # Redacted
+        tmdb_configured=bool(config.tmdb_api_key),
         max_concurrent_matches=config.max_concurrent_matches,
         enable_gpu_acceleration=config.enable_gpu_acceleration,
         ffmpeg_path=config.ffmpeg_path,

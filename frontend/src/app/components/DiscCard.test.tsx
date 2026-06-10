@@ -139,6 +139,60 @@ describe('DiscCard — review affordances', () => {
   });
 });
 
+describe('DiscCard — TMDB degraded-mode alert (#243)', () => {
+  it('renders the per-job degraded reason verbatim on an active job', () => {
+    // The per-job reason (set by the backend when the key was absent/rejected at
+    // classification time) must win over the global boolean: it also covers the
+    // configured-but-invalid key case the global flag cannot see.
+    render(
+      <DiscCard
+        disc={makeDisc({
+          state: 'matching',
+          needsReview: false,
+          tmdbDegradedReason:
+            'TMDB rejected the configured API key — classification ran in heuristic-only mode.',
+        })}
+        tmdbConfigured={true}
+        onReview={vi.fn()}
+        onReIdentify={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/TMDB rejected the configured API key/i)).toBeInTheDocument();
+  });
+
+  it('still falls back to the global not-configured warning when no per-job reason exists', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({ state: 'matching', needsReview: false })}
+        tmdbConfigured={false}
+        onReview={vi.fn()}
+        onReIdentify={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/TMDB not configured/i)).toBeInTheDocument();
+  });
+
+  it('shows no degraded alert on completed jobs (keeps done cards clean)', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({
+          state: 'completed',
+          needsReview: false,
+          tmdbDegradedReason: 'TMDB API key not configured — classification ran in heuristic-only mode.',
+        })}
+        tmdbConfigured={false}
+        onReview={vi.fn()}
+        onReIdentify={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/heuristic-only/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/TMDB not configured/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('DiscCard — organizing', () => {
   it('TV multi-track: shows a count-based progress bar (N of M organized)', () => {
     render(
