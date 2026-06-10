@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-06-10
+
+_Highlights: a damaged track can now be recovered without re-ripping the whole disc — clean the disc, reinsert it, and Engram re-rips just that title — and box-set discs that don't reveal their season now prompt you to pick one up front instead of dead-ending every episode in Needs Review._
+
 ### Added
 
 - Recover a single damaged track without re-ripping the whole disc. When a title fails at the rip level (a scratch/bad-sector truncation or a ripping stall), Engram now holds it in review with a "clean the disc and reinsert to re-rip this title" prompt. Reinserting the **same** disc (verified by its content fingerprint) automatically re-rips just that track, re-matches it, and finishes the job — with a manual "Re-rip this title" button and a bounded automatic-retry cap as fallbacks. (#371)
