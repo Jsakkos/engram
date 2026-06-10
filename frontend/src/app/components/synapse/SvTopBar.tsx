@@ -9,6 +9,8 @@ import { SvBadge } from "./SvBadge";
 interface NavItem {
   label: string;
   to: string;
+  /** Path prefix used for active-state detection. Defaults to `to` when absent. */
+  activeWhen?: string;
   /** Numeric badge (yellow). Falsy = no badge. */
   badge?: number;
   /** Show the route in the nav. Default true. */
@@ -88,10 +90,11 @@ export function SvTopBar({
         {navItems
           .filter((it) => it.show !== false)
           .map((item) => {
+            const matchPath = item.activeWhen ?? item.to;
             const active =
-              item.to === "/"
+              matchPath === "/"
                 ? location.pathname === "/"
-                : location.pathname.startsWith(item.to);
+                : location.pathname.startsWith(matchPath);
             return (
               <NavTab key={item.to} item={item} active={active} />
             );
