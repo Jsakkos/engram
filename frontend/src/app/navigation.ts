@@ -48,7 +48,6 @@ export function buildNavItems({
       activeWhen: ROUTES.REVIEW,
       badge: reviewCount,
     },
-    { label: "LIBRARY", to: ROUTES.LIBRARY },
     { label: "HISTORY", to: ROUTES.HISTORY },
     {
       label: "CONTRIBUTE",

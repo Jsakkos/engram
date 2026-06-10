@@ -18,7 +18,6 @@ export const ROUTES = {
   HOME: "/",
   HISTORY: "/history",
   HISTORY_DETAIL: "/history/:jobId",
-  LIBRARY: "/library",
   CONTRIBUTE: "/contribute",
   /** Bare `/review` — redirects to the dashboard (no jobId to review). */
   REVIEW: "/review",
@@ -35,7 +34,6 @@ export const ROUTE_PATTERNS: readonly string[] = [
   ROUTES.HOME,
   ROUTES.HISTORY,
   ROUTES.HISTORY_DETAIL,
-  ROUTES.LIBRARY,
   ROUTES.REVIEW,
   ROUTES.REVIEW_DETAIL,
   ...(FEATURES.DISCDB ? [ROUTES.CONTRIBUTE] : []),

@@ -167,7 +167,6 @@ export function formatDateTimeShort(iso: string | null): string {
 
 /**
  * ISO string → localized `Mon DD, YYYY`, or `—` for null / invalid input.
- * (formerly LibraryPage.formatDate)
  */
 export function formatDateOnly(iso: string | null): string {
   if (!iso) return "—";
