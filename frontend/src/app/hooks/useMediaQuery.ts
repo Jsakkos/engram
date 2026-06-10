@@ -5,15 +5,17 @@ import { useEffect, useState } from "react";
  * inline styles (where CSS @media can't reach), e.g. collapsing the
  * dashboard side rail below 1100px.
  *
- * Defaults to `true` when `matchMedia` is unavailable (jsdom unit tests),
- * so components fall back to the canonical desktop layout.
+ * When `matchMedia` is unavailable (SSR / jsdom unit tests), returns
+ * `defaultValue`. This defaults to `true` so `min-width` callers fall back to
+ * the canonical desktop layout — but a caller using an inverted query like
+ * `(prefers-reduced-motion: reduce)` should pass `defaultValue={false}` so the
+ * fallback doesn't assert the opposite of the sensible default.
  */
-export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState<boolean>(
-    () =>
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function" ||
-      window.matchMedia(query).matches,
+export function useMediaQuery(query: string, defaultValue = true): boolean {
+  const [matches, setMatches] = useState<boolean>(() =>
+    typeof window === "undefined" || typeof window.matchMedia !== "function"
+      ? defaultValue
+      : window.matchMedia(query).matches,
   );
 
   useEffect(() => {

@@ -781,12 +781,16 @@ function ReviewQueue() {
                     title="Select movie version"
                     subtitle={`› ${job.detected_title || job.volume_label}`}
                     onBack={() => navigate('/')}
-                    maxWidth={1280}
+                    maxWidth={sv.reviewMovieMaxWidth}
                 />
 
                 {/* Content — w-full so the max-width cap engages inside
-                    SvAtmosphere's flex column (mx-auto alone shrink-wraps). */}
-                <div className="w-full max-w-[1280px] mx-auto px-6 py-8 relative z-0">
+                    SvAtmosphere's flex column (mx-auto alone shrink-wraps).
+                    Caps at sv.reviewMovieMaxWidth (same token as the header). */}
+                <div
+                    className="w-full mx-auto px-6 py-8 relative z-0"
+                    style={{ maxWidth: sv.reviewMovieMaxWidth }}
+                >
                     {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                     <SvNotice tone="warn">
                         › MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.
