@@ -161,6 +161,36 @@ async def test_growing_file_is_never_truncated(tmp_path, monkeypatch):
     assert result != FileWaitResult.TRUNCATED
 
 
+@pytest.mark.asyncio
+async def test_truncated_detected_after_slow_intermittent_growth(tmp_path, monkeypatch):
+    """Grace window fires from last-write time, not from consecutive stable polls.
+
+    Simulates MakeMKV writing intermittently (retry pause → resume → pause → stop).
+    A single growth event resets last_growth_time but must not restart the full
+    grace window in a way that prevents detection once writing truly stops.
+    """
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(mc, "TRUNCATED_STABLE_GRACE_SECONDS", 0.15)
+    _patch_config(monkeypatch, poll=0.01, stable=2)
+    title_id = await _seed_title(expected_bytes=8_200_000_000)
+    f = tmp_path / "t04.mkv"
+    f.write_bytes(b"x" * 1000)
+
+    # One additional write after 0.05 s — mimics MakeMKV resuming after a retry
+    # then stopping again. The grace window (0.15 s) should fire ~0.15 s after
+    # this last write, not after 0.15 s of *consecutive* stability (which would
+    # also have been broken if the write came while stable_count was accumulating).
+    async def _write_more() -> None:
+        await asyncio.sleep(0.05)
+        f.write_bytes(b"x" * 2000)
+
+    coord = _make_coord()
+    task = asyncio.create_task(_write_more())
+    result = await coord._wait_for_file_ready(f, title_id, job_id=1, timeout=5.0)
+    await task
+    assert result == FileWaitResult.TRUNCATED
+
+
 async def _seed_queued_title() -> tuple[int, int]:
     async with _unit_session_factory() as session:
         job = DiscJob(
