@@ -22,12 +22,7 @@ from app.services.job_manager import JobManager
 
 @pytest_asyncio.fixture
 async def session():
-    # In-memory SQLite MUST use StaticPool: each pooled connection to ":memory:"
-    # is its own *separate, empty* database, so a second connection checkout
-    # loses create_all's tables and queries hit "no such table". StaticPool pins
-    # the engine to one shared connection (check_same_thread=False because
-    # aiosqlite uses a worker thread). Mirrors the integration conftest fixture;
-    # disposing the engine also avoids a per-test connection/thread leak.
+    # StaticPool: each :memory: connection is its own empty DB; pin to one shared connection to avoid "no such table".
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},

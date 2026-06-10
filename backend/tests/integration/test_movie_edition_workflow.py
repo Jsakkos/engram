@@ -19,14 +19,7 @@ sys.path.insert(0, os.getcwd())
 
 @pytest_asyncio.fixture
 async def session():
-    # In-memory SQLite MUST use StaticPool: each pooled connection to ":memory:"
-    # is its own *separate, empty* database, so if the session ever checks out a
-    # second connection, create_all's tables are gone and queries hit
-    # "no such table: disc_jobs" (a rare, timing-dependent failure). StaticPool
-    # pins the whole engine to one shared connection. check_same_thread=False is
-    # required because aiosqlite drives that connection from a worker thread.
-    # Mirrors the integration conftest's async_engine fixture; disposing the
-    # engine on teardown also stops a per-test aiosqlite connection/thread leak.
+    # StaticPool: each :memory: connection is its own empty DB; pin to one shared connection to avoid "no such table".
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
