@@ -11,6 +11,8 @@ import { ROUTES, reviewPath } from "../config/routes";
 export interface NavItem {
   label: string;
   to: string;
+  /** Path prefix used for active-state detection. Defaults to `to` when absent. */
+  activeWhen?: string;
   /** Numeric badge (yellow). Falsy = no badge. */
   badge?: number;
   /** Show the route in the nav. Default true. */
@@ -43,9 +45,9 @@ export function buildNavItems({
     {
       label: "REVIEW",
       to: firstReviewJobId ? reviewPath(firstReviewJobId) : ROUTES.HOME,
+      activeWhen: ROUTES.REVIEW,
       badge: reviewCount,
     },
-    { label: "LIBRARY", to: ROUTES.LIBRARY },
     { label: "HISTORY", to: ROUTES.HISTORY },
     {
       label: "CONTRIBUTE",
