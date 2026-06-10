@@ -64,6 +64,19 @@ export async function getJobs(): Promise<unknown[]> {
     return res.json();
 }
 
+export async function seedIncompleteRip(
+    volumeLabel = 'DAMAGED_DISC_S1D1',
+): Promise<{ job_id: number; title_id: number }> {
+    const res = await fetch(
+        `${API_BASE}/api/simulate/seed-incomplete-rip?volume_label=${encodeURIComponent(volumeLabel)}`,
+        { method: 'POST' },
+    );
+    if (!res.ok) {
+        throw new Error(`seed-incomplete-rip failed: ${res.status} ${await res.text()}`);
+    }
+    return res.json();
+}
+
 export async function simulateInsertDiscFromStaging(params: {
     staging_path: string;
     volume_label?: string;

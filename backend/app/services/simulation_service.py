@@ -773,3 +773,51 @@ class SimulationService:
                 f"[SIMULATE] Job {job_id}: transition_to_completed returned {result}, "
                 f"job.state={job.state.value}"
             )
+
+    async def seed_incomplete_rip(self, volume_label: str = "DAMAGED_DISC_S1D1") -> dict:
+        """DEBUG-only: seed a REVIEW_NEEDED job with one incomplete_rip review title."""
+        async with async_session() as session:
+            job = DiscJob(
+                drive_id=_SIM_DEFAULT_DRIVE,
+                volume_label=volume_label,
+                content_type=ContentType.TV,
+                state=JobState.REVIEW_NEEDED,
+                staging_path=None,
+                content_hash="SIMHASH123",
+                detected_title="Damaged Show",
+                detected_season=1,
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+
+            title = DiscTitle(
+                job_id=job.id,
+                title_index=2,
+                duration_seconds=2600,
+                state=TitleState.REVIEW,
+                match_details=json.dumps(
+                    {
+                        "error": "incomplete_rip",
+                        "message": "Incomplete rip — clean the disc and re-rip this title.",
+                        "rerip_eligible": True,
+                        "rerip_attempts": 0,
+                    }
+                ),
+            )
+            session.add(title)
+            await session.commit()
+            await session.refresh(title)
+
+            # Broadcast so the UI sees the job without a manual refresh
+            await ws_manager.broadcast_job_update(
+                job.id,
+                JobState.REVIEW_NEEDED.value,
+                content_type=ContentType.TV.value,
+                detected_title=job.detected_title,
+                detected_season=job.detected_season,
+                total_titles=1,
+            )
+
+            logger.info(f"[SIMULATE] Seeded incomplete_rip job {job.id}, title {title.id}")
+            return {"job_id": job.id, "title_id": title.id}

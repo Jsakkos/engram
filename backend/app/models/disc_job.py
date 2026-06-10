@@ -159,6 +159,10 @@ class DiscTitle(SQLModel, table=True):
     match_confidence: float = 0.0
     match_details: str | None = None  # JSON string with score breakdown
 
+    # Number of automatic/manual re-rip attempts for this title (Feature C).
+    # Bounds auto re-rip after a clean & reinsert; see RERIP_MAX_ATTEMPTS.
+    rerip_attempts: int = 0
+
     # Progress
     state: TitleState = TitleState.PENDING
 

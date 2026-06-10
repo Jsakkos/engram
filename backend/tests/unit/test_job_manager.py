@@ -304,9 +304,10 @@ class TestRunRippingSessionScoping:
         # Must not raise for an unknown job id.
         await job_manager._fail_job(999999, "boom")
 
-    async def test_stalled_titles_marked_failed_and_job_continues(self, rip_env, monkeypatch):
+    async def test_stalled_titles_routed_to_review_and_job_holds(self, rip_env, monkeypatch):
         # A rip that reports stalled titles must NOT fail the job: the stalled
-        # title is marked FAILED and the job proceeds to MATCHING.
+        # title is sent to REVIEW (rip_stalled, re-rippable — Feature C) and the
+        # job holds in REVIEW_NEEDED until the user acts on the title.
         job, title = await _seed(
             content_type=ContentType.TV, staging=str(rip_env), is_selected=True, title_index=0
         )
@@ -321,8 +322,11 @@ class TestRunRippingSessionScoping:
         async with _unit_session_factory() as session:
             refreshed_job = await session.get(DiscJob, job.id)
             refreshed_title = await session.get(DiscTitle, title.id)
-        assert refreshed_title.state == TitleState.FAILED
-        assert refreshed_job.state == JobState.MATCHING
+        assert refreshed_title.state == TitleState.REVIEW
+        d = json.loads(refreshed_title.match_details)
+        assert d["error"] == "rip_stalled"
+        assert d["rerip_eligible"] is True
+        assert refreshed_job.state == JobState.REVIEW_NEEDED
 
     async def test_cancelled_rip_fails_job_and_reraises(self, rip_env, monkeypatch):
         # Cancelling the rip must fail the job AND re-raise so the task is

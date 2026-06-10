@@ -8,6 +8,7 @@ termination, and eligibility logic.
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -16,7 +17,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.models import DiscJob, DiscTitle
 from app.models.disc_job import ContentType, JobState, TitleState
-from app.services.finalization_coordinator import FinalizationCoordinator
+from app.services.finalization_coordinator import FinalizationCoordinator, _is_rematchable_review
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -323,3 +324,51 @@ class TestReviewEscalation:
         result, _status = await _escalate(coord, job_id)
         assert result is False
         assert job_id not in coord._review_passes
+
+
+def _review_title(match_details: dict | None = None, is_extra: bool = False) -> SimpleNamespace:
+    """Minimal title-like object for _is_rematchable_review tests."""
+    return SimpleNamespace(
+        state=TitleState.REVIEW,
+        is_extra=is_extra,
+        match_details=json.dumps(match_details) if match_details is not None else None,
+    )
+
+
+@pytest.mark.unit
+class TestIsRematchableReview:
+    """Direct unit tests for _is_rematchable_review — guards the rerip_eligible fix.
+
+    Damaged tracks (incomplete_rip / rip_stalled) must be excluded from
+    review-escalation so that their match_details (and the rerip_eligible flag)
+    survive intact for the auto re-rip on the next disc insertion.
+    """
+
+    def test_incomplete_rip_not_rematchable(self):
+        t = _review_title({"error": "incomplete_rip", "rerip_eligible": True})
+        assert _is_rematchable_review(t) is False
+
+    def test_rip_stalled_not_rematchable(self):
+        t = _review_title({"error": "rip_stalled", "rerip_eligible": True})
+        assert _is_rematchable_review(t) is False
+
+    def test_low_confidence_is_rematchable(self):
+        """A normal low-confidence REVIEW title must still be escalated — the fix
+        must not accidentally break the happy path."""
+        t = _review_title({"error": "low_confidence"})
+        assert _is_rematchable_review(t) is True
+
+    def test_no_match_details_is_rematchable(self):
+        """A REVIEW title with no match_details is a plain no-match → escalate."""
+        t = _review_title(None)
+        assert _is_rematchable_review(t) is True
+
+    def test_file_exists_still_excluded(self):
+        """Pre-existing exclusion must still hold after the set-union change."""
+        t = _review_title({"error": "file_exists"})
+        assert _is_rematchable_review(t) is False
+
+    def test_subtitle_download_failed_still_excluded(self):
+        """Pre-existing exclusion must still hold after the set-union change."""
+        t = _review_title({"error": "subtitle_download_failed"})
+        assert _is_rematchable_review(t) is False

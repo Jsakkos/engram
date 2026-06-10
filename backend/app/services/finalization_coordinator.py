@@ -19,6 +19,7 @@ from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.job_state_machine import JobStateMachine
+from app.services.matching_coordinator import RIP_FAILURE_ERROR_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,9 @@ def _detect_conflicts(titles) -> dict[str, list]:
 
 
 # REVIEW reasons a deeper matcher pass cannot fix — never auto re-match these.
-_NON_REMATCHABLE_REVIEW_ERRORS = {"file_exists", "subtitle_download_failed"}
+_NON_REMATCHABLE_REVIEW_ERRORS = {"file_exists", "subtitle_download_failed"} | set(
+    RIP_FAILURE_ERROR_CODES
+)
 
 
 def _is_rematchable_review(t) -> bool:

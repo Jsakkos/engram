@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Recover a single damaged track without re-ripping the whole disc. When a title fails at the rip level (a scratch/bad-sector truncation or a ripping stall), Engram now holds it in review with a "clean the disc and reinsert to re-rip this title" prompt. Reinserting the **same** disc (verified by its content fingerprint) automatically re-rips just that track, re-matches it, and finishes the job — with a manual "Re-rip this title" button and a bounded automatic-retry cap as fallbacks. (#371)
+
+### Changed
+
+- A disc with an unrecoverable track no longer auto-completes with that track silently failed; it now waits in review until the track is re-ripped or explicitly skipped, so a "completed" job means every title succeeded. (#371)
+
 ### Fixed
 
 - **Discs that don't reveal their season no longer dead-end in review** — box-set discs labeled by disc number only (e.g. `Eureka D3`) identified the show but not the season, and Engram then silently skipped downloading the reference subtitles that episode matching depends on. Every episode failed at 0% confidence and the whole disc landed in Needs Review. Engram now asks up front: as soon as the disc is identified, a prompt appears to pick the season — or choose "All Seasons" to let matching search every season — and everything downstream (subtitle download, matching, review) works normally. Shows with only one season skip the prompt. (#370)

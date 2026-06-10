@@ -186,3 +186,8 @@ export async function submitReviewBatch(
     body: JSON.stringify({ decisions }),
   });
 }
+
+/** Manually re-rip a single rip-failed title (Feature C). */
+export async function reripTitle(jobId: number, titleId: number): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/rerip`, { method: 'POST' });
+}

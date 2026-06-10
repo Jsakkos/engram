@@ -168,6 +168,14 @@ INCOMPLETE_RIP_MESSAGE = (
     "rip. Clean the disc and re-rip this title."
 )
 
+# Automatic re-rip attempt cap (Feature C). After this many auto/manual re-rips a
+# title stays in review but stops auto-triggering on reinsert (rerip_eligible=False).
+RERIP_MAX_ATTEMPTS = 2
+
+# match_details["error"] codes that mean "the rip itself failed" — these titles
+# are eligible for single-track re-rip after a clean & reinsert.
+RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled"})
+
 
 class MatchingCoordinator:
     """Coordinates episode matching: subtitle download, audio fingerprinting, DiscDB assignment."""
@@ -1466,10 +1474,11 @@ class MatchingCoordinator:
         stubs) is treated as READY.
         """
         if wait_result == FileWaitResult.TRUNCATED:
-            # Reuse the standard failure convention: routes the (still-active)
-            # title to REVIEW with a structured match_details reason and runs
-            # the job-completion check so the rest of the disc can finish.
-            await self._handle_match_failure(job_id, title_id, INCOMPLETE_RIP_MESSAGE)
+            # Route to REVIEW with the rip-failure code so the title is
+            # re-rippable (Feature C) and the rest of the disc can finish.
+            await self.route_rip_failure_to_review(
+                job_id, title_id, "incomplete_rip", INCOMPLETE_RIP_MESSAGE
+            )
             return True
 
         if wait_result == FileWaitResult.TIMEOUT:
@@ -1677,6 +1686,52 @@ class MatchingCoordinator:
                 exc_info=exc,
             )
             asyncio.ensure_future(self._handle_match_failure(job_id, title_id, str(exc)))
+
+    async def route_rip_failure_to_review(
+        self, job_id: int, title_id: int, error_code: str, message: str
+    ) -> None:
+        """Route a rip-level failure (truncated/stall) to REVIEW, not FAILED.
+
+        Writes a structured ``match_details`` carrying the error code, the
+        current attempt count, and a ``rerip_eligible`` flag (False once the
+        retry cap is reached). Keeping rip failures in REVIEW holds the job in
+        REVIEW_NEEDED so COMPLETED means every title succeeded (Feature C).
+        """
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            active_states = (
+                TitleState.PENDING,
+                TitleState.RIPPING,
+                TitleState.QUEUED,
+                TitleState.MATCHING,
+            )
+            if title and title.state in active_states:
+                attempts = title.rerip_attempts or 0
+                eligible = attempts < RERIP_MAX_ATTEMPTS
+                detail_msg = message
+                if not eligible:
+                    detail_msg = (
+                        f"{message} Automatic re-rip stopped after {attempts} attempt(s) — "
+                        "clean or replace the disc and use Re-rip, or skip this title."
+                    )
+                title.state = TitleState.REVIEW
+                title.match_details = json.dumps(
+                    {
+                        "error": error_code,
+                        "message": detail_msg,
+                        "rerip_eligible": eligible,
+                        "rerip_attempts": attempts,
+                    }
+                )
+                session.add(title)
+                await session.commit()
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    title_id,
+                    title.state.value,
+                    match_details=title.match_details,
+                )
+            await self._check_job_completion(session, job_id)
 
     async def _handle_match_failure(self, job_id: int, title_id: int, error: str) -> None:
         """Clean up after a matching task fails unexpectedly."""

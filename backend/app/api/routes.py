@@ -927,6 +927,24 @@ async def skip_title(
     return {"status": "skipped", "job_id": job.id, "title_id": title_id, "target": target}
 
 
+@router.post("/jobs/{job_id}/titles/{title_id}/rerip")
+async def rerip_title(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Manually re-rip a single rip-failed title using the disc in the drive."""
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.rerip_title_manual(job.id, title_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"status": "reripping", "job_id": job.id, "title_id": title_id}
+
+
 @router.post("/jobs/{job_id}/review")
 async def submit_review(
     review: ReviewRequest,
@@ -2164,6 +2182,16 @@ async def reset_all_jobs(session: AsyncSession = Depends(get_session)) -> dict:
     result = await session.execute(delete(DiscJob))
     await session.commit()
     return {"status": "reset", "deleted_count": result.rowcount}
+
+
+@router.post("/simulate/seed-incomplete-rip", dependencies=[Depends(require_debug)])
+async def simulate_seed_incomplete_rip(
+    volume_label: str = "DAMAGED_DISC_S1D1",
+) -> dict:
+    """Seed a REVIEW_NEEDED job with one incomplete_rip title. Debug mode only."""
+    from app.services.job_manager import job_manager
+
+    return await job_manager._simulation.seed_incomplete_rip(volume_label)
 
 
 @router.post("/simulate/insert-disc-from-staging", dependencies=[Depends(require_debug)])

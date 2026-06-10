@@ -1,6 +1,7 @@
 import { Job, DiscTitle, TitleState as BackendTitleState } from './index';
 import { DiscData, Track, TrackState, DiscState, MediaType, MatchCandidate } from '../app/components/DiscCard';
 import { formatDurationLongFloored } from '../utils/formatting';
+import { getRerippableStateFromTitle } from '../components/ReviewQueue/rerip';
 
 /**
  * Adapter layer to transform backend API types into UI component types
@@ -103,7 +104,8 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     startedAt: job.created_at
       ? (job.created_at.endsWith('Z') || job.created_at.includes('+') ? job.created_at : job.created_at + 'Z')
       : undefined,
-    tracks: titles.map(title => transformDiscTitleToTrack(title, job))
+    tracks: titles.map(title => transformDiscTitleToTrack(title, job)),
+    hasDamagedTrack: titles.some(t => getRerippableStateFromTitle(t.match_details).isRerippable),
   };
 }
 

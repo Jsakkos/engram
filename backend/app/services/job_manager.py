@@ -38,6 +38,8 @@ from app.services.finalization_coordinator import FinalizationCoordinator
 from app.services.identification_coordinator import IdentificationCoordinator
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
+    INCOMPLETE_RIP_MESSAGE,
+    RIP_FAILURE_ERROR_CODES,
     STRICT_MIN_VOTES,
     STRICT_SCAN_POINTS,
     MatchingCoordinator,
@@ -79,6 +81,19 @@ def _strip_review_flags(match_details: str | None) -> str | None:
         return match_details
     cleaned = {k: v for k, v in parsed.items() if k not in _REVIEW_REASON_KEYS}
     return json.dumps(cleaned) if cleaned else None
+
+
+def _is_auto_rerippable(title: "DiscTitle") -> bool:
+    """True if a REVIEW title is a rip failure still eligible for an auto re-rip."""
+    if not title.match_details:
+        return False
+    try:
+        details = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if not isinstance(details, dict):
+        return False
+    return bool(details.get("rerip_eligible")) and details.get("error") in RIP_FAILURE_ERROR_CODES
 
 
 # Create domain-specific event broadcaster
@@ -488,6 +503,23 @@ class JobManager:
             # that contends that lock is the insert sentinel — and the sentinel is
             # what triggered this call, so nothing else is waiting on it here.
             new_hash = await self._compute_disc_hash(drive_letter)
+            # Feature C: a reinsert of the SAME disc (hash match) with re-rippable
+            # titles re-rips just those titles instead of spawning a new job.
+            rerip = await self._find_rerip_job(new_hash)
+            if rerip is not None:
+                rerip_job_id, rerip_title_ids = rerip
+                logger.info(
+                    f"Disc reinserted (hash match) for job {rerip_job_id}; re-ripping "
+                    f"{len(rerip_title_ids)} failed title(s) instead of creating a new job."
+                )
+                task = asyncio.create_task(
+                    with_job_log_context(
+                        rerip_job_id, self.rerip_titles(rerip_job_id, rerip_title_ids)
+                    )
+                )
+                task.add_done_callback(lambda t, jid=rerip_job_id: self._on_task_done(t, jid))
+                self._active_jobs[rerip_job_id] = task
+                return
             async with async_session() as session:
                 # Disc-required jobs (the disc is physically in the drive) always
                 # block a new job. Ripping EJECTS the disc + calls notify_ejected()
@@ -573,6 +605,36 @@ class JobManager:
                 # Stamp the cooldown only after the task is scheduled, so a failure
                 # to spawn it doesn't silently block retries for the next 15s.
                 self._last_job_created_at[drive_letter] = time.monotonic()
+
+    async def _find_rerip_job(self, new_hash: str | None) -> tuple[int, list[int]] | None:
+        """Find a REVIEW_NEEDED job for this disc with auto-re-rippable titles.
+
+        Returns ``(job_id, [title_id])`` when the inserted disc's ContentHash
+        matches a settled job holding rip-failed titles still eligible for an
+        automatic re-rip; ``None`` for a different/unfingerprintable disc, a job
+        still actively matching, or no eligible titles (Feature C).
+        """
+        if not new_hash:
+            return None
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob).where(
+                    DiscJob.content_hash == new_hash,
+                    DiscJob.state == JobState.REVIEW_NEEDED,
+                )
+            )
+            jobs = sorted(result.scalars().all(), key=lambda j: j.id, reverse=True)
+            for job in jobs:
+                titles_res = await session.execute(
+                    select(DiscTitle).where(
+                        DiscTitle.job_id == job.id,
+                        DiscTitle.state == TitleState.REVIEW,
+                    )
+                )
+                eligible = [t.id for t in titles_res.scalars().all() if _is_auto_rerippable(t)]
+                if eligible:
+                    return job.id, eligible
+        return None
 
     async def create_job_from_staging(
         self,
@@ -1397,6 +1459,207 @@ class JobManager:
                 exc_info=True,
             )
 
+    async def rerip_titles(self, job_id: int, title_ids: list[int]) -> None:
+        """Re-rip specific rip-failed titles using the disc currently in the drive.
+
+        Reuses the normal rip→match→complete machinery for a focused subset:
+        transitions the job back to RIPPING (also blocking spurious reinserts),
+        deletes each title's stale staging file so MakeMKV overwrites cleanly,
+        re-rips only ``title_ids``, and lets the existing title-complete/-error
+        callbacks drive re-matching and completion (Feature C).
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            titles = []
+            for tid in title_ids:
+                t = await session.get(DiscTitle, tid)
+                if t and t.job_id == job_id and t.state == TitleState.REVIEW:
+                    titles.append(t)
+            if not titles:
+                logger.info(
+                    f"Job {sanitize_log_value(job_id)}: no eligible titles to re-rip "
+                    f"({sanitize_log_value(title_ids)})"
+                )
+                return
+
+            # A re-rip writes its output into the job's staging dir; without one
+            # there is nowhere to put it (e.g. a seed/debug job leaves
+            # staging_path unset). Bail BEFORE the state transition so the job is
+            # never stranded in RIPPING.
+            if not job.staging_path:
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: cannot re-rip — staging_path is not set"
+                )
+                return
+
+            # Un-hide a cleared job that is being actively re-processed.
+            if job.cleared_at is not None:
+                job.cleared_at = None
+                session.add(job)
+
+            # REVIEW_NEEDED -> RIPPING (valid; also makes a spurious reinsert an
+            # unconditional drive-busy block during the re-rip). Bail if the job
+            # can't transition (e.g. a double sentinel fire while already RIPPING):
+            # transition() returns False and makes no state change.
+            if not await state_machine.transition(job, JobState.RIPPING, session):
+                logger.warning(
+                    f"Job {sanitize_log_value(job_id)}: cannot re-rip — invalid transition "
+                    f"from {sanitize_log_value(job.state.value)} to RIPPING; skipping."
+                )
+                return
+
+            staging_dir = Path(job.staging_path)
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            drive_id = job.drive_id
+
+            for t in titles:
+                t.rerip_attempts = (t.rerip_attempts or 0) + 1
+                t.state = TitleState.RIPPING
+                if t.output_filename:
+                    old = Path(t.output_filename)
+                    try:
+                        if old.exists():
+                            old.unlink()
+                    except OSError as e:
+                        logger.warning(
+                            f"Job {sanitize_log_value(job_id)}: could not remove stale file "
+                            f"{sanitize_log_value(old)}: {e}"
+                        )
+                t.output_filename = None
+                session.add(t)
+                await ws_manager.broadcast_title_update(job_id, t.id, TitleState.RIPPING.value)
+            await session.commit()
+
+            subset_sorted = sorted(titles, key=lambda x: x.title_index)
+            rip_indices = [t.title_index for t in subset_sorted]
+            for t in subset_sorted:
+                session.expunge(t)
+
+        self._note_activity(job_id)
+
+        def on_title_complete(idx: int, path: Path):
+            future = asyncio.run_coroutine_threadsafe(
+                self._on_title_ripped(job_id, idx, path, subset_sorted), self._loop
+            )
+
+            def _check(fut):
+                try:
+                    fut.result(timeout=30)
+                except Exception as e:  # noqa: BLE001 — surface, never swallow
+                    logger.exception(f"[RERIP] _on_title_ripped failed (Job {job_id}): {e}")
+
+            future.add_done_callback(_check)
+
+        def on_title_error(cmd_idx: int, reason: str):
+            list_idx = cmd_idx - 1
+            if not (0 <= list_idx < len(subset_sorted)):
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: re-rip title error "
+                    f"cmd_idx={sanitize_log_value(cmd_idx)} out of range"
+                )
+                return
+            title_id_err = subset_sorted[list_idx].id
+            future = asyncio.run_coroutine_threadsafe(
+                self._matching.route_rip_failure_to_review(
+                    job_id, title_id_err, "rip_stalled", reason
+                ),
+                self._loop,
+            )
+
+            def _check_err(fut):
+                # Mirror on_title_complete: a failure inside the threadsafe
+                # coroutine would otherwise be swallowed, leaving the title in
+                # RIPPING with no recovery path and nothing in the logs.
+                try:
+                    fut.result(timeout=30)
+                except Exception as e:  # noqa: BLE001 — surface, never swallow
+                    logger.exception(
+                        f"[RERIP] route_rip_failure_to_review failed (Job {job_id}): {e}"
+                    )
+
+            future.add_done_callback(_check_err)
+
+        from app.core.discdb_exporter import get_makemkv_log_dir
+        from app.services.config_service import get_config
+
+        cfg = await get_config()
+        stall_timeout = cfg.ripping_stall_timeout if cfg else 120.0
+
+        result = await self._extractor.rip_titles(
+            drive_id,
+            staging_dir,
+            title_indices=rip_indices,
+            title_complete_callback=on_title_complete,
+            stall_timeout=stall_timeout,
+            title_error_callback=on_title_error,
+            log_dir=get_makemkv_log_dir(job_id),
+            job_id=job_id,
+        )
+
+        # A clean MakeMKV failure (disc unreadable) returns success=False without
+        # a per-title stall callback — route any still-RIPPING title back to review.
+        if not result.success:
+            async with async_session() as session:
+                for t in subset_sorted:
+                    db_t = await session.get(DiscTitle, t.id)
+                    if db_t and db_t.state == TitleState.RIPPING:
+                        await self._matching.route_rip_failure_to_review(
+                            job_id, t.id, "incomplete_rip", INCOMPLETE_RIP_MESSAGE
+                        )
+
+        # Free the drive for the next disc.
+        try:
+            from app.core.sentinel import eject_disc
+
+            await asyncio.to_thread(eject_disc, drive_id)
+            self._drive_monitor.notify_ejected(drive_id)
+        except (OSError, RuntimeError) as e:
+            logger.warning(f"Job {sanitize_log_value(job_id)}: eject after re-rip failed: {e}")
+
+    async def rerip_title_manual(self, job_id: int, title_id: int) -> None:
+        """Manually re-rip one title using the disc currently in the drive.
+
+        Verifies the inserted disc matches the job by ContentHash and bypasses
+        the automatic retry cap (the user explicitly asked). Spawns the re-rip in
+        the background so the request returns promptly (Feature C).
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            title = await session.get(DiscTitle, title_id)
+            if not job or not title or title.job_id != job_id:
+                raise ValueError("Job or title not found")
+            if title.state != TitleState.REVIEW:
+                raise ValueError("Title is not awaiting re-rip")
+            if job.state != JobState.REVIEW_NEEDED:
+                # rerip_titles can only transition REVIEW_NEEDED -> RIPPING; a
+                # busy job (RIPPING/MATCHING/ORGANIZING) would silently no-op.
+                raise ValueError("Job is not awaiting re-rip review")
+            drive_id = job.drive_id
+            job_hash = job.content_hash
+
+        current_hash = await self._compute_disc_hash(drive_id)
+        if not current_hash:
+            raise ValueError("No readable disc in the drive — insert the matching disc first")
+        if job_hash:
+            if current_hash != job_hash:
+                raise ValueError("A different disc is in the drive — insert the original disc")
+        else:
+            # Pre-#369 jobs (and seed/debug jobs) may have no stored ContentHash;
+            # we can't verify disc identity. Allow the user-initiated re-rip but
+            # log the bypass so it's visible rather than silent.
+            logger.warning(
+                f"Job {sanitize_log_value(job_id)}: content_hash not set — skipping "
+                f"disc-identity check for manual re-rip"
+            )
+
+        task = asyncio.create_task(
+            with_job_log_context(job_id, self.rerip_titles(job_id, [title_id]))
+        )
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
+        self._active_jobs[job_id] = task
+
     async def _run_ripping(self, job_id: int) -> None:
         """Execute the ripping process.
 
@@ -1759,34 +2022,20 @@ class JobManager:
                 await self._fail_job(job_id, result.error_message)
                 return
 
-            # Fallback: mark stalled titles as FAILED
+            # Fallback: a stalled title is a rip-level failure → REVIEW
+            # (re-rippable), not FAILED, so the job holds in REVIEW_NEEDED.
             if result.stalled_titles:
-                async with async_session() as stall_session:
-                    for cmd_idx in result.stalled_titles:
-                        list_idx = cmd_idx - 1
-                        if 0 <= list_idx < len(stall_title_list):
-                            stalled_title = stall_title_list[list_idx]
-                            db_title = await stall_session.get(DiscTitle, stalled_title.id)
-                            if db_title and db_title.state not in (
-                                TitleState.COMPLETED,
-                                TitleState.MATCHED,
-                                TitleState.FAILED,
-                            ):
-                                db_title.state = TitleState.FAILED
-                                db_title.match_details = json.dumps(
-                                    {"reason": STALL_FAILURE_REASON}
-                                )
-                                logger.warning(
-                                    f"Job {safe_job}: title {db_title.title_index} "
-                                    f"marked FAILED (ripping stall, fallback)"
-                                )
-                                await ws_manager.broadcast_title_update(
-                                    job_id,
-                                    db_title.id,
-                                    TitleState.FAILED.value,
-                                    error=STALL_FAILURE_REASON,
-                                )
-                    await stall_session.commit()
+                for cmd_idx in result.stalled_titles:
+                    list_idx = cmd_idx - 1
+                    if 0 <= list_idx < len(stall_title_list):
+                        stalled_title = stall_title_list[list_idx]
+                        logger.warning(
+                            f"Job {safe_job}: title {stalled_title.title_index} "
+                            f"stalled (fallback) → REVIEW (re-rippable)"
+                        )
+                        await self._matching.route_rip_failure_to_review(
+                            job_id, stalled_title.id, "rip_stalled", STALL_FAILURE_REASON
+                        )
 
             # Eject disc and reset sentinel state so a new disc insert is detected
             try:
@@ -2120,24 +2369,11 @@ class JobManager:
             return
 
         stalled_title = sorted_titles[list_idx]
-        async with async_session() as session:
-            db_title = await session.get(DiscTitle, stalled_title.id)
-            if not db_title:
-                return
-            if db_title.state in (TitleState.COMPLETED, TitleState.MATCHED):
-                return
-
-            db_title.state = TitleState.FAILED
-            db_title.match_details = json.dumps({"reason": reason})
-            await session.commit()
-
-            logger.warning(f"Job {job_id}: title {db_title.title_index} marked FAILED ({reason})")
-            await ws_manager.broadcast_title_update(
-                job_id,
-                db_title.id,
-                TitleState.FAILED.value,
-                error=reason,
-            )
+        # A ripping stall is a rip-level failure: route to REVIEW (re-rippable),
+        # not FAILED, so the job holds in REVIEW_NEEDED (Feature C).
+        await self._matching.route_rip_failure_to_review(
+            job_id, stalled_title.id, "rip_stalled", reason
+        )
 
     async def _backfill_unmatched_titles(
         self, job_id: int, staging_dir: Path, sorted_titles: list[DiscTitle]
