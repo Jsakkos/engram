@@ -688,7 +688,8 @@ async def get_season_roster(
     if job.tmdb_id and job.detected_season is None:
         try:
             season_count = await asyncio.to_thread(get_number_of_seasons, str(job.tmdb_id))
-        except Exception:  # noqa: BLE001 — picker is best-effort decoration
+        except Exception as e:  # noqa: BLE001 — picker is best-effort decoration
+            logger.debug(f"Season-count lookup failed for show {job.tmdb_id}: {e}")
             season_count = None
 
     if not job.tmdb_id or effective_season is None:
