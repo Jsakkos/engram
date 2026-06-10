@@ -784,8 +784,9 @@ function ReviewQueue() {
                     maxWidth={1280}
                 />
 
-                {/* Content */}
-                <div className="max-w-[1280px] mx-auto px-6 py-8 relative z-0">
+                {/* Content — w-full so the max-width cap engages inside
+                    SvAtmosphere's flex column (mx-auto alone shrink-wraps). */}
+                <div className="w-full max-w-[1280px] mx-auto px-6 py-8 relative z-0">
                     {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                     <SvNotice tone="warn">
                         › MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.
@@ -894,7 +895,7 @@ function ReviewQueue() {
                 title="Review titles"
                 subtitle={subtitleText}
                 onBack={() => navigate('/')}
-                maxWidth={1280}
+                maxWidth={sv.layoutMaxWidth}
                 right={
                     <>
                         <HeaderButton
@@ -937,8 +938,10 @@ function ReviewQueue() {
                 }
             />
 
-            {/* Content */}
-            <div className="max-w-[1280px] mx-auto px-6 py-8 relative z-0 pb-24">
+            {/* Content — w-full so the max-width cap engages inside
+                SvAtmosphere's flex column (mx-auto alone shrink-wraps).
+                Shares sv.layoutMaxWidth (1600) with the header above. */}
+            <div className="w-full max-w-[1600px] mx-auto px-6 py-8 relative z-0 pb-24">
                 {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                 {/* Subtitle failure and any other job error are independent now that
                     subtitle detail lives on its own field — both can surface. */}
@@ -1057,11 +1060,12 @@ function ReviewQueue() {
                     </div>
                 )}
 
-                {/* List + inspector */}
+                {/* List + inspector — the Inspector is the page's main
+                    workspace, so it takes the larger share of the row. */}
                 <div
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.05fr)',
+                        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr)',
                         gap: 18,
                         alignItems: 'start',
                     }}
