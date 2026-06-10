@@ -86,7 +86,7 @@ export function SvTopBar({
                 ? location.pathname === "/"
                 : location.pathname.startsWith(matchPath);
             return (
-              <NavTab key={item.to} item={item} active={active} />
+              <NavTab key={item.label} item={item} active={active} />
             );
           })}
       </nav>
@@ -170,13 +170,8 @@ function NavTab({ item, active }: { item: NavItem; active: boolean }) {
     opacity: active ? 1 : 0,
   };
 
-  return (
-    <Link
-      to={item.to}
-      style={wrap}
-      data-testid={`sv-nav-${item.label.toLowerCase()}`}
-      data-active={active ? "true" : "false"}
-    >
+  const content = (
+    <>
       <span>{item.label}</span>
       {item.badge != null && item.badge > 0 && (
         <span
@@ -194,6 +189,38 @@ function NavTab({ item, active }: { item: NavItem; active: boolean }) {
         </span>
       )}
       <span style={underline} />
+    </>
+  );
+
+  if (item.disabled) {
+    // Disabled-link pattern: aria-disabled is only announced when the element
+    // has a semantic role, and the title tooltip is mouse-only — so carry the
+    // role explicitly and fold the reason into the accessible name.
+    return (
+      <span
+        role="link"
+        aria-disabled="true"
+        aria-label={
+          item.disabledHint ? `${item.label} — ${item.disabledHint}` : item.label
+        }
+        style={{ ...wrap, color: sv.inkFaint, cursor: "default" }}
+        data-testid={`sv-nav-${item.label.toLowerCase()}`}
+        data-active="false"
+        title={item.disabledHint}
+      >
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      to={item.to}
+      style={wrap}
+      data-testid={`sv-nav-${item.label.toLowerCase()}`}
+      data-active={active ? "true" : "false"}
+    >
+      {content}
     </Link>
   );
 }

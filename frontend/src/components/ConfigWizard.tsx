@@ -7,6 +7,7 @@ import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
+import { formatToolVersion } from '../utils/formatting';
 import './ConfigWizard.css';
 
 interface ConfigWizardProps {
@@ -221,7 +222,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     throw new Error(`Failed to load config: ${response.status}`);
                 }
                 const data = await response.json();
-                console.log('Loaded config from backend:', data);
                 // Track which sensitive keys are already saved in the database
                 setSavedKeys({
                     makemkv: data.makemkv_key === '***',
@@ -421,8 +421,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 throw new Error(`Failed to save config: ${response.status} ${errorText}`);
             }
 
-            const result = await response.json();
-            console.log('Config saved successfully:', result);
+            await response.json();
             onComplete();
         } catch (error) {
             console.error('Failed to save config:', error);
@@ -517,7 +516,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     <div className="tool-status-header">
                         <span className="tool-status-icon found">OK</span>
                         <span className="tool-name">{toolName}</span>
-                        <span className="tool-version">{tool.version}</span>
+                        <span className="tool-version" title={tool.version ?? undefined}>
+                            {formatToolVersion(tool.version)}
+                        </span>
                     </div>
                     <span className="tool-path">{tool.path}</span>
                 </div>

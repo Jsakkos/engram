@@ -152,7 +152,6 @@ describe('DiscCard — TMDB degraded-mode alert (#243)', () => {
           tmdbDegradedReason:
             'TMDB rejected the configured API key — classification ran in heuristic-only mode.',
         })}
-        tmdbConfigured={true}
         onReview={vi.fn()}
         onReIdentify={vi.fn()}
       />,
@@ -161,17 +160,18 @@ describe('DiscCard — TMDB degraded-mode alert (#243)', () => {
     expect(screen.getByText(/TMDB rejected the configured API key/i)).toBeInTheDocument();
   });
 
-  it('still falls back to the global not-configured warning when no per-job reason exists', () => {
+  it('suppresses the generic not-configured warning — the global banner owns it', () => {
+    // With no per-job reason, repeating "TMDB not configured" on every card
+    // just duplicates the dashboard-level banner N times on one screen.
     render(
       <DiscCard
         disc={makeDisc({ state: 'matching', needsReview: false })}
-        tmdbConfigured={false}
         onReview={vi.fn()}
         onReIdentify={vi.fn()}
       />,
     );
 
-    expect(screen.getByText(/TMDB not configured/i)).toBeInTheDocument();
+    expect(screen.queryByText(/TMDB not configured/i)).not.toBeInTheDocument();
   });
 
   it('shows no degraded alert on completed jobs (keeps done cards clean)', () => {
@@ -182,7 +182,6 @@ describe('DiscCard — TMDB degraded-mode alert (#243)', () => {
           needsReview: false,
           tmdbDegradedReason: 'TMDB API key not configured — classification ran in heuristic-only mode.',
         })}
-        tmdbConfigured={false}
         onReview={vi.fn()}
         onReIdentify={vi.fn()}
       />,

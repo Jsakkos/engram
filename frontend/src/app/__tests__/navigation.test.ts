@@ -24,12 +24,28 @@ describe("top-nav route integrity", () => {
     expect(routeExists(review!.to)).toBe(true);
   });
 
-  it("REVIEW falls back to the dashboard — never a bare /review — when nothing needs review", () => {
+  it("REVIEW is disabled — never a bare /review link — when nothing needs review", () => {
     const review = buildNavItems().find((i) => i.label === "REVIEW");
     // Bare "/review" renders nothing under the dynamic-segment route; that was
-    // the original black-screen bug. The fallback must be the dashboard.
+    // the original black-screen bug. And linking the dashboard instead gave two
+    // tabs the same destination (duplicate React keys) plus silent navigation.
+    // The tab is inert until a review exists; `to` stays resolvable for safety.
+    expect(review?.disabled).toBe(true);
+    expect(review?.disabledHint).toMatch(/no jobs awaiting review/i);
     expect(review?.to).not.toBe(ROUTES.REVIEW);
-    expect(review?.to).toBe(ROUTES.HOME);
+    expect(routeExists(review!.to)).toBe(true);
+  });
+
+  it("REVIEW is enabled when a job awaits review", () => {
+    const review = buildNavItems({ firstReviewJobId: 6, reviewCount: 1 }).find(
+      (i) => i.label === "REVIEW",
+    );
+    expect(review?.disabled).toBeFalsy();
+  });
+
+  it("labels are unique so list keys cannot collide", () => {
+    const labels = buildNavItems({}).map((i) => i.label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it("routeExists rejects a path with no matching route", () => {

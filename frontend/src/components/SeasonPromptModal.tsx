@@ -9,7 +9,10 @@ interface SeasonPromptModalProps {
     job: Job;
     /** Called with the picked season, or undefined for "match across all seasons". */
     onSubmit: (season?: number) => void;
-    onCancel: () => void;
+    /** Close the prompt without touching the job (Escape / backdrop click). */
+    onDismiss: () => void;
+    /** Explicitly cancel the underlying job — destructive, button only. */
+    onCancelJob: () => void;
 }
 
 /**
@@ -18,7 +21,12 @@ interface SeasonPromptModalProps {
  * the downstream mess — N-season subtitle downloads, cross-season ASR, and a
  * review dropdown locked to S01. "All seasons" is the automation escape hatch.
  */
-export default function SeasonPromptModal({ job, onSubmit, onCancel }: SeasonPromptModalProps) {
+export default function SeasonPromptModal({
+    job,
+    onSubmit,
+    onDismiss,
+    onCancelJob,
+}: SeasonPromptModalProps) {
     const [season, setSeason] = useState<string>('1');
     const [seasonCount, setSeasonCount] = useState<number | null>(null);
     const selectRef = useRef<HTMLSelectElement>(null);
@@ -50,7 +58,7 @@ export default function SeasonPromptModal({ job, onSubmit, onCancel }: SeasonPro
 
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Enter') onSubmit(parseInt(season, 10) || 1);
-        if (e.key === 'Escape') onCancel();
+        if (e.key === 'Escape') onDismiss();
     };
 
     const buttonStyle = (color: string, filled: boolean): React.CSSProperties => ({
@@ -85,7 +93,8 @@ export default function SeasonPromptModal({ job, onSubmit, onCancel }: SeasonPro
                 style={{ background: `${sv.bg0}d9`, backdropFilter: 'blur(4px)' }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                onClick={onCancel}
+                onClick={onDismiss}
+                data-testid="season-prompt-backdrop"
             />
             <motion.div
                 className="relative w-full max-w-md"
@@ -193,12 +202,12 @@ export default function SeasonPromptModal({ job, onSubmit, onCancel }: SeasonPro
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <motion.button
                                 type="button"
-                                onClick={onCancel}
+                                onClick={onCancelJob}
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.97 }}
                                 style={buttonStyle(sv.red, false)}
                             >
-                                Cancel
+                                Cancel job
                             </motion.button>
                             <motion.button
                                 type="button"

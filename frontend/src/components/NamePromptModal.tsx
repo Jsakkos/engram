@@ -7,11 +7,20 @@ import { SvPanel, SvLabel, sv } from '../app/components/synapse';
 interface NamePromptModalProps {
     job: Job;
     onSubmit: (name: string, contentType: 'tv' | 'movie', season?: number) => void;
-    onCancel: () => void;
+    /** Close the prompt without touching the job (Escape / backdrop click). */
+    onDismiss: () => void;
+    /** Explicitly cancel the underlying job — destructive, button only. */
+    onCancelJob: () => void;
     initialTitle?: string;
 }
 
-export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle }: NamePromptModalProps) {
+export default function NamePromptModal({
+    job,
+    onSubmit,
+    onDismiss,
+    onCancelJob,
+    initialTitle,
+}: NamePromptModalProps) {
     const [title, setTitle] = useState(initialTitle ?? '');
     const [contentType, setContentType] = useState<'movie' | 'tv'>(
         job.content_type === 'tv' ? 'tv' : 'movie',
@@ -34,7 +43,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
 
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Enter') handleSubmit();
-        if (e.key === 'Escape') onCancel();
+        if (e.key === 'Escape') onDismiss();
     };
 
     const inputStyle = (filled: boolean): React.CSSProperties => ({
@@ -68,7 +77,8 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
                 style={{ background: `${sv.bg0}d9`, backdropFilter: 'blur(4px)' }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                onClick={onCancel}
+                onClick={onDismiss}
+                data-testid="name-prompt-backdrop"
             />
             <div
                 className="absolute inset-0 pointer-events-none"
@@ -297,7 +307,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                             <motion.button
                                 type="button"
-                                onClick={onCancel}
+                                onClick={onCancelJob}
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.97 }}
                                 style={{
@@ -315,7 +325,7 @@ export default function NamePromptModal({ job, onSubmit, onCancel, initialTitle 
                                     cursor: 'pointer',
                                 }}
                             >
-                                Cancel
+                                Cancel job
                             </motion.button>
 
                             <motion.button

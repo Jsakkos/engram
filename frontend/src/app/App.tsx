@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { AlertTriangle, Trash2, LayoutGrid, List, Info, X } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
+import { CompactList } from "./components/CompactList";
 import { useJobManagement } from "./hooks/useJobManagement";
 import { useDiscFilters } from "./hooks/useDiscFilters";
 import { useNotifications } from "./hooks/useNotifications";
@@ -20,6 +21,7 @@ import ContributePage from "../components/ContributePage";
 import { FEATURES } from "../config/constants";
 import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
+import { pruneDismissedIds, selectPromptJobs } from "./promptSelection";
 import type { Job } from "../types";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -32,7 +34,6 @@ import {
   sv,
 } from "./components/synapse";
 import { DashboardSideRail } from "./components/DashboardSideRail";
-import { formatEtaCompact } from "../utils/formatting";
 
 type ViewMode = "expanded" | "compact";
 
@@ -153,21 +154,20 @@ function MainDashboard() {
   // Browser notifications for job state changes
   useNotifications(jobs);
 
-  // Show name prompt modal for unreadable labels or TV shows where TMDB lookup failed
+  // Show name prompt modal for unreadable labels or TV shows where TMDB lookup failed,
+  // and the season prompt (#370) when the show is known but the season isn't.
+  // Dismissed prompts (Escape / backdrop click) are remembered so the next jobs
+  // refresh doesn't immediately re-open them — dismissal parks the job in review,
+  // it does NOT cancel it.
+  const dismissedPromptIdsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
-    const needsName = jobs.find(
-      (j) =>
-        j.state === 'review_needed' &&
-        ((j.review_reason?.includes('label unreadable') && !j.detected_title) ||
-          (j.review_reason?.includes('merged without separators') && j.content_type === 'tv')),
+    pruneDismissedIds(dismissedPromptIdsRef.current, jobs);
+    const { namePromptJob: needsName, seasonPromptJob: needsSeason } = selectPromptJobs(
+      jobs,
+      dismissedPromptIdsRef.current,
     );
-    setNamePromptJob(needsName ?? null);
-
-    // Season prompt (#370): show identified but the disc label revealed no season.
-    const needsSeason = jobs.find(
-      (j) => j.state === 'review_needed' && j.review_reason?.includes('select a season'),
-    );
-    setSeasonPromptJob(needsSeason ?? null);
+    setNamePromptJob(needsName);
+    setSeasonPromptJob(needsSeason);
   }, [jobs]);
 
   const reviewJobs = jobs.filter((j) => j.state === 'review_needed');
@@ -434,7 +434,6 @@ function MainDashboard() {
                 >
                   Configure token
                 </button>
-                <span>.</span>
               </div>
               <button
                 onClick={() => setTmdbBannerDismissed(true)}
@@ -600,6 +599,10 @@ function MainDashboard() {
             discs={filteredDiscs}
             onReview={(id) => navigate(reviewPath(id))}
             onCancel={(id) => cancelJob(id)}
+            onReIdentify={(id) => {
+              const job = jobs.find((j) => String(j.id) === id);
+              if (job) setReIdentifyTarget(job);
+            }}
           />
         ) : (
           /* Expanded view */
@@ -617,7 +620,6 @@ function MainDashboard() {
                     if (job) setReIdentifyTarget(job);
                   } : undefined}
                   onReportBug={() => setBugReportJobId(Number(disc.id))}
-                  tmdbConfigured={tmdbConfigured}
                   onOpenSettings={() => setShowSettings(true)}
                 />
               ))}
@@ -641,7 +643,11 @@ function MainDashboard() {
               setJobName(namePromptJob.id, name, contentType, season);
               setNamePromptJob(null);
             }}
-            onCancel={() => {
+            onDismiss={() => {
+              dismissedPromptIdsRef.current.add(namePromptJob.id);
+              setNamePromptJob(null);
+            }}
+            onCancelJob={() => {
               cancelJob(String(namePromptJob.id));
               setNamePromptJob(null);
             }}
@@ -663,7 +669,11 @@ function MainDashboard() {
               );
               setSeasonPromptJob(null);
             }}
-            onCancel={() => {
+            onDismiss={() => {
+              dismissedPromptIdsRef.current.add(seasonPromptJob.id);
+              setSeasonPromptJob(null);
+            }}
+            onCancelJob={() => {
               cancelJob(String(seasonPromptJob.id));
               setSeasonPromptJob(null);
             }}
@@ -777,211 +787,6 @@ function MainDashboard() {
   );
 }
 
-/**
- * Compact list view for the dashboard — sv-token row layout that mirrors the
- * SvPanel vocabulary used elsewhere (1px tinted border, sharp corners, mono
- * uppercase headers).
- */
-function CompactList({
-  discs,
-  onReview,
-  onCancel,
-}: {
-  discs: DiscData[];
-  onReview: (id: string) => void;
-  onCancel: (id: string) => void;
-}) {
-  const colTemplate = "auto auto 1fr 140px 60px auto";
-  const stateColor: Partial<Record<DiscData["state"], string>> = {
-    completed: sv.green,
-    error: sv.red,
-    ripping: sv.magenta,
-    scanning: sv.cyan,
-    review_needed: sv.yellow,
-    matching: sv.amber,
-    organizing: sv.purple,
-  };
-  const typeColor: Record<DiscData["mediaType"], string> = {
-    movie: sv.magenta,
-    tv: sv.cyan,
-    unknown: sv.inkFaint,
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {/* Column header */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: colTemplate,
-          columnGap: 16,
-          padding: "8px 12px",
-          fontFamily: sv.mono,
-          fontSize: 9,
-          fontWeight: 700,
-          letterSpacing: "0.22em",
-          textTransform: "uppercase",
-          color: sv.inkFaint,
-          borderBottom: `1px solid ${sv.line}`,
-        }}
-      >
-        <span>State</span>
-        <span>Type</span>
-        <span>Title</span>
-        <span>Progress</span>
-        <span style={{ textAlign: "right" }}>ETA</span>
-        <span>Actions</span>
-      </div>
-      <AnimatePresence mode="popLayout">
-        {discs.map((disc) => {
-          const stateC = stateColor[disc.state] ?? sv.inkDim;
-          const typeC = typeColor[disc.mediaType];
-          const showProgress = disc.progress > 0 && disc.state !== "completed";
-          return (
-            <motion.div
-              key={disc.id}
-              layout
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              style={{
-                display: "grid",
-                gridTemplateColumns: colTemplate,
-                columnGap: 16,
-                alignItems: "center",
-                padding: "10px 12px",
-                background: sv.bg1,
-                border: `1px solid ${sv.line}`,
-                fontFamily: sv.mono,
-                fontSize: 12,
-                transition: "background 120ms, border-color 120ms",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = sv.bg2;
-                e.currentTarget.style.borderColor = sv.lineMid;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = sv.bg1;
-                e.currentTarget.style.borderColor = sv.line;
-              }}
-            >
-              {/* State */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    background: stateC,
-                    boxShadow: `0 0 6px ${stateC}aa`,
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    color: sv.inkDim,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.16em",
-                    fontSize: 10,
-                    width: 76,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {disc.state}
-                </span>
-              </div>
-              {/* Type */}
-              <span
-                style={{
-                  color: typeC,
-                  fontWeight: 700,
-                  fontSize: 10,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.18em",
-                }}
-              >
-                {disc.mediaType === "unknown" ? "…" : disc.mediaType}
-              </span>
-              {/* Title */}
-              <span
-                style={{
-                  color: sv.ink,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {disc.title}
-              </span>
-              {/* Progress */}
-              <div>
-                {showProgress ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div
-                      style={{
-                        flex: 1,
-                        height: 3,
-                        background: sv.bg3,
-                        position: "relative",
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: "0 auto 0 0",
-                          width: `${disc.progress}%`,
-                          background: `linear-gradient(90deg, ${sv.cyan}, ${sv.cyanHi})`,
-                          boxShadow: `0 0 6px ${sv.cyan}88`,
-                          transition: "width 0.3s ease",
-                        }}
-                      />
-                    </div>
-                    <span
-                      className="sv-tnum"
-                      style={{ color: sv.cyanHi, fontSize: 10, fontWeight: 700 }}
-                    >
-                      {disc.progress.toFixed(0)}%
-                    </span>
-                  </div>
-                ) : disc.state === "completed" ? (
-                  <span style={{ color: sv.green, fontSize: 10, letterSpacing: "0.20em" }}>DONE</span>
-                ) : (
-                  <span style={{ color: sv.inkFaint }}>—</span>
-                )}
-              </div>
-              {/* ETA */}
-              <span
-                className="sv-tnum"
-                style={{
-                  color: sv.inkDim,
-                  fontSize: 11,
-                  textAlign: "right",
-                }}
-              >
-                {formatEtaCompact(disc.etaSeconds)}
-              </span>
-              {/* Actions */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 && (
-                  <CompactRowButton color={sv.yellow} onClick={() => onReview(disc.id)}>
-                    Review
-                  </CompactRowButton>
-                )}
-                {disc.state !== "completed" && disc.state !== "error" && (
-                  <CompactRowButton color={sv.red} onClick={() => onCancel(disc.id)}>
-                    Cancel
-                  </CompactRowButton>
-                )}
-              </div>
-            </motion.div>
-          );
-        })}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 /** Modal backdrop with sv-token blur + sv.bg0 alpha overlay. */
 function ModalScrim({ children }: { children: React.ReactNode }) {
   return (
@@ -1002,43 +807,6 @@ function ModalScrim({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </div>
-  );
-}
-
-function CompactRowButton({
-  color,
-  onClick,
-  children,
-}: {
-  color: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        ...svButtonBase,
-        height: 22,
-        padding: "0 8px",
-        background: sv.bg0,
-        border: `1px solid ${color}55`,
-        color,
-        fontSize: 9,
-        fontWeight: 700,
-        transition: "border-color 120ms, box-shadow 120ms",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = color;
-        e.currentTarget.style.boxShadow = `0 0 8px ${color}55`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = `${color}55`;
-        e.currentTarget.style.boxShadow = "none";
-      }}
-    >
-      {children}
-    </button>
   );
 }
 

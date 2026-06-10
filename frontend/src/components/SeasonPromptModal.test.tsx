@@ -35,10 +35,12 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
+const noop = { onSubmit: vi.fn(), onDismiss: vi.fn(), onCancelJob: vi.fn() };
+
 describe('SeasonPromptModal (#370)', () => {
     it('offers one option per season from season_count', async () => {
         mockRosterFetch(5);
-        render(<SeasonPromptModal job={job} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+        render(<SeasonPromptModal job={job} {...noop} />);
         await waitFor(() =>
             expect(screen.getByRole('option', { name: 'Season 05' })).toBeInTheDocument(),
         );
@@ -48,7 +50,7 @@ describe('SeasonPromptModal (#370)', () => {
     it('submits the chosen season', async () => {
         mockRosterFetch(5);
         const onSubmit = vi.fn();
-        render(<SeasonPromptModal job={job} onSubmit={onSubmit} onCancel={vi.fn()} />);
+        render(<SeasonPromptModal job={job} {...noop} onSubmit={onSubmit} />);
         await waitFor(() =>
             expect(screen.getByRole('option', { name: 'Season 03' })).toBeInTheDocument(),
         );
@@ -60,30 +62,52 @@ describe('SeasonPromptModal (#370)', () => {
     it('submits undefined for "match across all seasons"', async () => {
         mockRosterFetch(5);
         const onSubmit = vi.fn();
-        render(<SeasonPromptModal job={job} onSubmit={onSubmit} onCancel={vi.fn()} />);
+        render(<SeasonPromptModal job={job} {...noop} onSubmit={onSubmit} />);
         fireEvent.click(screen.getByRole('button', { name: /all seasons/i }));
         expect(onSubmit).toHaveBeenCalledWith(undefined);
     });
 
     it('falls back to 15 season options when the count is unavailable', async () => {
         mockRosterFetch(null);
-        render(<SeasonPromptModal job={job} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+        render(<SeasonPromptModal job={job} {...noop} />);
         await waitFor(() =>
             expect(screen.getByRole('option', { name: 'Season 15' })).toBeInTheDocument(),
         );
     });
 
-    it('invokes onCancel from the Cancel button', async () => {
+    it('cancelling the job requires the explicit "Cancel job" button', async () => {
         mockRosterFetch(5);
-        const onCancel = vi.fn();
-        render(<SeasonPromptModal job={job} onSubmit={vi.fn()} onCancel={onCancel} />);
-        fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-        expect(onCancel).toHaveBeenCalled();
+        const onCancelJob = vi.fn();
+        const onDismiss = vi.fn();
+        render(<SeasonPromptModal job={job} {...noop} onCancelJob={onCancelJob} onDismiss={onDismiss} />);
+        fireEvent.click(screen.getByRole('button', { name: /cancel job/i }));
+        expect(onCancelJob).toHaveBeenCalled();
+        expect(onDismiss).not.toHaveBeenCalled();
+    });
+
+    it('Escape dismisses without cancelling the job', async () => {
+        mockRosterFetch(5);
+        const onCancelJob = vi.fn();
+        const onDismiss = vi.fn();
+        render(<SeasonPromptModal job={job} {...noop} onCancelJob={onCancelJob} onDismiss={onDismiss} />);
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+        expect(onDismiss).toHaveBeenCalled();
+        expect(onCancelJob).not.toHaveBeenCalled();
+    });
+
+    it('backdrop click dismisses without cancelling the job', async () => {
+        mockRosterFetch(5);
+        const onCancelJob = vi.fn();
+        const onDismiss = vi.fn();
+        render(<SeasonPromptModal job={job} {...noop} onCancelJob={onCancelJob} onDismiss={onDismiss} />);
+        fireEvent.click(screen.getByTestId('season-prompt-backdrop'));
+        expect(onDismiss).toHaveBeenCalled();
+        expect(onCancelJob).not.toHaveBeenCalled();
     });
 
     it('focuses the season select on open so Escape works immediately', async () => {
         mockRosterFetch(5);
-        render(<SeasonPromptModal job={job} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+        render(<SeasonPromptModal job={job} {...noop} />);
         await waitFor(() => expect(screen.getByLabelText('Season')).toHaveFocus());
     });
 });

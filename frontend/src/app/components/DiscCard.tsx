@@ -91,9 +91,8 @@ export interface DiscData {
   tracksLoaded?: boolean;
   conflictStatus?: string;
   /** Backend-set human-readable cause when classification ran WITHOUT TMDB
-   *  (key absent or rejected). Shown verbatim on active jobs; takes precedence
-   *  over the global `tmdbConfigured` flag because it also covers the
-   *  configured-but-invalid-key case the flag can't see (#243). */
+   *  (key absent or rejected). Shown verbatim on active jobs; it also covers
+   *  the configured-but-invalid-key case the global flag can't see (#243). */
   tmdbDegradedReason?: string;
   /** True when at least one title on this disc has a rip-level failure (re-rippable). */
   hasDamagedTrack?: boolean;
@@ -106,7 +105,6 @@ interface DiscCardProps {
   onReIdentify?: () => void;
   onAdvance?: () => void;
   onReportBug?: () => void;
-  tmdbConfigured?: boolean;
   onOpenSettings?: () => void;
 }
 
@@ -201,7 +199,7 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onReportBug, tmdbConfigured = true, onOpenSettings }, ref) => {
+  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onReportBug, onOpenSettings }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
@@ -491,11 +489,13 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 </div>
               )}
 
-              {/* TMDB degraded-mode warning — active jobs only. Prefer the per-job
-                  reason (covers a configured-but-REJECTED key, which the global
-                  flag can't see); else fall back to the global not-configured
-                  warning when no key is stored at all (#243). */}
-              {isActive && (disc.tmdbDegradedReason || tmdbConfigured === false) && (
+              {/* TMDB degraded-mode warning — active jobs only, and only for a
+                  per-job reason (covers a configured-but-REJECTED key, which the
+                  global flag can't see, #243). The generic "not configured" case
+                  is deliberately NOT repeated here: the dashboard-level banner
+                  owns that message, and echoing it on every card stacked N+1
+                  identical warnings on one screen. */}
+              {isActive && disc.tmdbDegradedReason && (
                 <div
                   role="alert"
                   style={{
@@ -516,8 +516,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 >
                   <span aria-hidden style={{ flexShrink: 0 }}>⚠</span>
                   <span>
-                    {disc.tmdbDegradedReason ||
-                      "TMDB not configured — classification is heuristic-only."}{" "}
+                    {disc.tmdbDegradedReason}{" "}
                     {onOpenSettings && (
                       <button
                         onClick={onOpenSettings}

@@ -83,11 +83,21 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
-@theme inline {
+@theme static {
   /* ─── Synapse v2 token system ────────────────────────────────────
      Lifted from docs/design_handoff_synapse/synapse-v2/core.jsx.
      Use these for new components; the magenta-* / navy-* palettes
-     below are retained for legacy components until Phase 6 cleanup. */
+     below are retained for legacy components until Phase 6 cleanup.
+
+     NOTE: this block is deliberately `@theme static` (NOT `@theme inline`).
+     `static` emits every token as a real CSS custom property on `:root`,
+     which hand-written CSS outside the Tailwind graph (ConfigWizard.css,
+     inline styles) consumes via var(--color-sv-*). `inline` emits NO
+     runtime variables — it silently broke every var() reference
+     (transparent dropdowns, white modal borders). Plain `@theme` is not
+     enough either: Tailwind only emits tokens it sees used, and it can't
+     see usages in TSX-imported stylesheets. Only the var()-referencing
+     shadcn aliases below need `inline`. */
 
   /* Surfaces — deep blue-blacks */
   --color-sv-bg0: #05070c;
@@ -143,7 +153,12 @@
   --color-navy-600: #1a1d35;
   --color-navy-500: #252847;
   --color-navy-400: #353960;
+}
 
+@theme inline {
+  /* shadcn-style aliases — these reference :root/.dark variables, so they
+     must stay `inline` (utilities resolve to var(--background) etc. and
+     pick up .dark overrides at runtime). */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

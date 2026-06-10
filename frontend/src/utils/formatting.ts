@@ -131,6 +131,25 @@ export function formatEtaCompact(seconds?: number): string {
   return `${Math.ceil(seconds / 60)}m`;
 }
 
+// ── Tool versions ───────────────────────────────────────────────────────────
+
+/**
+ * Reduce a raw tool version banner to a short human-readable form for the
+ * setup wizard / bug report. Raw strings come from the backend detectors:
+ * the full first line of `ffmpeg -version` (with Copyright tail), MakeMKV's
+ * "MakeMKV v1.18.3 win(x64-release)" robot-mode line, or the literal
+ * "(version probe timed out)" marker when the probe gave up.
+ */
+export function formatToolVersion(raw: string | null): string {
+  if (!raw) return "Detected";
+  if (/version probe timed out/i.test(raw)) return "Detected (version unknown)";
+  const ffmpeg = raw.match(/ffmpeg version (\S+)/i);
+  if (ffmpeg) return `ffmpeg ${ffmpeg[1].split(/-(?:full|essentials)_build/)[0]}`;
+  const makemkv = raw.match(/MakeMKV v[\d.]+/i);
+  if (makemkv) return makemkv[0];
+  return raw.length > 60 ? `${raw.slice(0, 59)}…` : raw;
+}
+
 // ── Date / time ─────────────────────────────────────────────────────────────
 
 /**
