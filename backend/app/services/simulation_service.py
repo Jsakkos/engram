@@ -778,11 +778,11 @@ class SimulationService:
         """DEBUG-only: seed a REVIEW_NEEDED job with one incomplete_rip review title."""
         async with async_session() as session:
             job = DiscJob(
-                drive_id="F:",
+                drive_id=_SIM_DEFAULT_DRIVE,
                 volume_label=volume_label,
                 content_type=ContentType.TV,
                 state=JobState.REVIEW_NEEDED,
-                staging_path="/tmp/engram_sim_staging",
+                staging_path=None,
                 content_hash="SIMHASH123",
                 detected_title="Damaged Show",
                 detected_season=1,

@@ -1,30 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { resetAllJobs } from './fixtures/api-helpers';
+import { resetAllJobs, seedIncompleteRip } from './fixtures/api-helpers';
 import { SELECTORS } from './fixtures/selectors';
 
-const API_BASE = 'http://localhost:8001';
-
-/**
- * Seed a REVIEW_NEEDED job with one incomplete_rip review title.
- * Returns { job_id, title_id }.
- */
-async function seedIncompleteRip(
-    volumeLabel = 'DAMAGED_DISC_S1D1',
-): Promise<{ job_id: number; title_id: number }> {
-    const res = await fetch(
-        `${API_BASE}/api/simulate/seed-incomplete-rip?volume_label=${encodeURIComponent(volumeLabel)}`,
-        { method: 'POST' },
-    );
-    if (!res.ok) {
-        throw new Error(`seed-incomplete-rip failed: ${res.status} ${await res.text()}`);
-    }
-    return res.json();
-}
-
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async () => {
     await resetAllJobs().catch(() => {});
-    await page.goto('/');
-    await expect(page.locator(SELECTORS.connectionStatus.connected)).toBeVisible({ timeout: 10000 });
 });
 
 test.describe('Re-rip affordance — damaged track', () => {
@@ -44,10 +23,17 @@ test.describe('Re-rip affordance — damaged track', () => {
     });
 
     test('damaged badge appears on the dashboard disc card', async ({ page }) => {
+        // Seed BEFORE navigating so the initial /api/jobs fetch already includes the job.
+        // This avoids relying solely on the debounced WS-triggered REST refetch.
         await seedIncompleteRip();
 
-        // The dashboard is already open — the seed broadcasts a job_update so the
-        // card appears without a manual page refresh.
+        await page.goto('/');
+        // Wait for the initial /api/jobs response to confirm the page has loaded job data.
+        await page.waitForResponse(r => r.url().includes('/api/jobs') && r.ok());
+
+        await expect(page.locator(SELECTORS.connectionStatus.connected)).toBeVisible({ timeout: 10000 });
+
+        // The seeded card must be visible
         await expect(page.locator(SELECTORS.discCard)).toBeVisible({ timeout: 10000 });
 
         // The damaged badge must appear on the card (filtered to just the card)
