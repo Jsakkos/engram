@@ -4,7 +4,7 @@ import { SvPanel } from "./SvPanel";
 import { SvLabel } from "./SvLabel";
 import { SvRuler } from "./SvRuler";
 
-export type SvErrorKind = "no-match" | "no-drive" | "empty-library";
+export type SvErrorKind = "no-match" | "no-drive";
 
 interface Props {
   kind: SvErrorKind;
@@ -42,13 +42,6 @@ const KIND: Record<SvErrorKind, KindConfig> = {
       "No optical drive detected. Check the cable, or drop MKV folders into your staging directory.",
     color: sv.red,
   },
-  "empty-library": {
-    tag: "— LIBRARY EMPTY —",
-    headline: "Your library is waiting",
-    subtitle:
-      "Insert a disc to start your archive. Each completed rip lands here as a poster card.",
-    color: sv.cyan,
-  },
 };
 
 /**
@@ -57,8 +50,8 @@ const KIND: Record<SvErrorKind, KindConfig> = {
  *  - Left: tag, big headline (color-tinted, glow), subtitle, action buttons
  *  - Right: diagnostics panel with key/value rows + ruler + trace ID footer
  *
- * Designed to drop inside <SvAtmosphere> on the dashboard or library pages
- * when a job state warrants a full takeover (FAILED, no-drive, empty).
+ * Designed to drop inside <SvAtmosphere> on the dashboard
+ * when a job state warrants a full takeover (FAILED, no-drive, no-match).
  */
 export function SvErrorState({
   kind,

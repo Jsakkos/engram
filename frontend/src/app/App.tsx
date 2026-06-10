@@ -1046,6 +1046,7 @@ function App() {
       <Route path={ROUTES.HISTORY} element={<HistoryPage />} />
       <Route path={ROUTES.HISTORY_DETAIL} element={<HistoryPage />} />
       {FEATURES.DISCDB && <Route path={ROUTES.CONTRIBUTE} element={<ContributePage />} />}
+      <Route path="/library" element={<Navigate to={ROUTES.HISTORY} replace />} />
       <Route path={ROUTES.REVIEW} element={<Navigate to={ROUTES.HOME} replace />} />
       <Route path={ROUTES.REVIEW_DETAIL} element={<ReviewQueue />} />
     </Routes>
