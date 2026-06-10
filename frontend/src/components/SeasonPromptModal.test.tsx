@@ -72,4 +72,18 @@ describe('SeasonPromptModal (#370)', () => {
             expect(screen.getByRole('option', { name: 'Season 15' })).toBeInTheDocument(),
         );
     });
+
+    it('invokes onCancel from the Cancel button', async () => {
+        mockRosterFetch(5);
+        const onCancel = vi.fn();
+        render(<SeasonPromptModal job={job} onSubmit={vi.fn()} onCancel={onCancel} />);
+        fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+        expect(onCancel).toHaveBeenCalled();
+    });
+
+    it('focuses the season select on open so Escape works immediately', async () => {
+        mockRosterFetch(5);
+        render(<SeasonPromptModal job={job} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+        await waitFor(() => expect(screen.getByLabelText('Season')).toHaveFocus());
+    });
 });

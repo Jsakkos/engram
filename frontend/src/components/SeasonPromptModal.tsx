@@ -1,4 +1,4 @@
-import { useState, useEffect, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { motion } from 'motion/react';
 import { IcoTv, IcoError } from '../app/components/icons';
 import type { Job } from '../types';
@@ -22,6 +22,13 @@ const FALLBACK_SEASON_COUNT = 15;
 export default function SeasonPromptModal({ job, onSubmit, onCancel }: SeasonPromptModalProps) {
     const [season, setSeason] = useState<string>('1');
     const [seasonCount, setSeasonCount] = useState<number | null>(null);
+    const selectRef = useRef<HTMLSelectElement>(null);
+
+    // Focus the season select on mount so Escape (and other keyboard shortcuts)
+    // are handled immediately without the user needing to click inside first.
+    useEffect(() => {
+        selectRef.current?.focus();
+    }, []);
 
     // season_count comes from the roster endpoint, which reports it whenever
     // the job's season is unknown — exactly this modal's trigger state.
@@ -154,6 +161,7 @@ export default function SeasonPromptModal({ job, onSubmit, onCancel }: SeasonPro
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <SvLabel size={10}>Season</SvLabel>
                             <select
+                                ref={selectRef}
                                 value={season}
                                 onChange={(e) => setSeason(e.target.value)}
                                 aria-label="Season"
