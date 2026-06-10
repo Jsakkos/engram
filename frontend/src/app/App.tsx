@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { AlertTriangle, Trash2, LayoutGrid, List, Info, X } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
+import { CompactList } from "./components/CompactList";
 import { useJobManagement } from "./hooks/useJobManagement";
 import { useDiscFilters } from "./hooks/useDiscFilters";
 import { useNotifications } from "./hooks/useNotifications";
@@ -33,12 +34,11 @@ import {
   sv,
 } from "./components/synapse";
 import { DashboardSideRail } from "./components/DashboardSideRail";
-import { formatEtaCompact } from "../utils/formatting";
 
 type ViewMode = "expanded" | "compact";
 
 /**
- * Shared sv-token button base — mono uppercase typography with pointer cursor.
+ * Shared sv-token button base â€” mono uppercase typography with pointer cursor.
  * Spread first so call-site overrides (padding, colors, fontSize) win.
  */
 const svButtonBase: React.CSSProperties = {
@@ -50,9 +50,9 @@ const svButtonBase: React.CSSProperties = {
 
 /** Empty-state copy keyed by the active dashboard filter. */
 const emptyHeading: Record<"all" | "active" | "completed", string> = {
-  active: "› No active operations",
-  completed: "› No completed archives",
-  all: "› No discs detected",
+  active: "â€º No active operations",
+  completed: "â€º No completed archives",
+  all: "â€º No discs detected",
 };
 
 const emptyBody: Record<"all" | "active" | "completed", string> = {
@@ -103,7 +103,7 @@ function MainDashboard() {
         }
       }
     } catch {
-      // Backend not reachable — don't block the UI
+      // Backend not reachable â€” don't block the UI
     }
   };
   useEffect(() => { checkSetup(); }, []);
@@ -119,7 +119,7 @@ function MainDashboard() {
           setPlatform(data.platform);
         }
       } catch {
-        // Backend not reachable — don't show banner
+        // Backend not reachable â€” don't show banner
       }
     };
     detectPlatform();
@@ -133,9 +133,9 @@ function MainDashboard() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateDismissed, setUpdateDismissed] = useState(false);
 
-  // Show the full-screen Splash with a "RECONNECTING…" label when the
+  // Show the full-screen Splash with a "RECONNECTINGâ€¦" label when the
   // WebSocket has been down for >2.5s. The grace period absorbs momentary
-  // reconnect blips — without it, every brief WS hiccup would flash the
+  // reconnect blips â€” without it, every brief WS hiccup would flash the
   // splash. Backend-truly-down stays surfaced via the top-bar pill until
   // the grace fires, then the splash takes over.
   const [showOfflineSplash, setShowOfflineSplash] = useState(false);
@@ -157,7 +157,7 @@ function MainDashboard() {
   // Show name prompt modal for unreadable labels or TV shows where TMDB lookup failed,
   // and the season prompt (#370) when the show is known but the season isn't.
   // Dismissed prompts (Escape / backdrop click) are remembered so the next jobs
-  // refresh doesn't immediately re-open them — dismissal parks the job in review,
+  // refresh doesn't immediately re-open them â€” dismissal parks the job in review,
   // it does NOT cancel it.
   const dismissedPromptIdsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -416,7 +416,7 @@ function MainDashboard() {
                   lineHeight: 1.45,
                 }}
               >
-                <span>TMDB not configured — classification is running in heuristic-only mode. </span>
+                <span>TMDB not configured â€” classification is running in heuristic-only mode. </span>
                 <button
                   onClick={() => setShowSettings(true)}
                   style={{
@@ -504,13 +504,13 @@ function MainDashboard() {
               transition={{ duration: 3, repeat: Infinity }}
               style={{ marginBottom: 24 }}
             >
-              {/* Synapse beacon — concentric rings + rotating sweep + chapter ticks. Same
+              {/* Synapse beacon â€” concentric rings + rotating sweep + chapter ticks. Same
                   visual language as SvDiscInsert but simplified for "no signal yet" semantics. */}
               <svg
                 width={140}
                 height={140}
                 viewBox="0 0 200 200"
-                aria-label="Engram beacon — awaiting input"
+                aria-label="Engram beacon â€” awaiting input"
               >
                 <defs>
                   <radialGradient id="sv-empty-bg" cx="50%" cy="50%" r="50%">
@@ -593,11 +593,15 @@ function MainDashboard() {
             </p>
           </motion.div>
         ) : viewMode === "compact" ? (
-          /* Compact view — sv-token row layout */
+          /* Compact view â€” sv-token row layout */
           <CompactList
             discs={filteredDiscs}
             onReview={(id) => navigate(reviewPath(id))}
             onCancel={(id) => cancelJob(id)}
+            onReIdentify={(id) => {
+              const job = jobs.find((j) => String(j.id) === id);
+              if (job) setReIdentifyTarget(job);
+            }}
           />
         ) : (
           /* Expanded view */
@@ -628,7 +632,7 @@ function MainDashboard() {
         </div>
       </div>
 
-      {/* Name Prompt Modal — appears when disc label is unreadable */}
+      {/* Name Prompt Modal â€” appears when disc label is unreadable */}
       <AnimatePresence>
         {namePromptJob && (
           <NamePromptModal
@@ -650,7 +654,7 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Season Prompt Modal — show identified but the disc label has no season (#370) */}
+      {/* Season Prompt Modal â€” show identified but the disc label has no season (#370) */}
       <AnimatePresence>
         {seasonPromptJob && !namePromptJob && (
           <SeasonPromptModal
@@ -676,7 +680,7 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Re-Identify Modal — appears when user clicks "Wrong title?" */}
+      {/* Re-Identify Modal â€” appears when user clicks "Wrong title?" */}
       <AnimatePresence>
         {reIdentifyTarget && (
           <ReIdentifyModal
@@ -690,7 +694,7 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Fingerprint Disclosure Modal — JIT consent before any contribution upload */}
+      {/* Fingerprint Disclosure Modal â€” JIT consent before any contribution upload */}
       <AnimatePresence>
         {disclosure && (
           <FingerprintDisclosureModal
@@ -698,7 +702,7 @@ function MainDashboard() {
             pseudonym={disclosure.pseudonym}
             serverUrl={disclosure.server_url}
             onAccept={async () => {
-              // Only dismiss once the choice is actually persisted — fetch does
+              // Only dismiss once the choice is actually persisted â€” fetch does
               // not throw on non-2xx, so a swallowed failure here would silently
               // start (or fail to authorize) uploads.
               const resp = await fetch('/api/config', {
@@ -707,7 +711,7 @@ function MainDashboard() {
                 body: JSON.stringify({ fingerprint_disclosure_accepted: true }),
               });
               if (!resp.ok) {
-                toast.error('Could not save your choice — please try again.');
+                toast.error('Could not save your choice â€” please try again.');
                 return;
               }
               clearDisclosure();
@@ -719,7 +723,7 @@ function MainDashboard() {
                 body: JSON.stringify({ enable_fingerprint_contributions: false }),
               });
               if (!resp.ok) {
-                toast.error('Could not save your choice — please try again.');
+                toast.error('Could not save your choice â€” please try again.');
                 return;
               }
               clearDisclosure();
@@ -728,14 +732,14 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Bug Report Modal — appears when user reports a bug for an active job */}
+      {/* Bug Report Modal â€” appears when user reports a bug for an active job */}
       <BugReportModal
         open={bugReportJobId != null}
         jobId={bugReportJobId ?? undefined}
         onClose={() => setBugReportJobId(null)}
       />
 
-      {/* Update Modal — release notes opened from UpdateBanner */}
+      {/* Update Modal â€” release notes opened from UpdateBanner */}
       <UpdateModal
         open={showUpdateModal}
         updateStatus={updateStatus}
@@ -782,211 +786,6 @@ function MainDashboard() {
   );
 }
 
-/**
- * Compact list view for the dashboard — sv-token row layout that mirrors the
- * SvPanel vocabulary used elsewhere (1px tinted border, sharp corners, mono
- * uppercase headers).
- */
-function CompactList({
-  discs,
-  onReview,
-  onCancel,
-}: {
-  discs: DiscData[];
-  onReview: (id: string) => void;
-  onCancel: (id: string) => void;
-}) {
-  const colTemplate = "auto auto 1fr 140px 60px auto";
-  const stateColor: Partial<Record<DiscData["state"], string>> = {
-    completed: sv.green,
-    error: sv.red,
-    ripping: sv.magenta,
-    scanning: sv.cyan,
-    review_needed: sv.yellow,
-    matching: sv.amber,
-    organizing: sv.purple,
-  };
-  const typeColor: Record<DiscData["mediaType"], string> = {
-    movie: sv.magenta,
-    tv: sv.cyan,
-    unknown: sv.inkFaint,
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {/* Column header */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: colTemplate,
-          columnGap: 16,
-          padding: "8px 12px",
-          fontFamily: sv.mono,
-          fontSize: 9,
-          fontWeight: 700,
-          letterSpacing: "0.22em",
-          textTransform: "uppercase",
-          color: sv.inkFaint,
-          borderBottom: `1px solid ${sv.line}`,
-        }}
-      >
-        <span>State</span>
-        <span>Type</span>
-        <span>Title</span>
-        <span>Progress</span>
-        <span style={{ textAlign: "right" }}>ETA</span>
-        <span>Actions</span>
-      </div>
-      <AnimatePresence mode="popLayout">
-        {discs.map((disc) => {
-          const stateC = stateColor[disc.state] ?? sv.inkDim;
-          const typeC = typeColor[disc.mediaType];
-          const showProgress = disc.progress > 0 && disc.state !== "completed";
-          return (
-            <motion.div
-              key={disc.id}
-              layout
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              style={{
-                display: "grid",
-                gridTemplateColumns: colTemplate,
-                columnGap: 16,
-                alignItems: "center",
-                padding: "10px 12px",
-                background: sv.bg1,
-                border: `1px solid ${sv.line}`,
-                fontFamily: sv.mono,
-                fontSize: 12,
-                transition: "background 120ms, border-color 120ms",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = sv.bg2;
-                e.currentTarget.style.borderColor = sv.lineMid;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = sv.bg1;
-                e.currentTarget.style.borderColor = sv.line;
-              }}
-            >
-              {/* State */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    background: stateC,
-                    boxShadow: `0 0 6px ${stateC}aa`,
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    color: sv.inkDim,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.16em",
-                    fontSize: 10,
-                    width: 76,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {disc.state}
-                </span>
-              </div>
-              {/* Type */}
-              <span
-                style={{
-                  color: typeC,
-                  fontWeight: 700,
-                  fontSize: 10,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.18em",
-                }}
-              >
-                {disc.mediaType === "unknown" ? "…" : disc.mediaType}
-              </span>
-              {/* Title */}
-              <span
-                style={{
-                  color: sv.ink,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {disc.title}
-              </span>
-              {/* Progress */}
-              <div>
-                {showProgress ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div
-                      style={{
-                        flex: 1,
-                        height: 3,
-                        background: sv.bg3,
-                        position: "relative",
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: "0 auto 0 0",
-                          width: `${disc.progress}%`,
-                          background: `linear-gradient(90deg, ${sv.cyan}, ${sv.cyanHi})`,
-                          boxShadow: `0 0 6px ${sv.cyan}88`,
-                          transition: "width 0.3s ease",
-                        }}
-                      />
-                    </div>
-                    <span
-                      className="sv-tnum"
-                      style={{ color: sv.cyanHi, fontSize: 10, fontWeight: 700 }}
-                    >
-                      {disc.progress.toFixed(0)}%
-                    </span>
-                  </div>
-                ) : disc.state === "completed" ? (
-                  <span style={{ color: sv.green, fontSize: 10, letterSpacing: "0.20em" }}>DONE</span>
-                ) : (
-                  <span style={{ color: sv.inkFaint }}>—</span>
-                )}
-              </div>
-              {/* ETA */}
-              <span
-                className="sv-tnum"
-                style={{
-                  color: sv.inkDim,
-                  fontSize: 11,
-                  textAlign: "right",
-                }}
-              >
-                {formatEtaCompact(disc.etaSeconds)}
-              </span>
-              {/* Actions */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 && (
-                  <CompactRowButton color={sv.yellow} onClick={() => onReview(disc.id)}>
-                    Review
-                  </CompactRowButton>
-                )}
-                {disc.state !== "completed" && disc.state !== "error" && (
-                  <CompactRowButton color={sv.red} onClick={() => onCancel(disc.id)}>
-                    Cancel
-                  </CompactRowButton>
-                )}
-              </div>
-            </motion.div>
-          );
-        })}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 /** Modal backdrop with sv-token blur + sv.bg0 alpha overlay. */
 function ModalScrim({ children }: { children: React.ReactNode }) {
   return (
@@ -1007,43 +806,6 @@ function ModalScrim({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </div>
-  );
-}
-
-function CompactRowButton({
-  color,
-  onClick,
-  children,
-}: {
-  color: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        ...svButtonBase,
-        height: 22,
-        padding: "0 8px",
-        background: sv.bg0,
-        border: `1px solid ${color}55`,
-        color,
-        fontSize: 9,
-        fontWeight: 700,
-        transition: "border-color 120ms, box-shadow 120ms",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = color;
-        e.currentTarget.style.boxShadow = `0 0 8px ${color}55`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = `${color}55`;
-        e.currentTarget.style.boxShadow = "none";
-      }}
-    >
-      {children}
-    </button>
   );
 }
 

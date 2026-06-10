@@ -16,7 +16,6 @@ const job: Job = {
     current_title: 0,
     total_titles: 8,
     error_message: null,
-    detected_title: null,
 };
 
 function renderModal(overrides: Partial<Parameters<typeof NamePromptModal>[0]> = {}) {
