@@ -7,6 +7,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 
 from app.models import ContentType, DiscJob, DiscTitle, JobState, TitleState
@@ -18,13 +19,21 @@ sys.path.insert(0, os.getcwd())
 
 @pytest_asyncio.fixture
 async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=True)
+    # StaticPool: each :memory: connection is its own empty DB; pin to one shared connection to avoid "no such table".
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with async_session() as s:
-        yield s
+    try:
+        async with async_session() as s:
+            yield s
+    finally:
+        await engine.dispose()
 
 
 @pytest.fixture
