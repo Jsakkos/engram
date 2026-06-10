@@ -10,6 +10,7 @@ import { useUpdateSuccessToast } from "./hooks/useUpdateSuccessToast";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
+import SeasonPromptModal from "../components/SeasonPromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
 import BugReportModal from "../components/BugReportModal";
 import UpdateModal from "../components/UpdateModal";
@@ -65,6 +66,7 @@ function MainDashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [namePromptJob, setNamePromptJob] = useState<Job | null>(null);
+  const [seasonPromptJob, setSeasonPromptJob] = useState<Job | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("expanded");
   const [platform, setPlatform] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -158,6 +160,12 @@ function MainDashboard() {
           (j.review_reason?.includes('merged without separators') && j.content_type === 'tv')),
     );
     setNamePromptJob(needsName ?? null);
+
+    // Season prompt (#370): show identified but the disc label revealed no season.
+    const needsSeason = jobs.find(
+      (j) => j.state === 'review_needed' && j.review_reason?.includes('select a season'),
+    );
+    setSeasonPromptJob(needsSeason ?? null);
   }, [jobs]);
 
   const reviewJobs = jobs.filter((j) => j.state === 'review_needed');
@@ -634,6 +642,28 @@ function MainDashboard() {
             onCancel={() => {
               cancelJob(String(namePromptJob.id));
               setNamePromptJob(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Season Prompt Modal — show identified but the disc label has no season (#370) */}
+      <AnimatePresence>
+        {seasonPromptJob && !namePromptJob && (
+          <SeasonPromptModal
+            job={seasonPromptJob}
+            onSubmit={(season) => {
+              setJobName(
+                seasonPromptJob.id,
+                seasonPromptJob.detected_title ?? seasonPromptJob.volume_label,
+                'tv',
+                season,
+              );
+              setSeasonPromptJob(null);
+            }}
+            onCancel={() => {
+              cancelJob(String(seasonPromptJob.id));
+              setSeasonPromptJob(null);
             }}
           />
         )}
