@@ -200,12 +200,36 @@ export default function SeasonPromptModal({
 
                         {/* Actions */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {/* Neutral, recessive cancel — kept in lockstep with the
+                                NamePrompt/ReIdentify prompt modals so the three siblings
+                                read consistently. The submit actions carry the weight. */}
                             <motion.button
                                 type="button"
                                 onClick={onCancelJob}
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.97 }}
-                                style={buttonStyle(sv.red, false)}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = sv.ink;
+                                    e.currentTarget.style.borderColor = sv.lineHi;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = sv.inkDim;
+                                    e.currentTarget.style.borderColor = sv.lineMid;
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    fontFamily: sv.mono,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    letterSpacing: '0.18em',
+                                    textTransform: 'uppercase',
+                                    color: sv.inkDim,
+                                    border: `1px solid ${sv.lineMid}`,
+                                    background: 'transparent',
+                                    boxShadow: 'none',
+                                    cursor: 'pointer',
+                                }}
                             >
                                 Cancel job
                             </motion.button>

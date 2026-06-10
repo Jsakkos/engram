@@ -86,7 +86,7 @@ export function SvBarChart({
         data-testid={testid}
         data-empty="true"
       >
-        <span style={monoLabelStyle({ size: 9, color: sv.inkFaint, letterSpacing: "0.22em" })}>
+        <span style={monoLabelStyle({ size: 9, color: sv.inkDim, letterSpacing: "0.22em" })}>
           › no data
         </span>
       </div>

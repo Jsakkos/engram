@@ -292,7 +292,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
               fontFamily: sv.mono,
               fontSize: 9,
               letterSpacing: "0.22em",
-              color: sv.inkFaint,
+              color: sv.inkDim,
               textTransform: "uppercase",
             }}
           >
@@ -345,7 +345,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
           {visibleEvents.length === 0 ? (
             <span
               style={{
-                color: sv.inkFaint,
+                color: sv.inkDim,
                 fontSize: 9,
                 letterSpacing: "0.22em",
                 textTransform: "uppercase",
@@ -365,7 +365,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
                   alignItems: "baseline",
                 }}
               >
-                <span style={{ color: sv.inkFaint }}>{formatTimeOfDay(e.ts)}</span>
+                <span style={{ color: sv.inkDim }}>{formatTimeOfDay(e.ts)}</span>
                 <span style={{ color: LEVEL_COLOR[e.level], fontWeight: 600 }}>
                   {e.subject}
                 </span>
@@ -389,7 +389,7 @@ function Stat({ label, value, accent }: { label: string; value: string | number;
           fontFamily: sv.mono,
           fontSize: 9,
           letterSpacing: "0.22em",
-          color: sv.inkFaint,
+          color: sv.inkDim,
           textTransform: "uppercase",
         }}
       >

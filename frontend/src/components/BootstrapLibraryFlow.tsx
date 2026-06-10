@@ -119,7 +119,7 @@ const inputStyle: CSSProperties = {
 const hintStyle: CSSProperties = {
     ...mono,
     fontSize: 10,
-    color: sv.inkFaint,
+    color: sv.inkDim,
     letterSpacing: '0.10em',
     marginTop: 6,
     lineHeight: 1.5,
@@ -251,7 +251,7 @@ function ResolvedShowRow({
             </div>
 
             {/* Episode count */}
-            <span style={{ ...mono, fontSize: 10, color: sv.inkFaint, letterSpacing: '0.10em', flexShrink: 0 }}>
+            <span style={{ ...mono, fontSize: 10, color: sv.inkDim, letterSpacing: '0.10em', flexShrink: 0 }}>
                 {show.episode_count} eps
             </span>
 
@@ -346,7 +346,7 @@ function UnresolvedShowRow({
                 <span style={{ ...mono, fontSize: 12, color: sv.magentaHi, fontWeight: 600 }}>
                     {show.folder_name}
                 </span>
-                <span style={{ ...mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8, letterSpacing: '0.10em' }}>
+                <span style={{ ...mono, fontSize: 10, color: sv.inkDim, marginLeft: 8, letterSpacing: '0.10em' }}>
                     unresolved · {show.episode_count} eps
                 </span>
             </div>
@@ -663,7 +663,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
             <p style={{ ...mono, fontSize: 12, color: sv.inkDim, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
                 Scanning directory&hellip;
             </p>
-            <p style={{ ...mono, fontSize: 11, color: sv.inkFaint, letterSpacing: '0.10em' }}>
+            <p style={{ ...mono, fontSize: 11, color: sv.inkDim, letterSpacing: '0.10em' }}>
                 {path}
             </p>
         </div>
@@ -794,7 +794,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                                         fontSize: 9,
                                         letterSpacing: '0.14em',
                                         textTransform: 'uppercase',
-                                        color: sv.inkFaint,
+                                        color: sv.inkDim,
                                         background: 'transparent',
                                         border: `1px solid ${sv.line}`,
                                         padding: '3px 8px',
@@ -831,7 +831,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                                 textAlign: 'left',
                                 fontSize: 10,
                                 letterSpacing: '0.12em',
-                                color: sv.inkFaint,
+                                color: sv.inkDim,
                                 background: 'transparent',
                                 border: `1px solid ${sv.line}`,
                                 padding: '8px 14px',
@@ -864,7 +864,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
                                             borderBottom: i < scanResult.unparseable.length - 1 ? `1px solid ${sv.line}` : undefined,
                                         }}
                                     >
-                                        <span style={{ ...mono, fontSize: 11, color: sv.inkFaint }}>{u.file}</span>
+                                        <span style={{ ...mono, fontSize: 11, color: sv.inkDim }}>{u.file}</span>
                                     </div>
                                 ))}
                             </div>
@@ -1030,7 +1030,7 @@ export function BootstrapLibraryFlow({ onClose }: BootstrapLibraryFlowProps) {
             case 'review':
                 return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <span style={{ ...mono, fontSize: 10, color: sv.inkFaint, letterSpacing: '0.10em', flex: 1 }}>
+                        <span style={{ ...mono, fontSize: 10, color: sv.inkDim, letterSpacing: '0.10em', flex: 1 }}>
                             {acceptedCount} show{acceptedCount !== 1 ? 's' : ''} accepted &middot; {acceptEpisodeCount} episode{acceptEpisodeCount !== 1 ? 's' : ''} to queue
                         </span>
                         <SvActionButton tone="neutral" size="md" onClick={() => setStep('directory')}>

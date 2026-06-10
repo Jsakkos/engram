@@ -18,7 +18,7 @@ import {
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
-const monoFaint: CSSProperties = { fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint };
+const monoFaint: CSSProperties = { fontFamily: sv.mono, fontSize: 11, color: sv.inkDim };
 
 function pct(value: number): string {
     return `${Math.round(value * 100)}%`;
