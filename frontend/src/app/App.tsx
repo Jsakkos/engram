@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { AlertTriangle, Trash2, LayoutGrid, List, Info, X } from "lucide-react";
@@ -20,6 +20,7 @@ import ContributePage from "../components/ContributePage";
 import { FEATURES } from "../config/constants";
 import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
+import { selectPromptJobs } from "./promptSelection";
 import type { Job } from "../types";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -153,21 +154,19 @@ function MainDashboard() {
   // Browser notifications for job state changes
   useNotifications(jobs);
 
-  // Show name prompt modal for unreadable labels or TV shows where TMDB lookup failed
+  // Show name prompt modal for unreadable labels or TV shows where TMDB lookup failed,
+  // and the season prompt (#370) when the show is known but the season isn't.
+  // Dismissed prompts (Escape / backdrop click) are remembered so the next jobs
+  // refresh doesn't immediately re-open them — dismissal parks the job in review,
+  // it does NOT cancel it.
+  const dismissedPromptIdsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
-    const needsName = jobs.find(
-      (j) =>
-        j.state === 'review_needed' &&
-        ((j.review_reason?.includes('label unreadable') && !j.detected_title) ||
-          (j.review_reason?.includes('merged without separators') && j.content_type === 'tv')),
+    const { namePromptJob: needsName, seasonPromptJob: needsSeason } = selectPromptJobs(
+      jobs,
+      dismissedPromptIdsRef.current,
     );
-    setNamePromptJob(needsName ?? null);
-
-    // Season prompt (#370): show identified but the disc label revealed no season.
-    const needsSeason = jobs.find(
-      (j) => j.state === 'review_needed' && j.review_reason?.includes('select a season'),
-    );
-    setSeasonPromptJob(needsSeason ?? null);
+    setNamePromptJob(needsName);
+    setSeasonPromptJob(needsSeason);
   }, [jobs]);
 
   const reviewJobs = jobs.filter((j) => j.state === 'review_needed');
@@ -641,7 +640,11 @@ function MainDashboard() {
               setJobName(namePromptJob.id, name, contentType, season);
               setNamePromptJob(null);
             }}
-            onCancel={() => {
+            onDismiss={() => {
+              dismissedPromptIdsRef.current.add(namePromptJob.id);
+              setNamePromptJob(null);
+            }}
+            onCancelJob={() => {
               cancelJob(String(namePromptJob.id));
               setNamePromptJob(null);
             }}
@@ -663,7 +666,11 @@ function MainDashboard() {
               );
               setSeasonPromptJob(null);
             }}
-            onCancel={() => {
+            onDismiss={() => {
+              dismissedPromptIdsRef.current.add(seasonPromptJob.id);
+              setSeasonPromptJob(null);
+            }}
+            onCancelJob={() => {
               cancelJob(String(seasonPromptJob.id));
               setSeasonPromptJob(null);
             }}
