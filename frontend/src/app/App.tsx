@@ -17,7 +17,6 @@ import UpdateModal from "../components/UpdateModal";
 import { FingerprintDisclosureModal } from "../components/FingerprintDisclosureModal";
 import HistoryPage from "../components/HistoryPage";
 import ContributePage from "../components/ContributePage";
-import LibraryPage from "../components/LibraryPage";
 import { FEATURES } from "../config/constants";
 import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
@@ -86,7 +85,10 @@ function MainDashboard() {
       if (!data.setup_complete) {
         setShowOnboarding(true);
       }
-      setTmdbConfigured(!!data.tmdb_api_key);
+      // Drive the health banner from the explicit backend boolean, not the
+      // redacted ("***"/"") key value, so it can't be fooled by a change to the
+      // redaction sentinel (#243).
+      setTmdbConfigured(data.tmdb_configured ?? !!data.tmdb_api_key);
       // Fetch contribution stats for nav badge
       if (FEATURES.DISCDB && data.discdb_contributions_enabled) {
         try {
@@ -1046,8 +1048,8 @@ function App() {
       <Route path={ROUTES.HOME} element={<MainDashboard />} />
       <Route path={ROUTES.HISTORY} element={<HistoryPage />} />
       <Route path={ROUTES.HISTORY_DETAIL} element={<HistoryPage />} />
-      <Route path={ROUTES.LIBRARY} element={<LibraryPage />} />
       {FEATURES.DISCDB && <Route path={ROUTES.CONTRIBUTE} element={<ContributePage />} />}
+      <Route path="/library" element={<Navigate to={ROUTES.HISTORY} replace />} />
       <Route path={ROUTES.REVIEW} element={<Navigate to={ROUTES.HOME} replace />} />
       <Route path={ROUTES.REVIEW_DETAIL} element={<ReviewQueue />} />
     </Routes>

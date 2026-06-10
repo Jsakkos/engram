@@ -1533,16 +1533,10 @@ class MatchingCoordinator:
             else:
                 timeout = config.ripping_file_ready_timeout
 
-        # Consecutive stable polls after which a still-undersized file is judged
-        # final (the rip has stopped), bounded well under `timeout`.
-        grace_checks = max(
-            required_stable,
-            int(TRUNCATED_STABLE_GRACE_SECONDS / check_interval) + 1,
-        )
-
         last_size = -1
-        stable_count = 0
+        stable_count = 0  # fast-path only (size_ratio >= READY_SIZE_RATIO)
         start = time.monotonic()
+        last_growth_time = start  # slow-path: updated whenever file size changes
 
         logger.info(
             f"[MATCH] Title {title_id} (Job {job_id}): waiting for file to finish "
@@ -1595,15 +1589,15 @@ class MatchingCoordinator:
             if current_size > 0 and current_size == last_size:
                 stable_count += 1
                 size_ratio = current_size / expected_size if expected_size > 0 else 1.0
+                elapsed_idle = time.monotonic() - last_growth_time
 
-                # A full-size file only needs `required_stable` checks (fast
-                # path); an undersized one counts up to `grace_checks` before the
-                # slow-path decision. Log whichever threshold actually applies so
-                # the line doesn't read like a runaway loop (e.g. "check 19/3").
-                size_threshold = required_stable if size_ratio >= READY_SIZE_RATIO else grace_checks
+                if size_ratio >= READY_SIZE_RATIO:
+                    size_info = f"check {stable_count}/{required_stable}"
+                else:
+                    size_info = f"{elapsed_idle:.0f}s/{TRUNCATED_STABLE_GRACE_SECONDS:.0f}s idle"
                 logger.debug(
                     f"[MATCH] Title {title_id} (Job {job_id}): file size stable "
-                    f"({current_size / 1024 / 1024:.0f} MB) — check {stable_count}/{size_threshold}"
+                    f"({current_size / 1024 / 1024:.0f} MB) — {size_info}"
                     + (
                         f" — {size_ratio * 100:.1f}% of expected {expected_size / 1024 / 1024:.0f} MB"
                         if expected_size > 0
@@ -1622,19 +1616,19 @@ class MatchingCoordinator:
                         return FileWaitResult.READY
                     stable_count = 0
 
-                # Slow path: the file has stopped growing for the whole grace
-                # window but never reached the scanned size. The rip is done —
-                # decide whether it is merely smaller than projected or truncated.
-                elif stable_count >= grace_checks:
+                # Slow path: file hasn't grown for TRUNCATED_STABLE_GRACE_SECONDS.
+                # Uses elapsed_idle (time since last write) so intermittent slow
+                # writes by MakeMKV don't restart the 90-second window from scratch.
+                elif elapsed_idle >= TRUNCATED_STABLE_GRACE_SECONDS:
                     if await asyncio.to_thread(_readable):
                         if expected_size > 0 and size_ratio < TRUNCATED_SIZE_RATIO:
                             logger.warning(
                                 f"[MATCH] Title {title_id} (Job {job_id}): file stopped at "
                                 f"{current_size / 1024 / 1024:.0f} MB "
                                 f"({size_ratio * 100:.1f}% of expected "
-                                f"{expected_size / 1024 / 1024:.0f} MB), stable for "
-                                f"{stable_count * check_interval:.0f}s — treating as a "
-                                f"truncated/incomplete rip: {file_path.name}"
+                                f"{expected_size / 1024 / 1024:.0f} MB), {elapsed_idle:.0f}s "
+                                f"since last write — treating as a truncated/incomplete rip: "
+                                f"{file_path.name}"
                             )
                             return FileWaitResult.TRUNCATED
                         logger.warning(
@@ -1645,12 +1639,18 @@ class MatchingCoordinator:
                                 if expected_size > 0
                                 else ""
                             )
-                            + f"for {stable_count * check_interval:.0f}s — proceeding "
+                            + f"{elapsed_idle:.0f}s since last write — proceeding "
                             f"with match: {file_path.name}"
                         )
                         return FileWaitResult.READY
-                    stable_count = 0
+                    # File still locked; last_growth_time unchanged — just wait for
+                    # the lock to clear without restarting the grace window.
+                    logger.debug(
+                        f"[MATCH] Title {title_id} (Job {job_id}): grace window elapsed but "
+                        f"file still locked ({file_path.name}) — waiting for lock to clear..."
+                    )
             else:
+                last_growth_time = time.monotonic()
                 if stable_count > 0:
                     logger.debug(
                         f"[MATCH] Title {title_id} (Job {job_id}): file size changed "

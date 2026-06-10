@@ -90,6 +90,11 @@ export interface DiscData {
    *  Guards the identity-review banner against the title-load race. */
   tracksLoaded?: boolean;
   conflictStatus?: string;
+  /** Backend-set human-readable cause when classification ran WITHOUT TMDB
+   *  (key absent or rejected). Shown verbatim on active jobs; takes precedence
+   *  over the global `tmdbConfigured` flag because it also covers the
+   *  configured-but-invalid-key case the flag can't see (#243). */
+  tmdbDegradedReason?: string;
   /** True when at least one title on this disc has a rip-level failure (re-rippable). */
   hasDamagedTrack?: boolean;
 }
@@ -486,8 +491,11 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 </div>
               )}
 
-              {/* TMDB not-configured warning — shown on active jobs only */}
-              {tmdbConfigured === false && isActive && (
+              {/* TMDB degraded-mode warning — active jobs only. Prefer the per-job
+                  reason (covers a configured-but-REJECTED key, which the global
+                  flag can't see); else fall back to the global not-configured
+                  warning when no key is stored at all (#243). */}
+              {isActive && (disc.tmdbDegradedReason || tmdbConfigured === false) && (
                 <div
                   role="alert"
                   style={{
@@ -508,7 +516,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 >
                   <span aria-hidden style={{ flexShrink: 0 }}>⚠</span>
                   <span>
-                    TMDB not configured — classification is heuristic-only.{" "}
+                    {disc.tmdbDegradedReason ||
+                      "TMDB not configured — classification is heuristic-only."}{" "}
                     {onOpenSettings && (
                       <button
                         onClick={onOpenSettings}

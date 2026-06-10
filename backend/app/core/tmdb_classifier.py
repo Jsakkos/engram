@@ -9,12 +9,39 @@ import logging
 import requests
 
 from app.core.analyst import _title_tokens
+from app.core.errors import ConfigurationError
 from app.models.disc_job import ContentType
 
 logger = logging.getLogger(__name__)
 
 TMDB_SEARCH_TV_URL = "https://api.themoviedb.org/3/search/tv"
 TMDB_SEARCH_MOVIE_URL = "https://api.themoviedb.org/3/search/movie"
+
+
+class TmdbAuthError(ConfigurationError):
+    """TMDB rejected the API key (HTTP 401/403).
+
+    A rejected key is a configuration problem, so this extends
+    ``ConfigurationError`` (per the ``EngramError`` hierarchy) — ``@handle_errors``
+    and ``except EngramError`` guards catch it. Distinct from "no
+    results"/transient failures (which degrade to ``None``): an auth failure means
+    EVERY lookup will fail until the user fixes the key, so callers surface it to
+    the user instead of silently falling back to heuristic-only classification
+    (#243).
+    """
+
+
+# Human-readable causes shown verbatim on the job card / detail panel when
+# classification proceeded without TMDB (#243 P3). Single source of truth —
+# the frontend renders these strings as-is.
+TMDB_DEGRADED_NOT_CONFIGURED = (
+    "TMDB API key not configured — classification ran in heuristic-only mode. "
+    "Configure your Read Access Token in Settings."
+)
+TMDB_DEGRADED_AUTH_FAILED = (
+    "TMDB rejected the configured API key — classification ran in heuristic-only "
+    "mode. Update your Read Access Token in Settings."
+)
 
 # Popularity threshold for high-confidence matches
 HIGH_POPULARITY_THRESHOLD = 50
@@ -152,6 +179,11 @@ def _search_tmdb(
     params = {**base_params, "query": query}
     try:
         response = requests.get(url, headers=headers, params=params, timeout=timeout)
+        if response.status_code in (401, 403):
+            # Bad/expired key: every subsequent lookup will fail the same way.
+            # Raise instead of degrading to "no results" so callers can name the
+            # real cause to the user (#243).
+            raise TmdbAuthError(f"TMDB rejected the API key (HTTP {response.status_code})")
         if response.status_code == 200:
             results = response.json().get("results", [])
             if not results:

@@ -97,6 +97,7 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     subtitleError: job.subtitle_error_message || undefined,
     conflictStatus: job.conflict_status || undefined,
     reviewReason: job.review_reason || undefined,
+    tmdbDegradedReason: job.tmdb_degraded_reason || undefined,
     identityReview,
     tmdbId: job.tmdb_id ?? null,
     tmdbName: job.tmdb_name ?? null,
