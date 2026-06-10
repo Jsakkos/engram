@@ -185,9 +185,10 @@ async def test_truncated_detected_after_slow_intermittent_growth(tmp_path, monke
         f.write_bytes(b"x" * 2000)
 
     coord = _make_coord()
-    task = asyncio.create_task(_write_more())
-    result = await coord._wait_for_file_ready(f, title_id, job_id=1, timeout=5.0)
-    await task
+    _, result = await asyncio.gather(
+        _write_more(),
+        coord._wait_for_file_ready(f, title_id, job_id=1, timeout=5.0),
+    )
     assert result == FileWaitResult.TRUNCATED
 
 
