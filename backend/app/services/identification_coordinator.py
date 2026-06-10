@@ -1190,17 +1190,23 @@ class IdentificationCoordinator:
             None if config.tmdb_api_key else TMDB_DEGRADED_NOT_CONFIGURED
         )
 
-        def _try_tmdb(name: str, context: str):
+        async def _try_tmdb(name: str, context: str):
             """Run a TMDB lookup, swallowing and logging failures.
 
             ``context`` distinguishes the warning message between call sites.
             Returns the TMDB signal, or None on failure / no API key.
+
+            ``classify_from_tmdb`` makes blocking ``requests.get`` calls, so it is
+            offloaded to a thread to avoid stalling the event loop (mirrors
+            ``_resolve_missing_tmdb_id``). ``asyncio.to_thread`` re-raises the
+            worker thread's exception at the await point, so the handlers below
+            still catch TMDB failures.
             """
             nonlocal tmdb_degraded_reason
             if not config.tmdb_api_key:
                 return None
             try:
-                return classify_from_tmdb(name, config.tmdb_api_key)
+                return await asyncio.to_thread(classify_from_tmdb, name, config.tmdb_api_key)
             except TmdbAuthError as e:
                 # Bad/expired key — not a transient lookup failure. Remember the
                 # cause so it can be surfaced on the job instead of letting the
@@ -1258,7 +1264,7 @@ class IdentificationCoordinator:
             tmdb_context = (
                 "TMDB lookup failed" if is_staging else "TMDB lookup failed, using heuristics only"
             )
-            tmdb_signal = _try_tmdb(detected_name, tmdb_context)
+            tmdb_signal = await _try_tmdb(detected_name, tmdb_context)
             if tmdb_signal:
                 logger.info(
                     f"Job {job_id}: TMDB signal: "
@@ -1282,7 +1288,7 @@ class IdentificationCoordinator:
         # DINFO disc-name TMDB fallback — when the volume label gave no TMDB signal,
         # resolve identity from the disc name instead.
         if not tmdb_signal and disc_name_title and config.tmdb_api_key:
-            disc_tmdb_signal = _try_tmdb(disc_name_title, "TMDB disc-name fallback failed")
+            disc_tmdb_signal = await _try_tmdb(disc_name_title, "TMDB disc-name fallback failed")
             if disc_tmdb_signal:
                 tmdb_signal = disc_tmdb_signal
                 logger.info(
@@ -1315,7 +1321,9 @@ class IdentificationCoordinator:
                     ai_identified_name = ai_result["title"]
                     logger.info(f"Job {job_id}: AI identified as '{ai_identified_name}'")
                     # Re-query TMDB with the AI-corrected name
-                    ai_tmdb_signal = _try_tmdb(ai_identified_name, "TMDB re-query after AI failed")
+                    ai_tmdb_signal = await _try_tmdb(
+                        ai_identified_name, "TMDB re-query after AI failed"
+                    )
                     if ai_tmdb_signal:
                         tmdb_signal = ai_tmdb_signal
                         logger.info(
