@@ -221,7 +221,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                     throw new Error(`Failed to load config: ${response.status}`);
                 }
                 const data = await response.json();
-                console.log('Loaded config from backend:', data);
                 // Track which sensitive keys are already saved in the database
                 setSavedKeys({
                     makemkv: data.makemkv_key === '***',
@@ -421,8 +420,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                 throw new Error(`Failed to save config: ${response.status} ${errorText}`);
             }
 
-            const result = await response.json();
-            console.log('Config saved successfully:', result);
+            await response.json();
             onComplete();
         } catch (error) {
             console.error('Failed to save config:', error);

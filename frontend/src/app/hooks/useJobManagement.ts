@@ -73,13 +73,6 @@ export function useJobManagement(devMode: boolean = false) {
     const mergeTitles = useCallback((jobId: number, titlesData: DiscTitle[]) => {
         setTitlesMap(prev => {
             const existing = prev[jobId];
-            if (import.meta.env.DEV) {
-                console.log('🔄 fetchJobsAndTitles merge:', {
-                    job_id: jobId,
-                    restTitleStates: titlesData.map(t => `${t.id}:${t.state}`),
-                    existingTitleStates: existing?.map(t => `${t.id}:${t.state}`) ?? 'NONE',
-                });
-            }
             if (!existing) {
                 return { ...prev, [jobId]: titlesData };
             }
@@ -101,9 +94,6 @@ export function useJobManagement(devMode: boolean = false) {
 
     const fetchJobsAndTitles = useCallback(async () => {
         try {
-            if (import.meta.env.DEV) {
-                console.log('🔄 fetchJobsAndTitles called');
-            }
             const jobsData = await apiFetch<Job[]>('/api/jobs');
             setJobs(jobsData);
 
@@ -302,14 +292,6 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
 
                 case 'title_update':
-                    if (import.meta.env.DEV) {
-                        console.log('📡 WebSocket title_update:', {
-                            title_id: message.title_id,
-                            state: message.state,
-                            match_stage: message.match_stage,
-                            error: message.error,
-                        });
-                    }
                     setTitlesMap(prev => {
                         const existingTitles = prev[message.job_id];
                         const found = existingTitles?.some(t => t.id === message.title_id);
@@ -346,13 +328,6 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
 
                 case 'titles_discovered':
-                    if (import.meta.env.DEV) {
-                        console.log('📡 titles_discovered:', {
-                            job_id: message.job_id,
-                            title_count: message.titles?.length,
-                            title_ids: message.titles?.map((t: { id: number }) => t.id),
-                        });
-                    }
                     setTitlesMap(prev => ({
                         ...prev,
                         [message.job_id]: (message.titles as DiscTitle[]).map(t => ({
