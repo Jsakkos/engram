@@ -38,7 +38,7 @@ import { DashboardSideRail } from "./components/DashboardSideRail";
 type ViewMode = "expanded" | "compact";
 
 /**
- * Shared sv-token button base â€” mono uppercase typography with pointer cursor.
+ * Shared sv-token button base — mono uppercase typography with pointer cursor.
  * Spread first so call-site overrides (padding, colors, fontSize) win.
  */
 const svButtonBase: React.CSSProperties = {
@@ -50,9 +50,9 @@ const svButtonBase: React.CSSProperties = {
 
 /** Empty-state copy keyed by the active dashboard filter. */
 const emptyHeading: Record<"all" | "active" | "completed", string> = {
-  active: "â€º No active operations",
-  completed: "â€º No completed archives",
-  all: "â€º No discs detected",
+  active: "› No active operations",
+  completed: "› No completed archives",
+  all: "› No discs detected",
 };
 
 const emptyBody: Record<"all" | "active" | "completed", string> = {
@@ -103,7 +103,7 @@ function MainDashboard() {
         }
       }
     } catch {
-      // Backend not reachable â€” don't block the UI
+      // Backend not reachable — don't block the UI
     }
   };
   useEffect(() => { checkSetup(); }, []);
@@ -119,7 +119,7 @@ function MainDashboard() {
           setPlatform(data.platform);
         }
       } catch {
-        // Backend not reachable â€” don't show banner
+        // Backend not reachable — don't show banner
       }
     };
     detectPlatform();
@@ -133,9 +133,9 @@ function MainDashboard() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateDismissed, setUpdateDismissed] = useState(false);
 
-  // Show the full-screen Splash with a "RECONNECTINGâ€¦" label when the
+  // Show the full-screen Splash with a "RECONNECTING…" label when the
   // WebSocket has been down for >2.5s. The grace period absorbs momentary
-  // reconnect blips â€” without it, every brief WS hiccup would flash the
+  // reconnect blips — without it, every brief WS hiccup would flash the
   // splash. Backend-truly-down stays surfaced via the top-bar pill until
   // the grace fires, then the splash takes over.
   const [showOfflineSplash, setShowOfflineSplash] = useState(false);
@@ -157,7 +157,7 @@ function MainDashboard() {
   // Show name prompt modal for unreadable labels or TV shows where TMDB lookup failed,
   // and the season prompt (#370) when the show is known but the season isn't.
   // Dismissed prompts (Escape / backdrop click) are remembered so the next jobs
-  // refresh doesn't immediately re-open them â€” dismissal parks the job in review,
+  // refresh doesn't immediately re-open them — dismissal parks the job in review,
   // it does NOT cancel it.
   const dismissedPromptIdsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -416,7 +416,7 @@ function MainDashboard() {
                   lineHeight: 1.45,
                 }}
               >
-                <span>TMDB not configured â€” classification is running in heuristic-only mode. </span>
+                <span>TMDB not configured — classification is running in heuristic-only mode. </span>
                 <button
                   onClick={() => setShowSettings(true)}
                   style={{
@@ -504,13 +504,13 @@ function MainDashboard() {
               transition={{ duration: 3, repeat: Infinity }}
               style={{ marginBottom: 24 }}
             >
-              {/* Synapse beacon â€” concentric rings + rotating sweep + chapter ticks. Same
+              {/* Synapse beacon — concentric rings + rotating sweep + chapter ticks. Same
                   visual language as SvDiscInsert but simplified for "no signal yet" semantics. */}
               <svg
                 width={140}
                 height={140}
                 viewBox="0 0 200 200"
-                aria-label="Engram beacon â€” awaiting input"
+                aria-label="Engram beacon — awaiting input"
               >
                 <defs>
                   <radialGradient id="sv-empty-bg" cx="50%" cy="50%" r="50%">
@@ -593,7 +593,7 @@ function MainDashboard() {
             </p>
           </motion.div>
         ) : viewMode === "compact" ? (
-          /* Compact view â€” sv-token row layout */
+          /* Compact view — sv-token row layout */
           <CompactList
             discs={filteredDiscs}
             onReview={(id) => navigate(reviewPath(id))}
@@ -632,7 +632,7 @@ function MainDashboard() {
         </div>
       </div>
 
-      {/* Name Prompt Modal â€” appears when disc label is unreadable */}
+      {/* Name Prompt Modal — appears when disc label is unreadable */}
       <AnimatePresence>
         {namePromptJob && (
           <NamePromptModal
@@ -654,7 +654,7 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Season Prompt Modal â€” show identified but the disc label has no season (#370) */}
+      {/* Season Prompt Modal — show identified but the disc label has no season (#370) */}
       <AnimatePresence>
         {seasonPromptJob && !namePromptJob && (
           <SeasonPromptModal
@@ -680,7 +680,7 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Re-Identify Modal â€” appears when user clicks "Wrong title?" */}
+      {/* Re-Identify Modal — appears when user clicks "Wrong title?" */}
       <AnimatePresence>
         {reIdentifyTarget && (
           <ReIdentifyModal
@@ -694,7 +694,7 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Fingerprint Disclosure Modal â€” JIT consent before any contribution upload */}
+      {/* Fingerprint Disclosure Modal — JIT consent before any contribution upload */}
       <AnimatePresence>
         {disclosure && (
           <FingerprintDisclosureModal
@@ -702,7 +702,7 @@ function MainDashboard() {
             pseudonym={disclosure.pseudonym}
             serverUrl={disclosure.server_url}
             onAccept={async () => {
-              // Only dismiss once the choice is actually persisted â€” fetch does
+              // Only dismiss once the choice is actually persisted — fetch does
               // not throw on non-2xx, so a swallowed failure here would silently
               // start (or fail to authorize) uploads.
               const resp = await fetch('/api/config', {
@@ -711,7 +711,7 @@ function MainDashboard() {
                 body: JSON.stringify({ fingerprint_disclosure_accepted: true }),
               });
               if (!resp.ok) {
-                toast.error('Could not save your choice â€” please try again.');
+                toast.error('Could not save your choice — please try again.');
                 return;
               }
               clearDisclosure();
@@ -723,7 +723,7 @@ function MainDashboard() {
                 body: JSON.stringify({ enable_fingerprint_contributions: false }),
               });
               if (!resp.ok) {
-                toast.error('Could not save your choice â€” please try again.');
+                toast.error('Could not save your choice — please try again.');
                 return;
               }
               clearDisclosure();
@@ -732,14 +732,14 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Bug Report Modal â€” appears when user reports a bug for an active job */}
+      {/* Bug Report Modal — appears when user reports a bug for an active job */}
       <BugReportModal
         open={bugReportJobId != null}
         jobId={bugReportJobId ?? undefined}
         onClose={() => setBugReportJobId(null)}
       />
 
-      {/* Update Modal â€” release notes opened from UpdateBanner */}
+      {/* Update Modal — release notes opened from UpdateBanner */}
       <UpdateModal
         open={showUpdateModal}
         updateStatus={updateStatus}
