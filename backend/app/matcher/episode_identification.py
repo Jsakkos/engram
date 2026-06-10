@@ -14,6 +14,7 @@ import numpy as np
 from loguru import logger
 from rich.console import Console
 from scipy.sparse import load_npz as scipy_load_npz
+from scipy.sparse import vstack as scipy_vstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
@@ -169,6 +170,65 @@ def precomputed_episode_codes(
     except (OSError, json.JSONDecodeError):
         return None
     return codes if isinstance(codes, list) and codes else None
+
+
+# Season/episode token shared by reference-coverage and the runtime augmentation
+# scan. Mirrors the matcher's own name-agnostic episode detection in
+# get_reference_files: the SRT's name prefix is irrelevant, only the SxxEyy token.
+_SE_TOKEN_RE = re.compile(r"S(\d{1,2})E(\d{1,3})", re.IGNORECASE)
+
+
+def downloaded_episode_codes(data_dir, season: int) -> set[str]:
+    """Episode codes for ``season`` that have a downloaded/scraped SRT on disk.
+
+    Globs ``data_dir`` for ``*.srt`` and reads the ``SxxEyy`` token out of each
+    filename (name-prefix agnostic, exactly like the matcher's get_reference_files),
+    so this agrees with what the matcher will actually load or graft in.
+    """
+    data_dir = Path(data_dir)
+    if not data_dir.is_dir():
+        return set()
+    codes: set[str] = set()
+    for srt in list(data_dir.glob("*.srt")) + list(data_dir.glob("*.SRT")):
+        m = _SE_TOKEN_RE.search(srt.name)
+        if m and int(m.group(1)) == season:
+            codes.add(f"S{season:02d}E{int(m.group(2)):02d}")
+    return codes
+
+
+def reference_coverage(
+    cache_dir, tmdb_id, show_name: str, season: int, episode_numbers
+) -> dict[str, str]:
+    """Per-episode subtitle-reference availability for a season.
+
+    Single source of truth shared by the review endpoint (flag), the download
+    phase (heal), and the match phase (use the heal). For each episode number in
+    ``episode_numbers`` (the canonical TMDB roster), returns its ``SxxEyy`` code
+    mapped to one of:
+
+    - ``"precomputed"`` — covered by the shipped precomputed vector cache index.
+    - ``"downloaded"``  — a scraped SRT exists under ``data/<tmdb_id>/``.
+    - ``"missing"``     — in the roster but neither of the above (no reference).
+
+    Precomputed wins when both exist, because precomputed mode reads the vectors
+    and ignores SRTs. Cheap: one JSON read + one dir scan, no network.
+    """
+    cache_dir = Path(cache_dir)
+    pre_codes = set(
+        precomputed_episode_codes(cache_dir, show_name, season, expected_tmdb_id=tmdb_id) or []
+    )
+    data_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
+    dl_codes = downloaded_episode_codes(data_dir, season)
+    coverage: dict[str, str] = {}
+    for ep in episode_numbers:
+        code = f"S{season:02d}E{int(ep):02d}"
+        if code in pre_codes:
+            coverage[code] = "precomputed"
+        elif code in dl_codes:
+            coverage[code] = "downloaded"
+        else:
+            coverage[code] = "missing"
+    return coverage
 
 
 class SubtitleCache:
@@ -1106,7 +1166,65 @@ class EpisodeMatcher:
             )
             return None
 
+        ref_matrix, episode_codes = self._augment_with_downloaded_srts(
+            ref_matrix, episode_codes, season_number
+        )
         return ref_matrix, episode_codes, self._precomputed_idf
+
+    def _augment_with_downloaded_srts(self, ref_matrix, episode_codes, season_number):
+        """Graft downloaded SRTs for episodes the precomputed cache doesn't cover.
+
+        The shipped cache can be incomplete (e.g. Mad Men S02 shipped without
+        S02E05). Once the missing episode's SRT is fetched into ``data/<id>/``,
+        vectorize it exactly as the cache was built (``get_full_text`` ->
+        ``transform_query``, identical feature space) and append it so it becomes
+        a first-class match candidate instead of being silently ignored.
+
+        Additive and idempotent: returns the inputs unchanged when there is
+        nothing to graft, and never raises — a bad SRT is skipped, not fatal.
+        """
+        data_dir = self.cache_dir / "data" / corpus_dir_name(self.expected_tmdb_id, self.show_name)
+        if not data_dir.is_dir():
+            return ref_matrix, episode_codes
+
+        have = set(episode_codes)
+        srt_files = list(data_dir.glob("*.srt")) + list(data_dir.glob("*.SRT"))
+        gaps: list[tuple[str, Path]] = []
+        seen: set[str] = set()
+        for srt in sorted(srt_files):
+            m = _SE_TOKEN_RE.search(srt.name)
+            if not m or int(m.group(1)) != season_number:
+                continue
+            code = f"S{season_number:02d}E{int(m.group(2)):02d}"
+            if code in have or code in seen:
+                continue
+            seen.add(code)
+            gaps.append((code, srt))
+        if not gaps:
+            return ref_matrix, episode_codes
+
+        from app.matcher.vectorizer_config import transform_query
+
+        new_rows = []
+        new_codes = []
+        for code, srt in gaps:
+            try:
+                text = self.subtitle_cache.get_full_text(str(srt))
+                if not text:
+                    continue
+                new_rows.append(transform_query(text, self._precomputed_idf))
+                new_codes.append(code)
+            except Exception as e:  # noqa: BLE001 — a bad SRT must not kill the load
+                logger.warning(f"Could not graft {code} from {srt.name}: {e}")
+        if not new_rows:
+            return ref_matrix, episode_codes
+
+        augmented = scipy_vstack([ref_matrix, *new_rows], format="csr")
+        logger.info(
+            f"Augmented precomputed cache for {self.show_name} S{season_number:02d} with "
+            f"{len(new_codes)} downloaded episode(s): {', '.join(new_codes)}"
+        )
+        return augmented, episode_codes + new_codes
 
     def get_reference_files(self, season_number):
         """Get reference subtitle files with caching."""
