@@ -1706,7 +1706,7 @@ class MatchingCoordinator:
     async def download_subtitles_all_seasons(
         self, job_id: int, show_name: str, seasons: list[int], tmdb_id: int | None = None
     ) -> None:
-        """Download references for every candidate season (unknown-season import).
+        """Download references for every candidate season (unknown season).
 
         Seasons already covered by the precomputed cache or prior downloads are cheap
         no-ops. Results aggregate into a single ``subtitle_status`` ("completed" if any

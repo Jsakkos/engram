@@ -518,10 +518,11 @@ class IdentificationCoordinator:
             job.detected_season = 1
             await session.commit()
             return False
+        # "select a season" is a frontend contract: the dashboard keys the
+        # SeasonPromptModal on that exact substring — keep it in ONE literal.
         reason = (
-            f"Identified as '{job.detected_title}' but the season "
-            f"could not be detected from the disc label — select a "
-            f"season to continue."
+            f"Identified as '{job.detected_title}' but the season could not "
+            f"be detected from the disc label — select a season to continue."
         )
         await self._state_machine.transition_to_review(job, session, reason=reason, broadcast=False)
         await ws_manager.broadcast_job_update(
