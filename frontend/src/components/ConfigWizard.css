@@ -818,10 +818,13 @@
     border-color: var(--color-sv-cyan);
 }
 
-/* Primary CTA stays magenta — "magenta is action" per the handoff. */
+/* Primary CTA stays magenta — "magenta is action" per the handoff.
+   margin-left:auto pins it to the right even on step 1, where the Back
+   button isn't rendered and space-between would slide it to the left. */
 .wizard-actions .btn-primary {
     color: var(--color-sv-magenta);
     border-color: var(--color-sv-magenta);
+    margin-left: auto;
 }
 
 .wizard-actions .btn-primary:not(:disabled):hover {
