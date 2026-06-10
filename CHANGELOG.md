@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Recover a single damaged track without re-ripping the whole disc. When a title fails at the rip level (a scratch/bad-sector truncation or a ripping stall), Engram now holds it in review with a "clean the disc and reinsert to re-rip this title" prompt. Reinserting the **same** disc (verified by its content fingerprint) automatically re-rips just that track, re-matches it, and finishes the job — with a manual "Re-rip this title" button and a bounded automatic-retry cap as fallbacks. (#NNN)
+
+### Changed
+
+- A disc with an unrecoverable track no longer auto-completes with that track silently failed; it now waits in review until the track is re-ripped or explicitly skipped, so a "completed" job means every title succeeded. (#NNN)
+
 ### Fixed
 
 - **Discs awaiting a "Wrong title?" correction no longer show a dead-end "Review needed" button** — when a disc matched multiple same-name shows on TMDB (e.g. "The Office"), the card showed a yellow "Review needed" action button next to an identical "REVIEW NEEDED" status badge, but that button only opened an empty episode-review queue because the show identity wasn't settled yet. The episode-review button is now hidden while a disc's identity is unconfirmed, leaving the corrective "Wrong title?" action (and an explanatory banner) as the clear next step. (An earlier attempt only covered discs with no enumerated titles, which never happens for this case since titles are listed at scan time.)
