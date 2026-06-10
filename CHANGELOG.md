@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings is a jump-anywhere section list instead of a replay of the setup wizard** — opening Settings from the gear used to reopen the first-run wizard verbatim (titled "Setup Wizard", a linear five-step stepper that always started on step 1 with no hint the steps were clickable), so changing one preference meant knowing which step and collapsible hid it. It now opens as **Settings** with a section sidebar you can move through freely, and individual settings are deep-linkable: the "GPU available →" status badge now opens Settings directly on the GPU acceleration control — it previously dropped you on the unrelated Library Paths step — and the "TMDB not configured" warnings open straight to the TMDB token field. First-run onboarding is unchanged. (#388)
+
 ### Fixed
 
 - **Settings dropdowns are no longer transparent** — every styled dropdown (conflict resolution, episode ordering, staging cleanup, watchdog) rendered its open menu with no background, so the options were unreadable over the text behind them. The whole Synapse color-token set was silently failing to reach hand-written CSS (a Tailwind `@theme inline` subtlety), which also left the settings modal with a white frame instead of the brand cyan; both are fixed at the token layer so all 51 affected style rules recover at once.
