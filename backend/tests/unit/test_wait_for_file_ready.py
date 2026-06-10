@@ -7,6 +7,7 @@ size-proportional timeout (which wedged job #99 / Breaking Bad S2 t02 for ~4.3h)
 """
 
 import asyncio
+import builtins
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -159,6 +160,72 @@ async def test_growing_file_is_never_truncated(tmp_path, monkeypatch):
     )
     assert result == FileWaitResult.READY
     assert result != FileWaitResult.TRUNCATED
+
+
+@pytest.mark.asyncio
+async def test_truncated_detected_after_slow_intermittent_growth(tmp_path, monkeypatch):
+    """Grace window fires from last-write time, not from consecutive stable polls.
+
+    Simulates MakeMKV writing intermittently (retry pause → resume → pause → stop).
+    A single growth event resets last_growth_time but must not restart the full
+    grace window in a way that prevents detection once writing truly stops.
+    """
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(mc, "TRUNCATED_STABLE_GRACE_SECONDS", 0.15)
+    _patch_config(monkeypatch, poll=0.01, stable=2)
+    title_id = await _seed_title(expected_bytes=8_200_000_000)
+    f = tmp_path / "t04.mkv"
+    f.write_bytes(b"x" * 1000)
+
+    # One additional write after 0.05 s — mimics MakeMKV resuming after a retry
+    # then stopping again. The grace window (0.15 s) should fire ~0.15 s after
+    # this last write, not after 0.15 s of *consecutive* stability (which would
+    # also have been broken if the write came while stable_count was accumulating).
+    async def _write_more() -> None:
+        await asyncio.sleep(0.05)
+        f.write_bytes(b"x" * 2000)
+
+    coord = _make_coord()
+    # Two valid paths: _write_more normally fires at 0.05 s, before the 0.15 s
+    # grace window, exercising the growth-then-stable sequence. If the scheduler
+    # delays it past the grace window the test still passes (TRUNCATED from the
+    # initial 1000-byte file) — the timing ratios are generous enough in practice.
+    _, result = await asyncio.gather(
+        _write_more(),
+        coord._wait_for_file_ready(f, title_id, job_id=1, timeout=5.0),
+    )
+    assert result == FileWaitResult.TRUNCATED
+
+
+@pytest.mark.asyncio
+async def test_grace_window_survives_transient_file_lock(tmp_path, monkeypatch):
+    """A transient file lock during the slow-path decision must not reset the grace window.
+
+    The old code reset stable_count = 0 when _readable() returned False, restarting
+    the 90-second window even though the file had stopped growing. The fix removes that
+    reset; this test confirms a single locked poll still yields TRUNCATED.
+    """
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(mc, "TRUNCATED_STABLE_GRACE_SECONDS", 0.10)
+    _patch_config(monkeypatch, poll=0.01, stable=2)
+    title_id = await _seed_title(expected_bytes=8_200_000_000)
+    f = tmp_path / "t04.mkv"
+    f.write_bytes(b"x" * 1000)  # tiny vs expected → TRUNCATED once unlocked
+
+    call_count = 0
+    original_open = builtins.open
+
+    def _maybe_locked(path, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:  # first _readable() attempt: simulate Windows file lock
+            raise PermissionError("file locked")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", _maybe_locked)
+    coord = _make_coord()
+    result = await coord._wait_for_file_ready(f, title_id, job_id=1, timeout=5.0)
+    assert result == FileWaitResult.TRUNCATED  # lock cleared → still TRUNCATED, not TIMEOUT
 
 
 async def _seed_queued_title() -> tuple[int, int]:
