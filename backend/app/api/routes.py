@@ -1418,7 +1418,29 @@ async def update_config(config: ConfigUpdate) -> dict:
 
         await job_manager.reload_staging_watcher()
 
+    # Completing first-run setup releases any disc parked by the setup gate
+    # (inserted while setup_complete was false): replay its insert event so
+    # ripping starts without an eject/reinsert. The wizard sends
+    # setup_complete=true on every save, but resume is a no-op unless
+    # something is actually parked.
+    if update_data.get("setup_complete"):
+        from app.services.job_manager import job_manager
+
+        await job_manager.resume_parked_discs()
+
     return {"status": "updated", "persisted": True}
+
+
+@router.get("/parked-discs")
+async def get_parked_discs() -> dict:
+    """Discs detected while first-run setup was incomplete (pipeline parked).
+
+    Seeds the dashboard banner on page load; live changes ride the
+    ``parked_discs`` WebSocket broadcast.
+    """
+    from app.services.job_manager import job_manager
+
+    return {"discs": job_manager.parked_discs}
 
 
 @router.get("/jobs/{job_id}/poster")

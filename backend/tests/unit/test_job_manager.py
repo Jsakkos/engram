@@ -489,12 +489,23 @@ class TestCreateJobForDiscDedup:
 
     @pytest.fixture(autouse=True)
     def _neutralize(self, monkeypatch):
+        from types import SimpleNamespace
+
         # A created job must not spawn a real disc-identification task.
         monkeypatch.setattr(job_manager._identification, "identify_disc", AsyncMock())
         # These tests exercise label-based dedup; stub the disc-hash probe to
         # None (no fingerprint → label fallback) so they don't pay real disk I/O
         # plus retry sleeps probing a fake drive.
         monkeypatch.setattr(job_manager, "_compute_disc_hash", AsyncMock(return_value=None))
+        # The unit DB's default AppConfig has setup_complete=False, which would
+        # trip the first-run gate and park every insert — these tests exercise
+        # dedup on a configured install.
+        monkeypatch.setattr(
+            "app.services.config_service.get_config",
+            AsyncMock(
+                return_value=SimpleNamespace(staging_path="/tmp/staging", setup_complete=True)
+            ),
+        )
         # Start each test with clean per-drive cooldown + lock state.
         job_manager._last_job_created_at.clear()
         job_manager._drive_locks.clear()

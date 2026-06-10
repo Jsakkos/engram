@@ -25,6 +25,16 @@ class EventBroadcaster:
         """Broadcast disc removal event."""
         await self._ws.broadcast_drive_event(drive_id, "removed", volume_label)
 
+    async def broadcast_parked_discs(self, discs: list[dict]) -> None:
+        """Broadcast the full set of discs parked behind the first-run setup gate.
+
+        Sent whenever the parked set changes (disc parked, ejected, or released
+        by setup completion). Full-list replace — the dashboard renders its
+        "finish setup to start ripping" banner from exactly this list, with no
+        merge logic. Flat envelope (matches the frontend's `message.type` switch).
+        """
+        await self._ws.broadcast({"type": "parked_discs", "discs": discs})
+
     # --- Job Lifecycle Events ---
 
     async def broadcast_job_created(self, job: DiscJob):
