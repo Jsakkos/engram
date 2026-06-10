@@ -14,9 +14,58 @@ interface ConfigWizardProps {
     onClose: () => void;
     onComplete: () => void;
     isOnboarding?: boolean;
+    /**
+     * Settings mode only: open directly on a given section (e.g. "preferences")
+     * or a finer-grained control (e.g. "gpu", which lands on Preferences and
+     * scrolls the GPU control into view). Ignored during onboarding, which
+     * always starts at step 1.
+     */
+    initialSection?: string;
 }
 
 const STEP_LABELS = ['Paths', 'Tools', 'TMDB', 'Data Sharing', 'Preferences'];
+
+/**
+ * Settings mode (opened from the gear) presents these as a jump-anywhere section
+ * list instead of the onboarding stepper. Each maps to the same `step` index the
+ * wizard flow already uses, so renderStepContent() is shared between both modes.
+ */
+interface SettingsSection {
+    key: string;
+    label: string;
+    step: number;
+}
+
+const SETTINGS_SECTIONS: SettingsSection[] = [
+    { key: 'paths', label: 'Library Paths', step: 1 },
+    { key: 'tools', label: 'Tools & License', step: 2 },
+    { key: 'metadata', label: 'Metadata & Subtitles', step: 3 },
+    { key: 'sharing', label: 'Data Sharing', step: 4 },
+    { key: 'preferences', label: 'Preferences', step: 5 },
+];
+
+// DOM id of the GPU control wrapper, used as a deep-link scroll target.
+const GPU_ANCHOR_ID = 'setting-gpu-acceleration';
+
+/**
+ * Deep-link aliases and finer-grained anchors for `initialSection`. Plain section
+ * keys resolve through SETTINGS_SECTIONS; this map adds alternate spellings and
+ * sub-section anchors (e.g. the GPU control buried inside Preferences) so callers
+ * like the ASR status badge can land the user exactly on the setting they clicked
+ * toward instead of dumping them at step 1.
+ */
+const SECTION_DEEP_LINKS: Record<string, { step: number; anchorId?: string }> = {
+    tmdb: { step: 3 },
+    'data-sharing': { step: 4 },
+    gpu: { step: 5, anchorId: GPU_ANCHOR_ID },
+};
+
+function resolveSection(section: string | undefined): { step: number; anchorId?: string } | null {
+    if (!section) return null;
+    if (section in SECTION_DEEP_LINKS) return SECTION_DEEP_LINKS[section];
+    const match = SETTINGS_SECTIONS.find((s) => s.key === section);
+    return match ? { step: match.step } : null;
+}
 
 const AI_PROVIDER_LABELS: Record<string, string> = {
     anthropic: 'Anthropic',
@@ -118,9 +167,15 @@ interface DetectToolsResponse {
     platform: string;
 }
 
-function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizardProps) {
-    const [step, setStep] = useState(1);
+function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection }: ConfigWizardProps) {
+    // Settings mode can deep-link to a section; onboarding always starts at step 1.
+    const [step, setStep] = useState(() => (!isOnboarding ? resolveSection(initialSection)?.step : undefined) ?? 1);
     const [isLoading, setIsLoading] = useState(true);
+    // A deep-linked control (e.g. the GPU toggle) to scroll into view once the
+    // settings body has rendered. Consumed once.
+    const pendingScrollAnchor = useRef<string | null>(
+        !isOnboarding ? (resolveSection(initialSection)?.anchorId ?? null) : null,
+    );
     const [config, setConfig] = useState<ConfigData>({
         stagingPath: '',
         makemkvPath: '',
@@ -291,6 +346,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [step]);
+
+    // Deep-link (M2): once the settings body has rendered, scroll a requested
+    // sub-section control (e.g. the GPU toggle) into view and briefly flash it.
+    // Runs once — the initial step is already set to the right section above.
+    useEffect(() => {
+        if (isLoading) return;
+        const anchorId = pendingScrollAnchor.current;
+        if (!anchorId) return;
+        pendingScrollAnchor.current = null;
+        const el = document.getElementById(anchorId);
+        if (!el) return;
+        el.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+        el.classList.add('settings-anchor-flash');
+        const timer = window.setTimeout(() => el.classList.remove('settings-anchor-flash'), 1800);
+        return () => window.clearTimeout(timer);
+    }, [isLoading]);
 
     // #243: once the first-run gate has been shown, advance as soon as the user
     // satisfies it — the token validates in the background, or they opt to continue
@@ -1253,7 +1324,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
                             </span>
                         </div>
 
-                        <GpuAccelerationSetting />
+                        <div id={GPU_ANCHOR_ID}>
+                            <GpuAccelerationSetting />
+                        </div>
 
                         <div className="form-group">
                             <label htmlFor="conflictResolution">Default Conflict Resolution</label>
@@ -1635,45 +1708,73 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true }: ConfigWizard
         }
     };
 
+    // Shared scrollable content pane — same in both modes, only the surrounding
+    // chrome (stepper vs. section nav) differs.
+    const wizardBody = (
+        <div className="wizard-body">
+            {isLoading ? (
+                <div className="wizard-loading">
+                    <div className="spinner-mini"></div>
+                    <span>Loading configuration...</span>
+                </div>
+            ) : (
+                renderStepContent()
+            )}
+        </div>
+    );
+
     return (
         <>
         <div className="wizard-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
             <div className="wizard-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2 className="modal-title" id="wizard-title">Setup Wizard</h2>
-                    <button className="modal-close" onClick={onClose} aria-label="Close setup wizard">&times;</button>
+                    <h2 className="modal-title" id="wizard-title">{isOnboarding ? 'Setup Wizard' : 'Settings'}</h2>
+                    <button
+                        className="modal-close"
+                        onClick={onClose}
+                        aria-label={isOnboarding ? 'Close setup wizard' : 'Close settings'}
+                    >
+                        &times;
+                    </button>
                 </div>
 
-                <div className={`wizard-progress ${!isOnboarding ? 'tabs-mode' : ''}`}>
-                    {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
-                        <div
-                            key={s}
-                            className={`progress-step ${s === step ? 'active' : ''} ${s < step || !isOnboarding ? 'completed' : ''} ${!isOnboarding ? 'clickable' : ''}`}
-                            onClick={() => !isOnboarding && setStep(s)}
-                            role={!isOnboarding ? 'button' : undefined}
-                            tabIndex={!isOnboarding ? 0 : undefined}
-                            onKeyDown={!isOnboarding ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(s); } } : undefined}
-                            aria-label={`Step ${s}: ${STEP_LABELS[s - 1]}${s === step ? ' (current)' : ''}`}
-                            aria-current={s === step ? 'step' : undefined}
-                        >
-                            <span className="step-number">{!isOnboarding ? (s === step ? '●' : '○') : (s < step ? '✓' : s)}</span>
-                            <span className="step-label">
-                                {STEP_LABELS[s - 1]}
-                            </span>
+                {isOnboarding ? (
+                    <>
+                        {/* Onboarding: linear stepper showing first-run progress. */}
+                        <div className="wizard-progress">
+                            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
+                                <div
+                                    key={s}
+                                    className={`progress-step ${s === step ? 'active' : ''} ${s < step ? 'completed' : ''}`}
+                                    aria-label={`Step ${s}: ${STEP_LABELS[s - 1]}${s === step ? ' (current)' : ''}`}
+                                    aria-current={s === step ? 'step' : undefined}
+                                >
+                                    <span className="step-number">{s < step ? '✓' : s}</span>
+                                    <span className="step-label">{STEP_LABELS[s - 1]}</span>
+                                </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
-
-                <div className="wizard-body">
-                    {isLoading ? (
-                        <div className="wizard-loading">
-                            <div className="spinner-mini"></div>
-                            <span>Loading configuration...</span>
-                        </div>
-                    ) : (
-                        renderStepContent()
-                    )}
-                </div>
+                        {wizardBody}
+                    </>
+                ) : (
+                    /* Settings: jump-anywhere section list — no linear progression. */
+                    <div className="settings-main">
+                        <nav className="settings-nav" aria-label="Settings sections">
+                            {SETTINGS_SECTIONS.map((section) => (
+                                <button
+                                    key={section.key}
+                                    type="button"
+                                    className={`settings-nav-item ${step === section.step ? 'active' : ''}`}
+                                    aria-current={step === section.step ? 'page' : undefined}
+                                    onClick={() => setStep(section.step)}
+                                >
+                                    {section.label}
+                                </button>
+                            ))}
+                        </nav>
+                        {wizardBody}
+                    </div>
+                )}
 
                 <div className="wizard-actions">
                     {step > 1 && isOnboarding && (

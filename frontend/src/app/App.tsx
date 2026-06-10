@@ -64,6 +64,9 @@ const emptyBody: Record<"all" | "active" | "completed", string> = {
 function MainDashboard() {
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
+  // Deep-link target for the settings modal (e.g. "gpu" from the ASR badge).
+  // undefined opens the default first section.
+  const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [namePromptJob, setNamePromptJob] = useState<Job | null>(null);
   const [seasonPromptJob, setSeasonPromptJob] = useState<Job | null>(null);
@@ -76,6 +79,13 @@ function MainDashboard() {
 
   // Check for development mock mode
   const DEV_MODE = window.location.search.includes('mock=true');
+
+  // Single entry point for opening Settings so every caller declares its target
+  // section (or resets to the default) — otherwise the deep-link state goes stale.
+  const openSettings = (section?: string) => {
+    setSettingsSection(section);
+    setShowSettings(true);
+  };
 
   // Check if first-run setup is needed + fetch contribution badge count
   const checkSetup = async () => {
@@ -193,7 +203,7 @@ function MainDashboard() {
         version={__APP_VERSION__}
         devMode={DEV_MODE}
         navItems={navItems}
-        onSettingsClick={() => setShowSettings(true)}
+        onSettingsClick={() => openSettings()}
       />
 
       {/* Filter + view-mode strip */}
@@ -240,7 +250,7 @@ function MainDashboard() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <AsrStatusBadge onOpenSettings={() => setShowSettings(true)} />
+          <AsrStatusBadge onOpenSettings={() => openSettings("gpu")} />
           {/* View mode toggle */}
           <div style={{ display: "inline-flex", border: `1px solid ${sv.line}` }}>
             <button
@@ -342,7 +352,7 @@ function MainDashboard() {
               >
                 <span>No optical drives detected. Drop MKV folders into your staging directory or </span>
                 <button
-                  onClick={() => setShowSettings(true)}
+                  onClick={() => openSettings("paths")}
                   style={{
                     fontFamily: "inherit",
                     fontSize: "inherit",
@@ -419,7 +429,7 @@ function MainDashboard() {
               >
                 <span>TMDB not configured — classification is running in heuristic-only mode. </span>
                 <button
-                  onClick={() => setShowSettings(true)}
+                  onClick={() => openSettings("tmdb")}
                   style={{
                     fontFamily: "inherit",
                     fontSize: "inherit",
@@ -620,7 +630,7 @@ function MainDashboard() {
                     if (job) setReIdentifyTarget(job);
                   } : undefined}
                   onReportBug={() => setBugReportJobId(Number(disc.id))}
-                  onOpenSettings={() => setShowSettings(true)}
+                  onOpenSettings={() => openSettings("tmdb")}
                 />
               ))}
             </AnimatePresence>
@@ -772,6 +782,7 @@ function MainDashboard() {
               checkSetup();
             }}
             isOnboarding={false}
+            initialSection={settingsSection}
           />
         </ModalScrim>
       )}
