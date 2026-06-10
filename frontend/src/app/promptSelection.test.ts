@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectPromptJobs } from './promptSelection';
+import { pruneDismissedIds, selectPromptJobs } from './promptSelection';
 import type { Job } from '../types';
 
 function makeJob(overrides: Partial<Job>): Job {
@@ -58,5 +58,17 @@ describe('selectPromptJobs', () => {
     it('ignores jobs that are not in review', () => {
         const ripping = makeJob({ id: 5, state: 'ripping', review_reason: 'label unreadable' });
         expect(selectPromptJobs([ripping], new Set()).namePromptJob).toBeNull();
+    });
+});
+
+describe('pruneDismissedIds', () => {
+    it('drops ids whose jobs are gone so a recycled id is not silently suppressed', () => {
+        // DEBUG reset-all-jobs resets SQLite auto-increment: a fresh job can
+        // reuse a previously-dismissed id. Pruning ids absent from the job list
+        // keeps the dismissal memory scoped to jobs that still exist.
+        const dismissed = new Set([3, 9]);
+        pruneDismissedIds(dismissed, [makeJob({ id: 3 })]);
+        expect(dismissed.has(3)).toBe(true);
+        expect(dismissed.has(9)).toBe(false);
     });
 });

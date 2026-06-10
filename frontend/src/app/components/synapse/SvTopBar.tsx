@@ -193,12 +193,19 @@ function NavTab({ item, active }: { item: NavItem; active: boolean }) {
   );
 
   if (item.disabled) {
+    // Disabled-link pattern: aria-disabled is only announced when the element
+    // has a semantic role, and the title tooltip is mouse-only — so carry the
+    // role explicitly and fold the reason into the accessible name.
     return (
       <span
+        role="link"
+        aria-disabled="true"
+        aria-label={
+          item.disabledHint ? `${item.label} — ${item.disabledHint}` : item.label
+        }
         style={{ ...wrap, color: sv.inkFaint, cursor: "default" }}
         data-testid={`sv-nav-${item.label.toLowerCase()}`}
         data-active="false"
-        aria-disabled="true"
         title={item.disabledHint}
       >
         {content}

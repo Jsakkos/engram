@@ -77,7 +77,10 @@ export function CompactList({
           const showProgress = disc.progress > 0 && disc.state !== "completed";
           const matchReview =
             disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0;
-          const identityReview = disc.needsReview && !!disc.identityReview;
+          // tracksLoaded mirrors DiscCard's gate: titles resolve after the job
+          // list, so without it the button could flash before data settles.
+          const identityReview =
+            disc.needsReview && !!disc.identityReview && !!disc.tracksLoaded;
           return (
             <motion.div
               key={disc.id}

@@ -32,10 +32,14 @@ describe('SvTopBar nav', () => {
         expect(dupKeyCalls).toHaveLength(0);
     });
 
-    it('renders a disabled (non-link) REVIEW tab when nothing needs review', () => {
+    it('renders REVIEW as a disabled link exposing the reason to assistive tech', () => {
         renderTopBar();
-        expect(screen.queryByRole('link', { name: /review/i })).not.toBeInTheDocument();
-        expect(screen.getByText('REVIEW').closest('[aria-disabled="true"]')).toBeTruthy();
+        // The canonical disabled-link pattern: role="link" + aria-disabled (a bare
+        // span's aria-disabled is ignored by most AT) and the reason in the
+        // accessible name (the title tooltip is mouse-only).
+        const tab = screen.getByRole('link', { name: /review — no jobs awaiting review/i });
+        expect(tab).toHaveAttribute('aria-disabled', 'true');
+        expect(tab).not.toHaveAttribute('href');
     });
 
     it('renders REVIEW as a link when a job awaits review', () => {

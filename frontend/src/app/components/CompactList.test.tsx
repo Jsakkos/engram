@@ -56,6 +56,11 @@ describe('CompactList', () => {
         expect(onReview).not.toHaveBeenCalled();
     });
 
+    it('holds the Fix title button until track data has loaded (mirrors DiscCard)', () => {
+        renderList([makeDisc({ identityReview: true, tracks: [], tracksLoaded: false })]);
+        expect(screen.queryByRole('button', { name: /fix title/i })).not.toBeInTheDocument();
+    });
+
     it('shows Cancel only for non-terminal jobs', () => {
         renderList([
             makeDisc({ id: '1', state: 'ripping', needsReview: false }),

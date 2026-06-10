@@ -21,7 +21,7 @@ import ContributePage from "../components/ContributePage";
 import { FEATURES } from "../config/constants";
 import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
-import { selectPromptJobs } from "./promptSelection";
+import { pruneDismissedIds, selectPromptJobs } from "./promptSelection";
 import type { Job } from "../types";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -161,6 +161,7 @@ function MainDashboard() {
   // it does NOT cancel it.
   const dismissedPromptIdsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
+    pruneDismissedIds(dismissedPromptIdsRef.current, jobs);
     const { namePromptJob: needsName, seasonPromptJob: needsSeason } = selectPromptJobs(
       jobs,
       dismissedPromptIdsRef.current,
