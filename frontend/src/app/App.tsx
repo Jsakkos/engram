@@ -433,7 +433,6 @@ function MainDashboard() {
                 >
                   Configure token
                 </button>
-                <span>.</span>
               </div>
               <button
                 onClick={() => setTmdbBannerDismissed(true)}
@@ -616,7 +615,6 @@ function MainDashboard() {
                     if (job) setReIdentifyTarget(job);
                   } : undefined}
                   onReportBug={() => setBugReportJobId(Number(disc.id))}
-                  tmdbConfigured={tmdbConfigured}
                   onOpenSettings={() => setShowSettings(true)}
                 />
               ))}
