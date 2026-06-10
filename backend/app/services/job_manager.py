@@ -1478,7 +1478,20 @@ class JobManager:
                 if t and t.job_id == job_id and t.state == TitleState.REVIEW:
                     titles.append(t)
             if not titles:
-                logger.info(f"Job {job_id}: no eligible titles to re-rip ({title_ids})")
+                logger.info(
+                    f"Job {sanitize_log_value(job_id)}: no eligible titles to re-rip "
+                    f"({sanitize_log_value(title_ids)})"
+                )
+                return
+
+            # A re-rip writes its output into the job's staging dir; without one
+            # there is nowhere to put it (e.g. a seed/debug job leaves
+            # staging_path unset). Bail BEFORE the state transition so the job is
+            # never stranded in RIPPING.
+            if not job.staging_path:
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: cannot re-rip — staging_path is not set"
+                )
                 return
 
             # Un-hide a cleared job that is being actively re-processed.
@@ -1492,8 +1505,8 @@ class JobManager:
             # transition() returns False and makes no state change.
             if not await state_machine.transition(job, JobState.RIPPING, session):
                 logger.warning(
-                    f"Job {job_id}: cannot re-rip — invalid transition from "
-                    f"{job.state.value} to RIPPING; skipping."
+                    f"Job {sanitize_log_value(job_id)}: cannot re-rip — invalid transition "
+                    f"from {sanitize_log_value(job.state.value)} to RIPPING; skipping."
                 )
                 return
 
@@ -1510,7 +1523,10 @@ class JobManager:
                         if old.exists():
                             old.unlink()
                     except OSError as e:
-                        logger.warning(f"Job {job_id}: could not remove stale file {old}: {e}")
+                        logger.warning(
+                            f"Job {sanitize_log_value(job_id)}: could not remove stale file "
+                            f"{sanitize_log_value(old)}: {e}"
+                        )
                 t.output_filename = None
                 session.add(t)
                 await ws_manager.broadcast_title_update(job_id, t.id, TitleState.RIPPING.value)
@@ -1539,15 +1555,31 @@ class JobManager:
         def on_title_error(cmd_idx: int, reason: str):
             list_idx = cmd_idx - 1
             if not (0 <= list_idx < len(subset_sorted)):
-                logger.error(f"Job {job_id}: re-rip title error cmd_idx={cmd_idx} out of range")
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: re-rip title error "
+                    f"cmd_idx={sanitize_log_value(cmd_idx)} out of range"
+                )
                 return
             title_id_err = subset_sorted[list_idx].id
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 self._matching.route_rip_failure_to_review(
                     job_id, title_id_err, "rip_stalled", reason
                 ),
                 self._loop,
             )
+
+            def _check_err(fut):
+                # Mirror on_title_complete: a failure inside the threadsafe
+                # coroutine would otherwise be swallowed, leaving the title in
+                # RIPPING with no recovery path and nothing in the logs.
+                try:
+                    fut.result(timeout=30)
+                except Exception as e:  # noqa: BLE001 — surface, never swallow
+                    logger.exception(
+                        f"[RERIP] route_rip_failure_to_review failed (Job {job_id}): {e}"
+                    )
+
+            future.add_done_callback(_check_err)
 
         from app.core.discdb_exporter import get_makemkv_log_dir
         from app.services.config_service import get_config
@@ -1584,7 +1616,7 @@ class JobManager:
             await asyncio.to_thread(eject_disc, drive_id)
             self._drive_monitor.notify_ejected(drive_id)
         except (OSError, RuntimeError) as e:
-            logger.warning(f"Job {job_id}: eject after re-rip failed: {e}")
+            logger.warning(f"Job {sanitize_log_value(job_id)}: eject after re-rip failed: {e}")
 
     async def rerip_title_manual(self, job_id: int, title_id: int) -> None:
         """Manually re-rip one title using the disc currently in the drive.
@@ -1610,8 +1642,17 @@ class JobManager:
         current_hash = await self._compute_disc_hash(drive_id)
         if not current_hash:
             raise ValueError("No readable disc in the drive — insert the matching disc first")
-        if job_hash and current_hash != job_hash:
-            raise ValueError("A different disc is in the drive — insert the original disc")
+        if job_hash:
+            if current_hash != job_hash:
+                raise ValueError("A different disc is in the drive — insert the original disc")
+        else:
+            # Pre-#369 jobs (and seed/debug jobs) may have no stored ContentHash;
+            # we can't verify disc identity. Allow the user-initiated re-rip but
+            # log the bypass so it's visible rather than silent.
+            logger.warning(
+                f"Job {sanitize_log_value(job_id)}: content_hash not set — skipping "
+                f"disc-identity check for manual re-rip"
+            )
 
         task = asyncio.create_task(
             with_job_log_context(job_id, self.rerip_titles(job_id, [title_id]))

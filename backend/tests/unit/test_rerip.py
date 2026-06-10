@@ -330,3 +330,57 @@ async def test_rerip_title_manual_rejects_busy_job(monkeypatch):
 
     with pytest.raises(ValueError, match="not awaiting re-rip review"):
         await job_manager.rerip_title_manual(job_id, title_id)
+
+
+@pytest.mark.asyncio
+async def test_rerip_titles_bails_when_staging_path_missing(monkeypatch):
+    """A job with no staging_path can't be re-ripped — bail before any rip or
+    state change (e.g. a seed/debug job leaves staging_path unset)."""
+    from app.core.extractor import RipResult
+    from app.services.job_manager import job_manager
+
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="F:",
+            volume_label="X",
+            content_type=ContentType.TV,
+            state=JobState.REVIEW_NEEDED,
+            staging_path=None,
+            content_hash="ABC123",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=2,
+            duration_seconds=100,
+            state=TitleState.REVIEW,
+            rerip_attempts=0,
+            match_details=json.dumps({"error": "incomplete_rip", "rerip_eligible": True}),
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+        job_id, title_id = job.id, title.id
+
+    called = {"rip": False}
+
+    async def fake_rip_titles(*a, **k):
+        called["rip"] = True
+        return RipResult(success=True, output_files=[], error_message=None, stalled_titles=None)
+
+    monkeypatch.setattr(job_manager._extractor, "rip_titles", fake_rip_titles)
+
+    await job_manager.rerip_titles(job_id, [title_id])
+
+    assert called["rip"] is False  # bailed before ripping
+    t = await _reload(title_id)
+    assert t.rerip_attempts == 0  # untouched
+    assert t.state == TitleState.REVIEW
+    async with _unit_session_factory() as session:
+        j = await session.get(DiscJob, job_id)
+        assert j.state == JobState.REVIEW_NEEDED  # not stranded in RIPPING
