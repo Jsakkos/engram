@@ -774,9 +774,9 @@ async def get_season_roster(
         )
     except Exception as e:  # noqa: BLE001 — coverage is decoration, not load-bearing
         logger.debug(
-            "Reference-coverage scan failed for show %s S%02d: %s",
+            "Reference-coverage scan failed for show %s S%s: %s",
             sanitize_log_value(job.tmdb_id),
-            season_num,
+            sanitize_log_value(f"{season_num:02d}"),
             sanitize_log_value(str(e)),
         )
         coverage = {}
