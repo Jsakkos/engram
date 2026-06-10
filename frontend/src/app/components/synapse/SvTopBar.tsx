@@ -1,21 +1,11 @@
 import type { CSSProperties } from "react";
 import { Link, useLocation } from "react-router-dom";
+import type { NavItem } from "../../navigation";
 import { IcoSettings } from "../icons";
 import { sv } from "./tokens";
 import { SvMark } from "./SvMark";
 import { Wordmark } from "./Wordmark";
 import { SvBadge } from "./SvBadge";
-
-interface NavItem {
-  label: string;
-  to: string;
-  /** Path prefix used for active-state detection. Defaults to `to` when absent. */
-  activeWhen?: string;
-  /** Numeric badge (yellow). Falsy = no badge. */
-  badge?: number;
-  /** Show the route in the nav. Default true. */
-  show?: boolean;
-}
 
 interface Props {
   isConnected: boolean;
