@@ -1215,7 +1215,7 @@ class IdentificationCoordinator:
                 tmdb_degraded_reason = TMDB_DEGRADED_AUTH_FAILED
                 return None
             except Exception as e:
-                logger.warning(f"Job {job_id}: {context}: {e}")
+                logger.warning(f"Job {job_id}: {context}: {e}", exc_info=True)
                 return None
 
         # Attempt TheDiscDB lookup
