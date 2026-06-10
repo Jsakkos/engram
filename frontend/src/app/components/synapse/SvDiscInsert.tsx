@@ -355,7 +355,7 @@ function ClassifyPanel({
 
       <div
         style={{
-          ...monoLabelStyle({ size: 9, color: sv.inkFaint, letterSpacing: "0.22em" }),
+          ...monoLabelStyle({ size: 9, color: sv.inkDim, letterSpacing: "0.22em" }),
           marginTop: "auto",
         }}
       >

@@ -260,7 +260,7 @@ export function FingerprintDisclosureModal({
                                     fontSize: 10,
                                     letterSpacing: '0.14em',
                                     textTransform: 'uppercase',
-                                    color: sv.inkFaint,
+                                    color: sv.inkDim,
                                     flexShrink: 0,
                                 }}
                             >
@@ -283,7 +283,7 @@ export function FingerprintDisclosureModal({
                             style={{
                                 fontFamily: sv.mono,
                                 fontSize: 10,
-                                color: sv.inkFaint,
+                                color: sv.inkDim,
                                 lineHeight: 1.6,
                                 margin: 0,
                                 letterSpacing: '0.06em',

@@ -149,7 +149,7 @@ const captionTiny: React.CSSProperties = {
   fontSize: 9,
   letterSpacing: "0.22em",
   textTransform: "uppercase",
-  color: sv.inkFaint,
+  color: sv.inkDim,
 };
 
 const captionTinyLoose: React.CSSProperties = {
@@ -157,7 +157,7 @@ const captionTinyLoose: React.CSSProperties = {
   fontSize: 9,
   letterSpacing: "0.16em",
   textTransform: "uppercase",
-  color: sv.inkFaint,
+  color: sv.inkDim,
 };
 
 function StatCard({
@@ -287,7 +287,7 @@ function KvRow({
 function TimelineRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: sv.mono, fontSize: 11 }}>
-      <span style={{ color: sv.inkFaint, width: 88 }}>{label}</span>
+      <span style={{ color: sv.inkDim, width: 88 }}>{label}</span>
       <ArrowRight size={11} color={`${sv.cyan}88`} />
       <span style={{ color: accent ?? sv.ink }}>{value}</span>
     </div>
@@ -514,7 +514,7 @@ function JobDetailPanel({
               )}
             </div>
             {detail.detected_title && (
-              <div style={{ marginTop: 6, fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
+              <div style={{ marginTop: 6, fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
                 {detail.volume_label} on {detail.drive_id}
               </div>
             )}
@@ -630,7 +630,7 @@ function JobDetailPanel({
                         )}
                       </>
                     ) : (
-                      <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
+                      <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
                         No disc fingerprint available (scan may have failed before computation)
                       </span>
                     )}
@@ -684,11 +684,11 @@ function JobDetailPanel({
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                        <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>#{t.title_index}</span>
+                        <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>#{t.title_index}</span>
                         <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.ink }}>
                           {formatDurationShort(t.duration_seconds)}
                         </span>
-                        <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
+                        <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
                           {formatBytesScaled(t.file_size_bytes)}
                         </span>
                         {t.video_resolution && (
@@ -710,10 +710,10 @@ function JobDetailPanel({
                           </span>
                         )}
                         {t.is_extra && (
-                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>extra</span>
+                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>extra</span>
                         )}
                         {t.match_confidence > 0 && (
-                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
+                          <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
                             ({Math.round(t.match_confidence * 100)}% match)
                           </span>
                         )}
@@ -725,7 +725,7 @@ function JobDetailPanel({
                           marginTop: 4,
                           fontFamily: sv.mono,
                           fontSize: 10,
-                          color: sv.inkFaint,
+                          color: sv.inkDim,
                           overflowWrap: "anywhere",
                         }}
                       >
@@ -743,7 +743,7 @@ function JobDetailPanel({
                     border: `1px solid ${sv.line}`,
                     fontFamily: sv.mono,
                     fontSize: 11,
-                    color: sv.inkFaint,
+                    color: sv.inkDim,
                   }}
                 >
                   No tracks found (scan may have failed before disc analysis)
@@ -855,8 +855,12 @@ function HistoryStatsRail({ stats }: { stats: Stats }) {
       <SvPanel pad={18} testid="sv-history-stats-distribution">
         <SvLabel>Distribution</SvLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+          {/* Ambient distribution viz: TV bar uses amber to match the "TV Shows"
+              stat card above; magenta is reserved for action/ripping per the brand
+              handoff, so it doesn't decorate a static count here. (movie=magenta
+              stays only on the identity tags — an established app-wide convention.) */}
           <DistRow label="Movies" count={stats.movie_count} ratio={movieRatio} accent={sv.cyan} />
-          <DistRow label="TV seasons" count={stats.tv_count} ratio={tvRatio} accent={sv.magenta} />
+          <DistRow label="TV seasons" count={stats.tv_count} ratio={tvRatio} accent={sv.amber} />
         </div>
       </SvPanel>
     </aside>
@@ -1196,7 +1200,7 @@ export default function HistoryPage() {
                     style={{
                       padding: "32px 16px",
                       textAlign: "center",
-                      color: sv.inkFaint,
+                      color: sv.inkDim,
                       fontFamily: sv.mono,
                       fontSize: 12,
                     }}
@@ -1228,7 +1232,7 @@ export default function HistoryPage() {
                       <td style={{ padding: "12px 16px" }}>
                         <div style={{ color: sv.ink }}>{job.detected_title || job.volume_label}</div>
                         {job.detected_title && (
-                          <div style={{ fontSize: 10, color: sv.inkFaint, marginTop: 2 }}>{job.volume_label}</div>
+                          <div style={{ fontSize: 10, color: sv.inkDim, marginTop: 2 }}>{job.volume_label}</div>
                         )}
                       </td>
                       <td className="hidden sm:table-cell" style={{ padding: "12px 16px" }}>
@@ -1258,10 +1262,10 @@ export default function HistoryPage() {
                       <td className="hidden md:table-cell" style={{ padding: "12px 16px", color: sv.inkDim }}>
                         {job.total_titles}
                       </td>
-                      <td className="hidden lg:table-cell" style={{ padding: "12px 16px", color: sv.inkFaint }}>
+                      <td className="hidden lg:table-cell" style={{ padding: "12px 16px", color: sv.inkDim }}>
                         {job.classification_source}
                       </td>
-                      <td className="hidden sm:table-cell" style={{ padding: "12px 16px", color: sv.inkFaint }}>
+                      <td className="hidden sm:table-cell" style={{ padding: "12px 16px", color: sv.inkDim }}>
                         {formatDateTime(job.completed_at || job.created_at)}
                       </td>
                     </tr>
@@ -1277,7 +1281,7 @@ export default function HistoryPage() {
           <SvActionButton tone="neutral" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
             <ChevronLeft size={12} /> Prev
           </SvActionButton>
-          <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint, letterSpacing: "0.06em" }}>
+          <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim, letterSpacing: "0.06em" }}>
             Page {page}
           </span>
           <SvActionButton tone="neutral" onClick={() => setPage((p) => p + 1)} disabled={!hasMore}>

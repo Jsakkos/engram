@@ -148,7 +148,7 @@ export function SvErrorState({
           {diagnostics &&
             Object.entries(diagnostics).map(([key, value]) => (
               <div key={key} style={{ display: "contents" }}>
-                <dt style={{ color: sv.inkFaint, letterSpacing: "0.18em", textTransform: "uppercase" }}>
+                <dt style={{ color: sv.inkDim, letterSpacing: "0.18em", textTransform: "uppercase" }}>
                   {key}
                 </dt>
                 <dd style={{ color: sv.ink, margin: 0, wordBreak: "break-all" }}>{value}</dd>
@@ -157,7 +157,7 @@ export function SvErrorState({
         </dl>
         <div
           style={{
-            ...monoLabelStyle({ size: 9, color: sv.inkFaint, letterSpacing: "0.20em" }),
+            ...monoLabelStyle({ size: 9, color: sv.inkDim, letterSpacing: "0.20em" }),
             marginTop: 18,
             paddingTop: 12,
             borderTop: `1px solid ${tint.divider}`,

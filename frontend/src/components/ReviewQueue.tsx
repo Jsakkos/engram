@@ -24,7 +24,7 @@ import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 const monoLabelStyle: CSSProperties = {
     fontFamily: sv.mono,
     fontSize: 11,
-    color: sv.inkFaint,
+    color: sv.inkDim,
 };
 
 /** Single-line clipping with ellipsis overflow. */

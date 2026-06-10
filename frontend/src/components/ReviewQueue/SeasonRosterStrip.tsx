@@ -89,7 +89,7 @@ export function SeasonRosterStrip({
                         <div style={{ ...truncate, fontFamily: sv.sans, fontSize: 10, color: sv.inkDim, marginTop: 3 }}>
                             {ep.name || '—'}
                         </div>
-                        <div style={{ ...truncate, fontFamily: sv.mono, fontSize: 9, color: sv.inkFaint, marginTop: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        <div style={{ ...truncate, fontFamily: sv.mono, fontSize: 9, color: sv.inkDim, marginTop: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                             {who}
                         </div>
                     </div>

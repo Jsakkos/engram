@@ -172,7 +172,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {track.title.startsWith('Track ') && (
-                    <div style={{ fontFamily: sv.mono, fontSize: 9, color: sv.inkFaint, letterSpacing: "0.2em", marginBottom: 2 }}>
+                    <div style={{ fontFamily: sv.mono, fontSize: 9, color: sv.inkDim, letterSpacing: "0.2em", marginBottom: 2 }}>
                       TRACK {index + 1}
                     </div>
                   )}
@@ -261,7 +261,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
               {/* Pending: queued tag */}
               {track.state === "pending" && (
                 <div style={{ marginTop: 4 }}>
-                  <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, letterSpacing: "0.18em" }}>
+                  <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim, letterSpacing: "0.18em" }}>
                     QUEUED
                   </span>
                 </div>
@@ -274,7 +274,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                     NEEDS REVIEW
                   </span>
                   {track.finalMatch ? (
-                    <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8 }}>
+                    <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim, marginLeft: 8 }}>
                       best guess {track.finalMatch}
                       {track.finalMatchConfidence !== undefined && (
                         <> — {Math.round(track.finalMatchConfidence * 100)}% confidence</>
@@ -285,7 +285,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                       {" — confirm in review queue"}
                     </span>
                   ) : (
-                    <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginLeft: 8 }}>
+                    <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim, marginLeft: 8 }}>
                       no match found — assign in review queue
                     </span>
                   )}
@@ -304,7 +304,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                       marginTop: 4,
                     }}
                   >
-                    <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkFaint }}>
+                    <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkDim }}>
                       {config.label}
                     </span>
                     {track.expectedSizeBytes && track.actualSizeBytes ? (
@@ -360,7 +360,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                       marginTop: 4,
                     }}
                   >
-                    <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkFaint }}>
+                    <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkDim }}>
                       {config.label}
                     </span>
                     <span
@@ -467,7 +467,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                               style={{
                                 fontFamily: sv.mono,
                                 fontSize: 10,
-                                color: sv.inkFaint,
+                                color: sv.inkDim,
                                 flex: 1,
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
@@ -478,7 +478,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                             </span>
                             <span
                               className="sv-tnum"
-                              style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, flexShrink: 0 }}
+                              style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim, flexShrink: 0 }}
                             >
                               {Math.min(candidate.votes, candidate.targetVotes)}/{candidate.targetVotes}
                             </span>
@@ -499,7 +499,7 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                        <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkFaint, flexShrink: 0 }}>
+                        <span style={{ fontFamily: sv.mono, fontSize: 9, letterSpacing: "0.18em", color: sv.inkDim, flexShrink: 0 }}>
                           FROM:
                         </span>
                         <span

@@ -156,7 +156,7 @@ export function MatchingVisualizer({ candidates, compact = false }: MatchingVisu
                         style={{
                           fontFamily: sv.mono,
                           fontSize: 10,
-                          color: sv.inkFaint,
+                          color: sv.inkDim,
                           letterSpacing: "0.18em",
                           textTransform: "uppercase",
                         }}
@@ -192,7 +192,7 @@ export function MatchingVisualizer({ candidates, compact = false }: MatchingVisu
                       style={{
                         fontFamily: sv.mono,
                         fontSize: 10,
-                        color: sv.inkFaint,
+                        color: sv.inkDim,
                       }}
                     >
                       /{candidate.targetVotes}
@@ -220,7 +220,7 @@ export function MatchingVisualizer({ candidates, compact = false }: MatchingVisu
                     style={{
                       fontFamily: sv.mono,
                       fontSize: 10,
-                      color: sv.inkFaint,
+                      color: sv.inkDim,
                       letterSpacing: "0.18em",
                       textTransform: "uppercase",
                     }}

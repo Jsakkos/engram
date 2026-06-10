@@ -484,7 +484,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                                             {result.type}
                                                         </span>
                                                         {result.year && (
-                                                            <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
+                                                            <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim }}>
                                                                 {result.year}
                                                             </span>
                                                         )}
@@ -564,11 +564,11 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                                 fontWeight: 700,
                                                 letterSpacing: '0.18em',
                                                 textTransform: 'uppercase',
-                                                color: active ? sv.magentaHi : sv.inkDim,
-                                                border: `1px solid ${active ? sv.magenta : sv.lineMid}`,
-                                                background: active ? `${sv.magenta}14` : 'transparent',
+                                                color: active ? sv.cyanHi : sv.inkDim,
+                                                border: `1px solid ${active ? sv.cyan : sv.lineMid}`,
+                                                background: active ? `${sv.cyan}14` : 'transparent',
                                                 boxShadow: active
-                                                    ? `0 0 12px ${sv.magenta}4d, inset 0 0 8px ${sv.magenta}0d`
+                                                    ? `0 0 12px ${sv.cyan}4d, inset 0 0 8px ${sv.cyan}0d`
                                                     : 'none',
                                                 cursor: 'pointer',
                                                 transition: 'all 0.18s',
@@ -612,11 +612,21 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
 
                         {/* Action Buttons */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                            {/* Neutral, recessive cancel — the primary CTA carries the
+                                visual weight. Dismissal here just closes the modal. */}
                             <motion.button
                                 type="button"
                                 onClick={onCancel}
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.97 }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = sv.ink;
+                                    e.currentTarget.style.borderColor = sv.lineHi;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = sv.inkDim;
+                                    e.currentTarget.style.borderColor = sv.lineMid;
+                                }}
                                 style={{
                                     flex: 1,
                                     padding: '10px 16px',
@@ -625,10 +635,10 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                     fontWeight: 700,
                                     letterSpacing: '0.18em',
                                     textTransform: 'uppercase',
-                                    color: sv.red,
-                                    border: `1px solid ${sv.red}80`,
+                                    color: sv.inkDim,
+                                    border: `1px solid ${sv.lineMid}`,
                                     background: 'transparent',
-                                    boxShadow: `0 0 8px ${sv.red}26`,
+                                    boxShadow: 'none',
                                     cursor: 'pointer',
                                 }}
                             >
