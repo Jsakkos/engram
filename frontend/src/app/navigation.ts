@@ -45,7 +45,6 @@ export function buildNavItems({
       to: firstReviewJobId ? reviewPath(firstReviewJobId) : ROUTES.HOME,
       badge: reviewCount,
     },
-    { label: "LIBRARY", to: ROUTES.LIBRARY },
     { label: "HISTORY", to: ROUTES.HISTORY },
     {
       label: "CONTRIBUTE",

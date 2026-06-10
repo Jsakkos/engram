@@ -66,7 +66,6 @@ describe("App routing — every page mounts (no blank/black screen)", () => {
   // so it's only covered when that flag is enabled.
   const routeCases: Array<[string, string]> = [
     ["/", "dashboard"],
-    ["/library", "library"],
     ["/history", "history"],
     ["/review/7", "review detail"],
     ["/review", "bare review → redirects to dashboard"],
