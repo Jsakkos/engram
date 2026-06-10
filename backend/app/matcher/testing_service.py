@@ -275,6 +275,141 @@ def _precomputed_skip_result(
     }
 
 
+def _fetch_episodes(
+    show_id, show_name: str, season: int, episode_numbers, series_cache_dir: Path, config
+) -> dict[int, dict]:
+    """Download SRTs for a specific set of episode numbers into ``series_cache_dir``.
+
+    Used by the completeness-aware heal to fetch ONLY the precomputed-cache gaps,
+    so a missing episode (e.g. Mad Men S02E05) is repaired without re-downloading
+    — and re-burning the scarce OpenSubtitles daily quota on — the episodes the
+    cache already covers. Per-episode work fans out across the same
+    addic7ed/tvsubtitles scheduler the full season download uses for its residual.
+
+    Returns ``{episode_number: result_dict}`` with the same shape as the full
+    download's per-episode results (``code``/``status``/``path``/``source``).
+    """
+    from app.matcher.subtitle_utils import find_existing_subtitle
+
+    safe_show_name = sanitize_filename(show_name)
+    series_cache_dir.mkdir(parents=True, exist_ok=True)
+    wanted = sorted({int(ep) for ep in episode_numbers})
+
+    results: dict[int, dict] = {}
+    residual_jobs: list[EpisodeJob] = []
+    for episode in wanted:
+        episode_code = f"S{season:02d}E{episode:02d}"
+        existing = find_existing_subtitle(str(series_cache_dir), safe_show_name, season, episode)
+        if existing and is_valid_srt_file(existing):
+            results[episode] = {
+                "code": episode_code,
+                "status": "cached",
+                "path": str(existing),
+                "source": "cache",
+            }
+            continue
+        residual_jobs.append(
+            EpisodeJob(
+                tmdb_id=int(show_id),
+                show_name=show_name,
+                season=season,
+                episode=episode,
+                episode_code=episode_code,
+                srt_target=series_cache_dir / f"{safe_show_name} - {episode_code}.srt",
+                pending_providers=deque(["addic7ed", "tvsubtitles"]),
+            )
+        )
+
+    if residual_jobs:
+        workers = {"addic7ed": Addic7edClient(), "tvsubtitles": TVSubtitlesClient()}
+        scheduler_results = run_jobs(residual_jobs, workers)
+        for episode in wanted:
+            if episode in results:
+                continue
+            episode_code = f"S{season:02d}E{episode:02d}"
+            results[episode] = scheduler_results.get(
+                episode_code,
+                {"code": episode_code, "status": "not_found", "path": None, "source": None},
+            )
+    return results
+
+
+def _heal_precomputed_gaps(
+    skip: dict, show_name: str, season: int, *, tmdb_id: int | None, cache_path: Path, config
+) -> dict:
+    """Fill precomputed-cache gaps when the shipped index misses roster episodes.
+
+    The precomputed coverage gate is presence-based, so a season whose index is
+    missing an episode (Mad Men S02 shipped without S02E05) silently skips the
+    download AND matches against the incomplete set. Here we diff the cache's
+    episode codes against the canonical TMDB roster and fetch ONLY the missing
+    episodes into ``data/<id>/``, where the matcher's runtime augmentation grafts
+    them into the reference matrix.
+
+    Best-effort by design: the precomputed fast path is meant to work offline, so
+    any TMDB failure returns ``skip`` unchanged (the job still matches against the
+    cache) instead of raising. An episode no provider can supply is logged as a
+    hard gap and surfaced to the review UI via reference_coverage().
+    """
+    precomputed_codes = {ep["code"] for ep in skip.get("episodes", [])}
+    try:
+        resolved_id = str(tmdb_id) if tmdb_id is not None else fetch_show_id(show_name)
+        if not resolved_id:
+            return skip
+        episode_count = fetch_season_details(resolved_id, season)
+    except Exception as e:  # noqa: BLE001 — offline/failed TMDB must not fail the job
+        logger.debug(
+            f"Precomputed completeness check skipped for {show_name} "
+            f"S{season:02d} (TMDB unavailable: {e})"
+        )
+        return skip
+    if not episode_count:
+        return skip
+
+    gap_eps = [
+        ep
+        for ep in range(1, episode_count + 1)
+        if f"S{season:02d}E{ep:02d}" not in precomputed_codes
+    ]
+    if not gap_eps:
+        return skip
+
+    gap_codes = [f"S{season:02d}E{ep:02d}" for ep in gap_eps]
+    logger.info(
+        f"Precomputed cache for {show_name} S{season:02d} missing "
+        f"{len(gap_eps)} of {episode_count} episode(s): {', '.join(gap_codes)}; fetching"
+    )
+    series_cache_dir = cache_path / "data" / corpus_dir_name(tmdb_id, show_name)
+    fetched = _fetch_episodes(resolved_id, show_name, season, gap_eps, series_cache_dir, config)
+
+    still_missing = [
+        fetched[ep]["code"] for ep in gap_eps if fetched.get(ep, {}).get("status") == "not_found"
+    ]
+    if still_missing:
+        logger.warning(
+            f"No reference subtitle obtainable for {show_name} S{season:02d}: "
+            f"{', '.join(still_missing)} — flagged for manual review"
+        )
+
+    healed = dict(skip)
+    healed_episodes = list(skip.get("episodes", []))
+    healed_episodes.extend(
+        fetched.get(
+            ep,
+            {
+                "code": f"S{season:02d}E{ep:02d}",
+                "status": "not_found",
+                "path": None,
+                "source": None,
+            },
+        )
+        for ep in gap_eps
+    )
+    healed["episodes"] = healed_episodes
+    healed["total_episodes"] = len(healed_episodes)
+    return healed
+
+
 def download_subtitles(
     show_name: str, season: int, *, tmdb_id: int | None = None, use_precomputed: bool = True
 ) -> dict:
@@ -317,7 +452,9 @@ def download_subtitles(
     if use_precomputed:
         skip = _precomputed_skip_result(cache_path, show_name, season, expected_tmdb_id=tmdb_id)
         if skip is not None:
-            return skip
+            return _heal_precomputed_gaps(
+                skip, show_name, season, tmdb_id=tmdb_id, cache_path=cache_path, config=config
+            )
 
     # Resolve the TMDB show id. When the caller already knows it (e.g. after the
     # user disambiguated a same-name collision), use it directly — fetch_show_id
@@ -342,7 +479,14 @@ def download_subtitles(
                 cache_path, canonical_show_name, season, expected_tmdb_id=tmdb_id
             )
             if skip is not None:
-                return skip
+                return _heal_precomputed_gaps(
+                    skip,
+                    canonical_show_name,
+                    season,
+                    tmdb_id=tmdb_id,
+                    cache_path=cache_path,
+                    config=config,
+                )
 
     episode_count = fetch_season_details(show_id, season)
     if episode_count == 0:
