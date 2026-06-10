@@ -31,7 +31,7 @@ export const DISC_STATE_CONFIG: Record<DiscState, StateConfig> = {
   archiving_iso:  { label: "ARCHIVING",     badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoLibrary },
   ripping:        { label: "RIPPING",       badgeState: "ripping",  color: sv.magenta,  glow: sv.magenta,  icon: IcoRipping },
   matching:       { label: "MATCHING",      badgeState: "matching", color: sv.amber,    glow: sv.amber,    icon: IcoMatching },
-  organizing:     { label: "ORGANIZING",    badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoMatching },
+  organizing:     { label: "ORGANIZING",    badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoLibrary },
   processing:     { label: "PROCESSING",    badgeState: "matching", color: sv.amber,    glow: sv.amber,    icon: IcoMatching },
   completed:      { label: "COMPLETE",      badgeState: "complete", color: sv.green,    glow: sv.green,    icon: IcoComplete },
   error:          { label: "ERROR",         badgeState: "error",    color: sv.red,      glow: sv.red,      icon: IcoError },
