@@ -46,6 +46,7 @@ function renderInspector(props: {
     llmFeedback?: LLMFeedback | null;
     isLlmMatching?: boolean;
     aiEpisodeMatchingEnabled?: boolean;
+    season?: number;
 } = {}) {
     return render(
         <Inspector
@@ -56,6 +57,7 @@ function renderInspector(props: {
             selection={undefined}
             action={undefined}
             episodes={[]}
+            season={props.season ?? 1}
             coverage={{}}
             holders={new Map()}
             titleIndexById={{ 1: 1 }}
@@ -108,5 +110,18 @@ describe('Inspector — AI match feedback', () => {
         // The suggestion card renders instead of the feedback notice.
         expect(screen.getByText(/Suggested:/)).toBeInTheDocument();
         expect(screen.queryByText(/No confident AI match found\./)).not.toBeInTheDocument();
+    });
+});
+
+describe('Inspector — manual dropdown season (#370)', () => {
+    it('generates fallback episode codes for the provided season, not S01', () => {
+        renderInspector({ season: 3 });
+        expect(screen.getByRole('option', { name: 'S03E01' })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: 'S01E01' })).not.toBeInTheDocument();
+    });
+
+    it('defaults to season 1 codes when season is 1', () => {
+        renderInspector({ season: 1 });
+        expect(screen.getByRole('option', { name: 'S01E01' })).toBeInTheDocument();
     });
 });

@@ -184,7 +184,14 @@ function ReviewQueue() {
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<number>>(new Set());
     const lastBulkClickRef = useRef<number | null>(null);
 
-    const { roster, error: rosterError, episodeName, reload: reloadRoster } = useSeasonRoster(jobId);
+    // Review-page season picker (#370): backstop for jobs that reached review
+    // with the season still unknown (the modal's "All Seasons" path, legacy jobs).
+    const [seasonOverride, setSeasonOverride] = useState<number | null>(null);
+
+    const { roster, error: rosterError, episodeName, reload: reloadRoster } = useSeasonRoster(
+        jobId,
+        seasonOverride,
+    );
 
     // Persist a per-show ordering choice (#200), then refetch the roster so the
     // projection/divergence reflect it. Ordering is a show property, so it is
@@ -445,8 +452,7 @@ function ReviewQueue() {
     // then refresh the title list so the Inspector reflects the new assignment.
     const handleAcceptLLMSuggestion = async (titleId: number, episodeNumber: number) => {
         if (!jobId) return;
-        const seasonNum = job?.detected_season ?? 1;
-        const seasonStr = String(seasonNum).padStart(2, '0');
+        const seasonStr = String(effectiveSeason).padStart(2, '0');
         const epStr = String(episodeNumber).padStart(2, '0');
         const code = `S${seasonStr}E${epStr}`;
         setError(null);
@@ -595,6 +601,10 @@ function ReviewQueue() {
             setIsSaving(false);
         }
     };
+
+    // Manual/LLM episode codes use: the detected season, else the picker
+    // choice, else 1 (legacy fallback).
+    const effectiveSeason = job?.detected_season ?? seasonOverride ?? 1;
 
     // --- Derived disc-level coverage (live, from current selections) ---
     const rosterEpisodes = useMemo(() => roster?.episodes ?? [], [roster]);
@@ -938,6 +948,46 @@ function ReviewQueue() {
                 {rematchNotice && <SvNotice tone="warn">› {rematchNotice}</SvNotice>}
                 {orderingError && <SvNotice tone="warn">› {orderingError}</SvNotice>}
 
+                {/* Season picker (#370) — only when the job's season is unknown. */}
+                {job.detected_season == null && (
+                    <div style={{ marginBottom: 24 }}>
+                        <div style={{ marginBottom: 12 }}>
+                            <SvLabel>
+                                Season &#8212; not detected for this job; pick one to load its episode list
+                            </SvLabel>
+                        </div>
+                        <SvPanel pad={14}>
+                            <select
+                                value={seasonOverride ?? ''}
+                                onChange={(e) =>
+                                    setSeasonOverride(e.target.value ? parseInt(e.target.value) : null)
+                                }
+                                aria-label="Season"
+                                style={{
+                                    background: sv.bg0,
+                                    border: `1px solid ${sv.lineMid}`,
+                                    color: sv.ink,
+                                    fontFamily: sv.mono,
+                                    fontSize: 12,
+                                    padding: '7px 9px',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                    minWidth: 220,
+                                }}
+                            >
+                                <option value="">Pick season&#8230;</option>
+                                {Array.from({ length: roster?.season_count ?? 10 }, (_, i) => i + 1).map(
+                                    (s) => (
+                                        <option key={s} value={s}>
+                                            {`Season ${String(s).padStart(2, '0')}`}
+                                        </option>
+                                    ),
+                                )}
+                            </select>
+                        </SvPanel>
+                    </div>
+                )}
+
                 {/* Episode ordering (#200) — only when a divergent ordering exists. */}
                 {roster?.ordering_available && roster?.ordering_diverges && roster.ordering_options && (
                     <div style={{ marginBottom: 24 }}>
@@ -1113,6 +1163,7 @@ function ReviewQueue() {
                                 selection={selectedEpisodes[selectedTitle.id]}
                                 action={titleActions[selectedTitle.id]}
                                 episodes={rosterEpisodes}
+                                season={effectiveSeason}
                                 coverage={coverage}
                                 holders={holders}
                                 titleIndexById={titleIndexById}

@@ -2,13 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SeasonRoster } from '../components/ReviewQueue/types';
 
 /**
- * Loads the detected season's episode list (code + name) plus persisted
- * coverage for a job. Powers the review roster strip and labels bare episode
- * codes with real titles. Degrades gracefully: an unavailable roster (no TMDB
- * id yet, or a fetch failure) leaves `roster.available === false` and
- * `episodeName` returning ''.
+ * Loads a season's episode list (code + name) plus persisted coverage for a job — the detected season by default, or an explicit override from the unknown-season picker (#370).
+ * Powers the review roster strip and labels bare episode codes with real titles.
+ * Degrades gracefully: an unavailable roster (no TMDB id yet, or a fetch failure)
+ * leaves `roster.available === false` and `episodeName` returning ''.
  */
-export function useSeasonRoster(jobId: string | undefined) {
+export function useSeasonRoster(jobId: string | undefined, seasonOverride?: number | null) {
     const [roster, setRoster] = useState<SeasonRoster | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -22,7 +21,11 @@ export function useSeasonRoster(jobId: string | undefined) {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        fetch(`/api/jobs/${jobId}/season-roster`)
+        const url =
+            seasonOverride != null
+                ? `/api/jobs/${jobId}/season-roster?season=${seasonOverride}`
+                : `/api/jobs/${jobId}/season-roster`;
+        fetch(url)
             .then((r) => {
                 // The endpoint returns 200 with available:false when there's no
                 // TMDB data, so a non-OK status is a genuine failure — except a
@@ -47,7 +50,7 @@ export function useSeasonRoster(jobId: string | undefined) {
         return () => {
             cancelled = true;
         };
-    }, [jobId, reloadKey]);
+    }, [jobId, reloadKey, seasonOverride]);
 
     const episodeName = useCallback(
         (code: string): string =>
