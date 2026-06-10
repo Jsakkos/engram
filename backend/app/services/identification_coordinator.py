@@ -515,7 +515,7 @@ class IdentificationCoordinator:
         # in review (#370). Resumes via set_name_and_resume.
         seasons = await self._resolve_all_season_numbers(job.detected_title, tmdb_id=job.tmdb_id)
         if len(seasons) == 1:
-            job.detected_season = 1
+            job.detected_season = seasons[0]
             await session.commit()
             return False
         # "select a season" is a frontend contract: the dashboard keys the

@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { IcoTv, IcoError } from '../app/components/icons';
 import type { Job } from '../types';
 import { SvPanel, SvLabel, sv } from '../app/components/synapse';
+import { EPISODE_CONFIG } from '../config/constants';
 
 interface SeasonPromptModalProps {
     job: Job;
@@ -10,8 +11,6 @@ interface SeasonPromptModalProps {
     onSubmit: (season?: number) => void;
     onCancel: () => void;
 }
-
-const FALLBACK_SEASON_COUNT = 15;
 
 /**
  * Insert-time season prompt (#370): a disc labeled by disc number only
@@ -178,7 +177,7 @@ export default function SeasonPromptModal({ job, onSubmit, onCancel }: SeasonPro
                                 }}
                             >
                                 {Array.from(
-                                    { length: seasonCount ?? FALLBACK_SEASON_COUNT },
+                                    { length: seasonCount ?? EPISODE_CONFIG.FALLBACK_SEASON_COUNT },
                                     (_, i) => i + 1,
                                 ).map((s) => (
                                     <option key={s} value={s}>

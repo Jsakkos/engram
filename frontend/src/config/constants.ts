@@ -48,6 +48,8 @@ export const UI_CONFIG = {
 export const EPISODE_CONFIG = {
   /** Default number of episodes per season (for initial state) */
   DEFAULT_EPISODES_PER_SEASON: 24,
+  /** Season options offered when the show's real season count is unavailable (#370) */
+  FALLBACK_SEASON_COUNT: 15,
   /** Minimum episode count for validation */
   MIN_EPISODE_COUNT: 3,
   /** Maximum episode count for validation */

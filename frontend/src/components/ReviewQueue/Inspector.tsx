@@ -3,7 +3,7 @@ import { Trash2, SkipForward } from 'lucide-react';
 import { IcoRetry } from '../../app/components/icons';
 import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../app/components/synapse';
 import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
-import type { DiscTitle, Job } from '../../types';
+import type { DiscTitle } from '../../types';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
 import type { LLMFeedback } from './llmFeedback';
@@ -32,7 +32,6 @@ function pct(value: number): string {
  */
 export function Inspector({
     title,
-    job: _job,
     candidates,
     suggestion,
     selection,
@@ -54,7 +53,6 @@ export function Inspector({
     onAcceptLLMSuggestion,
 }: {
     title: DiscTitle;
-    job: Job;
     candidates: Candidate[];
     suggestion: { code: string; name: string } | null;
     selection: string | undefined;

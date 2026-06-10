@@ -2,7 +2,7 @@ import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Inspector } from './Inspector';
-import type { DiscTitle, Job } from '../../types';
+import type { DiscTitle } from '../../types';
 import type { LLMFeedback } from './llmFeedback';
 
 function makeTitle(overrides: Partial<DiscTitle> = {}): DiscTitle {
@@ -22,25 +22,6 @@ function makeTitle(overrides: Partial<DiscTitle> = {}): DiscTitle {
     };
 }
 
-function makeJob(overrides: Partial<Job> = {}): Job {
-    return {
-        id: 1,
-        drive_id: 'E:',
-        volume_label: 'SHOW_S1D1',
-        content_type: 'tv',
-        state: 'review_needed',
-        current_speed: '',
-        eta_seconds: 0,
-        progress_percent: 0,
-        current_title: 0,
-        total_titles: 0,
-        error_message: null,
-        detected_title: 'Show',
-        detected_season: 1,
-        ...overrides,
-    };
-}
-
 function renderInspector(props: {
     title?: DiscTitle;
     llmFeedback?: LLMFeedback | null;
@@ -51,7 +32,6 @@ function renderInspector(props: {
     return render(
         <Inspector
             title={props.title ?? makeTitle()}
-            job={makeJob()}
             candidates={[]}
             suggestion={null}
             selection={undefined}

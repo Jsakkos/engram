@@ -6,7 +6,7 @@ import { IcoDisc, IcoPlay, IcoRetry } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, titleDisplayName } from './ReviewQueue/utils';
-import { MATCHING_CONFIG } from '../config/constants';
+import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -976,7 +976,10 @@ function ReviewQueue() {
                                 }}
                             >
                                 <option value="">Pick season&#8230;</option>
-                                {Array.from({ length: roster?.season_count ?? 10 }, (_, i) => i + 1).map(
+                                {Array.from(
+                                    { length: roster?.season_count ?? EPISODE_CONFIG.FALLBACK_SEASON_COUNT },
+                                    (_, i) => i + 1,
+                                ).map(
                                     (s) => (
                                         <option key={s} value={s}>
                                             {`Season ${String(s).padStart(2, '0')}`}
@@ -1157,7 +1160,6 @@ function ReviewQueue() {
                         {selectedTitle ? (
                             <Inspector
                                 title={selectedTitle}
-                                job={job}
                                 candidates={candidates}
                                 suggestion={inspectorSuggestion}
                                 selection={selectedEpisodes[selectedTitle.id]}
