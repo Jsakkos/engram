@@ -2,6 +2,7 @@ import { Job, DiscTitle, TitleState as BackendTitleState } from './index';
 import { DiscData, Track, TrackState, DiscState, MediaType, MatchCandidate } from '../app/components/DiscCard';
 import { formatDurationLongFloored } from '../utils/formatting';
 import { getRerippableStateFromTitle } from '../components/ReviewQueue/rerip';
+import { classifyPromptJob } from '../app/promptSelection';
 
 /**
  * Adapter layer to transform backend API types into UI component types
@@ -79,6 +80,11 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     (job.tmdb_id == null ||
       (countCandidates(job.candidates_json) >= 2 && !hasProcessedTitles));
 
+  // Which identify prompt this disc should surface (name / season), if any.
+  // Only meaningful while in review; the card + compact row turn this into the
+  // "Name this disc" / "Select season" CTA that opens the prompt on demand (P13).
+  const promptKind = job.state === 'review_needed' ? classifyPromptJob(job) : null;
+
   return {
     id: job.id.toString(),
     title: job.detected_title || job.volume_label,
@@ -97,6 +103,7 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     subtitleError: job.subtitle_error_message || undefined,
     conflictStatus: job.conflict_status || undefined,
     reviewReason: job.review_reason || undefined,
+    promptKind,
     tmdbDegradedReason: job.tmdb_degraded_reason || undefined,
     identityReview,
     tmdbId: job.tmdb_id ?? null,

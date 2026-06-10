@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscCard, type DiscData } from './DiscCard';
 
@@ -136,6 +136,29 @@ describe('DiscCard — review affordances', () => {
       screen.queryByText(/use "wrong title\?" to pick the correct show/i),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/some pending reason/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('DiscCard — identify CTA (P13 non-modal affordance)', () => {
+  it('renders a labelled CTA that fires onIdentify when provided', () => {
+    const onIdentify = vi.fn();
+    render(
+      <DiscCard
+        disc={makeDisc({ identityReview: true, tracks: [] })}
+        onIdentify={onIdentify}
+        identifyLabel="Name this disc"
+      />,
+    );
+
+    const cta = screen.getByTestId('disccard-identify-cta');
+    expect(cta).toHaveTextContent(/name this disc/i);
+    fireEvent.click(cta);
+    expect(onIdentify).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders no CTA when onIdentify is not provided', () => {
+    render(<DiscCard disc={makeDisc({ identityReview: true, tracks: [] })} />);
+    expect(screen.queryByTestId('disccard-identify-cta')).not.toBeInTheDocument();
   });
 });
 

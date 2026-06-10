@@ -15,19 +15,24 @@ const buttonBase: CSSProperties = {
 /**
  * Compact list view for the dashboard — sv-token row layout that mirrors the
  * SvPanel vocabulary used elsewhere (1px tinted border, sharp corners, mono
- * uppercase headers). Row actions mirror the expanded cards: Review for
- * match reviews, Fix title for identity reviews, Cancel for non-terminal jobs.
+ * uppercase headers). Row actions mirror the expanded cards: Name this disc /
+ * Select season for identify prompts (P13), Review for match reviews, Fix title
+ * for identity reviews, Cancel for non-terminal jobs.
  */
 export function CompactList({
   discs,
   onReview,
   onCancel,
   onReIdentify,
+  onIdentify,
 }: {
   discs: DiscData[];
   onReview: (id: string) => void;
   onCancel: (id: string) => void;
   onReIdentify: (id: string) => void;
+  /** Open the disc's identify prompt (name / season) on demand — the compact
+   *  counterpart to the expanded card's CTA. Shown for discs with a promptKind. */
+  onIdentify?: (id: string) => void;
 }) {
   const colTemplate = "auto auto 1fr 140px 60px auto";
   const stateColor: Partial<Record<DiscData["state"], string>> = {
@@ -207,6 +212,11 @@ export function CompactList({
               </span>
               {/* Actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {onIdentify && disc.promptKind && (
+                  <CompactRowButton color={sv.cyan} onClick={() => onIdentify(disc.id)}>
+                    {disc.promptKind === "season" ? "Select season" : "Name this disc"}
+                  </CompactRowButton>
+                )}
                 {matchReview && (
                   <CompactRowButton color={sv.yellow} onClick={() => onReview(disc.id)}>
                     Review

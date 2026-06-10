@@ -68,4 +68,26 @@ describe('CompactList', () => {
         ]);
         expect(screen.getAllByRole('button', { name: /cancel/i })).toHaveLength(1);
     });
+
+    it('offers "Name this disc" for a name-prompt row and wires it to onIdentify (P13)', () => {
+        const onIdentify = vi.fn();
+        renderList([makeDisc({ id: '1', promptKind: 'name', tracks: [] })], { onIdentify });
+        fireEvent.click(screen.getByRole('button', { name: /name this disc/i }));
+        expect(onIdentify).toHaveBeenCalledWith('1');
+    });
+
+    it('offers "Select season" for a season-prompt row', () => {
+        const onIdentify = vi.fn();
+        renderList(
+            [makeDisc({ id: '1', promptKind: 'season', title: 'Eureka' })],
+            { onIdentify },
+        );
+        fireEvent.click(screen.getByRole('button', { name: /select season/i }));
+        expect(onIdentify).toHaveBeenCalledWith('1');
+    });
+
+    it('shows no identify action when the disc needs no prompt', () => {
+        renderList([makeDisc({ id: '1', promptKind: null })], { onIdentify: vi.fn() });
+        expect(screen.queryByRole('button', { name: /name this disc|select season/i })).not.toBeInTheDocument();
+    });
 });

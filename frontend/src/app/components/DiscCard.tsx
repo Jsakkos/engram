@@ -76,6 +76,11 @@ export interface DiscData {
   startedAt?: string;
   needsReview?: boolean;
   reviewReason?: string;
+  /** Which identify prompt this disc needs before it can proceed, if any —
+   *  'name' (unreadable label) or 'season' (show known, season unknown). Derived
+   *  in the adapter from the review reason; drives the on-card / compact-row
+   *  "Name this disc" / "Select season" CTA (P13). Null when no prompt applies. */
+  promptKind?: 'name' | 'season' | null;
   /** Review is about confirming the disc's IDENTITY (an ambiguous/unconfirmed
    *  show), not assigning episodes. Derived in the adapter from a null tmdb_id
    *  (or a same-name collision with no ripped titles). Drives the on-card hint
@@ -106,6 +111,12 @@ interface DiscCardProps {
   onAdvance?: () => void;
   onReportBug?: () => void;
   onOpenSettings?: () => void;
+  /** Open this disc's identify prompt (name / season) on demand. When set, the
+   *  card renders a prominent CTA — the non-modal affordance that replaces the
+   *  old auto-opening modal for review jobs that aren't the only active one (P13). */
+  onIdentify?: () => void;
+  /** Label for the identify CTA, e.g. "Name this disc" / "Select season". */
+  identifyLabel?: string;
 }
 
 /**
@@ -199,7 +210,7 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onReportBug, onOpenSettings }, ref) => {
+  ({ disc, onCancel, onReview, onReIdentify, onAdvance, onReportBug, onOpenSettings, onIdentify, identifyLabel }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
@@ -427,6 +438,43 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   />
                 </div>
               </div>
+
+              {/* Identify CTA — the non-modal affordance for a disc that needs a
+                  name or season before it can proceed (P13). The prompt no longer
+                  auto-opens over the dashboard when other jobs are active; this
+                  persistent, prominent button is how the user opens it on demand
+                  (and recovers after dismissing it). */}
+              {onIdentify && (
+                <motion.button
+                  type="button"
+                  onClick={onIdentify}
+                  data-testid="disccard-identify-cta"
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    width: "100%",
+                    marginBottom: 16,
+                    padding: "12px 16px",
+                    fontFamily: sv.mono,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: "0.18em",
+                    textTransform: "uppercase",
+                    color: sv.cyanHi,
+                    border: `1px solid ${sv.cyan}`,
+                    background: `${sv.cyan}1f`,
+                    boxShadow: `0 0 16px ${sv.cyan}4d, inset 0 0 8px ${sv.cyan}0d`,
+                    cursor: "pointer",
+                  }}
+                >
+                  <IcoDisc size={14} />
+                  <span>{identifyLabel ?? "Identify disc"} →</span>
+                </motion.button>
+              )}
 
               {/* Ambiguous / unconfirmed identity — the episode review queue can't
                   help until the show is confirmed, so point the user at "Wrong
