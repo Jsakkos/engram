@@ -1086,7 +1086,9 @@ class IdentificationCoordinator:
 
                     config = await get_config()
                     if config.tmdb_api_key:
-                        _signal = classify_from_tmdb(title, config.tmdb_api_key)
+                        _signal = await asyncio.to_thread(
+                            classify_from_tmdb, title, config.tmdb_api_key
+                        )
                         # The key was tried and accepted (no TmdbAuthError) — any
                         # stale "rejected" marker from identify time is now wrong
                         # regardless of whether results were found (#243).
