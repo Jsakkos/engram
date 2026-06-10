@@ -17,6 +17,10 @@ export interface NavItem {
   badge?: number;
   /** Show the route in the nav. Default true. */
   show?: boolean;
+  /** Render as an inert tab (no navigation). */
+  disabled?: boolean;
+  /** Tooltip explaining why the tab is disabled. */
+  disabledHint?: string;
 }
 
 export interface NavState {
@@ -32,8 +36,10 @@ export interface NavState {
  * Build the top-nav items.
  *
  * The REVIEW tab deep-links to the first job awaiting review so the tab lands
- * on real content. When nothing needs review it points at the dashboard — NOT
- * a bare `/review`, which renders nothing (the original black-screen bug).
+ * on real content. When nothing needs review the tab is disabled — NOT linked
+ * to a bare `/review` (which renders nothing, the original black-screen bug)
+ * and NOT to the dashboard (which navigated users away with no explanation
+ * and gave two tabs the same destination).
  */
 export function buildNavItems({
   firstReviewJobId,
@@ -47,6 +53,8 @@ export function buildNavItems({
       to: firstReviewJobId ? reviewPath(firstReviewJobId) : ROUTES.HOME,
       activeWhen: ROUTES.REVIEW,
       badge: reviewCount,
+      disabled: !firstReviewJobId,
+      disabledHint: firstReviewJobId ? undefined : "No jobs awaiting review",
     },
     { label: "HISTORY", to: ROUTES.HISTORY },
     {
