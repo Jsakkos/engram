@@ -9,6 +9,7 @@ import logging
 import requests
 
 from app.core.analyst import _title_tokens
+from app.core.errors import ConfigurationError
 from app.models.disc_job import ContentType
 
 logger = logging.getLogger(__name__)
@@ -17,13 +18,16 @@ TMDB_SEARCH_TV_URL = "https://api.themoviedb.org/3/search/tv"
 TMDB_SEARCH_MOVIE_URL = "https://api.themoviedb.org/3/search/movie"
 
 
-class TmdbAuthError(Exception):
+class TmdbAuthError(ConfigurationError):
     """TMDB rejected the API key (HTTP 401/403).
 
-    Distinct from "no results"/transient failures (which degrade to ``None``):
-    an auth failure means EVERY lookup will fail until the user fixes the key,
-    so callers surface it to the user instead of silently falling back to
-    heuristic-only classification (#243).
+    A rejected key is a configuration problem, so this extends
+    ``ConfigurationError`` (per the ``EngramError`` hierarchy) — ``@handle_errors``
+    and ``except EngramError`` guards catch it. Distinct from "no
+    results"/transient failures (which degrade to ``None``): an auth failure means
+    EVERY lookup will fail until the user fixes the key, so callers surface it to
+    the user instead of silently falling back to heuristic-only classification
+    (#243).
     """
 
 

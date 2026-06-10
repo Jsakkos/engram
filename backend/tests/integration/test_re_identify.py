@@ -138,6 +138,54 @@ async def test_re_identify_clears_stale_candidates(client):
         assert refreshed.candidates_json is None  # stale twins cleared
 
 
+@pytest.mark.asyncio
+async def test_re_identify_clears_stale_degraded_reason_on_empty_but_working_lookup(client):
+    """Fixing a bad key then re-identifying a title with NO TMDB results must
+    clear the stale degraded marker (#243 review).
+
+    classify_from_tmdb returns None for "no results" just as it would have under a
+    rejected key — but here the key WORKS (no TmdbAuthError), so the old
+    "TMDB rejected the API key" banner is now wrong and must be dropped, even
+    though no signal was returned.
+    """
+    from app.core.tmdb_classifier import TMDB_DEGRADED_AUTH_FAILED
+
+    async with async_session() as session:
+        job = DiscJob(
+            volume_label="OBSCURE_DISC",
+            drive_id="E:",
+            state=JobState.REVIEW_NEEDED,
+            content_type=ContentType.TV,
+            detected_title="Obscure Show",
+            detected_season=1,
+            tmdb_degraded_reason=TMDB_DEGRADED_AUTH_FAILED,  # bad key at identify time
+            needs_review=True,
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "k" * 41  # key is now valid
+
+    coordinator = IdentificationCoordinator(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    with (
+        patch(
+            "app.services.config_service.get_config",
+            new_callable=AsyncMock,
+            return_value=mock_config,
+        ),
+        # Key works, but this title has no TMDB results → None (no TmdbAuthError).
+        patch("app.core.tmdb_classifier.classify_from_tmdb", return_value=None),
+    ):
+        await coordinator.re_identify(job_id, "Obscure Show", "tv", season=1)
+
+    async with async_session() as session:
+        refreshed = await session.get(DiscJob, job_id)
+        assert refreshed.tmdb_degraded_reason is None  # stale "rejected" marker cleared
+
+
 async def _create_reident_year_job(tmdb_id=3452, tmdb_year=1993):
     async with async_session() as session:
         job = DiscJob(

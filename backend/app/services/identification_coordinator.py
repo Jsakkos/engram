@@ -647,7 +647,8 @@ class IdentificationCoordinator:
             job.tmdb_degraded_reason = TMDB_DEGRADED_AUTH_FAILED
             logger.warning(
                 f"Job {job.id}: TMDB rejected the API key while resolving "
-                f"'{job.detected_title}', proceeding with null tmdb_id: {e}"
+                f"'{job.detected_title}', proceeding with null tmdb_id: {e}",
+                exc_info=True,
             )
             return None
         except Exception as e:
@@ -1086,21 +1087,22 @@ class IdentificationCoordinator:
                     config = await get_config()
                     if config.tmdb_api_key:
                         _signal = classify_from_tmdb(title, config.tmdb_api_key)
+                        # The key was tried and accepted (no TmdbAuthError) — any
+                        # stale "rejected" marker from identify time is now wrong
+                        # regardless of whether results were found (#243).
+                        job.tmdb_degraded_reason = None
                         if _signal and _signal.tmdb_id:
                             job.tmdb_id = _signal.tmdb_id
                             if _signal.tmdb_name:
                                 job.detected_title = _signal.tmdb_name
-                        if _signal:
-                            # The lookup worked, so any earlier "key absent/rejected"
-                            # marker from identify time is stale — clear it (#243).
-                            job.tmdb_degraded_reason = None
                     else:
                         job.tmdb_degraded_reason = TMDB_DEGRADED_NOT_CONFIGURED
-                except TmdbAuthError:
+                except TmdbAuthError as e:
                     job.tmdb_degraded_reason = TMDB_DEGRADED_AUTH_FAILED
                     logger.warning(
                         f"Job {job_id}: TMDB rejected the API key during re-identify of "
-                        f"'{title}', continuing with user-provided title"
+                        f"'{title}', continuing with user-provided title: {e}",
+                        exc_info=True,
                     )
                 except Exception:
                     logger.warning(
@@ -1201,7 +1203,7 @@ class IdentificationCoordinator:
                 # Bad/expired key — not a transient lookup failure. Remember the
                 # cause so it can be surfaced on the job instead of letting the
                 # fall-through look like "show not found".
-                logger.warning(f"Job {job_id}: {context}: {e}")
+                logger.warning(f"Job {job_id}: {context}: {e}", exc_info=True)
                 tmdb_degraded_reason = TMDB_DEGRADED_AUTH_FAILED
                 return None
             except Exception as e:

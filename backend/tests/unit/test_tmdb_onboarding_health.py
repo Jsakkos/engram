@@ -75,6 +75,14 @@ def _response(status: int) -> Mock:
 class TestClassifierAuthError:
     """401/403 means the key is bad — that must not look like 'show not found'."""
 
+    def test_is_an_engram_configuration_error(self):
+        # Per CLAUDE.md the domain-error hierarchy is rooted at EngramError, so
+        # @handle_errors / `except EngramError` guards catch it (#243 review).
+        from app.core.errors import ConfigurationError, EngramError
+
+        assert issubclass(TmdbAuthError, ConfigurationError)
+        assert issubclass(TmdbAuthError, EngramError)
+
     def test_raises_on_401(self, monkeypatch):
         monkeypatch.setattr(
             "app.core.tmdb_classifier.requests.get", Mock(return_value=_response(401))
