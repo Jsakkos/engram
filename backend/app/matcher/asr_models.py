@@ -482,8 +482,16 @@ def model_output_key(model_config: dict) -> str:
     """Return a stable string identifying the *output-affecting* ASR model configuration.
 
     This key is designed for use as the ``model_key`` component of a persistent
-    transcript-cache lookup (file_key, start_s, duration_s, model_key), ensuring that
-    cached transcripts are only reused when the model would produce identical output.
+    transcript-cache lookup (file_key, start_s, duration_s, model_key).
+
+    **Assumption — caller owns device honesty.** The key is only as accurate as the
+    config it receives.  An explicit ``device="cuda"`` is taken at face value; if the
+    model actually loads on CPU (e.g. the CUDA→CPU fallback in
+    ``FasterWhisperModel.__init__`` when cuDNN libraries are missing), the key will be
+    stale.  Callers that build a config from a raw GPU probe must resolve the *effective*
+    device (via ``set_asr_device`` / ``detect_asr_device()``) before calling this
+    function.  "auto" / None / missing are safe — they are resolved here via
+    ``detect_asr_device()``.
 
     **Included fields** (all change Whisper's output text):
     - ``type`` — model family/architecture (e.g. "whisper", "faster-whisper")

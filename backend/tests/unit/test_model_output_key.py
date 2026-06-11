@@ -115,13 +115,11 @@ class TestModelOutputKeyOutputAffectingFields:
         )
         assert key1 == key2
 
-    def test_cpu_threads_does_not_change_key(self):
-        """cpu_threads is a speed knob, not present in model_config but tested for completeness."""
-        # cpu_threads is resolved inside resolve_asr_runtime, not part of model_config at all.
-        # Both configs below omit it → same key.
-        key1 = model_output_key({"type": "whisper", "name": "small", "device": "cpu"})
-        key2 = model_output_key({"type": "whisper", "name": "small", "device": "cpu"})
-        assert key1 == key2
+    def test_extraneous_keys_are_ignored(self):
+        """Unknown/future config keys must not perturb the cache key (forward-compatible)."""
+        base = {"type": "whisper", "name": "small", "device": "cpu"}
+        key_with_extras = model_output_key({**base, "cpu_threads": 16, "some_future_knob": "x"})
+        assert key_with_extras == model_output_key(base)
 
     def test_compute_type_is_included_in_key(self):
         """Float16 vs int8 changes quantization → output text may differ."""
