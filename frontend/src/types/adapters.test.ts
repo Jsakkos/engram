@@ -95,3 +95,44 @@ describe('transformJobToDiscData — identityReview derivation', () => {
     expect(disc.tmdbYear).toBe(2005);
   });
 });
+
+describe('transformJobToDiscData — promptKind derivation', () => {
+  it("is 'name' for an unreadable label with no detected title", () => {
+    const disc = transformJobToDiscData(
+      makeJob({
+        detected_title: undefined,
+        review_reason: 'Disc label unreadable. Please enter the title to continue.',
+      }),
+      [],
+    );
+    expect(disc.promptKind).toBe('name');
+  });
+
+  it("is 'season' when the show is known but the season is not", () => {
+    const disc = transformJobToDiscData(
+      makeJob({ review_reason: 'Show identified — select a season to continue.' }),
+      [],
+    );
+    expect(disc.promptKind).toBe('season');
+  });
+
+  it('is null when the job is not in review_needed', () => {
+    const disc = transformJobToDiscData(
+      makeJob({
+        state: 'matching',
+        detected_title: undefined,
+        review_reason: 'Disc label unreadable. Please enter the title to continue.',
+      }),
+      [],
+    );
+    expect(disc.promptKind).toBeNull();
+  });
+
+  it('is null for a review job that needs no identify prompt', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ review_reason: 'Low-confidence episode matches need review.' }),
+      [],
+    );
+    expect(disc.promptKind).toBeNull();
+  });
+});

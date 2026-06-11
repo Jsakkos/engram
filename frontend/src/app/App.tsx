@@ -22,7 +22,7 @@ import ContributePage from "../components/ContributePage";
 import { FEATURES } from "../config/constants";
 import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
-import { pruneDismissedIds, selectPromptJobs } from "./promptSelection";
+import { classifyPromptJob, pruneDismissedIds, selectPromptJobs, shouldAutoOpenPrompt } from "./promptSelection";
 import type { Job } from "../types";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -171,6 +171,13 @@ function MainDashboard() {
   // Dismissed prompts (Escape / backdrop click) are remembered so the next jobs
   // refresh doesn't immediately re-open them — dismissal parks the job in review,
   // it does NOT cancel it.
+  //
+  // P13: the modal only AUTO-opens when the candidate is the only active job, so
+  // it never steals focus from a disc the user is watching rip/match. Otherwise
+  // the prompt waits behind the on-card CTA (see the DiscCard `onIdentify` wiring
+  // below). We never auto-CLOSE a modal here just because another job became
+  // active — only a vanished candidate (resolved / dismissed / removed) closes
+  // it — so a manually opened prompt is never yanked shut by a jobs refresh.
   const dismissedPromptIdsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
     pruneDismissedIds(dismissedPromptIdsRef.current, jobs);
@@ -178,8 +185,11 @@ function MainDashboard() {
       jobs,
       dismissedPromptIdsRef.current,
     );
-    setNamePromptJob(needsName);
-    setSeasonPromptJob(needsSeason);
+    if (!needsName) setNamePromptJob(null);
+    else if (shouldAutoOpenPrompt(needsName, jobs)) setNamePromptJob(needsName);
+
+    if (!needsSeason) setSeasonPromptJob(null);
+    else if (shouldAutoOpenPrompt(needsSeason, jobs)) setSeasonPromptJob(needsSeason);
   }, [jobs]);
 
   // Side-rail collapse breakpoint: below ~1100px (snapped half-monitor windows)
@@ -193,6 +203,16 @@ function MainDashboard() {
     reviewCount: reviewJobs.length,
     contributionPending,
   });
+
+  // Open a disc's identify prompt on demand (the card / compact-row CTA). Routes
+  // to the name or season modal by the same matcher the auto-open path uses, so
+  // the manual and automatic openings can never disagree.
+  const openIdentifyPrompt = (id: string) => {
+    const job = jobs.find((j) => String(j.id) === id);
+    if (!job) return;
+    if (classifyPromptJob(job) === 'season') setSeasonPromptJob(job);
+    else setNamePromptJob(job);
+  };
 
   return (
     <SvAtmosphere ripActive={discsData.some((d) => d.state === "ripping")}>
@@ -634,6 +654,7 @@ function MainDashboard() {
               const job = jobs.find((j) => String(j.id) === id);
               if (job) setReIdentifyTarget(job);
             }}
+            onIdentify={openIdentifyPrompt}
           />
         ) : (
           /* Expanded view */
@@ -650,6 +671,11 @@ function MainDashboard() {
                     const job = jobs.find(j => String(j.id) === disc.id);
                     if (job) setReIdentifyTarget(job);
                   } : undefined}
+                  // P13: review jobs needing a name/season get a card CTA that opens
+                  // the prompt on demand (it no longer auto-opens over the dashboard
+                  // while other jobs are active). promptKind comes from the adapter.
+                  onIdentify={disc.promptKind ? () => openIdentifyPrompt(disc.id) : undefined}
+                  identifyLabel={disc.promptKind === 'season' ? 'Select season' : 'Name this disc'}
                   onReportBug={() => setBugReportJobId(Number(disc.id))}
                   onOpenSettings={() => openSettings("tmdb")}
                 />
