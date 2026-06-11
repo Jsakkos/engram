@@ -101,9 +101,16 @@ async def test_drive_removed_unparks_disc(monkeypatch, _isolate, _parked_broadca
 
 @pytest.mark.asyncio
 async def test_resume_parked_discs_replays_insert(monkeypatch, _isolate, _parked_broadcasts):
-    """Completing setup picks up the parked disc — no eject/reinsert needed."""
+    """Completing setup picks up the parked disc — no eject/reinsert needed.
+
+    Resume must NOT re-broadcast a drive_event: clients already saw the insert
+    when the disc was parked; the new job is announced by the IDENTIFYING
+    job_update that identification fires immediately.
+    """
     cfg = _config(False)
     monkeypatch.setattr("app.services.config_service.get_config", AsyncMock(return_value=cfg))
+    drive_broadcasts = AsyncMock()
+    monkeypatch.setattr(jm_mod.event_broadcaster, "broadcast_drive_inserted", drive_broadcasts)
     await job_manager._create_job_for_disc("E:", "INCEPTION_2010")
     assert await _jobs_on_drive("E:") == []
 
@@ -116,6 +123,7 @@ async def test_resume_parked_discs_replays_insert(monkeypatch, _isolate, _parked
     assert jobs[0].volume_label == "INCEPTION_2010"
     assert job_manager.parked_discs == []
     assert _parked_broadcasts[-1] == []
+    drive_broadcasts.assert_not_awaited()
 
 
 @pytest.mark.asyncio

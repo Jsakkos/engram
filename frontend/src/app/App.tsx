@@ -318,12 +318,16 @@ function MainDashboard() {
 
       {/* Parked-disc banner — disc inserted before first-run setup completed (P12).
           The backend holds the pipeline; completing setup releases the disc
-          automatically, so this clears itself (no dismiss). */}
+          automatically, so this clears itself (no dismiss). Rendered conditionally
+          as the direct AnimatePresence child — a child that merely returns null
+          internally never triggers the exit animation. */}
       <AnimatePresence>
-        <ParkedDiscBanner
-          discs={parkedDiscs}
-          onFinishSetup={() => setShowOnboarding(true)}
-        />
+        {parkedDiscs.length > 0 && (
+          <ParkedDiscBanner
+            discs={parkedDiscs}
+            onFinishSetup={() => setShowOnboarding(true)}
+          />
+        )}
       </AnimatePresence>
 
       {/* Platform guidance banner for Linux/macOS users */}

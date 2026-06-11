@@ -482,12 +482,18 @@ class JobManager:
         ]
 
     async def resume_parked_discs(self) -> None:
-        """Replay 'inserted' events for discs parked behind the setup gate.
+        """Start the pipeline for discs parked behind the setup gate.
 
         Called when the setup wizard completes (``PUT /api/config`` with
         ``setup_complete=true``) so a disc already in the drive starts
         processing without an eject/reinsert. No-op when nothing is parked —
         which is every settings save from an already-configured install.
+
+        Calls ``_create_job_for_disc`` directly rather than replaying through
+        ``_on_drive_event``: clients already received the ``drive_event`` when
+        the disc was first inserted (and parked), so re-broadcasting it would
+        be a duplicate. The new job announces itself via the IDENTIFYING
+        ``job_update`` that identification fires immediately.
         """
         if not self._parked_discs:
             return
@@ -496,10 +502,10 @@ class JobManager:
         await event_broadcaster.broadcast_parked_discs(self.parked_discs)
         for drive_letter, volume_label in parked.items():
             try:
-                await self._on_drive_event(drive_letter, "inserted", volume_label)
+                await self._create_job_for_disc(drive_letter, volume_label)
             except Exception:
                 # Parity with the sentinel's _notify backstop: log loudly, keep
-                # replaying the remaining drives.
+                # resuming the remaining drives.
                 logger.error(
                     f"Failed to resume parked disc in {sanitize_log_value(drive_letter)}",
                     exc_info=True,
@@ -548,6 +554,9 @@ class JobManager:
         # completing setup replays the insert via resume_parked_discs(), so no
         # eject/reinsert is needed. Placed before the drive lock and the disc
         # fingerprint probe so an unconfigured install does zero extra disc I/O.
+        # Cost: configured installs now pay one config read per disc insert —
+        # negligible at physical-disc frequency (the body needed the config for
+        # the staging path anyway; it's fetched once here and reused below).
         if not db_config.setup_complete:
             self._parked_discs[drive_letter] = volume_label
             logger.info(
