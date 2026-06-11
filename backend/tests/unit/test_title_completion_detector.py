@@ -90,6 +90,18 @@ class TestForceCompletion:
         completed = d.poll({"t00.mkv": 100, "t01.mkv": 200}, force=True)
         assert completed == [("t00.mkv", 1), ("t01.mkv", 2)]
 
+    def test_force_batch_via_seed_completes_all_with_distinct_ordinals(self):
+        # Realistic process-exit batch: both files were announced via the
+        # 'created' message (seeded at 0) but in-flight detection never fired
+        # (e.g. neither was superseded), so the post-process force poll finalizes
+        # both at once. Each must complete with a distinct sequential ordinal.
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        d.seed("t00.mkv")
+        d.seed("t01.mkv")
+        completed = d.poll({"t00.mkv": 500, "t01.mkv": 300}, force=True)
+        assert completed == [("t00.mkv", 1), ("t01.mkv", 2)]
+        assert d.completed_count == 2
+
 
 class TestInvariants:
     """General invariants preserved from the original stable-size detector."""
