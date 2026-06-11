@@ -128,8 +128,11 @@ def _library_path_for_job(job, content_type: str) -> "Path | None":
 # but keep the matcher's default vote gate so a genuinely-correct match on a
 # hard episode isn't demoted straight to review.
 _CHUNK_DURATION_S = 30  # mirrors EpisodeMatcher.chunk_duration
-_MAX_SCAN_POINTS = 200  # bound runtime even for very long tracks
-_CONFLICT_FIXED_DEPTHS = (25, 50)  # first two tiers; final tier is full coverage
+_MAX_SCAN_POINTS = 200  # bound the RAW count even for very long tracks (realized depth <= 145)
+# First two tiers; the final tier is full coverage floored to the lattice. Tiers
+# must be lattice levels (see canonical_scan_points) so escalation passes share
+# cached transcripts with shallower scans instead of re-transcribing.
+_CONFLICT_FIXED_DEPTHS = (37, 73)
 _EP_CODE_RE = re.compile(r"[Ss](\d+)[Ee](\d+)")
 
 
@@ -210,18 +213,26 @@ def _full_coverage_points(titles) -> int:
 
 
 def _conflict_scan_ladder(titles) -> list[int]:
-    """Strictly-increasing escalation ladder, capped at full coverage.
+    """Strictly-increasing escalation ladder of lattice scan depths.
 
-    For short episodes the fixed tiers already exceed full coverage, so the
-    ladder collapses (e.g. ``[25, 45]``); for long tracks it grows
-    (``[25, 50, 180]``). The last entry is always full coverage — there is no
-    "deeper" to go, which is the natural termination point.
+    Every tier is a canonical lattice level (see ``canonical_scan_points``), so
+    each pass realizes exactly at the requested depth and reuses the cached
+    transcripts of every shallower pass. The final tier is full coverage FLOORED
+    to the lattice — full coverage is a cost ceiling ("scan everything once");
+    snapping UP past it would transcribe overlapping audio for no new evidence.
+    Tiers at or above that ceiling are dropped (capping them would duplicate the
+    final tier's grid), so for short episodes the ladder collapses (e.g. ``[19]``)
+    while long tracks get the full ``[37, 73, 145]``. There is no "deeper" than
+    the last tier, which is the natural termination point.
     """
-    full = _full_coverage_points(titles)
+    # Lazy: keep heavy matcher deps (sklearn/scipy) out of service import.
+    from app.matcher.episode_identification import floor_to_lattice_level
+
+    full_level = floor_to_lattice_level(_full_coverage_points(titles))
     ladder: list[int] = []
-    for depth in (*_CONFLICT_FIXED_DEPTHS, full):
-        depth = min(depth, full)
-        if depth > 1 and (not ladder or depth > ladder[-1]):
+    for depth in (*_CONFLICT_FIXED_DEPTHS, full_level):
+        depth = min(depth, full_level)
+        if not ladder or depth > ladder[-1]:
             ladder.append(depth)
     return ladder
 
@@ -437,7 +448,7 @@ class FinalizationCoordinator:
         ``wrong_show_suspected`` collapses the ladder to a SINGLE full-coverage
         confirming pass (see below) — the caller passes the pre-escalation
         :func:`_detect_wrong_show` verdict so a probable wrong-show disc doesn't
-        burn the whole 25→50→full ladder against the wrong reference corpus.
+        burn the whole 37→73→full ladder against the wrong reference corpus.
 
         Returns ``True`` if a re-match was dispatched (job held in MATCHING; the
         caller should return and let completion re-entry pick it back up).
@@ -456,7 +467,7 @@ class FinalizationCoordinator:
         if wrong_show_suspected:
             # Suspected same-name wrong-show pick: every episode candidate matched
             # nothing AND a same-name twin is persisted. Don't climb the gradual
-            # 25→50→full ladder against a corpus that's probably the wrong show —
+            # 37→73→full ladder against a corpus that's probably the wrong show —
             # that's up to 3 wasted ASR passes. Do ONE full-coverage confirming
             # pass instead: it's the strongest possible evidence, so a still-empty
             # result lets the wrong-show branch fire with confidence, while a
@@ -465,8 +476,12 @@ class FinalizationCoordinator:
             # pass MUST be full coverage — a sparse tier matching nothing cannot
             # distinguish a wrong corpus from a disc that just needed denser
             # sampling, which is exactly the false positive we must avoid.
-            full = _full_coverage_points(review_titles)
-            ladder = [full] if full > 1 else []
+            # Full coverage is a FLOOR here (the pass must see ~everything), unlike the
+            # ladder's cost ceiling — so snap UP to the lattice, never floor down.
+            from app.matcher.episode_identification import snap_to_lattice_level
+
+            full = snap_to_lattice_level(_full_coverage_points(review_titles))
+            ladder = [full]
         else:
             ladder = _conflict_scan_ladder(review_titles)
         last_depth = self._review_passes.get(job_id, 0)

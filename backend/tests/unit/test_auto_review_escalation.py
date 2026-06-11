@@ -98,15 +98,16 @@ class TestReviewEscalation:
         result, status = await _escalate(coord, job_id)
 
         assert result is True
-        assert coord._review_passes[job_id] == 25
-        assert calls and all(np == 25 for _src, np, _mv in calls)
+        assert coord._review_passes[job_id] == 37
+        assert calls and all(np == 37 for _src, np, _mv in calls)
         # Depth-only: vote gate stays default; engram source forced.
         assert all(mv is None for _src, _np, mv in calls)
         assert all(src == "engram" for src, _np, _mv in calls)
-        assert status and "pass 1 of 3" in status
+        assert status and "pass 1 of 2" in status
 
     async def test_escalates_then_exhausts(self):
-        job_id = await _seed_review(duration=3000)  # full coverage = 101
+        # full coverage = 201, capped at 200, floored to lattice level 145.
+        job_id = await _seed_review(duration=6000)
         depths: list[int] = []
 
         async def fake(jid, tid, source_preference=None, num_points=None, min_vote_count=None):
@@ -114,7 +115,7 @@ class TestReviewEscalation:
 
         coord = _coord_with(fake)
 
-        for expected in (25, 50, 101):
+        for expected in (37, 73, 145):
             result, _status = await _escalate(coord, job_id)
             assert result is True
             assert coord._review_passes[job_id] == expected
@@ -123,9 +124,9 @@ class TestReviewEscalation:
         assert result is False
         # Counter must NOT be popped on exhaustion — see
         # test_exhausted_does_not_re_dispatch_on_recheck for why.
-        assert coord._review_passes[job_id] == 101
+        assert coord._review_passes[job_id] == 145
         assert status is None
-        assert {25, 50, 101}.issubset(set(depths))
+        assert {37, 73, 145}.issubset(set(depths))
 
     async def test_exhausted_does_not_re_dispatch_on_recheck(self):
         """After the ladder exhausts on titles still in REVIEW, a subsequent
@@ -134,7 +135,7 @@ class TestReviewEscalation:
         are missing match nothing on every pass; if exhaustion pops the
         counter, the next recheck reads last_depth=0 and starts pass 1 again.
         """
-        job_id = await _seed_review(duration=3000)  # ladder = [25, 50, 101]
+        job_id = await _seed_review(duration=6000)  # ladder = [37, 73, 145]
         depths: list[int] = []
 
         async def fake(jid, tid, source_preference=None, num_points=None, min_vote_count=None):
@@ -259,9 +260,9 @@ class TestReviewEscalation:
     async def test_review_pass_advances_across_no_conflict_reentry(self):
         """A check_job_completion re-entry where conflict-escalate finds nothing
         must NOT wipe review-escalation's pass counter. Otherwise review-escalate
-        always re-dispatches at depth 25 and never advances to 50 / full coverage
+        always re-dispatches at depth 37 and never advances to 73 / full coverage
         — visible as 'one track keeps re-matching forever.'"""
-        job_id = await _seed_review(duration=3000)  # full coverage = 101
+        job_id = await _seed_review(duration=3000)  # ladder = [37, 73]
 
         depths: list[int] = []
 
@@ -276,7 +277,7 @@ class TestReviewEscalation:
         coord = _coord_with(fake_rematch)
         coord._rematch_conflict = fake_conflict
 
-        # First review-escalation pass dispatches at depth 25.
+        # First review-escalation pass dispatches at depth 37.
         async with _unit_session_factory() as session:
             job = await session.get(DiscJob, job_id)
             titles = (
@@ -285,7 +286,7 @@ class TestReviewEscalation:
                 .all()
             )
             assert await coord._maybe_escalate_reviews(session, job, titles) is True
-            assert coord._review_passes[job_id] == 25
+            assert coord._review_passes[job_id] == 37
 
         # Now simulate the next check_job_completion re-entry: conflict-escalate runs
         # first, finds no conflicts (titles are REVIEW, not MATCHED), and bails. That
@@ -299,9 +300,9 @@ class TestReviewEscalation:
             )
             await coord._maybe_escalate_conflicts(session, job, titles)
             # Review pass counter must survive.
-            assert coord._review_passes[job_id] == 25
+            assert coord._review_passes[job_id] == 37
 
-        # Review-escalate fires again — must now escalate to depth 50, not 25.
+        # Review-escalate fires again — must now escalate to depth 73, not 37.
         async with _unit_session_factory() as session:
             job = await session.get(DiscJob, job_id)
             titles = (
@@ -310,9 +311,9 @@ class TestReviewEscalation:
                 .all()
             )
             assert await coord._maybe_escalate_reviews(session, job, titles) is True
-            assert coord._review_passes[job_id] == 50
+            assert coord._review_passes[job_id] == 73
 
-        assert depths == [25, 50]
+        assert depths == [37, 73]
 
     async def test_movie_job_never_escalates(self):
         job_id = await _seed_review(content_type=ContentType.MOVIE)

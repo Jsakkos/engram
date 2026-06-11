@@ -14,9 +14,11 @@ import pytest
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
+from app.matcher.episode_identification import snap_to_lattice_level
 from app.models import DiscJob, DiscTitle
 from app.models.disc_job import ContentType, JobState, TitleState
 from app.services.finalization_coordinator import (
+    _CONFLICT_FIXED_DEPTHS,
     FinalizationCoordinator,
     _conflict_scan_ladder,
     _detect_conflicts,
@@ -98,12 +100,58 @@ class TestConflictHelpers:
         assert _full_coverage_points([_matched("S01E03", duration=0)]) == 200
 
     def test_ladder_collapses_for_short_episodes(self):
-        # 23-min episode: full coverage (47) < the 50 tier, so the ladder is
-        # capped and de-duplicated to two strictly-increasing tiers.
-        assert _conflict_scan_ladder([_matched("S01E03", duration=1380)]) == [25, 47]
+        # 23-min episode: full coverage (47) floors to lattice level 37, which
+        # swallows both fixed tiers → single-pass ladder.
+        assert _conflict_scan_ladder([_matched("S01E03", duration=1380)]) == [37]
 
-    def test_ladder_is_three_tier_for_long_episodes(self):
-        assert _conflict_scan_ladder([_matched("S01E03", duration=3000)]) == [25, 50, 101]
+    def test_ladder_is_two_tier_for_typical_long_episodes(self):
+        # 50-min track: full coverage (101) floors to 73 — the second fixed
+        # tier IS the cost ceiling, so there is no third pass.
+        assert _conflict_scan_ladder([_matched("S01E03", duration=3000)]) == [37, 73]
+
+    def test_ladder_is_three_tier_for_very_long_tracks(self):
+        # full coverage (201) caps at _MAX_SCAN_POINTS (200), floors to 145.
+        assert _conflict_scan_ladder([_matched("S01E03", duration=6000)]) == [37, 73, 145]
+
+
+@pytest.mark.unit
+class TestLadderLatticeAlignment:
+    """The realized ladder — what ``canonical_scan_points`` actually scans for
+    each requested depth — must equal the requested ladder: every tier a lattice
+    level (a fixed point of the snap), strictly increasing with no duplicate
+    effective depths, and the final tier never above the full-coverage point
+    count (cost ceiling). Pre-lattice depths like 25/50 silently snapped UP,
+    collapsing adjacent tiers onto one grid and overshooting full coverage."""
+
+    @pytest.mark.parametrize(
+        "duration",
+        [870, 2520, 7200, 0],
+        ids=["short-full~30", "typical-42min", "long-full>200", "unknown-duration"],
+    )
+    def test_realized_ladder_is_lattice_true(self, duration):
+        titles = [_matched("S01E03", duration=duration)]
+        ladder = _conflict_scan_ladder(titles)
+        assert ladder
+        # Lattice-true: each tier is a fixed point of the snap, so the realized
+        # ladder is identical and no two tiers can collapse onto one grid.
+        assert [snap_to_lattice_level(d) for d in ladder] == ladder
+        # Strictly increasing — no duplicate or decreasing effective depths.
+        assert all(a < b for a, b in zip(ladder, ladder[1:], strict=False))
+        # Cost ceiling: the final tier never overshoots full coverage.
+        assert ladder[-1] <= _full_coverage_points(titles)
+
+    def test_short_episode_ladder_shape(self):
+        # full = ceil(870/30) + 1 = 30 → floor 19; both fixed tiers exceed the
+        # ceiling and drop out.
+        assert _conflict_scan_ladder([_matched("S01E03", duration=870)]) == [19]
+
+    def test_depth_constants_are_lattice_levels(self):
+        """One source of truth: deep-rematch and ladder depth constants must be
+        fixed points of the lattice snap, or requested != realized depth."""
+        from app.services.matching_coordinator import STRICT_SCAN_POINTS
+
+        for depth in (*_CONFLICT_FIXED_DEPTHS, STRICT_SCAN_POINTS):
+            assert snap_to_lattice_level(depth) == depth
 
 
 @pytest.fixture(autouse=True)
@@ -176,14 +224,15 @@ class TestEscalation:
         result, status = await _escalate(coord, job_id)
 
         assert result is True
-        assert coord._conflict_passes[job_id] == 25
-        assert calls and all(np == 25 for np, _mv in calls)
+        assert coord._conflict_passes[job_id] == 37
+        assert calls and all(np == 37 for np, _mv in calls)
         # Depth-only: the vote gate is never raised on the auto path.
         assert all(mv is None for _np, mv in calls)
-        assert status and "pass 1 of 3" in status
+        assert status and "pass 1 of 2" in status
 
-    async def test_escalates_25_50_full_then_exhausts(self):
-        job_id = await _seed_conflict(duration=3000)  # full coverage = 101
+    async def test_escalates_37_73_145_then_exhausts(self):
+        # full coverage = 201, capped at 200, floored to lattice level 145.
+        job_id = await _seed_conflict(duration=6000)
         depths: list[int] = []
 
         async def fake(jid, ep, num_points=None, min_vote_count=None):
@@ -192,7 +241,7 @@ class TestEscalation:
 
         coord = _coord_with(fake)
 
-        for expected in (25, 50, 101):
+        for expected in (37, 73, 145):
             result, _status = await _escalate(coord, job_id)
             assert result is True
             assert coord._conflict_passes[job_id] == expected
@@ -202,15 +251,15 @@ class TestEscalation:
         assert result is False
         # Counter stays at last_depth so a recheck (e.g. unrelated title
         # finishing) sees "exhausted" again and doesn't re-fire pass 1.
-        assert coord._conflict_passes[job_id] == 101
+        assert coord._conflict_passes[job_id] == 145
         assert status is None
-        assert {25, 50, 101}.issubset(set(depths))
+        assert {37, 73, 145}.issubset(set(depths))
 
     async def test_exhausted_does_not_re_dispatch_on_recheck(self):
         """After exhaustion, a re-entry from check_job_completion must NOT
         re-fire pass 1 — that loops forever on conflicts that depth alone
         can't break."""
-        job_id = await _seed_conflict(duration=3000)
+        job_id = await _seed_conflict(duration=6000)  # ladder = [37, 73, 145]
         depths: list[int] = []
 
         async def fake(jid, ep, num_points=None, min_vote_count=None):
@@ -399,7 +448,7 @@ class TestEscalation:
             await session.commit()
 
         coord = _coord_with(None)
-        coord._conflict_passes[job_id] = 25
+        coord._conflict_passes[job_id] = 37
 
         await coord.on_terminal_clear_conflicts(job_id, JobState.FAILED)
 
@@ -441,6 +490,6 @@ class TestEscalation:
 
     async def test_reset_conflict_passes(self):
         coord = _coord_with(None)
-        coord._conflict_passes[42] = 50
+        coord._conflict_passes[42] = 73
         coord.reset_conflict_passes(42)
         assert 42 not in coord._conflict_passes

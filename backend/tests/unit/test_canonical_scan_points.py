@@ -7,7 +7,11 @@ gets full reuse between a 10-point scan and a deeper re-match.
 
 import pytest
 
-from app.matcher.episode_identification import canonical_scan_points
+from app.matcher.episode_identification import (
+    canonical_scan_points,
+    floor_to_lattice_level,
+    snap_to_lattice_level,
+)
 
 SKIP_INITIAL = 90
 LEVELS = (10, 19, 37, 73, 145)
@@ -40,6 +44,30 @@ class TestSubsetProperty:
         deep = canonical_scan_points(2643.7, skip_initial=SKIP_INITIAL, num_points=145)
         assert shallow  # sanity: not vacuous
         assert set(shallow) <= set(deep)
+
+
+class TestLatticeLevelHelpers:
+    """snap_to_lattice_level / floor_to_lattice_level — the single source of
+    truth for how requested depths map onto the lattice."""
+
+    @pytest.mark.parametrize(
+        ("requested", "expected"),
+        [(None, 10), (0, 10), (1, 10), (2, 10), (10, 10), (11, 19), (25, 37), (146, 145)],
+    )
+    def test_snap_up(self, requested, expected):
+        assert snap_to_lattice_level(requested) == expected
+
+    @pytest.mark.parametrize(
+        ("requested", "expected"),
+        [(5, 10), (10, 10), (18, 10), (19, 19), (30, 19), (47, 37), (101, 73), (200, 145)],
+    )
+    def test_floor_down(self, requested, expected):
+        assert floor_to_lattice_level(requested) == expected
+
+    @pytest.mark.parametrize("level", LEVELS)
+    def test_levels_are_fixed_points_of_both(self, level):
+        assert snap_to_lattice_level(level) == level
+        assert floor_to_lattice_level(level) == level
 
 
 class TestSnapping:

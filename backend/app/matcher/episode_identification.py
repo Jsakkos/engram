@@ -30,6 +30,37 @@ console = Console()
 _SCAN_LATTICE_LEVELS = (10, 19, 37, 73, 145)
 
 
+def snap_to_lattice_level(num_points) -> int:
+    """Smallest lattice level >= ``num_points``, capped at the deepest (145).
+
+    The single source of truth for how a requested scan depth realizes on the
+    lattice: ``canonical_scan_points`` snaps through here, and depth constants
+    elsewhere (deep re-match, conflict-escalation ladder) are validated against
+    it so requested and realized depths can't drift. ``None`` or < 2 means the
+    default shallow scan (10).
+    """
+    if not num_points or num_points < 2:
+        num_points = 10
+    return next(
+        (lvl for lvl in _SCAN_LATTICE_LEVELS if lvl >= num_points), _SCAN_LATTICE_LEVELS[-1]
+    )
+
+
+def floor_to_lattice_level(num_points) -> int:
+    """Largest lattice level <= ``num_points``, never below the base level (10).
+
+    The cost-ceiling counterpart of :func:`snap_to_lattice_level`: use it when a
+    depth budget (e.g. "enough points for ~full coverage") must not be overshot —
+    snapping UP past the budget would transcribe overlapping audio for no new
+    evidence. Below the base level the matcher can't scan any shallower, so 10 is
+    returned (``canonical_scan_points`` dedups colliding points on short files).
+    """
+    for lvl in reversed(_SCAN_LATTICE_LEVELS):
+        if lvl <= num_points:
+            return lvl
+    return _SCAN_LATTICE_LEVELS[0]
+
+
 def canonical_scan_points(
     video_duration,
     *,
@@ -55,9 +86,7 @@ def canonical_scan_points(
     are never negative, and adjacent lattice points that collide after floor
     division on short files are deduplicated.
     """
-    if not num_points or num_points < 2:
-        num_points = 10
-    n = next((lvl for lvl in _SCAN_LATTICE_LEVELS if lvl >= num_points), _SCAN_LATTICE_LEVELS[-1])
+    n = snap_to_lattice_level(num_points)
 
     skip_initial = max(int(skip_initial), 0)
     available = int(video_duration) - skip_initial - int(skip_final)

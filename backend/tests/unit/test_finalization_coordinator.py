@@ -13,6 +13,7 @@ import pytest
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
+from app.matcher.episode_identification import snap_to_lattice_level
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.finalization_coordinator import (
@@ -557,7 +558,7 @@ class TestCheckJobCompletion:
 
         # Escalation dispatched a re-match, so finalization is deferred.
         coord.finalize_disc_job.assert_not_called()
-        assert coord._conflict_passes.get(job_id) == 25
+        assert coord._conflict_passes.get(job_id) == 37
 
 
 @pytest.mark.unit
@@ -720,7 +721,7 @@ class TestWrongShowRoutingInCompletion:
     async def test_true_wrong_show_does_single_full_pass_not_three(self, tmp_path):
         # A genuine same-name wrong-show disc: every selected episode candidate
         # matched NOTHING (wrong reference corpus) and a same-name twin is
-        # persisted. The old flow burned the whole 25→50→full review-escalation
+        # persisted. The old flow burned the whole 37→73→full review-escalation
         # ladder against that wrong corpus before the wrong-show branch fired —
         # up to 3 wasted ASR passes. The new flow does ONE decisive full-coverage
         # confirming pass; if it STILL matches nothing, wrong-show fires.
@@ -732,10 +733,11 @@ class TestWrongShowRoutingInCompletion:
             staging=str(tmp_path),
             tmdb_id=3452,
             candidates_json=FRASIER_CANDS,
-            duration=3000,  # full coverage = 101 scan points, distinct from 25/50
+            duration=3000,  # raw full = 101; snapped UP to lattice = 145, distinct from 37/73
         )
         _, seeded = await _load(job_id)
-        full = _full_coverage_points(list(seeded.values()))
+        # snap UP (coverage floor — pass must see ~everything).
+        full = snap_to_lattice_level(_full_coverage_points(list(seeded.values())))
 
         depths: list[int] = []
 
@@ -751,7 +753,7 @@ class TestWrongShowRoutingInCompletion:
         coord._rematch_title = fake_rematch
 
         # Pass 1: a single full-coverage confirming dispatch, NOT the shallow
-        # 25/50 tiers the old ladder would have wasted first.
+        # 37/73 tiers the ladder would have wasted first.
         async with _unit_session_factory() as session:
             await coord.check_job_completion(session, job_id)
         job, _ = await _load(job_id)
@@ -767,7 +769,7 @@ class TestWrongShowRoutingInCompletion:
         assert "re-identify" in job.review_reason.lower()
         # No further escalation, and never the wasteful shallow tiers.
         assert depths == [full, full]
-        assert 25 not in depths and 50 not in depths
+        assert 37 not in depths and 73 not in depths
         coord.finalize_disc_job.assert_not_called()
 
     async def test_legit_hard_twin_disc_resolves_on_confirming_pass(self, tmp_path):
@@ -788,7 +790,8 @@ class TestWrongShowRoutingInCompletion:
             duration=3000,
         )
         _, seeded = await _load(job_id)
-        full = _full_coverage_points(list(seeded.values()))
+        # snap UP (coverage floor — pass must see ~everything).
+        full = snap_to_lattice_level(_full_coverage_points(list(seeded.values())))
 
         depths: list[int] = []
 
@@ -830,7 +833,7 @@ class TestWrongShowRoutingInCompletion:
         # It got exactly its one deep pass — never re-escalated, never the
         # shallow tiers.
         assert depths == [full, full]
-        assert 25 not in depths and 50 not in depths
+        assert 37 not in depths and 73 not in depths
         assert all(t.state == TitleState.MATCHED for t in titles.values())
 
 
