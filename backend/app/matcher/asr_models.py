@@ -478,6 +478,59 @@ class FasterWhisperModel(ASRModel):
                     logger.debug(f"Failed to clean up preprocessed audio: {e}")
 
 
+def model_output_key(model_config: dict) -> str:
+    """Return a stable string identifying the *output-affecting* ASR model configuration.
+
+    This key is designed for use as the ``model_key`` component of a persistent
+    transcript-cache lookup (file_key, start_s, duration_s, model_key), ensuring that
+    cached transcripts are only reused when the model would produce identical output.
+
+    **Included fields** (all change Whisper's output text):
+    - ``type`` — model family/architecture (e.g. "whisper", "faster-whisper")
+    - ``name`` — model size/checkpoint (e.g. "small", "large-v3"); different sizes have
+      different vocabularies, encoder capacities, and word-error rates.
+    - ``device`` — resolved effective device ("cpu" or "cuda"). Transcripts produced on
+      CUDA with float16 differ from CPU int8 transcripts due to floating-point rounding.
+      An unresolved value ("auto", None, or missing) is resolved via ``detect_asr_device()``
+      so the key reflects the actual runtime, not the config placeholder.
+    - ``compute_type`` — quantization scheme (e.g. "int8", "float16", "int8_float16").
+      Quantization changes numeric precision throughout the encoder, directly affecting
+      transcription output.  Derived from ``device`` via ``cuda_compute_type()`` /
+      the fixed CPU value "int8".
+
+    **Excluded fields** (affect only speed/parallelism, not transcript content):
+    - ``requested_workers`` / ``num_workers`` — controls how many parallel transcription
+      streams the WhisperModel object runs; does not change what any individual stream
+      produces.
+    - ``cpu_threads`` — thread-pool size for BLAS ops inside CTranslate2; same model
+      weights, same output.
+
+    Returns:
+        ``"{type}_{name}_{device}_{compute_type}"`` — underscore-joined, deterministic
+        across process restarts for the same effective configuration.
+    """
+    model_type = model_config.get("type", "")
+    model_name = model_config.get("name", "")
+
+    # Resolve the effective device: honor explicit "cpu"/"cuda", fall back to the
+    # startup-pinned value for "auto", None, or missing so that a config placeholder
+    # never produces a key that disagrees with the actual runtime.
+    raw_device = model_config.get("device")
+    if raw_device in ("cpu", "cuda"):
+        device = raw_device
+    else:
+        device = detect_asr_device()
+
+    # Derive compute_type from the resolved device, matching the logic in
+    # FasterWhisperModel._get_compute_type() and resolve_asr_runtime().
+    if device == "cuda":
+        compute_type = cuda_compute_type()
+    else:
+        compute_type = "int8"
+
+    return f"{model_type}_{model_name}_{device}_{compute_type}"
+
+
 def create_asr_model(model_config: dict) -> ASRModel:
     """
     Factory function to create ASR models from configuration.
