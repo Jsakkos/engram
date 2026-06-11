@@ -18,9 +18,15 @@ const API = 'http://localhost:8001';
 
 async function openSettingsPreferences(page: import('@playwright/test').Page) {
     await page.locator('[data-testid="sv-settings-btn"]').click();
-    await expect(page.getByText('Preferences')).toBeVisible({ timeout: 5000 });
-    // In settings mode all tabs are clickable; jump straight to Preferences (step 5).
-    await page.getByRole('button', { name: /Step 5: Preferences/i }).click();
+    await expect(page.getByRole('heading', { level: 2, name: 'Settings' })).toBeVisible({ timeout: 5000 });
+    // Wait for config to load before navigating — the shared E2E backend can stall
+    // briefly on startup work, leaving the body on "Loading configuration…".
+    await expect(page.locator('.wizard-loading')).not.toBeVisible({ timeout: 10000 });
+    // Settings opens with a section sidebar; jump straight to the Preferences section.
+    await page
+        .getByRole('navigation', { name: 'Settings sections' })
+        .getByRole('button', { name: 'Preferences' })
+        .click();
     await expect(page.getByText(/processed locally on this machine/i)).toBeVisible({
         timeout: 3000,
     });

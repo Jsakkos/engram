@@ -77,11 +77,17 @@ interface AcceptBody {
     }>;
 }
 
-/** Open the Settings modal and land on the Data Sharing tab (step 4). */
+/** Open the Settings modal and land on the Data Sharing section. */
 async function openSettingsDataSharing(page: Page) {
     await page.locator('[data-testid="sv-settings-btn"]').click();
-    await expect(page.getByText('Data Sharing')).toBeVisible({ timeout: 5000 });
-    await page.getByRole('button', { name: /Step 4: Data Sharing/i }).click();
+    await expect(page.getByRole('heading', { level: 2, name: 'Settings' })).toBeVisible({ timeout: 5000 });
+    // Wait for config to load before navigating — the shared E2E backend can stall
+    // briefly on startup work, leaving the body on "Loading configuration…".
+    await expect(page.locator('.wizard-loading')).not.toBeVisible({ timeout: 10000 });
+    await page
+        .getByRole('navigation', { name: 'Settings sections' })
+        .getByRole('button', { name: 'Data Sharing' })
+        .click();
     await expect(page.getByText(/governs data that leaves your machine/i)).toBeVisible({ timeout: 3000 });
 }
 

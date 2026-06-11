@@ -247,7 +247,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         if (isOnboardingMode) {
             await page.locator('.btn-primary').click();
         } else {
-            await page.locator('[aria-label*="Step 2:"]').click();
+            await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Tools & License' }).click();
         }
         await expect(page.locator('.step-title').first()).toContainText('Tools', { timeout: 5000 });
 
@@ -258,7 +258,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         if (isOnboardingMode) {
             await page.locator('.btn-primary').click();
         } else {
-            await page.locator('[aria-label*="Step 3:"]').click();
+            await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Metadata & Subtitles' }).click();
         }
         await expect(page.locator('.step-title').first()).toContainText('TMDB', { timeout: 5000 });
 
@@ -269,7 +269,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         if (isOnboardingMode) {
             await page.locator('.btn-primary').click();
         } else {
-            await page.locator('[aria-label*="Step 4:"]').click();
+            await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Data Sharing' }).click();
         }
         await expect(page.locator('.step-title').first()).toContainText('Data Sharing', { timeout: 5000 });
 
@@ -280,7 +280,7 @@ test.describe('Screenshot Workflow - Captures every major UI state', () => {
         if (isOnboardingMode) {
             await page.locator('.btn-primary').click();
         } else {
-            await page.locator('[aria-label*="Step 5:"]').click();
+            await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Preferences' }).click();
         }
         await expect(page.locator('.step-title').first()).toContainText('Preferences', { timeout: 5000 });
 

@@ -16,11 +16,17 @@ import { test, expect } from '@playwright/test';
 async function openSettingsDataSharing(page: import('@playwright/test').Page) {
     // Open the Settings modal
     await page.locator('[data-testid="sv-settings-btn"]').click();
-    // ConfigWizard should be visible — wait for the modal heading
-    await expect(page.getByText('Data Sharing')).toBeVisible({ timeout: 5000 });
-    // Navigate to the Data Sharing tab (step 4) — in settings mode all tabs are clickable
-    await page.getByRole('button', { name: /Step 4: Data Sharing/i }).click();
-    // Confirm we're on the right step
+    // Settings opens with a section sidebar — wait for the modal heading…
+    await expect(page.getByRole('heading', { level: 2, name: 'Settings' })).toBeVisible({ timeout: 5000 });
+    // …and for config to finish loading (the shared E2E backend can stall briefly
+    // on startup work, leaving the body on "Loading configuration…")…
+    await expect(page.locator('.wizard-loading')).not.toBeVisible({ timeout: 10000 });
+    // …then jump to the Data Sharing section via the sidebar nav.
+    await page
+        .getByRole('navigation', { name: 'Settings sections' })
+        .getByRole('button', { name: 'Data Sharing' })
+        .click();
+    // Confirm we're on the right section
     await expect(page.getByText(/governs data that leaves your machine/i)).toBeVisible({ timeout: 3000 });
 }
 
