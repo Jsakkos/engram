@@ -298,6 +298,51 @@ class TestConfigEndpoints:
         config = (await client.get("/api/config")).json()
         assert config["ai_episode_matching_enabled"] is True
 
+    async def test_pretranscription_flags_default_on_and_off(self, client):
+        """GET must expose both prewarmer flags with their defaults.
+
+        The master switch ships enabled; the expensive full-file option ships
+        disabled. If either is missing from ConfigResponse the prewarmer
+        becomes uncontrollable from the UI (the PR #283 bug class).
+        """
+        await _seed_config()
+        config = (await client.get("/api/config")).json()
+        assert config["enable_background_pretranscription"] is True
+        assert config["pretranscribe_full_file"] is False
+
+    async def test_pretranscription_flags_roundtrip(self, client):
+        """PUT must persist each prewarmer flag and read it back."""
+        await _seed_config()
+        r = await client.put(
+            "/api/config",
+            json={
+                "enable_background_pretranscription": False,
+                "pretranscribe_full_file": True,
+            },
+        )
+        assert r.status_code == 200
+        config = (await client.get("/api/config")).json()
+        assert config["enable_background_pretranscription"] is False
+        assert config["pretranscribe_full_file"] is True
+
+    async def test_pretranscription_flags_unrelated_put_leaves_unchanged(self, client):
+        """A PUT that omits both flags must not reset them to defaults."""
+        await _seed_config()
+        r = await client.put(
+            "/api/config",
+            json={
+                "enable_background_pretranscription": False,
+                "pretranscribe_full_file": True,
+            },
+        )
+        assert r.status_code == 200
+        # Unrelated update — neither flag in the payload.
+        r = await client.put("/api/config", json={"staging_path": "/some/where"})
+        assert r.status_code == 200
+        config = (await client.get("/api/config")).json()
+        assert config["enable_background_pretranscription"] is False
+        assert config["pretranscribe_full_file"] is True
+
 
 # ---------------------------------------------------------------------------
 # Network info

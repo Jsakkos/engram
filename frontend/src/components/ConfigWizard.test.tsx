@@ -163,3 +163,30 @@ describe('ConfigWizard — deep-linking (M2)', () => {
         expect(screen.queryByText('Max Concurrent Matches')).not.toBeInTheDocument();
     });
 });
+
+describe('ConfigWizard — background pre-transcription toggles', () => {
+    it('renders both toggles with defaults and sends the flipped value on save', async () => {
+        const onComplete = vi.fn();
+        render(<ConfigWizard {...noop} onComplete={onComplete} isOnboarding={false} initialSection="preferences" />);
+
+        // Master switch ships enabled; the expensive full-file option ships off.
+        const master = await screen.findByRole('checkbox', { name: /background pre-transcription/i });
+        expect(master).toBeChecked();
+        const fullFile = screen.getByRole('checkbox', { name: /pre-transcribe entire files/i });
+        expect(fullFile).not.toBeChecked();
+
+        // Disabling the master switch hides the dependent full-file option.
+        fireEvent.click(master);
+        expect(screen.queryByRole('checkbox', { name: /pre-transcribe entire files/i })).not.toBeInTheDocument();
+
+        // The flipped value reaches the PUT payload (three-way sync, frontend leg).
+        fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+        await waitFor(() => expect(onComplete).toHaveBeenCalled());
+        const putCall = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.find(
+            (c) => c[1]?.method === 'PUT',
+        );
+        const body = JSON.parse(putCall?.[1]?.body as string);
+        expect(body.enable_background_pretranscription).toBe(false);
+        expect(body.pretranscribe_full_file).toBe(false);
+    });
+});
