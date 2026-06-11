@@ -1346,7 +1346,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span className="checkbox-text">
                                     <strong>Background Pre-Transcription</strong>
                                     <span className="checkbox-hint">
-                                        While a job waits in the review queue, transcribe its unresolved tracks in the background so re-matching after your review is near-instant. Uses idle CPU/GPU time; transcripts are cached locally.
+                                        While a job waits in the review queue, transcribe its unresolved tracks in the background so re-matching after your review is near-instant. Runs in the background while jobs wait for your review; transcripts are cached locally.
                                     </span>
                                 </span>
                             </label>
@@ -1363,7 +1363,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                     <span className="checkbox-text">
                                         <strong>Pre-Transcribe Entire Files</strong>
                                         <span className="checkbox-hint">
-                                            Also transcribe each unresolved track end-to-end, not just the scan points. Expensive (roughly 5&ndash;10 minutes of GPU time per file) &mdash; worth it if your GPU sits idle and matches often fall back to full-file transcription.
+                                            Also transcribe each unresolved track end-to-end, not just short samples. Expensive (roughly 5&ndash;10 minutes of GPU time per file, substantially longer on CPU) &mdash; worth it when matches often fall back to full-file transcription.
                                         </span>
                                     </span>
                                 </label>

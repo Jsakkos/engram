@@ -1,4 +1,12 @@
-"""add_pretranscription_flags
+"""Add app_config pre-transcription flags
+
+Adds two boolean columns to app_config: enable_background_pretranscription
+(master switch, default ON — transcribe unresolved tracks while a job waits in
+review so re-matching is near-instant) and pretranscribe_full_file (default OFF —
+also transcribe each track end-to-end, not just short scan-point samples; useful
+when full-file fallbacks are common but expensive). Frozen builds skip Alembic
+entirely and converge via database.py::_add_missing_columns(), which honours the
+same server defaults — the two paths must stay in agreement.
 
 Revision ID: 37a6eb38baeb
 Revises: e7a2b9c4d1f8

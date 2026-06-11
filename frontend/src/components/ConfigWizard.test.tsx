@@ -189,4 +189,45 @@ describe('ConfigWizard — background pre-transcription toggles', () => {
         expect(body.enable_background_pretranscription).toBe(false);
         expect(body.pretranscribe_full_file).toBe(false);
     });
+
+    it('reads snake_case GET fields and does not fall back to defaults when values are present', async () => {
+        // Verifies the camelCase←snake_case GET mapping: a typo in the reader key would
+        // let the ?? fallback silently paper over the bug and this test would fail.
+        mockApi({ enable_background_pretranscription: false, pretranscribe_full_file: true });
+        const onComplete = vi.fn();
+        render(<ConfigWizard {...noop} onComplete={onComplete} isOnboarding={false} initialSection="preferences" />);
+
+        // Master off — GET value (false) must win over the ?? true default.
+        const master = await screen.findByRole('checkbox', { name: /background pre-transcription/i });
+        expect(master).not.toBeChecked();
+
+        // Sub-toggle is hidden while master is off; re-enable master to reveal it.
+        fireEvent.click(master);
+        const fullFile = await screen.findByRole('checkbox', { name: /pre-transcribe entire files/i });
+        // GET value (true) must win over the ?? false default — not just the default.
+        expect(fullFile).toBeChecked();
+    });
+
+    it('sends pretranscribe_full_file=true in PUT when sub-toggle is explicitly enabled', async () => {
+        // Pins the non-default value on the PUT leg (camelCase→snake_case serialisation).
+        const onComplete = vi.fn();
+        render(<ConfigWizard {...noop} onComplete={onComplete} isOnboarding={false} initialSection="preferences" />);
+
+        // Master is on by default; turn on the sub-toggle (ships off).
+        await screen.findByRole('checkbox', { name: /background pre-transcription/i });
+        const fullFile = screen.getByRole('checkbox', { name: /pre-transcribe entire files/i });
+        expect(fullFile).not.toBeChecked();
+        fireEvent.click(fullFile);
+        expect(fullFile).toBeChecked();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+        await waitFor(() => expect(onComplete).toHaveBeenCalled());
+        const putCall = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.find(
+            (c) => c[1]?.method === 'PUT',
+        );
+        const body = JSON.parse(putCall?.[1]?.body as string);
+        // Both fields sent; sub-toggle carries non-default true value.
+        expect(body.enable_background_pretranscription).toBe(true);
+        expect(body.pretranscribe_full_file).toBe(true);
+    });
 });
