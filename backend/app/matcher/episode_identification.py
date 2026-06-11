@@ -9,7 +9,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import chardet
-import ctranslate2
 import numpy as np
 from loguru import logger
 from rich.console import Console
@@ -18,7 +17,8 @@ from scipy.sparse import vstack as scipy_vstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
-from app.matcher.asr_models import get_cached_model
+from app.matcher import transcript_store
+from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
@@ -958,7 +958,12 @@ class EpisodeMatcher:
         )
         self.model_name = model_name
         self.requested_workers = max(1, int(requested_workers or 1))
-        self.device = device or ("cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu")
+        # Effective startup-pinned device (set_asr_device), NOT the raw GPU probe:
+        # probing ctranslate2 directly here claimed "cuda" even when the user had
+        # disabled GPU ASR, which would poison _model_config() — and through it the
+        # persistent transcript-cache model_key (claiming cuda/float16 for output
+        # actually produced on cpu/int8).
+        self.device = device or detect_asr_device()
         self.temp_dir = Path(tempfile.gettempdir()) / "whisper_chunks"
         self.temp_dir.mkdir(exist_ok=True)
         # Initialize subtitle cache
@@ -1039,6 +1044,77 @@ class EpisodeMatcher:
         if len(self.transcriptions) >= self._max_transcription_cache:
             self.transcriptions.clear()
         self.transcriptions[key] = text
+
+    def _model_key_for(self, model) -> str:
+        """L2 transcript-cache model identity, preferring the LOADED model's device.
+
+        ``FasterWhisperModel.load()`` can silently fall back CUDA→CPU when the math
+        libraries are missing; deriving the key from the loaded object's post-load
+        ``device`` means a persisted key can't claim cuda/float16 for output that
+        was actually produced on cpu/int8. Model objects that don't expose a
+        resolved device (e.g. test fakes) fall back to ``_model_config()``, whose
+        device is the startup-pinned effective value (see __init__).
+        """
+        config = self._model_config()
+        loaded_device = getattr(model, "device", None)
+        if loaded_device in ("cpu", "cuda"):
+            config["device"] = loaded_device
+        return model_output_key(config)
+
+    def transcribe_chunk_cached(
+        self,
+        video_file,
+        start_time,
+        chunk_len,
+        model,
+        *,
+        file_key=None,
+        model_key=None,
+        temp_files=None,
+    ) -> str:
+        """Transcribe one chunk through the layered cache: L1 dict → L2 SQLite → Whisper.
+
+        On an L1/L2 hit no wav is extracted, so nothing is appended to
+        ``temp_files`` (same as the historical L1-hit path); on compute the
+        extracted wav IS appended (before transcription, so cleanup happens even
+        if Whisper raises) and the text is written through to BOTH layers so it
+        survives process restarts and re-matches.
+
+        ``file_key``/``model_key`` may be precomputed by the caller (one stat +
+        one key derivation per identify_episode call, reused across offsets);
+        when absent they are derived here so direct callers stay correct.
+        ``transcript_store`` is fail-safe — a broken cache degrades to "just
+        transcribe again", never into a matching error.
+        """
+        chunk_key = self._transcription_key(video_file, start_time, chunk_len)
+        # L1: in-memory memo (persists across identify_episode calls).
+        text = self.transcriptions.get(chunk_key)
+        if text is not None:
+            return text
+
+        if file_key is None:
+            file_key = transcript_store.file_key_for(video_file)
+        if model_key is None:
+            model_key = self._model_key_for(model)
+
+        # L2: persistent store. "" is a valid cached transcript (silent audio);
+        # only None is a miss. On a hit, also populate L1 for this process.
+        text = transcript_store.get(file_key, start_time, chunk_len, model_key)
+        if text is not None:
+            self._remember_transcription(chunk_key, text)
+            return text
+
+        audio_path = self.extract_audio_chunk(video_file, start_time, duration=chunk_len)
+        if temp_files is not None:
+            temp_files.append(audio_path)  # Track for caller's cleanup
+        # `or ""` guards a wrapper returning {"text": None}: caching None would
+        # make this offset a perpetual miss (the `is None` guards above would
+        # re-transcribe it every season). The caller's `len(text) < 10` check
+        # still skips genuinely empty audio.
+        text = (model.transcribe(audio_path).get("text") or "").strip()
+        self._remember_transcription(chunk_key, text)
+        transcript_store.put(file_key, start_time, chunk_len, model_key, text)
+        return text
 
     def extract_audio_chunk(self, mkv_file, start_time, duration=None):
         """Extract a chunk of audio from MKV file with caching."""
@@ -1339,18 +1415,19 @@ class EpisodeMatcher:
             )
             return None
 
-        model_config = self._model_config()
         try:
             # Memoized by (source, 0, duration): the full-file fallback fires once per
             # candidate season when no chunk votes, so without this the season-unknown
             # path re-transcribes the ENTIRE file per season — the single biggest cost.
+            # transcribe_chunk_cached layers the persistent L2 store underneath, so a
+            # full-file transcript is also persisted when produced (free at that point)
+            # and survives restarts; nothing prewarms full files. The L1 check stays
+            # first so an in-memory hit doesn't even touch the model loader.
             full_key = self._transcription_key(video_file, 0, duration)
             full = self.transcriptions.get(full_key)
             if full is None:
-                model = get_cached_model(model_config)
-                audio_path = self.extract_audio_chunk(video_file, start_time=0, duration=duration)
-                full = (model.transcribe(audio_path).get("text") or "").strip()
-                self._remember_transcription(full_key, full)
+                model = get_cached_model(self._model_config())
+                full = self.transcribe_chunk_cached(video_file, 0, duration, model)
         except Exception as e:
             logger.warning(
                 f"transcribe_full: transcription failed for {video_file}: {e}",
@@ -1597,6 +1674,10 @@ class EpisodeMatcher:
 
             model_config = self._model_config()
             model = get_cached_model(model_config)
+            # L2 transcript-cache identity, computed ONCE per call (one stat, one
+            # key derivation) and passed into every chunk lookup below.
+            l2_file_key = transcript_store.file_key_for(video_file)
+            l2_model_key = self._model_key_for(model)
 
             # Resolve the TF-IDF matcher for THIS season's reference set as a
             # per-call local — never a shared instance slot. The matcher singleton
@@ -1639,24 +1720,21 @@ class EpisodeMatcher:
                 scan_percent = 10.0 + (i / len(scan_points)) * 80.0
 
                 try:
-                    # Transcribe, memoized by (source, offset, duration). On a hit
-                    # (e.g. a later candidate season re-scanning the same file) we
-                    # skip both ffmpeg extraction and Whisper — only the ~1ms TF-IDF
-                    # match below re-runs.
-                    chunk_key = self._transcription_key(video_file, start_time, chunk_len)
-                    text = self.transcriptions.get(chunk_key)
-                    if text is None:
-                        audio_path = self.extract_audio_chunk(
-                            video_file, start_time, duration=chunk_len
-                        )
-                        temp_files_to_remove.append(audio_path)  # Track for cleanup
-                        # `or ""` guards a wrapper returning {"text": None}: caching
-                        # None would make this offset a perpetual miss (the `is None`
-                        # guard above would re-transcribe it every season). Matches
-                        # transcribe_full; the `len(text) < 10` check below still skips
-                        # genuinely empty audio.
-                        text = (model.transcribe(audio_path).get("text") or "").strip()
-                        self._remember_transcription(chunk_key, text)
+                    # Transcribe through the layered cache (L1 dict → L2 SQLite →
+                    # Whisper). On a hit (a later candidate season re-scanning the
+                    # same file, or a re-match after a restart) we skip both ffmpeg
+                    # extraction and Whisper — only the ~1ms TF-IDF match below
+                    # re-runs. The wav is appended to temp_files_to_remove only
+                    # when actually extracted (compute path).
+                    text = self.transcribe_chunk_cached(
+                        video_file,
+                        start_time,
+                        chunk_len,
+                        model,
+                        file_key=l2_file_key,
+                        model_key=l2_model_key,
+                        temp_files=temp_files_to_remove,
+                    )
 
                     if len(text) < 10:
                         logger.debug(
