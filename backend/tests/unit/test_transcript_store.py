@@ -156,6 +156,10 @@ class TestFileKeyFor:
             pytest.fail(f"file_key_for raised unexpectedly: {exc}")
         assert result is None
 
+    def test_null_char_in_path_returns_none(self):
+        """file_key_for must not raise on paths containing embedded null bytes."""
+        assert ts.file_key_for("foo\x00bar") is None
+
 
 # ---------------------------------------------------------------------------
 # get bumps last_used_at
@@ -351,6 +355,22 @@ class TestFailSafe:
         except Exception as exc:  # noqa: BLE001
             pytest.fail(f"put() raised unexpectedly: {exc}")
 
+    def test_mkdir_failure_get_returns_none(self, tmp_path, monkeypatch):
+        """When the cache directory cannot be created (a regular file blocks mkdir),
+        get() returns None and put() does not raise — the fail-safe degrades gracefully."""
+        # Create a regular file at the path where the cache directory would go.
+        blocker = tmp_path / "blocker"
+        blocker.write_bytes(b"I am a file, not a directory")
+        blocked_db = blocker / "transcripts.sqlite"
+
+        ts.close()
+        monkeypatch.setattr(ts, "CACHE_DB_PATH", blocked_db)
+        monkeypatch.setattr(ts, "_put_counter", 0)
+
+        assert ts.get("fk", 0, 30, _MK) is None
+        # put() must not raise even though the directory cannot be created.
+        ts.put("fk", 0, 30, _MK, "text")
+
     def test_file_key_for_does_not_raise_on_missing_file(self, tmp_path):
         result = ts.file_key_for(tmp_path / "ghost.mkv")
         assert result is None
@@ -425,13 +445,13 @@ class TestCloseAndReset:
         # The new DB is empty — the "original" key should not be found.
         assert ts.get("original", 0, 30, _MK) is None
 
-    def test_reset_for_tests_resets_counter(self, tmp_path, monkeypatch):
-        """reset_for_tests() zeros the put counter."""
+    def test_reset_module_state_resets_counter(self, tmp_path, monkeypatch):
+        """reset_module_state_for_tests() zeros the put counter."""
         # Manually bump the counter.
         with ts._put_counter_lock:
             ts._put_counter = 99
         new_db = tmp_path / "reset.sqlite"
         monkeypatch.setattr(ts, "CACHE_DB_PATH", new_db)
-        ts.reset_for_tests(new_db)
+        ts.reset_module_state_for_tests()
         with ts._put_counter_lock:
             assert ts._put_counter == 0

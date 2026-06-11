@@ -40,8 +40,9 @@ Corrupt-DB recovery
 -------------------
 If ``sqlite3.connect()`` / ``PRAGMA journal_mode`` / ``CREATE TABLE`` raises
 ``sqlite3.DatabaseError`` on the *first* connection in a process, the module
-deletes the file and retries once.  This mirrors the pattern used in the
-companion ``tmdb_persistent_cache`` module.
+deletes the file and retries once.  This is this module's own recovery policy;
+the companion ``tmdb_persistent_cache`` module does not implement the same
+pattern.
 
 Thread safety
 -------------
@@ -211,7 +212,7 @@ def file_key_for(path: str | Path) -> str | None:
         st = p.stat()
         raw = f"{p}|{st.st_size}|{st.st_mtime_ns}"
         return hashlib.sha1(raw.encode()).hexdigest()
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         logger.debug(f"transcript_store.file_key_for({path!r}): {exc}")
         return None
 
@@ -302,12 +303,13 @@ def _prune() -> None:
 # ---------------------------------------------------------------------------
 
 
-def reset_for_tests(db_path: Path) -> None:
-    """Redirect the cache to *db_path* and reset all state.
+def reset_module_state_for_tests() -> None:
+    """Close the current connection and reset all in-process mutable state.
 
-    Intended for use in test fixtures — mirrors the conftest pattern used by
-    ``tmdb_persistent_cache`` (close + monkeypatch ``CACHE_DB_PATH``).  Tests
-    should call ``close()`` at teardown to release the connection.
+    Intended for use in test fixtures.  Callers are expected to redirect
+    ``CACHE_DB_PATH`` via ``monkeypatch.setattr`` *before or after* this call;
+    the redirect takes effect on the next ``get()``/``put()`` that opens a
+    new connection.
 
     Example (pytest)::
 
@@ -321,6 +323,5 @@ def reset_for_tests(db_path: Path) -> None:
     """
     global _put_counter
     close()
-    # Caller must monkeypatch CACHE_DB_PATH; this just resets the counter.
     with _put_counter_lock:
         _put_counter = 0
