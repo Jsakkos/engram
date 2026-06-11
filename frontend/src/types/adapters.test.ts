@@ -192,7 +192,7 @@ describe('transformJobToDiscData — subtitle enrichment for terminal states', (
       makeJob({ state: 'completed', content_type: 'movie', tmdb_year: 2010 }),
       [],
     );
-    expect(disc.subtitle).toBe('Movie · 2010');
+    expect(disc.subtitle).toBe('MOVIE · 2010');
   });
 
   it('falls back to disc label for a movie without tmdb_year', () => {
@@ -200,8 +200,33 @@ describe('transformJobToDiscData — subtitle enrichment for terminal states', (
       makeJob({ state: 'completed', content_type: 'movie', tmdb_year: undefined }),
       [],
     );
-    expect(disc.subtitle).toMatch(/^Movie · /);
-    expect(disc.subtitle).toContain('THE_OFFICE_S2D1');
+    expect(disc.subtitle).toBe('MOVIE · THE_OFFICE_S2D1');
+  });
+
+  it('appends episode count only when a gap exists in the matched range', () => {
+    // E01, E02, E03, E05 — E04 is missing (failed ASR)
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'tv' }),
+      [
+        makeMatchedTitle('S01E01', 1),
+        makeMatchedTitle('S01E02', 2),
+        makeMatchedTitle('S01E03', 3),
+        makeMatchedTitle('S01E05', 5),
+      ],
+    );
+    expect(disc.subtitle).toBe('TV · S01 E01–E05 (4)');
+  });
+
+  it('omits episode count when all episodes in the range are present', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'tv' }),
+      [
+        makeMatchedTitle('S01E01', 1),
+        makeMatchedTitle('S01E02', 2),
+        makeMatchedTitle('S01E03', 3),
+      ],
+    );
+    expect(disc.subtitle).toBe('TV · S01 E01–E03');
   });
 
   it('shows enriched subtitle during organizing state too', () => {

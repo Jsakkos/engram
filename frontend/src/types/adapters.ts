@@ -80,10 +80,13 @@ function computeEpisodeRangeSummary(titles: DiscTitle[]): string | null {
     .sort((a, b) => a - b)
     .map(s => {
       const eps = bySeason.get(s)!.sort((a, b) => a - b);
-      const eRange = eps[0] === eps[eps.length - 1]
-        ? `E${pad(eps[0])}`
-        : `E${pad(eps[0])}–E${pad(eps[eps.length - 1])}`;
-      return `S${pad(s)} ${eRange}`;
+      if (eps[0] === eps[eps.length - 1]) return `S${pad(s)} E${pad(eps[0])}`;
+      // Only append the count when it's less than the span — that's a signal
+      // that episodes are missing from the library (e.g. one failed ASR matching).
+      // On the happy path the count equals the span and would just add noise.
+      const span = eps[eps.length - 1] - eps[0] + 1;
+      const countSuffix = eps.length < span ? ` (${eps.length})` : '';
+      return `S${pad(s)} E${pad(eps[0])}–E${pad(eps[eps.length - 1])}${countSuffix}`;
     })
     .join(' · ');
 }
@@ -122,16 +125,16 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
   // "Name this disc" / "Select season" CTA that opens the prompt on demand (P13).
   const promptKind = job.state === 'review_needed' ? classifyPromptJob(job) : null;
 
-  // For terminal states, replace the raw disc-label subtitle with human-readable
+  // For enriched states, replace the raw disc-label subtitle with human-readable
   // metadata: episode range for TV, release year for movies. Falls back to the
   // disc label when that data isn't available (e.g. an unmatched or import job).
-  const isTerminal = job.state === 'completed' || job.state === 'organizing';
+  const isEnrichedState = job.state === 'completed' || job.state === 'organizing';
   let subtitle: string;
-  if (isTerminal && mediaType === 'tv') {
+  if (isEnrichedState && mediaType === 'tv') {
     const range = computeEpisodeRangeSummary(titles);
-    subtitle = range ? `TV · ${range}` : `TV · ${job.volume_label}`;
-  } else if (isTerminal && mediaType === 'movie') {
-    subtitle = job.tmdb_year ? `Movie · ${job.tmdb_year}` : `Movie · ${job.volume_label}`;
+    subtitle = range ? `${displayType} · ${range}` : `${displayType} · ${job.volume_label}`;
+  } else if (isEnrichedState && mediaType === 'movie') {
+    subtitle = job.tmdb_year ? `${displayType} · ${job.tmdb_year}` : `${displayType} · ${job.volume_label}`;
   } else {
     subtitle = `${displayType} · ${job.volume_label}`;
   }
