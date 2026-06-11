@@ -1448,6 +1448,10 @@ class EpisodeMatcher:
             )
             return None
 
+        # The full-file wav (tens of MB) is tracked here and removed in the
+        # finally below — mirroring identify_episode's temp_files_to_remove.
+        # On an L1/L2 hit no wav is extracted, so the list stays empty.
+        temp_files: list[str] = []
         try:
             # Memoized by (source, 0, duration): the full-file fallback fires once per
             # candidate season when no chunk votes, so without this the season-unknown
@@ -1460,13 +1464,26 @@ class EpisodeMatcher:
             full = self.transcriptions.get(full_key)
             if full is None:
                 model = get_cached_model(self._model_config())
-                full = self.transcribe_chunk_cached(video_file, 0, duration, model)
+                full = self.transcribe_chunk_cached(
+                    video_file, 0, duration, model, temp_files=temp_files
+                )
         except Exception as e:
             logger.warning(
                 f"transcribe_full: transcription failed for {video_file}: {e}",
                 exc_info=True,
             )
             return None
+        finally:
+            for p in temp_files:
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            # Drop the audio-chunk memo for the wav we just deleted so a future
+            # compute path re-extracts instead of returning a dangling path
+            # (same hygiene as TranscriptionPrewarmer._transcribe_span).
+            if temp_files:
+                self.audio_chunks.pop((self._resolve_source(video_file), 0, duration), None)
 
         if len(full) < 50:
             logger.info(f"transcribe_full: too little text ({len(full)} chars) for {video_file}")
@@ -1510,10 +1527,14 @@ class EpisodeMatcher:
             self._tfidf_cache[signature] = tm
             return tm
 
-    def _match_full_file(self, video_file, model_config, reference_files, duration, tfidf_matcher):
+    def _match_full_file(self, video_file, reference_files, tfidf_matcher):
         """
         Fallback: matching by transcribing the ENTIRE file.
         This is resource intensive but necessary if chunk matching fails.
+
+        Model interaction (loading, duration lookup, the layered transcript
+        cache) lives entirely in ``transcribe_full``; this method only matches
+        the resulting text against the references.
 
         ``tfidf_matcher`` is the per-call matcher already prepared for this season
         (passed in, not read from shared state, so a concurrent season can't swap
@@ -2000,9 +2021,7 @@ class EpisodeMatcher:
                 f"or calibrated confidence ≥ {self.confidence_accept_floor}, with enough votes). "
                 f"Attempting FULL FILE fallback..."
             )
-            match = self._match_full_file(
-                video_file, model_config, reference_files, video_duration, tfidf_matcher
-            )
+            match = self._match_full_file(video_file, reference_files, tfidf_matcher)
 
             if match:
                 # Intentional exception to calibration: the full-file fallback

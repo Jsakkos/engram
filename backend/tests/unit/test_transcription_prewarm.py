@@ -8,15 +8,16 @@ the production key shapes.
 
 import asyncio
 import importlib
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.matcher import transcript_store
 from app.matcher.asr_models import model_output_key
-from app.matcher.episode_identification import canonical_scan_points
+from app.matcher.episode_identification import EpisodeMatcher, canonical_scan_points
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.finalization_coordinator import FinalizationCoordinator
@@ -554,6 +555,137 @@ class TestPrewarmerTempNamespace:
         assert str(matcher.temp_dir) != default_dir, (
             "Prewarm temp_dir must differ from the shared whisper_chunks/ namespace"
         )
+
+
+class TestWalkAwayRematch:
+    """End-to-end Phase A guarantee, across a simulated restart.
+
+    A review-parked job's files are prewarmed by a REAL ``_prewarm_job`` run
+    (real EpisodeMatcher, real transcript_store redirected to tmp_path by the
+    conftest fixture; only Whisper and ffmpeg are faked). The store must then
+    hold exactly the 10 lattice rows per file — and a FRESH EpisodeMatcher
+    (= new process) must re-match every offset from the persistent cache with
+    ZERO ASR calls and ZERO audio extractions, even with a model that raises.
+    """
+
+    class _CountingWhisper:
+        device = "cpu"  # honest post-load device -> model_key matches CONFIG_KEY
+
+        def __init__(self):
+            self.calls = 0
+
+        def transcribe(self, audio_path):
+            self.calls += 1
+            return {"text": f"prewarmed speech from {Path(audio_path).stem} again and again"}
+
+    class _PoisonModel:
+        device = "cpu"
+
+        def transcribe(self, audio_path):
+            raise AssertionError("restart re-match must be served from the persistent cache")
+
+    @staticmethod
+    def _fake_extract(tmp_path):
+        """Per-(file, offset) wav path so transcripts are distinct per chunk."""
+
+        def _extract(mkv_file, start_time, duration=None):
+            return str(tmp_path / f"chunk_{Path(mkv_file).stem}_{start_time}.wav")
+
+        return _extract
+
+    def _expected_text(self, f: Path, off: int) -> str:
+        return f"prewarmed speech from chunk_{f.stem}_{off} again and again"
+
+    async def _seed_two_title_review_job(self, tmp_path) -> tuple[int, list[Path]]:
+        """Review-parked job with TWO titles whose output files exist on disk."""
+        files = []
+        for i in range(2):
+            f = tmp_path / f"show_t0{i}.mkv"
+            f.write_bytes(b"\x00" * 2048)
+            files.append(f)
+        async with _unit_session_factory() as session:
+            job = DiscJob(
+                drive_id="E:",
+                volume_label="SHOW_S1D1",
+                content_type=ContentType.TV,
+                state=JobState.REVIEW_NEEDED,
+                detected_title="Some Show",
+                detected_season=1,
+                staging_path=str(tmp_path),
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            for i, f in enumerate(files):
+                session.add(
+                    DiscTitle(
+                        job_id=job.id,
+                        title_index=i,
+                        duration_seconds=DURATION,
+                        state=TitleState.REVIEW,
+                        output_filename=str(f),
+                    )
+                )
+            await session.commit()
+            return job.id, files
+
+    async def test_prewarm_then_fresh_matcher_rematches_with_zero_asr(
+        self, tmp_path, duration_stub
+    ):
+        job_id, files = await self._seed_two_title_review_job(tmp_path)
+
+        # --- Leg 1: real prewarm run against the review-parked job. ---------
+        # Real EpisodeMatcher (default model_name="small", requested_workers=1,
+        # explicit device="cpu") so _model_config()/_model_key_for produce the
+        # SAME keys live matching uses — i.e. CONFIG_KEY.
+        prewarm_matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="__prewarm__", device="cpu")
+        whisper = self._CountingWhisper()
+        p = TranscriptionPrewarmer()  # no semaphore provider -> nullcontext per chunk
+        p._matcher = prewarm_matcher
+
+        with (
+            patch.object(prewarm_matcher, "extract_audio_chunk", self._fake_extract(tmp_path)),
+            patch("app.matcher.asr_models.get_cached_model", return_value=whisper),
+        ):
+            await p._prewarm_job(job_id, full_file=False)
+
+        assert whisper.calls == len(files) * len(OFFSETS)
+
+        # The store holds EXACTLY the 10 lattice rows per file, keyed under the
+        # production file_key/model_key — nothing extra (no full-file span, no
+        # rows under a drifted model identity).
+        expected_rows = set()
+        for f in files:
+            file_key = transcript_store.file_key_for(f)
+            assert file_key is not None
+            for off in OFFSETS:
+                assert transcript_store.get(file_key, off, CHUNK_LEN, CONFIG_KEY) is not None
+                expected_rows.add((file_key, int(off), CHUNK_LEN, CONFIG_KEY))
+        conn = sqlite3.connect(transcript_store.CACHE_DB_PATH)
+        try:
+            rows = set(
+                conn.execute(
+                    "SELECT file_key, start_s, duration_s, model_key FROM transcripts"
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+        assert rows == expected_rows
+
+        # --- Leg 2: simulated restart — fresh matcher, poison model. ---------
+        # New EpisodeMatcher instance = empty L1; the poison model raises on any
+        # transcribe and extraction is forbidden, so every transcript MUST come
+        # from the persistent L2 store.
+        fresh_matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Some Show", device="cpu")
+        no_extract = MagicMock(side_effect=AssertionError("L2 hit must not extract a wav"))
+        with patch.object(fresh_matcher, "extract_audio_chunk", no_extract):
+            for f in files:
+                for off in OFFSETS:
+                    text = fresh_matcher.transcribe_chunk_cached(
+                        f, off, CHUNK_LEN, self._PoisonModel()
+                    )
+                    assert text == self._expected_text(f, int(off))
+        no_extract.assert_not_called()
 
 
 class TestFailSoftGranularity:

@@ -11,6 +11,7 @@ matcher methods, ``transcript_store`` and the key derivation all run for real
 ``_isolate_transcript_store`` fixture).
 """
 
+import sqlite3
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -203,6 +204,33 @@ class TestLayering:
             assert text
             assert model.calls == 1
 
+    def test_transcribe_full_unlinks_computed_wav_but_not_on_hit(self, tmp_path):
+        """The full-file wav (tens of MB) must be deleted after a compute; an
+        L1 hit produces no wav and must not delete anything."""
+        video = _video(tmp_path)
+        m = _matcher(tmp_path)
+        # >=50 chars: transcribe_full rejects shorter transcripts as "too little text".
+        model = FakeModel(text_template="a long full-file transcript about {stem} " * 3)
+        wav = tmp_path / "full.wav"
+        wav.write_bytes(b"RIFF")
+
+        with (
+            patch.object(m, "extract_audio_chunk", return_value=str(wav)),
+            patch("app.matcher.episode_identification.get_cached_model", return_value=model),
+            patch("app.matcher.episode_identification.get_video_duration", return_value=1320),
+        ):
+            first = m.transcribe_full(video)
+            assert first is not None
+            assert not wav.exists()  # compute path: wav extracted, then removed
+
+            # L1 hit: no extraction, and a (recreated) wav is left untouched.
+            wav.write_bytes(b"RIFF")
+            second = m.transcribe_full(video)
+
+        assert second == first
+        assert model.calls == 1
+        assert wav.exists()
+
     def test_temp_files_appended_only_on_compute(self, tmp_path):
         """Cleanup semantics: a wav is tracked when extracted, never on a hit."""
         video = _video(tmp_path)
@@ -219,6 +247,73 @@ class TestLayering:
         temp_files2 = []
         m2.transcribe_chunk_cached(video, 90, CHUNK_LEN, FakeModel(), temp_files=temp_files2)
         assert temp_files2 == []  # L2 hit appended nothing
+
+
+class TestIdentifyEpisodeWiredPath:
+    """The L2 keys identify_episode precomputes and threads through its chunk loop.
+
+    ``transcribe_chunk_cached`` is covered directly above; this exercises the
+    WIRED path — identify_episode derives ``l2_file_key``/``l2_model_key`` once
+    per call and passes them into every chunk lookup — and proves the rows land
+    in the store under the file's real ``file_key_for`` key and the matcher's
+    model key (not under None, and not under a per-chunk re-derivation that
+    could drift).
+    """
+
+    def test_identify_episode_persists_chunk_rows_under_real_keys(self, tmp_path):
+        video = _video(tmp_path)
+        m = _matcher(tmp_path)
+        model = FakeModel()
+
+        # Lightest identify_episode drive (mirrors TestTranscriptionCache in
+        # test_episode_identification.py): the precomputed-season and TF-IDF
+        # seams are mocked so only extraction/ASR/L2 wiring run for real. The
+        # matrix/idf in the precomputed tuple are inert sentinels — the patched
+        # _get_tfidf_matcher never touches them.
+        tfidf = Mock()
+        tfidf.is_prepared = True
+        tfidf.match.return_value = [("S01E01", 0.9)]
+        precomputed = (object(), ["S01E01"], object())
+        fallback_guard = Mock(side_effect=AssertionError("full-file fallback must not run"))
+
+        with (
+            patch.object(m, "_get_tfidf_matcher", return_value=tfidf),
+            patch.object(m, "_load_precomputed_season", return_value=precomputed),
+            patch.object(m, "extract_audio_chunk", side_effect=_fake_extract(tmp_path)),
+            patch.object(m, "_match_full_file", fallback_guard),
+            patch("app.matcher.episode_identification.get_cached_model", return_value=model),
+            patch("app.matcher.episode_identification.get_video_duration", return_value=2700),
+        ):
+            result = m.identify_episode(video, tmp_path, season_number=1)
+
+        # Sanity: the decisive votes were accepted directly (no fallback row).
+        assert result is not None
+        assert result["episode"] == 1
+
+        offsets = canonical_scan_points(2700, skip_initial=90, num_points=10)
+        assert model.calls == len(offsets)
+
+        # Every scan offset is retrievable under the PRODUCTION keys: the
+        # file's stat-based file_key and the matcher's derived model key.
+        file_key = transcript_store.file_key_for(video)
+        assert file_key is not None
+        model_key = "whisper_tiny_cpu_int8"  # device="cpu" matcher + FakeModel.device="cpu"
+        assert m._model_key_for(model) == model_key
+        for off in offsets:
+            assert transcript_store.get(file_key, off, CHUNK_LEN, model_key) is not None
+
+        # ...and ONLY those rows: nothing landed under a None/drifted key and
+        # the accepted match never produced the (0, duration) full-file span.
+        conn = sqlite3.connect(transcript_store.CACHE_DB_PATH)
+        try:
+            rows = set(
+                conn.execute(
+                    "SELECT file_key, start_s, duration_s, model_key FROM transcripts"
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+        assert rows == {(file_key, int(off), CHUNK_LEN, model_key) for off in offsets}
 
 
 class TestModelKeySeparation:
