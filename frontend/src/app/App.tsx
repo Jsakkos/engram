@@ -6,6 +6,7 @@ import { DiscCard, type DiscData } from "./components/DiscCard";
 import { CompactList } from "./components/CompactList";
 import { useJobManagement } from "./hooks/useJobManagement";
 import { useDiscFilters } from "./hooks/useDiscFilters";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useNotifications } from "./hooks/useNotifications";
 import { useUpdateSuccessToast } from "./hooks/useUpdateSuccessToast";
 import ReviewQueue from "../components/ReviewQueue";
@@ -180,6 +181,11 @@ function MainDashboard() {
     setSeasonPromptJob(needsSeason);
   }, [jobs]);
 
+  // Side-rail collapse breakpoint: below ~1100px (snapped half-monitor windows)
+  // the 320px rail crushes the card column, so it folds away entirely.
+  const railFits = useMediaQuery("(min-width: 1100px)");
+  const showSideRail = filteredDiscs.length > 0 && viewMode === "expanded" && railFits;
+
   const reviewJobs = jobs.filter((j) => j.state === 'review_needed');
   const navItems = buildNavItems({
     firstReviewJobId: reviewJobs[0]?.id,
@@ -326,7 +332,7 @@ function MainDashboard() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="max-w-[1600px] mx-auto px-4 sm:px-6 mt-4"
+            className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 mt-4"
           >
             <div
               style={{
@@ -403,7 +409,7 @@ function MainDashboard() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="max-w-[1600px] mx-auto px-4 sm:px-6 mt-4"
+            className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 mt-4"
           >
             <div
               style={{
@@ -472,16 +478,16 @@ function MainDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Main Content */}
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-28 relative z-0">
+      {/* Main Content — `w-full` is load-bearing: inside SvAtmosphere's flex
+          column, `mx-auto` alone makes the box shrink-wrap to its content
+          (auto cross-axis margins defeat align-items: stretch), so without an
+          explicit width the 1600px cap never engages. */}
+      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-28 relative z-0">
         <div
           data-testid="sv-dashboard-grid"
           style={{
             display: "grid",
-            gridTemplateColumns:
-              filteredDiscs.length > 0 && viewMode === "expanded"
-                ? "minmax(0, 1.4fr) 320px"
-                : "1fr",
+            gridTemplateColumns: showSideRail ? "minmax(0, 1.4fr) 320px" : "1fr",
             gap: 14,
             // `stretch` lets the right rail's grid cell match the disc-card
             // column's height. The Activity log panel already has `flex: 1`,
@@ -637,7 +643,7 @@ function MainDashboard() {
           </div>
         )}
         </div>
-        {filteredDiscs.length > 0 && viewMode === "expanded" && (
+        {showSideRail && (
           <DashboardSideRail jobs={jobs} titlesMap={titlesMap} />
         )}
         </div>
