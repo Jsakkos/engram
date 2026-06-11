@@ -119,7 +119,7 @@ def _isolate_create(monkeypatch):
     monkeypatch.setattr(job_manager, "_on_task_done", lambda *a, **k: None)
     monkeypatch.setattr(
         "app.services.config_service.get_config",
-        AsyncMock(return_value=SimpleNamespace(staging_path="/tmp/staging")),
+        AsyncMock(return_value=SimpleNamespace(staging_path="/tmp/staging", setup_complete=True)),
     )
     # Default the disc fingerprint so the fixture is self-contained — without
     # this a future test could hit real disk I/O on a fake drive and silently

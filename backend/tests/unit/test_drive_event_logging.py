@@ -58,12 +58,21 @@ async def test_sentinel_logs_failing_drive_callback(caplog):
 @pytest.mark.asyncio
 async def test_identification_task_failure_is_logged(monkeypatch, caplog):
     """A failure in the fire-and-forget identify_disc task must not be swallowed."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
     jm = JobManager()
 
     async def boom(job_id):
         raise RuntimeError(f"identify boom for job {job_id}")
 
     monkeypatch.setattr(jm._identification, "identify_disc", boom)
+    # The unit DB's default AppConfig has setup_complete=False, which would park
+    # the insert at the first-run gate before the identify task ever spawns.
+    monkeypatch.setattr(
+        "app.services.config_service.get_config",
+        AsyncMock(return_value=SimpleNamespace(staging_path="/tmp/staging", setup_complete=True)),
+    )
 
     caplog.set_level(logging.ERROR, logger="app.services.job_manager")
 
