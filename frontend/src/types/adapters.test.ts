@@ -23,7 +23,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
 }
 
 /** Minimal valid DiscTitle in a given state. */
-function makeTitle(state: TitleState, id = 1): DiscTitle {
+function makeTitle(state: TitleState, id = 1, overrides: Partial<DiscTitle> = {}): DiscTitle {
   return {
     id,
     job_id: 1,
@@ -36,7 +36,13 @@ function makeTitle(state: TitleState, id = 1): DiscTitle {
     matched_episode: null,
     match_confidence: 0,
     state,
+    ...overrides,
   };
+}
+
+/** Build a matched DiscTitle with an episode code. */
+function makeMatchedTitle(episode: string, id = 1, extra = false): DiscTitle {
+  return makeTitle('completed', id, { matched_episode: episode, is_extra: extra });
 }
 
 const TWO_CANDIDATES = JSON.stringify([
@@ -134,5 +140,84 @@ describe('transformJobToDiscData — promptKind derivation', () => {
       [],
     );
     expect(disc.promptKind).toBeNull();
+  });
+});
+
+describe('transformJobToDiscData — subtitle enrichment for terminal states', () => {
+  it('shows episode range for a completed TV job', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'tv' }),
+      [
+        makeMatchedTitle('S02E01', 1),
+        makeMatchedTitle('S02E02', 2),
+        makeMatchedTitle('S02E03', 3),
+      ],
+    );
+    expect(disc.subtitle).toBe('TV · S02 E01–E03');
+  });
+
+  it('includes multi-season range when a disc spans two seasons', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'tv' }),
+      [
+        makeMatchedTitle('S01E08', 1),
+        makeMatchedTitle('S02E01', 2),
+      ],
+    );
+    expect(disc.subtitle).toBe('TV · S01 E08 · S02 E01');
+  });
+
+  it('excludes extras from the episode range', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'tv' }),
+      [
+        makeMatchedTitle('S02E01', 1),
+        makeMatchedTitle('S02E02', 2),
+        makeMatchedTitle('S02E03', 3, /* extra */ true),
+      ],
+    );
+    expect(disc.subtitle).toBe('TV · S02 E01–E02');
+  });
+
+  it('falls back to disc label when no matched_episode codes are available', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'tv' }),
+      [makeTitle('completed', 1)],
+    );
+    expect(disc.subtitle).toBe('TV · THE_OFFICE_S2D1');
+  });
+
+  it('shows year for a completed movie job with tmdb_year', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'movie', tmdb_year: 2010 }),
+      [],
+    );
+    expect(disc.subtitle).toBe('Movie · 2010');
+  });
+
+  it('falls back to disc label for a movie without tmdb_year', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'movie', tmdb_year: undefined }),
+      [],
+    );
+    expect(disc.subtitle).toMatch(/^Movie · /);
+    expect(disc.subtitle).toContain('THE_OFFICE_S2D1');
+  });
+
+  it('shows enriched subtitle during organizing state too', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'organizing', content_type: 'tv' }),
+      [makeMatchedTitle('S01E01', 1), makeMatchedTitle('S01E02', 2)],
+    );
+    expect(disc.subtitle).toBe('TV · S01 E01–E02');
+  });
+
+  it('uses raw disc label subtitle for non-terminal states', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'ripping', content_type: 'tv' }),
+      [makeMatchedTitle('S02E01', 1)],
+    );
+    expect(disc.subtitle).toContain('THE_OFFICE_S2D1');
+    expect(disc.subtitle).not.toContain('E01');
   });
 });
