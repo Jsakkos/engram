@@ -130,8 +130,10 @@ def _library_path_for_job(job, content_type: str) -> "Path | None":
 _CHUNK_DURATION_S = 30  # mirrors EpisodeMatcher.chunk_duration
 _MAX_SCAN_POINTS = 200  # bound the RAW count even for very long tracks (realized depth <= 145)
 # First two tiers; the final tier is full coverage floored to the lattice. Tiers
-# must be lattice levels (see canonical_scan_points) so escalation passes share
-# cached transcripts with shallower scans instead of re-transcribing.
+# must be lattice levels (see canonical_scan_points): canonical_scan_points snaps
+# ANY requested depth to a lattice level, so a non-lattice constant would silently
+# realize onto a different grid — requested != realized — causing ladder dedup and
+# exhaustion bookkeeping to operate on the wrong depth and pass counters to lie.
 _CONFLICT_FIXED_DEPTHS = (37, 73)
 _EP_CODE_RE = re.compile(r"[Ss](\d+)[Ee](\d+)")
 
@@ -478,6 +480,8 @@ class FinalizationCoordinator:
             # sampling, which is exactly the false positive we must avoid.
             # Full coverage is a FLOOR here (the pass must see ~everything), unlike the
             # ladder's cost ceiling — so snap UP to the lattice, never floor down.
+            # Lazy — keep heavy matcher deps (sklearn/scipy) out of service import;
+            # see _conflict_scan_ladder for the same pattern.
             from app.matcher.episode_identification import snap_to_lattice_level
 
             full = snap_to_lattice_level(_full_coverage_points(review_titles))

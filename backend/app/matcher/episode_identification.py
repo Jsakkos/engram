@@ -54,6 +54,10 @@ def floor_to_lattice_level(num_points) -> int:
     snapping UP past the budget would transcribe overlapping audio for no new
     evidence. Below the base level the matcher can't scan any shallower, so 10 is
     returned (``canonical_scan_points`` dedups colliding points on short files).
+
+    Unlike :func:`snap_to_lattice_level`, ``num_points`` must be an ``int``; passing
+    ``None`` raises ``TypeError``.  The sole caller feeds ``_full_coverage_points``,
+    which always returns an int, so this is never an issue in practice.
     """
     for lvl in reversed(_SCAN_LATTICE_LEVELS):
         if lvl <= num_points:

@@ -138,7 +138,25 @@ class TestLadderLatticeAlignment:
         # Strictly increasing — no duplicate or decreasing effective depths.
         assert all(a < b for a, b in zip(ladder, ladder[1:], strict=False))
         # Cost ceiling: the final tier never overshoots full coverage.
+        # Exception: sub-5-min tracks whose full-coverage point (< 10) falls
+        # below the base lattice level — floor_to_lattice_level clamps to 10,
+        # so ladder[-1] can be 10 while _full_coverage_points returns 9.
+        # That edge case is covered separately by test_tiny_duration_ladder_base_clamp.
         assert ladder[-1] <= _full_coverage_points(titles)
+
+    def test_tiny_duration_ladder_base_clamp(self):
+        """A sub-5-min track (duration=240 s) has full_coverage_points = 9, which
+        is below the base lattice level (10).  floor_to_lattice_level clamps to 10,
+        so the ladder is [10] even though 10 > full_coverage_points (9).  This is
+        the documented exception to the cost-ceiling property: the matcher can't
+        scan shallower than the base level, and canonical_scan_points deduplicates
+        the colliding chunk positions on such a short file anyway."""
+        titles = [_matched("S01E03", duration=240)]
+        assert _full_coverage_points(titles) == 9
+        ladder = _conflict_scan_ladder(titles)
+        assert ladder == [10]
+        # Ladder is still lattice-true and strictly non-empty.
+        assert [snap_to_lattice_level(d) for d in ladder] == ladder
 
     def test_short_episode_ladder_shape(self):
         # full = ceil(870/30) + 1 = 30 → floor 19; both fixed tiers exceed the
