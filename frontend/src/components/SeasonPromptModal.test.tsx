@@ -41,11 +41,7 @@ describe('SeasonPromptModal (#370)', () => {
     it('offers one option per season from season_count', async () => {
         mockRosterFetch(5);
         render(<SeasonPromptModal job={job} {...noop} />);
-        // Drain the two-step promise chain (fetch → r.json()) before asserting.
-        // All microtasks from the useEffect fire before this macrotask callback
-        // runs; act() then flushes the resulting setSeasonCount state update.
-        // This avoids waitFor's polling-based timeout which can expire under
-        // heavy test-suite CPU load.
+        // setTimeout(0) drains the fetch → r.json() microtask chain; act() flushes the resulting setSeasonCount update.
         await act(async () => {
             await new Promise<void>((resolve) => setTimeout(resolve, 0));
         });
