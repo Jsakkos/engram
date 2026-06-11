@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SeasonPromptModal from './SeasonPromptModal';
 import type { Job } from '../types';
@@ -41,9 +41,11 @@ describe('SeasonPromptModal (#370)', () => {
     it('offers one option per season from season_count', async () => {
         mockRosterFetch(5);
         render(<SeasonPromptModal job={job} {...noop} />);
-        await waitFor(() =>
-            expect(screen.getByRole('option', { name: 'Season 05' })).toBeInTheDocument(),
-        );
+        // setTimeout(0) drains the fetch → r.json() microtask chain; act() flushes the resulting setSeasonCount update.
+        await act(async () => {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        });
+        expect(screen.getByRole('option', { name: 'Season 05' })).toBeInTheDocument();
         expect(screen.queryByRole('option', { name: 'Season 06' })).not.toBeInTheDocument();
     });
 

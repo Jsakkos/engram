@@ -361,6 +361,37 @@ class TestDownloadSubtitlesMessaging:
             # The catch-all field must stay clean so it can't leak into other banners.
             assert refreshed.error_message is None
 
+    async def test_value_error_lands_on_subtitle_field_not_catchall(self, monkeypatch):
+        """A ValueError from the subtitle pipeline (e.g. show/season not on TMDB)
+        must land on the clearable subtitle_error_message, NOT the catch-all
+        error_message — otherwise it survives a later successful re-download as a
+        stale banner (Mad Men S3 'O Hristos xanastavronetai' regression).
+        """
+        coord = _make_coord()
+
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
+
+        def _raise(show, season, tmdb_id=None):
+            raise ValueError(f"No episodes found for {show} Season {season} on TMDB")
+
+        monkeypatch.setattr("app.matcher.testing_service.download_subtitles", _raise)
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job_id = job.id
+
+        await coord.download_subtitles(job_id, "O Hristos xanastavronetai", 3)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "failed"
+            assert "O Hristos xanastavronetai" in (refreshed.subtitle_error_message or "")
+            # The catch-all must stay clean so the banner clears on a later success.
+            assert refreshed.error_message is None
+
     async def test_partial_download_clears_stale_subtitle_error(self, monkeypatch):
         coord = _make_coord()
         self._mock(monkeypatch, [{"status": "downloaded"}, {"status": "not_found"}])

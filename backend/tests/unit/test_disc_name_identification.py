@@ -161,10 +161,17 @@ def test_analyst_with_disc_title_adopts_tmdb_name():
     assert result.content_type == ContentType.TV
 
 
-def test_analyst_disc_title_still_propagates_tmdb_id_on_type_conflict():
-    """Even when heuristic and TMDB disagree on type, tmdb_id is set."""
+def test_analyst_drops_movie_tmdb_id_when_heuristic_keeps_tv():
+    """A TMDB *movie* match must NOT stamp its id/name onto a disc the heuristic
+    keeps as TV: TMDB ids are namespace-scoped, so a movie id dereferenced as a
+    TV id downstream (subtitle/roster lookups) resolves to an unrelated show.
+
+    Regression (Mad Men S3): label "MADMEN3" matched the obscure movie
+    "Two Madmen" (id 52163); that id in the TV namespace is the unrelated Greek
+    show "O Hristos xanastavronetai", which poisoned the subtitle download.
+    """
     tmdb = TmdbSignal(
-        content_type=ContentType.MOVIE,  # disagrees with heuristic TV
+        content_type=ContentType.MOVIE,  # disagrees with the strong TV heuristic
         confidence=0.85,
         tmdb_id=12345,
         tmdb_name="Some Film",
@@ -177,7 +184,29 @@ def test_analyst_disc_title_still_propagates_tmdb_id_on_type_conflict():
         disc_title="Some Film",
     )
 
-    assert result.tmdb_id == 12345
+    # Heuristic stays TV...
+    assert result.content_type == ContentType.TV
+    # ...but the cross-namespace movie id/name is dropped, not propagated.
+    assert result.tmdb_id is None
+    assert result.tmdb_name is None
+
+
+def test_analyst_movie_name_does_not_corrupt_tv_detected_name():
+    """The garbage movie NAME must not overwrite a TV disc's detected_name even
+    when it fuzzily matches the spaceless volume label ('Madmen' ~ 'Two Madmen').
+    The clean DINFO disc title is kept instead (Mad Men S3 regression)."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.MOVIE,
+        confidence=0.70,
+        tmdb_id=52163,
+        tmdb_name="Two Madmen",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(_tv_titles(), "MADMEN3", tmdb_signal=tmdb, disc_title="Mad Men")
+
+    assert result.content_type == ContentType.TV
+    assert result.detected_name == "Mad Men"
+    assert result.tmdb_id is None
 
 
 def test_analyst_adopts_tmdb_name_for_concatenated_label():
@@ -392,3 +421,169 @@ async def test_run_classification_uses_disc_name_when_label_resolves(monkeypatch
     assert analysis.detected_season == 2
     assert analysis.tmdb_id == 1396
     assert call_count["n"] == 1  # only the label query; no disc-name fallback call
+
+
+@pytest.mark.asyncio
+async def test_run_classification_reresolves_tv_when_label_matches_movie(monkeypatch):
+    """A volume-label match that returns a MOVIE for a clearly-TV disc is
+    re-resolved from the DINFO disc name to the correct TV show.
+
+    Mad Men S3 regression: "MADMEN3" -> label name "Madmen" -> TMDB movie
+    "Two Madmen". The disc name "Mad Men Season 3" resolves to the real TV show,
+    so the disc auto-identifies (no manual title, no poisoned movie id).
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
+
+    coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    analyst = DiscAnalyst()
+    analyst.set_config(AppConfig())
+    coordinator._analyst = analyst
+    coordinator._get_discdb_mappings = MagicMock(return_value=[])
+    coordinator._set_discdb_mappings = MagicMock()
+
+    titles = _tv_titles()
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "fake-key"
+    mock_config.ai_identification_enabled = False
+    mock_config.ai_api_key = None
+    mock_config.discdb_enabled = False
+    mock_config.analyst_movie_min_duration = 80 * 60
+    mock_config.analyst_tv_duration_variance = 2 * 60
+    mock_config.analyst_tv_min_cluster_size = 3
+    mock_config.analyst_tv_min_duration = 18 * 60
+    mock_config.analyst_tv_max_duration = 70 * 60
+    mock_config.analyst_movie_dominance_threshold = 0.6
+
+    madmen_movie = TmdbSignal(
+        content_type=ContentType.MOVIE,
+        confidence=0.70,
+        tmdb_id=52163,
+        tmdb_name="Two Madmen",
+    )
+    madmen_tv = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1104,
+        tmdb_name="Mad Men",
+    )
+
+    call_count = {"n": 0}
+
+    def fake_classify_from_tmdb(name: str, api_key: str):
+        call_count["n"] += 1
+        if name == "Madmen":
+            return madmen_movie  # garbage cross-namespace movie match
+        if name == "Mad Men":
+            return madmen_tv  # clean disc-name lookup -> real TV show
+        return None
+
+    mock_job = MagicMock()
+    mock_job.volume_label = "MADMEN3"
+    mock_job.detected_season = None
+    mock_job.content_hash = None
+    mock_job.discdb_slug = None
+    mock_job.discdb_disc_slug = None
+    mock_job.discdb_mappings_json = None
+    mock_job.play_all_indices_json = None
+
+    mock_session = AsyncMock()
+
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+    ):
+        analysis = await coordinator._run_classification(
+            mock_job,
+            job_id=1,
+            titles=titles,
+            session=mock_session,
+            disc_name="Mad Men Season 3- Disc 3",
+        )
+
+    assert analysis.content_type == ContentType.TV
+    assert analysis.tmdb_id == 1104
+    assert analysis.detected_name == "Mad Men"
+    assert analysis.detected_season == 3
+    # The movie/TV conflict is gone, so the disc no longer needs manual review.
+    assert analysis.needs_review is False
+    assert call_count["n"] == 2  # label query (movie) + disc-name re-resolve (tv)
+
+
+@pytest.mark.asyncio
+async def test_run_classification_skips_redundant_reresolve_after_disc_name_fallback(monkeypatch):
+    """When the disc-name fallback already queried the disc title (and got a
+    movie), the cross-namespace re-resolve must NOT query the identical title
+    again — it would issue the same network round-trip for the same result."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
+
+    coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    analyst = DiscAnalyst()
+    analyst.set_config(AppConfig())
+    coordinator._analyst = analyst
+    coordinator._get_discdb_mappings = MagicMock(return_value=[])
+    coordinator._set_discdb_mappings = MagicMock()
+
+    titles = _tv_titles()
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "fake-key"
+    mock_config.ai_identification_enabled = False
+    mock_config.ai_api_key = None
+    mock_config.discdb_enabled = False
+    mock_config.analyst_movie_min_duration = 80 * 60
+    mock_config.analyst_tv_duration_variance = 2 * 60
+    mock_config.analyst_tv_min_cluster_size = 3
+    mock_config.analyst_tv_min_duration = 18 * 60
+    mock_config.analyst_tv_max_duration = 70 * 60
+    mock_config.analyst_movie_dominance_threshold = 0.6
+
+    a_movie = TmdbSignal(
+        content_type=ContentType.MOVIE,
+        confidence=0.70,
+        tmdb_id=52163,
+        tmdb_name="Two Madmen",
+    )
+
+    queried: list[str] = []
+
+    def fake_classify_from_tmdb(name: str, api_key: str):
+        queried.append(name)
+        if name == "Mad Men":
+            return a_movie  # disc-name fallback resolves to a movie
+        return None  # label name misses
+
+    mock_job = MagicMock()
+    mock_job.volume_label = "MADMEN"  # no season in the label -> label lookup misses
+    mock_job.detected_season = None
+    mock_job.content_hash = None
+    mock_job.discdb_slug = None
+    mock_job.discdb_disc_slug = None
+    mock_job.discdb_mappings_json = None
+    mock_job.play_all_indices_json = None
+
+    mock_session = AsyncMock()
+
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+    ):
+        await coordinator._run_classification(
+            mock_job,
+            job_id=1,
+            titles=titles,
+            session=mock_session,
+            disc_name="Mad Men Season 3- Disc 3",
+        )
+
+    # "Mad Men" must be queried exactly once (the fallback), not re-queried by the
+    # cross-namespace re-resolve block.
+    assert queried.count("Mad Men") == 1

@@ -1950,19 +1950,26 @@ class MatchingCoordinator:
 
         except Exception as e:
             if isinstance(e, ValueError):
-                logger.error(f"Subtitle download ValueError for {show_name} S{season}: {e}")
-                error_message = str(e)
+                logger.error(
+                    f"Subtitle download ValueError for {show_name} S{season}: {e}", exc_info=True
+                )
+                subtitle_error = str(e)
             else:
                 logger.exception(
                     f"Unexpected error in subtitle download for {show_name} S{season}: {e}"
                 )
-                error_message = f"Download error: {str(e)}"
+                subtitle_error = f"Download error: {str(e)}"
 
+            # Route subtitle-pipeline failures to subtitle_error_message — the
+            # clearable field the success/restart paths reset — NOT the catch-all
+            # error_message. Writing here keeps the banner from surviving a later
+            # successful re-download (Mad Men S3 "O Hristos xanastavronetai"
+            # regression: a stale show-not-found error stuck on error_message).
             async with async_session() as session:
                 await session.execute(
                     update(DiscJob)
                     .where(DiscJob.id == job_id)
-                    .values(subtitle_status="failed", error_message=error_message)
+                    .values(subtitle_status="failed", subtitle_error_message=subtitle_error)
                 )
                 await session.commit()
             await ws_manager.broadcast_subtitle_event(job_id, "failed")
