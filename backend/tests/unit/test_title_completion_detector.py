@@ -18,7 +18,7 @@ from app.core.extractor import STABLE_CHECKS_REQUIRED, TitleCompletionDetector
 
 def _drain(detector: TitleCompletionDetector, sizes, *, force=False):
     """Run one poll and return the list of newly-completed filenames."""
-    return detector.poll(dict(sizes), force=force)
+    return [fname for fname, _ordinal in detector.poll(dict(sizes), force=force)]
 
 
 class TestNoFalsePositiveOnMidRipPause:
@@ -79,6 +79,16 @@ class TestForceCompletion:
         d.seed("t00.mkv")  # MakeMKV announced 'created' but never wrote bytes
         assert _drain(d, {"t00.mkv": 0}, force=True) == []
         assert not d.is_completed("t00.mkv")
+
+    def test_force_batch_assigns_sequential_ordinals(self):
+        # When a single force poll finalizes several titles at once (process
+        # exit with more than one undetected title), each must get a distinct
+        # 1-based ordinal — not all share the final total. The ordinal feeds the
+        # callback's sequential title-resolution fallback.
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        d.poll({"t00.mkv": 100, "t01.mkv": 200})  # baseline (prev=None both)
+        completed = d.poll({"t00.mkv": 100, "t01.mkv": 200}, force=True)
+        assert completed == [("t00.mkv", 1), ("t01.mkv", 2)]
 
 
 class TestInvariants:

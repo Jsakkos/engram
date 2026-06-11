@@ -175,12 +175,17 @@ class TitleCompletionDetector:
         """Total number of titles reported complete so far."""
         return len(self._completed)
 
-    def poll(self, sizes: dict[str, int], *, force: bool = False) -> list[str]:
+    def poll(self, sizes: dict[str, int], *, force: bool = False) -> list[tuple[str, int]]:
         """Feed the current ``{filename: size}`` snapshot.
 
-        Returns the filenames that finished writing on this poll, in the order
-        the snapshot iterates them. Updates the detector's internal tracking
-        state in place.
+        Returns ``(filename, ordinal)`` for each file that finished writing on
+        this poll, in the order the snapshot iterates them. ``ordinal`` is the
+        1-based count of titles completed so far *at the moment that file was
+        marked done* — so when a single ``force`` poll finalizes several files
+        at once, each gets a distinct sequential ordinal rather than all sharing
+        the final total (the value the rip loop passes through as the callback's
+        sequential index). Updates the detector's internal tracking state in
+        place.
         """
         # Pass 1: advance the "active" pointer to whatever grew this poll, so a
         # completion decision in pass 2 sees an up-to-date view of which file
@@ -197,7 +202,7 @@ class TitleCompletionDetector:
                 self._stable_counts[fname] = 0
 
         # Pass 2: decide completion, then record the new sizes.
-        newly: list[str] = []
+        newly: list[tuple[str, int]] = []
         for fname, size in sizes.items():
             prev = self._known.get(fname)
             self._known[fname] = size
@@ -206,7 +211,7 @@ class TitleCompletionDetector:
             if force:
                 # Process exited: the write is guaranteed finished.
                 self._mark_complete(fname)
-                newly.append(fname)
+                newly.append((fname, len(self._completed)))
             elif size == prev:
                 self._stable_counts[fname] = self._stable_counts.get(fname, 0) + 1
                 # Complete only once MakeMKV has provably moved on to another
@@ -218,7 +223,7 @@ class TitleCompletionDetector:
                     and self._active != fname
                 ):
                     self._mark_complete(fname)
-                    newly.append(fname)
+                    newly.append((fname, len(self._completed)))
             # A shrinking size (rare) is ignored beyond updating _known above.
         return newly
 
@@ -560,15 +565,21 @@ class MakeMKVExtractor:
         completion = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
         _fs_lock = threading.Lock()
 
-        def _fire_title_complete(fname: str, size: int) -> None:
-            """Record output file and invoke the title callback (lock held)."""
+        def _fire_title_complete(fname: str, size: int, ordinal: int) -> None:
+            """Record output file and invoke the title callback (lock held).
+
+            ``ordinal`` is this file's 1-based completion index, used by the
+            callback's sequential title-resolution fallback. It comes per-file
+            from the detector so a multi-file ``force`` batch yields 1, 2, …, N
+            rather than every callback seeing the final total.
+            """
             filepath = output_dir / fname
             output_files.append(filepath)
             logger.info(f"Title file completed: {fname} ({size / 1024 / 1024:.0f} MB)")
             if title_complete_callback:
                 _safe_callback(
                     title_complete_callback,
-                    completion.completed_count,
+                    ordinal,
                     filepath,
                     label="title complete callback",
                 )
@@ -594,9 +605,9 @@ class MakeMKVExtractor:
                             current_sizes[mkv.name] = mkv.stat().st_size
                         except OSError as e:
                             logger.debug(f"Could not stat {mkv.name}: {e}")
-                    for fname in completion.poll(current_sizes, force=force):
-                        _fire_title_complete(fname, current_sizes[fname])
-                except (OSError, PermissionError) as e:
+                    for fname, ordinal in completion.poll(current_sizes, force=force):
+                        _fire_title_complete(fname, current_sizes[fname], ordinal)
+                except OSError as e:
                     logger.exception(f"Error checking for completed files: {e}")
 
         def run_rip_with_streaming() -> tuple[int, str, set[int]]:
