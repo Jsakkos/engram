@@ -51,6 +51,46 @@ function countCandidates(candidatesJson?: string | null): number {
   }
 }
 
+/**
+ * For a completed TV job, derive a human-readable season+episode range from the
+ * matched tracks. Returns e.g. "S01 E01–E08" or "S01 E01–E08 · S02 E01–E10",
+ * or null when no episode codes are available (fallback to disc label).
+ */
+function computeEpisodeRangeSummary(titles: DiscTitle[]): string | null {
+  const episodeCodes = titles
+    .filter(t => t.matched_episode && !t.is_extra)
+    .map(t => t.matched_episode as string);
+
+  if (episodeCodes.length === 0) return null;
+
+  const parsed = episodeCodes
+    .map(ep => { const m = ep.match(/S(\d+)E(\d+)/i); return m ? { s: +m[1], e: +m[2] } : null; })
+    .filter(Boolean) as Array<{ s: number; e: number }>;
+
+  if (parsed.length === 0) return null;
+
+  const bySeason = new Map<number, number[]>();
+  for (const { s, e } of parsed) {
+    if (!bySeason.has(s)) bySeason.set(s, []);
+    bySeason.get(s)!.push(e);
+  }
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return [...bySeason.keys()]
+    .sort((a, b) => a - b)
+    .map(s => {
+      const eps = bySeason.get(s)!.sort((a, b) => a - b);
+      if (eps[0] === eps[eps.length - 1]) return `S${pad(s)} E${pad(eps[0])}`;
+      // Only append the count when it's less than the span — that's a signal
+      // that episodes are missing from the library (e.g. one failed ASR matching).
+      // On the happy path the count equals the span and would just add noise.
+      const span = eps[eps.length - 1] - eps[0] + 1;
+      const countSuffix = eps.length < span ? ` (${eps.length})` : '';
+      return `S${pad(s)} E${pad(eps[0])}–E${pad(eps[eps.length - 1])}${countSuffix}`;
+    })
+    .join(' · ');
+}
+
 export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData {
   // Determine media type - handle case-insensitively
   const contentTypeLower = job.content_type?.toLowerCase();
@@ -85,10 +125,24 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
   // "Name this disc" / "Select season" CTA that opens the prompt on demand (P13).
   const promptKind = job.state === 'review_needed' ? classifyPromptJob(job) : null;
 
+  // For enriched states, replace the raw disc-label subtitle with human-readable
+  // metadata: episode range for TV, release year for movies. Falls back to the
+  // disc label when that data isn't available (e.g. an unmatched or import job).
+  const isEnrichedState = job.state === 'completed' || job.state === 'organizing';
+  let subtitle: string;
+  if (isEnrichedState && mediaType === 'tv') {
+    const range = computeEpisodeRangeSummary(titles);
+    subtitle = range ? `${displayType} · ${range}` : `${displayType} · ${job.volume_label}`;
+  } else if (isEnrichedState && mediaType === 'movie') {
+    subtitle = job.tmdb_year ? `${displayType} · ${job.tmdb_year}` : `${displayType} · ${job.volume_label}`;
+  } else {
+    subtitle = `${displayType} · ${job.volume_label}`;
+  }
+
   return {
     id: job.id.toString(),
     title: job.detected_title || job.volume_label,
-    subtitle: `${displayType} • ${job.volume_label}`,
+    subtitle,
     discLabel: job.volume_label,
     sourceType: job.drive_id === 'import' ? 'import'
       : job.drive_id === 'staging' ? 'staging'

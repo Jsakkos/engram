@@ -322,7 +322,12 @@ class DiscAnalyst:
         effective_name = detected_name
         if tmdb_signal and tmdb_signal.tmdb_name:
             tmdb_name = tmdb_signal.tmdb_name
-            corroborated = (
+            # A TMDB *movie* match cannot name a disc the label says is TV: movies
+            # and shows live in different TMDB namespaces, so a fuzzy movie hit
+            # (e.g. "Two Madmen" for the spaceless label "Madmen") is noise, not
+            # corroboration. Keep the on-disc name rather than the foreign one.
+            namespace_conflict = is_likely_tv and tmdb_signal.content_type == ContentType.MOVIE
+            corroborated = not namespace_conflict and (
                 detected_name is None
                 or (label_name is not None and _names_are_similar(label_name, tmdb_name))
                 or (disc_title is not None and _names_are_similar(disc_title, tmdb_name))
@@ -564,6 +569,17 @@ class DiscAnalyst:
                     # when TMDB gives a confident override
                     if result.needs_review and not result.review_reason:
                         result.needs_review = False
+
+        # Cross-namespace guard: a TMDB id/name is valid only within its own
+        # (movie|tv) namespace. When the final content type ends up DIFFERENT from
+        # the TMDB signal's — e.g. a strong TV heuristic kept TV while TMDB matched
+        # a movie — the id would be dereferenced in the wrong namespace downstream
+        # (subtitle/roster lookups via /tv/{id}) and resolve to an unrelated work.
+        # Drop the id/name rather than propagate a wrong-namespace identity.
+        if result.content_type != tmdb_signal.content_type:
+            result.tmdb_id = None
+            result.tmdb_name = None
+            return result
 
         # Use TMDB name if similar enough to the heuristic name (same guard as analyze())
         if tmdb_signal.tmdb_name:

@@ -1259,7 +1259,7 @@ class IdentificationCoordinator:
 
         # Attempt TMDB lookup
         tmdb_signal = None
-        detected_name, _, _ = DiscAnalyst._parse_volume_label(job.volume_label)
+        detected_name, label_season, _ = DiscAnalyst._parse_volume_label(job.volume_label)
         if detected_name:
             tmdb_context = (
                 "TMDB lookup failed" if is_staging else "TMDB lookup failed, using heuristics only"
@@ -1287,7 +1287,9 @@ class IdentificationCoordinator:
 
         # DINFO disc-name TMDB fallback — when the volume label gave no TMDB signal,
         # resolve identity from the disc name instead.
+        disc_name_queried = False
         if not tmdb_signal and disc_name_title and config.tmdb_api_key:
+            disc_name_queried = True
             disc_tmdb_signal = await _try_tmdb(disc_name_title, "TMDB disc-name fallback failed")
             if disc_tmdb_signal:
                 tmdb_signal = disc_tmdb_signal
@@ -1295,6 +1297,32 @@ class IdentificationCoordinator:
                     f"Job {job_id}: TMDB fallback via disc name '{disc_name_title}' succeeded "
                     f"(label '{job.volume_label}' gave garbled name)"
                 )
+
+        # Cross-namespace re-resolve (Mad Men S3 regression): a volume-label match
+        # that came back as a MOVIE is suspect when on-disc evidence says TV — a
+        # movie tmdb_id is dereferenced as a TV id downstream (subtitle/roster) and
+        # resolves to an unrelated show. When the label or the DINFO disc name
+        # carries a season, re-resolve identity from the cleaner disc name and
+        # prefer a TV hit (e.g. "Madmen"->movie "Two Madmen" -> disc name
+        # "Mad Men Season 3" -> the real TV show). Skip if the disc-name fallback
+        # already queried this exact title — it would return the same movie result.
+        disc_says_tv = label_season is not None or disc_name_season is not None
+        if (
+            tmdb_signal
+            and tmdb_signal.content_type == ContentType.MOVIE
+            and disc_says_tv
+            and disc_name_title
+            and not disc_name_queried
+            and config.tmdb_api_key
+        ):
+            tv_retry = await _try_tmdb(disc_name_title, "TMDB TV re-resolve from disc name failed")
+            if tv_retry and tv_retry.content_type == ContentType.TV:
+                logger.info(
+                    f"Job {job_id}: volume-label match '{tmdb_signal.tmdb_name}' was a movie "
+                    f"but the disc looks like TV; re-resolved to TV '{tv_retry.tmdb_name}' "
+                    f"via disc name '{disc_name_title}'"
+                )
+                tmdb_signal = tv_retry
 
         # AI-powered identification fallback (not for staging)
         ai_identified_name = None
