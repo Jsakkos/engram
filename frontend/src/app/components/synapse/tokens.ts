@@ -52,6 +52,9 @@ export const sv = {
   // Layout — single source of truth so Dashboard / Review / History
   // Page chrome (max-width, content padding) all stay in sync.
   layoutMaxWidth: 1600,
+  // Movie review is a narrow single-column selection list, so it deliberately
+  // caps tighter than the full `layoutMaxWidth` used elsewhere.
+  reviewMovieMaxWidth: 1280,
   layoutPadX: 24,
 } as const;
 
