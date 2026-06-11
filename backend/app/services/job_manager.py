@@ -823,7 +823,8 @@ class JobManager:
     ) -> None:
         """Set a user-provided name for an unlabeled disc and resume ripping."""
         # The real pipeline owns the ASR from here; it reuses whatever the
-        # prewarmer already cached.
+        # prewarmer already cached. cancel_for_job prevents future chunks;
+        # the in-flight thread still finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
         await self._identification.set_name_and_resume(job_id, name, content_type_str, season)
 
@@ -841,6 +842,8 @@ class JobManager:
     ) -> None:
         """Re-identify a job with user-corrected metadata."""
         # A real match (or re-rip) starts now — stop background prewarming.
+        # cancel_for_job prevents future chunks; the in-flight thread still
+        # finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
         result = await self._identification.re_identify(
             job_id, title, content_type_str, season, tmdb_id
@@ -859,6 +862,8 @@ class JobManager:
     async def _rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for already-ripped titles."""
         # The real match owns the GPU now; it reuses what the prewarmer cached.
+        # cancel_for_job prevents future chunks; the in-flight thread still
+        # finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -1330,10 +1335,18 @@ class JobManager:
         edition: str | None = None,
     ) -> None:
         """Apply a user's review decision for a title."""
+        # Organization (shutil.move) starts now — stop background prewarming so
+        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
+        # in-flight thread finishes its current chunk (~60s) before yielding.
+        self._prewarmer.cancel_for_job(job_id)
         await self._finalization.apply_review(job_id, title_id, episode_code, edition)
 
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""
+        # Organization (shutil.move) starts now — stop background prewarming so
+        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
+        # in-flight thread finishes its current chunk (~60s) before yielding.
+        self._prewarmer.cancel_for_job(job_id)
         await self._finalization.apply_review_batch(job_id, decisions)
 
     async def reassign_episode(
@@ -1457,6 +1470,8 @@ class JobManager:
         conflict callers invoke the coordinator method directly (advisory False).
         """
         # A real (user-initiated) match starts now — stop background prewarming.
+        # cancel_for_job prevents future chunks; the in-flight thread still
+        # finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
         await self._matching.rematch_single_title(
             job_id,

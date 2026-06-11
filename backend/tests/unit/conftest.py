@@ -168,12 +168,7 @@ async def isolate_database(monkeypatch):
     # jm.job_manager._prewarmer), which takes precedence over this stub; see
     # TestJobManagerWiring.
     _jm_inst = _jm_mod.job_manager
-    prewarm_kickoff_calls: list[int] = []
-
-    def _stub_kickoff(job_id: int) -> None:
-        prewarm_kickoff_calls.append(job_id)
-
-    monkeypatch.setattr(_jm_inst._prewarmer, "kickoff", _stub_kickoff)
+    monkeypatch.setattr(_jm_inst._prewarmer, "kickoff", lambda job_id: None)  # no-op stub
 
     yield
 

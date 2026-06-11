@@ -34,6 +34,7 @@ Design notes
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -125,11 +126,19 @@ class TranscriptionPrewarmer:
             logger.warning(f"Job {job_id}: failed to start transcript prewarm: {e}", exc_info=True)
 
     def cancel_for_job(self, job_id: int) -> None:
-        """Cancel and forget the prewarm task for ``job_id``. Safe when absent."""
+        """Cancel and forget the prewarm task for ``job_id``. Safe when absent.
+
+        Cancellation prevents *future* chunks from being dispatched.  The
+        in-flight thread (if any) finishes its current chunk — up to ~60 s —
+        before the asyncio.CancelledError propagates; callers must not assume
+        the GPU or the file handle is freed instantly.
+        """
         task = self._tasks.pop(job_id, None)
         if task is not None and not task.done():
             task.cancel()
-            logger.info(f"Job {job_id}: transcript prewarm cancelled")
+            logger.info(
+                f"Job {job_id}: transcript prewarm cancelled (in-flight thread finishes current chunk)"
+            )
 
     async def on_job_terminal(self, job_id: int, _state) -> None:
         """JobStateMachine ``on_terminal_state`` hook: stop warming a finished job."""
@@ -154,7 +163,7 @@ class TranscriptionPrewarmer:
             return
         exc = task.exception()
         if exc is not None:
-            logger.warning(f"Job {job_id}: transcript prewarm task died: {exc}")
+            logger.warning(f"Job {job_id}: transcript prewarm task died: {exc}", exc_info=exc)
 
     async def _prewarm_job(self, job_id: int, *, full_file: bool) -> None:
         """Warm the transcript store for every candidate file of one job."""
@@ -267,22 +276,20 @@ class TranscriptionPrewarmer:
             f"Prewarm: transcribing {len(missing)}/{len(wanted)} span(s) for {file_path.name}"
         )
         for start, length in missing:
+            # Guard: the file may have been organized (moved) between the
+            # coverage check above and this chunk — break cleanly rather than
+            # emitting a cascade of WARNINGs and ERRORs from ffprobe.
+            if not file_path.exists():
+                logger.info(f"Prewarm: {file_path.name} no longer on disk; stopping")
+                break
             semaphore = self._semaphore_provider() if self._semaphore_provider else None
+            # Acquire/release PER CHUNK so live matches preempt between chunks.
+            # nullcontext() is a no-op async CM on py3.11 when no semaphore is set.
+            ctx: contextlib.AbstractAsyncContextManager = (
+                semaphore if semaphore is not None else contextlib.nullcontext()
+            )
             try:
-                if semaphore is not None:
-                    # Acquire/release PER CHUNK so live matches preempt between chunks.
-                    async with semaphore:
-                        await asyncio.to_thread(
-                            self._transcribe_span,
-                            matcher,
-                            file_path,
-                            start,
-                            length,
-                            model,
-                            file_key,
-                            model_key,
-                        )
-                else:
+                async with ctx:
                     await asyncio.to_thread(
                         self._transcribe_span,
                         matcher,
@@ -368,7 +375,14 @@ class TranscriptionPrewarmer:
         ``_model_config()`` / ``_model_key_for`` agree with live matching and
         ``get_cached_model`` resolves to the same shared WhisperModel.
         ``show_name`` is irrelevant to transcription; a sentinel is passed.
+
+        The matcher's ``temp_dir`` is redirected to a prewarm-only subdirectory
+        so that cancelled tasks can't leave half-written wavs in the shared
+        ``whisper_chunks/`` namespace that live matchers read via the bare
+        ``exists()`` check in ``extract_audio_chunk``.
         """
+        import tempfile
+
         from app.matcher.episode_identification import EpisodeMatcher
         from app.services.config_service import get_config_sync
 
@@ -378,8 +392,14 @@ class TranscriptionPrewarmer:
         else:
             cache_dir = Path.home() / ".engram" / "cache"
 
-        return EpisodeMatcher(
+        matcher = EpisodeMatcher(
             cache_dir=cache_dir,
             show_name="__prewarm__",
             requested_workers=(config.max_concurrent_matches if config else 1),
         )
+        # Override the default whisper_chunks/ namespace so a cancelled prewarm
+        # thread can't poison the shared chunk cache with a half-written wav.
+        # Mirror EpisodeMatcher.__init__: assign then mkdir.
+        matcher.temp_dir = Path(tempfile.gettempdir()) / "whisper_chunks_prewarm"
+        matcher.temp_dir.mkdir(exist_ok=True)
+        return matcher

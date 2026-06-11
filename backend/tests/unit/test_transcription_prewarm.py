@@ -503,3 +503,105 @@ class TestJobManagerWiring:
         await jm.job_manager.rematch_single_title(13, 1)
 
         mock_prewarmer.cancel_for_job.assert_called_once_with(13)
+
+    async def test_apply_review_cancels_prewarm(self, monkeypatch):
+        mock_prewarmer = MagicMock()
+        monkeypatch.setattr(jm.job_manager, "_prewarmer", mock_prewarmer)
+        monkeypatch.setattr(jm.job_manager._finalization, "apply_review", AsyncMock())
+
+        await jm.job_manager.apply_review(14, 100, episode_code="S01E03")
+
+        mock_prewarmer.cancel_for_job.assert_called_once_with(14)
+
+    async def test_apply_review_batch_cancels_prewarm(self, monkeypatch):
+        mock_prewarmer = MagicMock()
+        monkeypatch.setattr(jm.job_manager, "_prewarmer", mock_prewarmer)
+        monkeypatch.setattr(jm.job_manager._finalization, "apply_review_batch", AsyncMock())
+
+        await jm.job_manager.apply_review_batch(15, [{"title_id": 1, "episode_code": "S01E01"}])
+
+        mock_prewarmer.cancel_for_job.assert_called_once_with(15)
+
+
+class TestPrewarmerTempNamespace:
+    def test_prewarm_matcher_uses_isolated_temp_dir(self, monkeypatch):
+        """_build_matcher must give the prewarm matcher its own temp dir so that a
+        cancelled thread can't poison the shared whisper_chunks/ namespace."""
+        import tempfile
+
+        from app.services.transcription_prewarm import TranscriptionPrewarmer
+
+        # Stub out the heavy EpisodeMatcher constructor.
+        fake_matcher = FakeMatcher()
+        fake_matcher.temp_dir = None  # will be overwritten by _build_matcher
+
+        monkeypatch.setattr(
+            "app.matcher.episode_identification.EpisodeMatcher",
+            lambda **kwargs: fake_matcher,
+        )
+        monkeypatch.setattr(
+            "app.services.config_service.get_config_sync",
+            lambda: None,
+        )
+
+        matcher = TranscriptionPrewarmer._build_matcher()
+
+        default_dir = str(Path(tempfile.gettempdir()) / "whisper_chunks")
+        prewarm_dir = str(Path(tempfile.gettempdir()) / "whisper_chunks_prewarm")
+        assert str(matcher.temp_dir) == prewarm_dir, (
+            f"Expected prewarm namespace {prewarm_dir!r}, got {matcher.temp_dir!r}"
+        )
+        assert str(matcher.temp_dir) != default_dir, (
+            "Prewarm temp_dir must differ from the shared whisper_chunks/ namespace"
+        )
+
+
+class TestFailSoftGranularity:
+    async def test_single_chunk_failure_continues_remaining(
+        self, tmp_path, config_flags, model_loader, duration_stub
+    ):
+        """A failure in chunk N must not prevent chunks N+1 .. end from warming."""
+        fail_at_start = int(OFFSETS[2])  # chunk 3 (0-indexed: 2) raises
+
+        class PartialFailMatcher(FakeMatcher):
+            def transcribe_chunk_cached(
+                self,
+                video_file,
+                start,
+                length,
+                model,
+                *,
+                file_key=None,
+                model_key=None,
+                temp_files=None,
+            ):
+                if int(start) == fail_at_start:
+                    raise RuntimeError("simulated transcription failure")
+                return super().transcribe_chunk_cached(
+                    video_file,
+                    start,
+                    length,
+                    model,
+                    file_key=file_key,
+                    model_key=model_key,
+                    temp_files=temp_files,
+                )
+
+        fm = PartialFailMatcher()
+        p = TranscriptionPrewarmer(semaphore_provider=lambda: CountingSemaphore())
+        p._matcher = fm
+
+        job_id, f = await _seed_review_job(tmp_path)
+        await _run_to_completion(p, job_id)
+
+        succeeded = [s for s, _l, _k in fm.transcribe_calls]
+        # Every offset except the failing one should have been attempted.
+        expected_ok = [int(off) for off in OFFSETS if int(off) != fail_at_start]
+        assert succeeded == expected_ok, f"Expected {expected_ok}, got {succeeded}"
+        # The file_key entry for the failing chunk must be absent; all others present.
+        file_key = transcript_store.file_key_for(f)
+        for off in OFFSETS:
+            if int(off) == fail_at_start:
+                assert transcript_store.get(file_key, off, CHUNK_LEN, CONFIG_KEY) is None
+            else:
+                assert transcript_store.get(file_key, off, CHUNK_LEN, CONFIG_KEY) is not None
