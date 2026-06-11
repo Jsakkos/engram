@@ -145,6 +145,59 @@ class TestSeasonRoster:
         assert set(episodes["S03E05"]["assigned_title_ids"]) == {t_c.id, t_d.id}
         assert episodes["S03E01"]["assigned_title_ids"] == [(await _title_id(job.id, 0))]
 
+    async def test_roster_marks_missing_reference(self, client):
+        """Each episode carries its subtitle-reference availability so the review
+        roster can flag the silent gap (Mad Men S02E05 shape). 'downloaded' and
+        'precomputed' both count as having a reference; only 'missing' does not."""
+        await _seed_config()
+        job = await _seed_tv_job()
+        await _seed_title(job.id, 0, "S03E01")
+
+        fake_cov = {
+            "S03E01": "precomputed",
+            "S03E02": "downloaded",
+            "S03E03": "missing",
+            "S03E04": "precomputed",
+            "S03E05": "precomputed",
+            "S03E06": "precomputed",
+        }
+        with (
+            patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES),
+            patch("app.api.routes.reference_coverage", return_value=fake_cov) as mock_cov,
+        ):
+            response = await client.get(f"/api/jobs/{job.id}/season-roster")
+
+        assert response.status_code == 200
+        data = response.json()
+        episodes = {ep["episode_code"]: ep for ep in data["episodes"]}
+        assert episodes["S03E03"]["reference_source"] == "missing"
+        assert episodes["S03E03"]["has_reference"] is False
+        assert episodes["S03E01"]["reference_source"] == "precomputed"
+        assert episodes["S03E01"]["has_reference"] is True
+        assert episodes["S03E02"]["reference_source"] == "downloaded"
+        assert episodes["S03E02"]["has_reference"] is True
+        # The roster is computed against the canonical TMDB episode numbers
+        # (passed positionally through asyncio.to_thread).
+        assert mock_cov.call_args.args[4] == [1, 2, 3, 4, 5, 6]
+
+    async def test_roster_reference_coverage_failure_degrades(self, client):
+        """A coverage-scan failure must not 500 or cry wolf: episodes default to
+        having a reference (has_reference=True) rather than being flagged."""
+        await _seed_config()
+        job = await _seed_tv_job()
+        await _seed_title(job.id, 0, "S03E01")
+
+        with (
+            patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES),
+            patch("app.api.routes.reference_coverage", side_effect=RuntimeError("cache boom")),
+        ):
+            response = await client.get(f"/api/jobs/{job.id}/season-roster")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert all(ep["has_reference"] is True for ep in data["episodes"])
+        assert all(ep["reference_source"] is None for ep in data["episodes"])
+
     async def test_roster_unavailable_without_tmdb_id(self, client):
         """No tmdb_id → roster cannot be built; respond gracefully, not 500."""
         await _seed_config()

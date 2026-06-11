@@ -50,7 +50,7 @@ export function OrderingSelector({
                     fontSize: 10,
                     letterSpacing: '0.14em',
                     textTransform: 'uppercase',
-                    color: sv.inkFaint,
+                    color: sv.inkDim,
                 }}
             >
                 Episode ordering
@@ -87,7 +87,7 @@ export function OrderingSelector({
                     );
                 })}
             </div>
-            <span style={{ fontFamily: sv.sans, fontSize: 10, color: sv.inkFaint }}>
+            <span style={{ fontFamily: sv.sans, fontSize: 10, color: sv.inkDim }}>
                 {activeDiverges
                     ? 'Files use this ordering; matching & history stay canonical.'
                     : 'Aired order — matches the canonical numbering.'}

@@ -62,7 +62,7 @@ function KvRow({ label, value }: { label: string; value: ReactNode }) {
           fontSize: 11,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
-          color: sv.inkFaint,
+          color: sv.inkDim,
         }}
       >
         {label}
@@ -255,7 +255,7 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
                       fontFamily: sv.mono,
                       fontSize: 11,
                       letterSpacing: "0.06em",
-                      color: sv.inkFaint,
+                      color: sv.inkDim,
                     }}
                   >
                     Exactly what will be attached to your bug report — review before sending.

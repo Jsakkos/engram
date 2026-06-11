@@ -31,6 +31,7 @@ from app.core.security import is_allowed_image_url, sanitize_log_value
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
+from app.matcher.episode_identification import reference_coverage
 from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
@@ -632,6 +633,12 @@ class RosterEpisode(BaseModel):
     name: str
     status: Literal["assigned", "duplicate", "missing", "off"]
     assigned_title_ids: list[int]
+    # Subtitle-reference availability (the source of truth for auto-matching).
+    # ``missing`` means no precomputed vector and no downloaded SRT exist for the
+    # episode, so the matcher had nothing to identify it against — the silent gap
+    # the review UI must flag. None when the coverage scan was unavailable.
+    reference_source: Literal["precomputed", "downloaded", "missing"] | None = None
+    has_reference: bool = True
 
 
 class OrderingOption(BaseModel):
@@ -749,9 +756,34 @@ async def get_season_roster(
     present = sorted(assigned)
     lo, hi = (present[0], present[-1]) if present else (0, -1)
 
+    # Per-episode subtitle-reference availability: which episodes the matcher
+    # actually had a reference for (precomputed vector or downloaded SRT) vs the
+    # silent gap (none). Best-effort decoration off the event loop — a cache-scan
+    # failure must never break review, so we default every slot to "has a
+    # reference" rather than crying wolf.
+    cache_dir = Path(config.subtitles_cache_path).expanduser()
+    episode_numbers = [ep["episode_number"] for ep in episodes_raw]
+    try:
+        coverage = await asyncio.to_thread(
+            reference_coverage,
+            cache_dir,
+            job.tmdb_id,
+            job.detected_title or "",
+            season_num,
+            episode_numbers,
+        )
+    except Exception as e:  # noqa: BLE001 — coverage is decoration, not load-bearing
+        logger.debug(
+            "Reference-coverage scan failed for show %s S%s: %s",
+            sanitize_log_value(job.tmdb_id),
+            sanitize_log_value(f"{season_num:02d}"),
+            sanitize_log_value(str(e)),
+        )
+        coverage = {}
+
     episodes = [
         RosterEpisode(
-            episode_code=f"S{season_num:02d}E{ep['episode_number']:02d}",
+            episode_code=(code := f"S{season_num:02d}E{ep['episode_number']:02d}"),
             episode_number=ep["episode_number"],
             name=ep.get("name") or "",
             status=(
@@ -764,6 +796,8 @@ async def get_season_roster(
                 else "off"
             ),
             assigned_title_ids=assigned.get(ep["episode_number"], []),
+            reference_source=coverage.get(code),
+            has_reference=coverage.get(code, "precomputed") != "missing",
         )
         for ep in episodes_raw
     ]

@@ -66,7 +66,7 @@ export function SvStatusBar({
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         <CountPill color={sv.magenta} label={`${activeCount} ACTIVE`} />
         <CountPill color={sv.green} label={`${completedCount} ARCHIVED`} />
-        {driveLabel && <span style={{ color: sv.inkFaint }}>{driveLabel}</span>}
+        {driveLabel && <span style={{ color: sv.inkDim }}>{driveLabel}</span>}
       </div>
 
       {/* Center: scrolling telemetry */}

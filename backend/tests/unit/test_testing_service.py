@@ -201,38 +201,131 @@ class TestDownloadSubtitles:
         assert all(ep["status"] != "precomputed" for ep in result["episodes"])
         addic7ed_client.get_best_subtitle.assert_called()
 
+    @patch("app.matcher.testing_service._fetch_episodes")
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
     @patch("app.matcher.testing_service.fetch_show_id")
     @patch("app.services.config_service.get_config_sync")
-    def test_precomputed_skip_does_not_touch_tmdb(
+    def test_precomputed_heal_survives_tmdb_failure(
         self,
         mock_config_sync,
         mock_show_id,
         mock_season,
         mock_show_details,
         mock_addic7ed,
+        mock_fetch_eps,
         tmp_path,
     ):
-        """The precomputed fast path must work without any TMDB call (offline)."""
+        """The completeness check is best-effort: a TMDB failure must still return
+        the full precomputed result (offline jobs keep matching), never raise or
+        strand the title."""
         mock_config = Mock()
         mock_config.subtitles_cache_path = str(tmp_path)
         mock_config_sync.return_value = mock_config
 
-        # Any TMDB access would blow up — proving the fast path is network-free.
-        boom = AssertionError("TMDB must not be called on the precomputed fast path")
-        mock_show_id.side_effect = boom
-        mock_show_details.side_effect = boom
-        mock_season.side_effect = boom
+        # TMDB is unreachable — the heal can't learn the roster, so it must bail
+        # to the precomputed skip unchanged rather than fail the job.
+        mock_show_id.side_effect = ConnectionError("offline")
+        mock_season.side_effect = ConnectionError("offline")
 
-        _write_precomputed_cache(tmp_path, "Arrested Development", season=1)
+        # Cache is genuinely incomplete (missing S01E03), but we can't know that
+        # without TMDB, so no fetch should be attempted.
+        _write_precomputed_cache(
+            tmp_path, "Arrested Development", season=1, episode_codes=["S01E01", "S01E02"]
+        )
 
         result = download_subtitles("Arrested Development", 1)
 
-        assert result["total_episodes"] == 3
+        assert result["total_episodes"] == 2
         assert all(ep["status"] == "precomputed" for ep in result["episodes"])
-        mock_show_id.assert_not_called()
+        mock_fetch_eps.assert_not_called()
+
+    @patch("app.matcher.testing_service._fetch_episodes")
+    @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
+    @patch("app.matcher.testing_service.fetch_season_details")
+    @patch("app.matcher.testing_service.fetch_show_id")
+    @patch("app.services.config_service.get_config_sync")
+    def test_precomputed_gap_triggers_targeted_fetch(
+        self,
+        mock_config_sync,
+        mock_show_id,
+        mock_season,
+        mock_show_details,
+        mock_addic7ed,
+        mock_fetch_eps,
+        tmp_path,
+    ):
+        """When the precomputed index is missing roster episodes, fetch ONLY the
+        gaps (Mad Men S02E05 shape) — not the whole season."""
+        mock_config = Mock()
+        mock_config.subtitles_cache_path = str(tmp_path)
+        mock_config_sync.return_value = mock_config
+
+        mock_show_id.return_value = "4589"
+        mock_season.return_value = 3  # canonical roster: E01, E02, E03
+
+        # Cache ships only E01 + E02 — E03 is the gap.
+        _write_precomputed_cache(
+            tmp_path, "Arrested Development", season=1, episode_codes=["S01E01", "S01E02"]
+        )
+        mock_fetch_eps.return_value = {
+            3: {
+                "code": "S01E03",
+                "status": "downloaded",
+                "path": "x.srt",
+                "source": "addic7ed",
+            }
+        }
+
+        result = download_subtitles("Arrested Development", 1)
+
+        # Only the missing episode was fetched, not the covered ones.
+        fetched_eps = mock_fetch_eps.call_args.args[3]
+        assert list(fetched_eps) == [3]
+
+        statuses = {ep["code"]: ep["status"] for ep in result["episodes"]}
+        assert statuses["S01E01"] == "precomputed"
+        assert statuses["S01E02"] == "precomputed"
+        assert statuses["S01E03"] == "downloaded"
+
+    @patch("app.matcher.testing_service._fetch_episodes")
+    @patch("app.matcher.testing_service.Addic7edClient")
+    @patch("app.matcher.testing_service.fetch_show_details")
+    @patch("app.matcher.testing_service.fetch_season_details")
+    @patch("app.matcher.testing_service.fetch_show_id")
+    @patch("app.services.config_service.get_config_sync")
+    def test_precomputed_complete_skips_fetch(
+        self,
+        mock_config_sync,
+        mock_show_id,
+        mock_season,
+        mock_show_details,
+        mock_addic7ed,
+        mock_fetch_eps,
+        tmp_path,
+    ):
+        """A complete precomputed cache (index covers the whole roster) heals
+        nothing and hits no providers."""
+        mock_config = Mock()
+        mock_config.subtitles_cache_path = str(tmp_path)
+        mock_config_sync.return_value = mock_config
+
+        mock_show_id.return_value = "4589"
+        mock_season.return_value = 3
+
+        _write_precomputed_cache(
+            tmp_path,
+            "Arrested Development",
+            season=1,
+            episode_codes=["S01E01", "S01E02", "S01E03"],
+        )
+
+        result = download_subtitles("Arrested Development", 1)
+
+        mock_fetch_eps.assert_not_called()
+        assert all(ep["status"] == "precomputed" for ep in result["episodes"])
 
     @patch("app.matcher.testing_service.fetch_show_id")
     def test_tmdb_show_not_found_raises_error(self, mock_show_id):

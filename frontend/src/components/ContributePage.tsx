@@ -428,7 +428,7 @@ export default function ContributePage() {
                   fontSize: 10,
                   letterSpacing: "0.18em",
                   textTransform: "uppercase",
-                  color: sv.inkFaint,
+                  color: sv.inkDim,
                 }}
               >
                 › Settings → TheDiscDB Contributions
@@ -595,7 +595,7 @@ export default function ContributePage() {
                 fontWeight: 700,
                 letterSpacing: "0.22em",
                 textTransform: "uppercase",
-                color: sv.inkFaint,
+                color: sv.inkDim,
                 borderBottom: `1px solid ${sv.line}`,
               }}
             >
@@ -696,7 +696,7 @@ export default function ContributePage() {
                           {job.detected_title || job.volume_label}
                         </span>
                         {job.detected_season != null && (
-                          <span style={{ color: sv.inkFaint, fontSize: 10 }}>Season {job.detected_season}</span>
+                          <span style={{ color: sv.inkDim, fontSize: 10 }}>Season {job.detected_season}</span>
                         )}
                       </div>
 
@@ -712,7 +712,7 @@ export default function ContributePage() {
                         {job.content_type}
                       </span>
 
-                      <span style={{ color: sv.inkFaint, fontSize: 11 }}>
+                      <span style={{ color: sv.inkDim, fontSize: 11 }}>
                         {job.content_hash ? `${job.content_hash.slice(0, 8)}…` : "N/A"}
                       </span>
 
@@ -857,7 +857,7 @@ export default function ContributePage() {
                             ) : titleErrors.has(job.id) ? (
                               <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.red }}>Failed to load titles</span>
                             ) : (
-                              <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint }}>Loading titles…</span>
+                              <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>Loading titles…</span>
                             )}
                           </div>
                         </motion.div>
@@ -943,7 +943,7 @@ function TitleTable({
               style={{
                 textAlign: "left",
                 padding: "6px 12px 6px 0",
-                color: sv.inkFaint,
+                color: sv.inkDim,
                 fontWeight: 700,
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
@@ -958,7 +958,7 @@ function TitleTable({
       <tbody>
         {titles.map((t) => (
           <tr key={t.id} style={{ borderTop: `1px solid ${sv.line}` }}>
-            <td style={{ padding: "6px 12px 6px 0", color: sv.inkFaint }}>{t.title_index}</td>
+            <td style={{ padding: "6px 12px 6px 0", color: sv.inkDim }}>{t.title_index}</td>
             <td style={{ padding: "6px 12px 6px 0", color: sv.ink }}>{t.matched_episode || "—"}</td>
             <td style={{ padding: "6px 12px 6px 0", color: sv.inkDim }}>{formatDuration(t.duration_seconds)}</td>
             <td style={{ padding: "6px 12px 6px 0" }}>

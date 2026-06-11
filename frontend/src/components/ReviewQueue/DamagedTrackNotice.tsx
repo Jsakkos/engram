@@ -119,7 +119,7 @@ export function DamagedTrackNotice({ jobId, titleId, state }: Props) {
             style={{
               fontFamily: sv.mono,
               fontSize: 10,
-              color: sv.inkFaint,
+              color: sv.inkDim,
               letterSpacing: '0.08em',
             }}
           >

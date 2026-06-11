@@ -132,7 +132,7 @@ export function TitleList({
                             <div style={{ ...truncate, fontFamily: sv.mono, fontSize: 12.5, color: sv.cyanHi }}>
                                 {titleDisplayName(title)}
                             </div>
-                            <div style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint, marginTop: 3, letterSpacing: '0.06em' }}>
+                            <div style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim, marginTop: 3, letterSpacing: '0.06em' }}>
                                 {formatDuration(title.duration_seconds)} · {formatSize(title.file_size_bytes)}
                             </div>
                         </div>

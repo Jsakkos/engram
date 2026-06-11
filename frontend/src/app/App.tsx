@@ -595,7 +595,7 @@ function MainDashboard() {
                 fontSize: 11,
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
-                color: sv.inkFaint,
+                color: sv.inkDim,
                 maxWidth: 480,
                 lineHeight: 1.6,
               }}

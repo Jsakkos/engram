@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Save, Package } from 'lucide-react';
-import { IcoDisc, IcoPlay, IcoRetry } from '../app/components/icons';
+import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
 import { formatDuration, formatSize, titleDisplayName } from './ReviewQueue/utils';
@@ -24,7 +24,7 @@ import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 const monoLabelStyle: CSSProperties = {
     fontFamily: sv.mono,
     fontSize: 11,
-    color: sv.inkFaint,
+    color: sv.inkDim,
 };
 
 /** Single-line clipping with ellipsis overflow. */
@@ -610,6 +610,12 @@ function ReviewQueue() {
 
     // --- Derived disc-level coverage (live, from current selections) ---
     const rosterEpisodes = useMemo(() => roster?.episodes ?? [], [roster]);
+    // Episodes with no reference subtitle (no precomputed vector, no downloaded
+    // SRT) — the silent gap that leaves the matcher nothing to identify against.
+    const missingRefCodes = useMemo(
+        () => rosterEpisodes.filter((e) => e.has_reference === false).map((e) => e.episode_code),
+        [rosterEpisodes],
+    );
     const titleIndexById = useMemo(
         () => Object.fromEntries(titles.map((t) => [t.id, t.title_index])) as Record<number, number>,
         [titles],
@@ -1019,6 +1025,27 @@ function ReviewQueue() {
                         <div style={{ marginBottom: 12 }}>
                             <SvLabel>Season roster — coverage across this disc</SvLabel>
                         </div>
+                        {missingRefCodes.length > 0 && (
+                            <div
+                                style={{
+                                    marginBottom: 10,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 7,
+                                    fontFamily: sv.mono,
+                                    fontSize: 11,
+                                    lineHeight: 1.4,
+                                    color: sv.red,
+                                }}
+                            >
+                                <IcoError size={13} color={sv.red} title="No reference subtitle" />
+                                <span>
+                                    {missingRefCodes.length === 1
+                                        ? `${missingRefCodes[0]} has no reference subtitle — matching can't auto-identify it; assign manually.`
+                                        : `${missingRefCodes.length} episodes have no reference subtitle (${missingRefCodes.join(', ')}) — matching can't auto-identify them; assign manually.`}
+                                </span>
+                            </div>
+                        )}
                         <SvPanel pad={14}>
                             <SeasonRosterStrip
                                 episodes={rosterEpisodes}

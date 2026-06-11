@@ -41,6 +41,14 @@ export interface RosterEpisode {
     /** Persisted coverage from the server; the UI recomputes live while editing. */
     status?: 'assigned' | 'duplicate' | 'missing' | 'off';
     assigned_title_ids?: number[];
+    /**
+     * Subtitle-reference availability — the source of truth for auto-matching.
+     * `missing` means no precomputed vector and no downloaded SRT exist, so the
+     * matcher had nothing to identify the episode against (the silent gap the
+     * roster flags). `null`/undefined when the coverage scan was unavailable.
+     */
+    reference_source?: 'precomputed' | 'downloaded' | 'missing' | null;
+    has_reference?: boolean;
 }
 
 /** One selectable output ordering for a show (#200). */

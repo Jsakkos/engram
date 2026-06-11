@@ -59,7 +59,7 @@ export function CompactList({
           fontWeight: 700,
           letterSpacing: "0.22em",
           textTransform: "uppercase",
-          color: sv.inkFaint,
+          color: sv.inkDim,
           borderBottom: `1px solid ${sv.line}`,
         }}
       >

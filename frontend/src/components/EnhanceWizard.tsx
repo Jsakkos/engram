@@ -300,7 +300,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                       fontSize: 10,
                       letterSpacing: "0.20em",
                       textTransform: "uppercase",
-                      color: sv.inkFaint,
+                      color: sv.inkDim,
                     }}
                   >
                     UPC / Barcode
@@ -484,10 +484,10 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                     }}
                   >
                     <div style={{ flexShrink: 0 }}>
-                      <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint }}>
+                      <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>
                         #{t.title_index}
                       </span>
-                      <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint, marginLeft: 8 }}>
+                      <span style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim, marginLeft: 8 }}>
                         {formatDurationShort(t.duration_seconds)}
                       </span>
                     </div>
@@ -519,7 +519,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                     fontSize: 10,
                     letterSpacing: "0.18em",
                     textTransform: "uppercase",
-                    color: sv.inkFaint,
+                    color: sv.inkDim,
                   }}
                 >
                   Summary
@@ -547,7 +547,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                     !selectedAsin &&
                     !coverSaved &&
                     annotatedExtrasCount === 0 && (
-                      <p style={{ margin: 0, color: sv.inkFaint }}>No enhancements to save</p>
+                      <p style={{ margin: 0, color: sv.inkDim }}>No enhancements to save</p>
                     )}
                 </div>
               </SvPanel>
