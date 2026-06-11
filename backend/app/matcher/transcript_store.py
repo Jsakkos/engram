@@ -31,10 +31,12 @@ tracks puts; the check is fast (one SELECT COUNT(*) before the DELETE).
 
 Fail-safe contract
 ------------------
-Every public function catches all ``sqlite3.Error`` and ``OSError`` exceptions,
-logs at WARNING level, and returns ``None`` (or no-ops for ``put``).  A broken
-or corrupted cache degrades to "just transcribe again" — it must NEVER break
-the calling matcher.
+Every public function catches ``sqlite3.Error`` exceptions and returns ``None``
+(or no-ops for ``put``).  ``OSError`` from the filesystem is converted to a
+``sqlite3.OperationalError`` in ``_bootstrap_db`` before reaching get/put.
+``file_key_for`` catches ``OSError`` and logs at DEBUG level (missing files are
+expected, not warnings).  A broken or corrupted cache degrades to "just
+transcribe again" — it must NEVER break the calling matcher.
 
 Corrupt-DB recovery
 -------------------
@@ -80,6 +82,12 @@ _local = threading.local()
 _init_lock = threading.Lock()
 _put_counter_lock = threading.Lock()
 _put_counter: int = 0
+
+# Log-spam latch: after the first bootstrap failure we drop subsequent
+# failures to DEBUG so we don't flood the log with thousands of identical
+# warnings across 37-145 chunks × threads in degraded mode.
+_bootstrap_warned: bool = False
+_bootstrap_warned_lock = threading.Lock()
 
 
 class _SchemaState:
@@ -175,6 +183,29 @@ def _create_schema() -> None:
         bootstrap.close()
 
 
+def _log_bootstrap_failure(exc: Exception) -> None:
+    """Log a bootstrap failure at WARNING on first occurrence, DEBUG thereafter.
+
+    This prevents thousands of identical WARNING lines per job when the cache
+    directory is permanently unwritable (disk full, permissions error, etc.).
+    The latch is reset in ``close()`` / ``reset_module_state_for_tests()`` so
+    recovery is possible once the environment is fixed.
+    """
+    global _bootstrap_warned
+    with _bootstrap_warned_lock:
+        first_time = not _bootstrap_warned
+        _bootstrap_warned = True
+
+    if first_time:
+        logger.warning(
+            f"transcript_store: cache unavailable, running without transcript cache: {exc}"
+        )
+    else:
+        logger.debug(
+            f"transcript_store: cache still unavailable (suppressing repeat warnings): {exc}"
+        )
+
+
 def close() -> None:
     """Close the calling thread's connection and reset the schema-init flag.
 
@@ -185,11 +216,14 @@ def close() -> None:
     Connections held by OTHER threads are left open — they drain when their
     owning thread exits.
     """
+    global _bootstrap_warned
     conn = getattr(_local, "conn", None)
     if conn is not None:
         conn.close()
         _local.conn = None
     _schema.initialized = False
+    with _bootstrap_warned_lock:
+        _bootstrap_warned = False
 
 
 # ---------------------------------------------------------------------------
@@ -217,13 +251,29 @@ def file_key_for(path: str | Path) -> str | None:
         return None
 
 
-def get(file_key: str, start_s: int, duration_s: int, model_key: str) -> str | None:
+def get(
+    file_key: str | None,
+    start_s: int | float,
+    duration_s: int | float,
+    model_key: str,
+) -> str | None:
     """Return the cached transcript text, or ``None`` on a miss.
 
     *Distinguishes* a cached empty string (``""`` — silent audio) from a cache
     miss (``None``).  On a hit, bumps ``last_used_at`` so active entries survive
     LRU pruning longer.
+
+    *file_key* may be ``None`` (e.g. when ``file_key_for`` could not stat the
+    file); in that case ``None`` is returned immediately without touching the DB.
+
+    *start_s* and *duration_s* are normalised to integers via ``round()`` so
+    float values from ``get_video_duration()`` hit the same DB rows as integer
+    call sites.
     """
+    if file_key is None:
+        return None
+    start_s = int(round(start_s))
+    duration_s = int(round(duration_s))
     try:
         conn = _get_conn()
         row = conn.execute(
@@ -243,17 +293,36 @@ def get(file_key: str, start_s: int, duration_s: int, model_key: str) -> str | N
         conn.commit()
         return row[0]
     except sqlite3.Error as exc:
-        logger.warning(f"transcript_store.get: sqlite error: {exc}")
+        _log_bootstrap_failure(exc)
         return None
 
 
-def put(file_key: str, start_s: int, duration_s: int, model_key: str, text: str) -> None:
+def put(
+    file_key: str | None,
+    start_s: int | float,
+    duration_s: int | float,
+    model_key: str,
+    text: str,
+) -> None:
     """Insert or replace a transcript entry.
 
     Also increments the put counter and triggers an LRU prune every
     ``_PUT_PRUNE_INTERVAL`` puts so the table doesn't grow without bound.
+
+    *file_key* may be ``None`` (e.g. when ``file_key_for`` could not stat the
+    file); in that case the call is silently ignored (no DB write, no counter
+    increment).
+
+    *start_s* and *duration_s* are normalised to integers via ``round()`` so
+    float values from ``get_video_duration()`` hit the same DB rows as integer
+    call sites.
     """
+    if file_key is None:
+        logger.debug("transcript_store.put: file_key is None, skipping")
+        return
     global _put_counter
+    start_s = int(round(start_s))
+    duration_s = int(round(duration_s))
     try:
         conn = _get_conn()
         now = int(time.time())
@@ -265,7 +334,7 @@ def put(file_key: str, start_s: int, duration_s: int, model_key: str, text: str)
         )
         conn.commit()
     except sqlite3.Error as exc:
-        logger.warning(f"transcript_store.put: sqlite error: {exc}")
+        _log_bootstrap_failure(exc)
         return
 
     # Increment counter outside the try so a DB error above still doesn't
@@ -311,17 +380,21 @@ def reset_module_state_for_tests() -> None:
     the redirect takes effect on the next ``get()``/``put()`` that opens a
     new connection.
 
+    This also resets the bootstrap-warning latch so that tests that exercise
+    degraded-mode behaviour see the WARNING on the first failure (not silently
+    suppressed by a previous test).
+
     Example (pytest)::
 
         @pytest.fixture(autouse=True)
         def _isolate_transcript_store(tmp_path, monkeypatch):
             import app.matcher.transcript_store as ts
-            ts.close()
             monkeypatch.setattr(ts, "CACHE_DB_PATH", tmp_path / "transcripts.sqlite")
+            ts.reset_module_state_for_tests()
             yield
-            ts.close()
+            ts.reset_module_state_for_tests()
     """
     global _put_counter
-    close()
+    close()  # also resets _bootstrap_warned
     with _put_counter_lock:
         _put_counter = 0

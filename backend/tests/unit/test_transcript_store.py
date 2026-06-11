@@ -2,8 +2,10 @@
 
 Fixture strategy mirrors ``test_tmdb_persistent_cache.py``:
 - An autouse fixture redirects ``CACHE_DB_PATH`` to a per-test tmp_path file
-  via monkeypatch + ``close()``, so tests NEVER touch ``~/.engram/cache/``.
-- The fixture also resets the put-counter so LRU prune tests start clean.
+  via monkeypatch + ``reset_module_state_for_tests()``, so tests NEVER touch
+  ``~/.engram/cache/``.
+- The fixture also resets the put-counter and bootstrap-warning latch so every
+  test starts from a clean state.
 """
 
 from __future__ import annotations
@@ -23,12 +25,10 @@ import app.matcher.transcript_store as ts
 @pytest.fixture(autouse=True)
 def _isolate_transcript_store(tmp_path, monkeypatch):
     """Redirect transcript_store to a per-test SQLite file in tmp_path."""
-    ts.close()
     monkeypatch.setattr(ts, "CACHE_DB_PATH", tmp_path / "transcripts.sqlite")
-    # Reset the put counter so every test starts from 0.
-    monkeypatch.setattr(ts, "_put_counter", 0)
+    ts.reset_module_state_for_tests()
     yield
-    ts.close()
+    ts.reset_module_state_for_tests()
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +98,81 @@ class TestRoundtrip:
 
 
 # ---------------------------------------------------------------------------
+# Numeric key normalisation tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestNumericKeyNormalisation:
+    def test_float_duration_put_int_get_hits(self):
+        """put() with float duration, get() with truncated int → cache hit."""
+        fk = "float_dur"
+        ts.put(fk, 0, 1372.416, _MK, "float stored")
+        # 1372.416 rounds to 1372 — both ints and the rounded float should hit.
+        assert ts.get(fk, 0, 1372, _MK) == "float stored"
+        assert ts.get(fk, 0, 1372.0, _MK) == "float stored"
+
+    def test_float_duration_put_float_get_hits(self):
+        """put() and get() with the same float duration → cache hit."""
+        fk = "float_same"
+        ts.put(fk, 0, 1372.416, _MK, "roundtrip")
+        assert ts.get(fk, 0, 1372.416, _MK) == "roundtrip"
+
+    def test_float_start_s_normalised(self):
+        """put() with float start_s, get() with equivalent int → hit."""
+        fk = "float_start"
+        ts.put(fk, 30.7, 30, _MK, "offset text")
+        assert ts.get(fk, 31, 30, _MK) == "offset text"
+
+    def test_float_duration_slightly_different_rounds_to_same(self):
+        """Floats that round to the same integer resolve to the same row."""
+        fk = "float_rounding"
+        ts.put(fk, 0, 30.4, _MK, "text")
+        assert ts.get(fk, 0, 30.6, _MK) is None  # rounds to 31, not 30
+        assert ts.get(fk, 0, 30.3, _MK) == "text"  # rounds to 30
+
+
+# ---------------------------------------------------------------------------
+# file_key=None short-circuit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestNoneFileKey:
+    def test_get_with_none_file_key_returns_none(self):
+        """get() must return None silently when file_key is None."""
+        result = ts.get(None, 0, 30, _MK)
+        assert result is None
+
+    def test_put_with_none_file_key_does_not_raise(self):
+        """put() must be a no-op when file_key is None."""
+        try:
+            ts.put(None, 0, 30, _MK, "text")
+        except Exception as exc:  # noqa: BLE001
+            pytest.fail(f"put(None, ...) raised unexpectedly: {exc}")
+
+    def test_put_with_none_file_key_writes_nothing(self):
+        """After put(None, ...), the DB should have no rows."""
+        ts.put(None, 0, 30, _MK, "text")
+        conn = ts._get_conn()
+        (count,) = conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
+        assert count == 0
+
+    def test_get_with_none_does_not_touch_db(self, monkeypatch):
+        """get(None, ...) short-circuits before opening a DB connection."""
+        opened = []
+        original_get_conn = ts._get_conn
+
+        def tracking_get_conn():
+            opened.append(True)
+            return original_get_conn()
+
+        monkeypatch.setattr(ts, "_get_conn", tracking_get_conn)
+        ts.get(None, 0, 30, _MK)
+        assert not opened, "_get_conn should not be called when file_key is None"
+
+
+# ---------------------------------------------------------------------------
 # file_key_for tests
 # ---------------------------------------------------------------------------
 
@@ -146,15 +221,6 @@ class TestFileKeyFor:
     def test_missing_file_returns_none(self, tmp_path):
         missing = tmp_path / "does_not_exist.mkv"
         assert ts.file_key_for(missing) is None
-
-    def test_missing_file_does_not_raise(self, tmp_path):
-        """file_key_for must be fail-safe — never raise on missing file."""
-        missing = tmp_path / "ghost.mkv"
-        try:
-            result = ts.file_key_for(missing)
-        except Exception as exc:  # noqa: BLE001
-            pytest.fail(f"file_key_for raised unexpectedly: {exc}")
-        assert result is None
 
     def test_null_char_in_path_returns_none(self):
         """file_key_for must not raise on paths containing embedded null bytes."""
@@ -250,7 +316,6 @@ class TestLRUPrune:
         """With interval=5, prune fires only on every 5th put."""
         monkeypatch.setattr(ts, "_MAX_ROWS", 2)
         monkeypatch.setattr(ts, "_PUT_PRUNE_INTERVAL", 5)
-        monkeypatch.setattr(ts, "_put_counter", 0)
 
         fake_time = {"value": 1000}
         monkeypatch.setattr(ts.time, "time", lambda: fake_time["value"])
@@ -294,44 +359,12 @@ class TestFailSafe:
         """A corrupt DB is deleted and recreated; get/put work after recovery."""
         corrupt_path = tmp_path / "bad.sqlite"
         corrupt_path.write_bytes(b"THIS IS NOT A SQLITE DATABASE FILE")
-        ts.close()
         monkeypatch.setattr(ts, "CACHE_DB_PATH", corrupt_path)
-        monkeypatch.setattr(ts, "_put_counter", 0)
+        ts.reset_module_state_for_tests()
 
         # Should not raise — module recovers by deleting and recreating.
         ts.put("fk", 0, 30, _MK, "hello")
         assert ts.get("fk", 0, 30, _MK) == "hello"
-
-    def test_get_on_missing_db_returns_none(self, tmp_path, monkeypatch):
-        """If _get_conn raises a sqlite3.Error, get() returns None without raising.
-
-        We simulate a broken DB by monkeypatching _get_conn to raise directly,
-        which covers any failure in the mkdir / schema-creation path without
-        depending on OS-specific path-collision behaviour.
-        """
-        ts.close()
-        monkeypatch.setattr(ts, "_put_counter", 0)
-
-        def broken_conn():
-            raise sqlite3.OperationalError("simulated broken DB path")
-
-        monkeypatch.setattr(ts, "_get_conn", broken_conn)
-        result = ts.get("fk", 0, 30, _MK)
-        assert result is None
-
-    def test_put_on_missing_db_does_not_raise(self, tmp_path, monkeypatch):
-        """If _get_conn raises a sqlite3.Error, put() no-ops without raising."""
-        ts.close()
-        monkeypatch.setattr(ts, "_put_counter", 0)
-
-        def broken_conn():
-            raise sqlite3.OperationalError("simulated broken DB path")
-
-        monkeypatch.setattr(ts, "_get_conn", broken_conn)
-        try:
-            ts.put("fk", 0, 30, _MK, "text")
-        except Exception as exc:  # noqa: BLE001
-            pytest.fail(f"put() raised unexpectedly: {exc}")
 
     def test_get_does_not_raise_on_sqlite_error(self, monkeypatch):
         """If the underlying connection raises sqlite3.Error, get() returns None."""
@@ -363,9 +396,8 @@ class TestFailSafe:
         blocker.write_bytes(b"I am a file, not a directory")
         blocked_db = blocker / "transcripts.sqlite"
 
-        ts.close()
         monkeypatch.setattr(ts, "CACHE_DB_PATH", blocked_db)
-        monkeypatch.setattr(ts, "_put_counter", 0)
+        ts.reset_module_state_for_tests()
 
         assert ts.get("fk", 0, 30, _MK) is None
         # put() must not raise even though the directory cannot be created.
@@ -374,6 +406,36 @@ class TestFailSafe:
     def test_file_key_for_does_not_raise_on_missing_file(self, tmp_path):
         result = ts.file_key_for(tmp_path / "ghost.mkv")
         assert result is None
+
+    def test_degraded_mode_warns_once_then_latches(self, monkeypatch):
+        """First bootstrap failure sets the warning latch; subsequent calls do not reset it.
+
+        We verify the latch mechanics directly (rather than capturing loguru output,
+        which does not propagate to stdlib caplog by default).  The latch is the
+        mechanism that causes subsequent failures to log at DEBUG instead of WARNING.
+        """
+        call_count = [0]
+
+        def failing_get_conn():
+            call_count[0] += 1
+            raise sqlite3.OperationalError("simulated persistent failure")
+
+        monkeypatch.setattr(ts, "_get_conn", failing_get_conn)
+
+        # Before any failure the latch is off.
+        assert ts._bootstrap_warned is False
+
+        # First failure sets the latch.
+        ts.get("fk", 0, 30, _MK)
+        assert ts._bootstrap_warned is True
+
+        # Subsequent failures leave it set (no reset between calls in degraded mode).
+        ts.get("fk", 0, 30, _MK)
+        ts.get("fk", 0, 30, _MK)
+        assert ts._bootstrap_warned is True
+
+        # All 3 calls still attempted the DB (no early bail-out on failure).
+        assert call_count[0] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -438,9 +500,8 @@ class TestCloseAndReset:
         ts.put("original", 0, 30, _MK, "data")
 
         new_db = tmp_path / "fresh.sqlite"
-        ts.close()
         monkeypatch.setattr(ts, "CACHE_DB_PATH", new_db)
-        monkeypatch.setattr(ts, "_put_counter", 0)
+        ts.reset_module_state_for_tests()
 
         # The new DB is empty — the "original" key should not be found.
         assert ts.get("original", 0, 30, _MK) is None
@@ -455,3 +516,19 @@ class TestCloseAndReset:
         ts.reset_module_state_for_tests()
         with ts._put_counter_lock:
             assert ts._put_counter == 0
+
+    def test_reset_clears_bootstrap_warned_latch(self, monkeypatch):
+        """reset_module_state_for_tests() resets the warning latch so the next
+        failure emits a WARNING again (recovery possible after env fix)."""
+
+        def failing_get_conn():
+            raise sqlite3.OperationalError("persistent failure")
+
+        monkeypatch.setattr(ts, "_get_conn", failing_get_conn)
+        # Trigger a failure to set the latch.
+        ts.get("fk", 0, 30, _MK)
+        assert ts._bootstrap_warned is True
+
+        # Reset should clear the latch.
+        ts.reset_module_state_for_tests()
+        assert ts._bootstrap_warned is False
