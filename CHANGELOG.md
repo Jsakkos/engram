@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-06-11
+
+_Highlights: completed disc cards now summarize their contents at a glance — TV cards show the season and matched episode range, movie cards show the year — instead of repeating the raw volume label; plus a fix for a ripping card that could visibly flicker between "ripping" and "matched" on slow or dirty discs._
+
+### Added
+
+- **Completed disc cards now summarize what's on the disc instead of repeating the raw volume label** — a finished card's subtitle used to show the unprocessed disc label (e.g. `TV • ARRESTED_DEVELOPMENT_S1D1`), which is hard to scan in the Done list. TV cards now show the season and matched episode range (e.g. `TV · S01 E01–E08`), listing each season separately for multi-disc sets that span seasons and appending a count when some episodes are missing from the library; movie cards show `Movie · <year>`. The raw label still appears on its own line for traceability, and active cards (ripping, matching) are unchanged. (#382)
+
 ### Fixed
 
 - **A ripping track no longer flickers between "ripping" and "matched/idle"** — when MakeMKV paused mid-track for a few seconds (common on slow or dirty discs), Engram mistook the brief lull in file growth for the track being finished, handed the still-ripping file to the matcher, and then the progress monitor kept yanking it back to "ripping" as the rip resumed — so the card visibly bounced between the red ripping state and the green matched/idle state for the rest of the rip. A track is now only treated as finished once MakeMKV has provably moved on to the next title (or the rip process exits), so a mid-track write pause can no longer be misread as completion. (#381)
