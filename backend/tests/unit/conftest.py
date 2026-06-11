@@ -157,6 +157,24 @@ async def isolate_database(monkeypatch):
     _reg_mod = importlib.import_module("app.core.makemkv_registration")
     monkeypatch.setattr(_reg_mod, "write_makemkv_settings", lambda *a, **k: False)
 
+    # Stub the production prewarmer's kickoff so that unit tests which
+    # transition jobs into REVIEW_NEEDED (via the real module-level
+    # JobStateMachine) never spawn real background tasks.  Real tasks build an
+    # EpisodeMatcher in a thread, call ffprobe on fake files, and hold DB
+    # sessions on the StaticPool — when the autouse isolate_database fixture
+    # later calls drop_all the task is still alive → OperationalError: database
+    # table is locked.  Tests that want to assert on kickoff calls replace
+    # _prewarmer entirely with their own MagicMock (via monkeypatch.setattr on
+    # jm.job_manager._prewarmer), which takes precedence over this stub; see
+    # TestJobManagerWiring.
+    _jm_inst = _jm_mod.job_manager
+    prewarm_kickoff_calls: list[int] = []
+
+    def _stub_kickoff(job_id: int) -> None:
+        prewarm_kickoff_calls.append(job_id)
+
+    monkeypatch.setattr(_jm_inst._prewarmer, "kickoff", _stub_kickoff)
+
     yield
 
     async with _unit_engine.begin() as conn:
