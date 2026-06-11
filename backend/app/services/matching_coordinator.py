@@ -1950,7 +1950,9 @@ class MatchingCoordinator:
 
         except Exception as e:
             if isinstance(e, ValueError):
-                logger.error(f"Subtitle download ValueError for {show_name} S{season}: {e}")
+                logger.error(
+                    f"Subtitle download ValueError for {show_name} S{season}: {e}", exc_info=True
+                )
                 subtitle_error = str(e)
             else:
                 logger.exception(

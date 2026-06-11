@@ -1287,7 +1287,9 @@ class IdentificationCoordinator:
 
         # DINFO disc-name TMDB fallback — when the volume label gave no TMDB signal,
         # resolve identity from the disc name instead.
+        disc_name_queried = False
         if not tmdb_signal and disc_name_title and config.tmdb_api_key:
+            disc_name_queried = True
             disc_tmdb_signal = await _try_tmdb(disc_name_title, "TMDB disc-name fallback failed")
             if disc_tmdb_signal:
                 tmdb_signal = disc_tmdb_signal
@@ -1302,13 +1304,15 @@ class IdentificationCoordinator:
         # resolves to an unrelated show. When the label or the DINFO disc name
         # carries a season, re-resolve identity from the cleaner disc name and
         # prefer a TV hit (e.g. "Madmen"->movie "Two Madmen" -> disc name
-        # "Mad Men Season 3" -> the real TV show).
+        # "Mad Men Season 3" -> the real TV show). Skip if the disc-name fallback
+        # already queried this exact title — it would return the same movie result.
         disc_says_tv = label_season is not None or disc_name_season is not None
         if (
             tmdb_signal
             and tmdb_signal.content_type == ContentType.MOVIE
             and disc_says_tv
             and disc_name_title
+            and not disc_name_queried
             and config.tmdb_api_key
         ):
             tv_retry = await _try_tmdb(disc_name_title, "TMDB TV re-resolve from disc name failed")
