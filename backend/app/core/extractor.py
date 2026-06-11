@@ -121,6 +121,117 @@ class ScanTimeoutError(Exception):
     """MakeMKV disc scan exceeded time limit."""
 
 
+class TitleCompletionDetector:
+    """Decides, from output-file sizes alone, when MakeMKV has finished a title.
+
+    MakeMKV writes one title at a time and emits no reliable per-title "done"
+    signal on stdout (its PRGC/PRGV codes carry no title index), so completion
+    is inferred from the ``*.mkv`` files in the output directory. The detector
+    is fed a ``{filename: size}`` snapshot on each poll and reports which files
+    have *newly* finished.
+
+    A file is reported complete only when MakeMKV has **demonstrably moved on**:
+
+    * ``force`` — the process exited, so every non-empty file is final; or
+    * its size has been stable for ``stable_required`` polls **and a different
+      file is now the one growing** (MakeMKV started the next title).
+
+    Size-stability *alone* is deliberately not trusted. MakeMKV pauses writes
+    mid-title on slow or dirty discs, holding a file's size constant for many
+    seconds. Treating such a pause as completion hands a still-ripping file to
+    the matcher; the filesystem progress monitor then keeps re-broadcasting the
+    same title as RIPPING when growth resumes, so the job UI flickers between
+    the red RIPPING state and the green matched/idle state for the rest of the
+    rip (issue #381). Because a paused title is always the *most-recently-grown*
+    file, the "another file is growing" gate makes that false positive
+    impossible: the last/only title of a rip is finalized by the post-process
+    ``force`` check instead.
+
+    Not internally synchronized — callers serialize access (the rip loop holds
+    its filesystem lock around every ``poll``/``seed``).
+    """
+
+    def __init__(self, stable_required: int = STABLE_CHECKS_REQUIRED) -> None:
+        self._stable_required = stable_required
+        self._known: dict[str, int] = {}  # filename -> last polled size
+        self._stable_counts: dict[str, int] = {}  # consecutive unchanged polls
+        self._completed: set[str] = set()
+        self._active: str | None = None  # most-recently-growing file
+
+    def seed(self, fname: str) -> None:
+        """Record a file MakeMKV announced as 'created' (no bytes written yet)."""
+        self._known.setdefault(fname, 0)
+
+    def is_known(self, fname: str) -> bool:
+        """Whether *fname* has been seen (seeded or polled) before."""
+        return fname in self._known
+
+    def is_completed(self, fname: str) -> bool:
+        """Whether *fname* has already been reported complete."""
+        return fname in self._completed
+
+    @property
+    def completed_count(self) -> int:
+        """Total number of titles reported complete so far."""
+        return len(self._completed)
+
+    def poll(self, sizes: dict[str, int], *, force: bool = False) -> list[tuple[str, int]]:
+        """Feed the current ``{filename: size}`` snapshot.
+
+        Returns ``(filename, ordinal)`` for each file that finished writing on
+        this poll, in the order the snapshot iterates them. ``ordinal`` is the
+        1-based count of titles completed so far *at the moment that file was
+        marked done* — so when a single ``force`` poll finalizes several files
+        at once, each gets a distinct sequential ordinal rather than all sharing
+        the final total (the value the rip loop passes through as the callback's
+        sequential index). Updates the detector's internal tracking state in
+        place.
+        """
+        # Pass 1: advance the "active" pointer to whatever grew this poll, so a
+        # completion decision in pass 2 sees an up-to-date view of which file
+        # MakeMKV is currently writing. A file that just appeared with bytes is
+        # also "active" — MakeMKV opened the next title and started writing it
+        # (this is what supersedes the previous title). A growing/new file
+        # resets its own stability counter.
+        for fname, size in sizes.items():
+            if size <= 0 or fname in self._completed:
+                continue
+            prev = self._known.get(fname)
+            if prev is None or size > prev:
+                self._active = fname
+                self._stable_counts[fname] = 0
+
+        # Pass 2: decide completion, then record the new sizes.
+        newly: list[tuple[str, int]] = []
+        for fname, size in sizes.items():
+            prev = self._known.get(fname)
+            self._known[fname] = size
+            if fname in self._completed or size <= 0 or prev is None:
+                continue
+            if force:
+                # Process exited: the write is guaranteed finished.
+                self._mark_complete(fname)
+                newly.append((fname, len(self._completed)))
+            elif size == prev:
+                self._stable_counts[fname] = self._stable_counts.get(fname, 0) + 1
+                # Complete only once MakeMKV has provably moved on to another
+                # title — a stable size while THIS file is still the active one
+                # is just a mid-rip write pause, not completion.
+                if (
+                    self._stable_counts[fname] >= self._stable_required
+                    and self._active is not None
+                    and self._active != fname
+                ):
+                    self._mark_complete(fname)
+                    newly.append((fname, len(self._completed)))
+            # A shrinking size (rare) is ignored beyond updating _known above.
+        return newly
+
+    def _mark_complete(self, fname: str) -> None:
+        self._completed.add(fname)
+        self._stable_counts.pop(fname, None)
+
+
 def _save_makemkv_log(log_path: Path, content: str) -> None:
     """Save MakeMKV output to a log file for TheDiscDB contributions."""
     try:
@@ -446,67 +557,57 @@ class MakeMKVExtractor:
         output_lines: list[str] = []
         output_files: list[Path] = []
 
-        # Shared state for filesystem-based title completion detection.
-        known_files: dict[str, int] = {}  # filename -> last known size
-        completed_files: set[str] = set()
-        # Tracks consecutive polls where the file size has been stable.  We
-        # require STABLE_CHECKS_REQUIRED consecutive stable readings before
-        # declaring in-flight completion, which avoids false positives caused
-        # by brief MakeMKV write pauses (e.g. buffering or disc seeking) that
-        # may hold the file size constant for one polling interval (~3 s).
-        stable_counts: dict[str, int] = {}
-        # STABLE_CHECKS_REQUIRED is a module-level constant (see top of file).
+        # Filesystem-based title completion detection. The detector reports a
+        # title complete only when MakeMKV has provably moved on (a later file
+        # is growing, or the process exited via force) — a stable size alone is
+        # a mid-rip write pause, not completion (issue #381). See
+        # ``TitleCompletionDetector``.
+        completion = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
         _fs_lock = threading.Lock()
 
-        def _fire_title_complete(fname: str, size: int) -> None:
-            """Mark *fname* complete and invoke the title callback (lock held)."""
-            completed_files.add(fname)
-            stable_counts.pop(fname, None)
+        def _fire_title_complete(fname: str, size: int, ordinal: int) -> None:
+            """Record output file and invoke the title callback (lock held).
+
+            ``ordinal`` is this file's 1-based completion index, used by the
+            callback's sequential title-resolution fallback. It comes per-file
+            from the detector so a multi-file ``force`` batch yields 1, 2, …, N
+            rather than every callback seeing the final total.
+            """
             filepath = output_dir / fname
             output_files.append(filepath)
             logger.info(f"Title file completed: {fname} ({size / 1024 / 1024:.0f} MB)")
             if title_complete_callback:
                 _safe_callback(
                     title_complete_callback,
-                    len(completed_files),
+                    ordinal,
                     filepath,
                     label="title complete callback",
                 )
 
         def _check_for_completed_files(force: bool = False) -> None:
-            """Scan output dir for newly completed .mkv files.
+            """Scan output dir and fire the callback for newly completed files.
 
-            In-flight (``force=False``): requires *STABLE_CHECKS_REQUIRED*
-            consecutive polls with an identical, non-zero size before firing.
-            This prevents false positives from MakeMKV briefly pausing writes
-            between disc segments or while buffering.
+            In-flight (``force=False``): a file must be stable for
+            *STABLE_CHECKS_REQUIRED* consecutive polls **and** superseded by a
+            later growing title before it is declared complete — so a brief
+            MakeMKV write pause mid-title can't be mistaken for completion.
 
-            Post-process (``force=True``): fires immediately for any file with
-            a non-zero size not yet marked complete.  Called after
-            ``process.wait()`` returns so the write is guaranteed finished.
+            Post-process (``force=True``): fires immediately for any non-zero
+            file not yet complete. Called after ``process.wait()`` returns so
+            the write is guaranteed finished (this finalizes the last/only
+            title, which has no successor to supersede it in-flight).
             """
             with _fs_lock:
                 try:
+                    current_sizes: dict[str, int] = {}
                     for mkv in output_dir.glob("*.mkv"):
-                        fname = mkv.name
-                        if fname in completed_files:
-                            continue
-                        current_size = mkv.stat().st_size
-                        if fname in known_files:
-                            if current_size > 0:
-                                if force:
-                                    # Process exited: write is guaranteed done.
-                                    _fire_title_complete(fname, current_size)
-                                elif current_size == known_files[fname]:
-                                    # Size unchanged since last check — increment counter.
-                                    stable_counts[fname] = stable_counts.get(fname, 0) + 1
-                                    if stable_counts[fname] >= STABLE_CHECKS_REQUIRED:
-                                        _fire_title_complete(fname, current_size)
-                                else:
-                                    # File is still growing — reset stability counter.
-                                    stable_counts[fname] = 0
-                        known_files[fname] = current_size
-                except (OSError, PermissionError) as e:
+                        try:
+                            current_sizes[mkv.name] = mkv.stat().st_size
+                        except OSError as e:
+                            logger.debug(f"Could not stat {mkv.name}: {e}")
+                    for fname, ordinal in completion.poll(current_sizes, force=force):
+                        _fire_title_complete(fname, current_sizes[fname], ordinal)
+                except OSError as e:
                     logger.exception(f"Error checking for completed files: {e}")
 
         def run_rip_with_streaming() -> tuple[int, str, set[int]]:
@@ -653,8 +754,8 @@ class MakeMKVExtractor:
                             # not finished writing. Let _check_for_completed_files
                             # detect true completion via stable file size.
                             with _fs_lock:
-                                if filepath.name not in known_files:
-                                    known_files[filepath.name] = 0
+                                if not completion.is_known(filepath.name):
+                                    completion.seed(filepath.name)
                                     logger.info(f"MakeMKV created output file: {filepath.name}")
 
                         # Also check filesystem periodically from the thread
@@ -682,7 +783,7 @@ class MakeMKVExtractor:
                             )
                             # Delete incomplete .mkv files created by this command
                             for mkv in output_dir.glob("*.mkv"):
-                                if mkv.name not in completed_files:
+                                if not completion.is_completed(mkv.name):
                                     try:
                                         size_mb = mkv.stat().st_size / 1024 / 1024
                                         mkv.unlink()
