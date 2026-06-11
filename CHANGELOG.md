@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A ripping track no longer flickers between "ripping" and "matched/idle"** — when MakeMKV paused mid-track for a few seconds (common on slow or dirty discs), Engram mistook the brief lull in file growth for the track being finished, handed the still-ripping file to the matcher, and then the progress monitor kept yanking it back to "ripping" as the rip resumed — so the card visibly bounced between the red ripping state and the green matched/idle state for the rest of the rip. A track is now only treated as finished once MakeMKV has provably moved on to the next title (or the rip process exits), so a mid-track write pause can no longer be misread as completion. (#381)
+
 ## [0.19.0] - 2026-06-11
 
 _Highlights: Settings becomes a jump-anywhere section list with deep-linkable controls instead of a replay of the first-run wizard, alongside a broad UI/UX polish pass — full-width layouts on large screens, AA-legible secondary text, fixed transparent dropdowns, and safer modal dismissal — plus the shipped subtitle cache now heals itself when a reference episode is missing instead of silently sending the track to Needs Review._

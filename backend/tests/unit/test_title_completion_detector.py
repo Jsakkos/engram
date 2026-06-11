@@ -1,0 +1,115 @@
+"""Tests for ``TitleCompletionDetector`` — the in-flight rip-completion logic.
+
+This replaces the hand-mirrored ``_check_for_completed_files`` simulation in
+``test_extractor_callbacks.py`` with tests that exercise the real production
+class, so the two can no longer drift.
+
+Regression focus (issue #381): a MakeMKV title that *pauses* mid-rip (slow or
+dirty disc) holds its output-file size constant for several polls. Size
+stability **alone** must not be read as "finished writing" — doing so hands a
+still-ripping file to the matcher, and the job UI then flickers between the red
+RIPPING state and the green matched/idle state for the rest of the rip. A title
+is only complete once MakeMKV has demonstrably moved on (the process exited, or
+a *different* output file is now the one growing).
+"""
+
+from app.core.extractor import STABLE_CHECKS_REQUIRED, TitleCompletionDetector
+
+
+def _drain(detector: TitleCompletionDetector, sizes, *, force=False):
+    """Run one poll and return the list of newly-completed filenames."""
+    return detector.poll(dict(sizes), force=force)
+
+
+class TestNoFalsePositiveOnMidRipPause:
+    """The core #381 regression: a lone, still-active title that pauses writing
+    must never be reported complete, no matter how many stable polls elapse."""
+
+    def test_paused_active_title_never_completes_in_flight(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+
+        # The single title grows for a couple of polls (it is the active file).
+        assert _drain(d, {"S1D1_t00.mkv": 100_000_000}) == []  # baseline
+        assert _drain(d, {"S1D1_t00.mkv": 200_000_000}) == []  # grew
+
+        # MakeMKV pauses writes (bad sector). The size is now stable for far
+        # more than STABLE_CHECKS_REQUIRED polls — but nothing else is growing,
+        # so the active title cannot be "done".
+        for _ in range(STABLE_CHECKS_REQUIRED + 3):
+            assert _drain(d, {"S1D1_t00.mkv": 200_000_000}) == []
+
+        # Writing resumes — proving the earlier "completion" would have been a
+        # false positive.
+        assert _drain(d, {"S1D1_t00.mkv": 300_000_000}) == []
+
+    def test_completes_only_once_a_later_title_starts_growing(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+
+        # t00 rips, then goes stable (it has actually finished).
+        _drain(d, {"disc_t00.mkv": 100})
+        _drain(d, {"disc_t00.mkv": 500})
+        for _ in range(STABLE_CHECKS_REQUIRED):
+            assert _drain(d, {"disc_t00.mkv": 500}) == []  # no successor yet
+
+        # MakeMKV opens t01 and starts writing it → t00 is now provably done.
+        completed = _drain(d, {"disc_t00.mkv": 500, "disc_t01.mkv": 50})
+        assert completed == ["disc_t00.mkv"]
+        assert d.is_completed("disc_t00.mkv")
+        assert not d.is_completed("disc_t01.mkv")
+
+
+class TestForceCompletion:
+    """force=True (process exit) finalizes every non-empty, not-yet-done file."""
+
+    def test_force_completes_active_title_at_process_exit(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        _drain(d, {"only_t00.mkv": 100})
+        _drain(d, {"only_t00.mkv": 900})
+        # In-flight it never fired (no successor); the exit force-check does.
+        assert _drain(d, {"only_t00.mkv": 900}, force=True) == ["only_t00.mkv"]
+
+    def test_force_does_not_double_fire(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        _drain(d, {"t00.mkv": 100})
+        assert _drain(d, {"t00.mkv": 100}, force=True) == ["t00.mkv"]
+        assert _drain(d, {"t00.mkv": 100}, force=True) == []
+
+    def test_force_ignores_zero_byte_files(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        d.seed("t00.mkv")  # MakeMKV announced 'created' but never wrote bytes
+        assert _drain(d, {"t00.mkv": 0}, force=True) == []
+        assert not d.is_completed("t00.mkv")
+
+
+class TestInvariants:
+    """General invariants preserved from the original stable-size detector."""
+
+    def test_growing_file_does_not_complete(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        _drain(d, {"t00.mkv": 500_000})
+        assert _drain(d, {"t00.mkv": 1_000_000}) == []
+
+    def test_zero_size_file_does_not_complete(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        _drain(d, {"t00.mkv": 0})
+        assert _drain(d, {"t00.mkv": 0}) == []
+
+    def test_seed_marks_file_known_without_completing(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        d.seed("t00.mkv")
+        assert d.is_known("t00.mkv")
+        assert not d.is_completed("t00.mkv")
+
+    def test_completed_count_tracks_finished_titles(self):
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        # Two titles finish in sequence, each superseded by the next.
+        _drain(d, {"t00.mkv": 100})
+        _drain(d, {"t00.mkv": 400})
+        for _ in range(STABLE_CHECKS_REQUIRED):
+            _drain(d, {"t00.mkv": 400})
+        _drain(d, {"t00.mkv": 400, "t01.mkv": 50})  # t00 done
+        _drain(d, {"t00.mkv": 400, "t01.mkv": 400})
+        for _ in range(STABLE_CHECKS_REQUIRED):
+            _drain(d, {"t00.mkv": 400, "t01.mkv": 400})
+        _drain(d, {"t00.mkv": 400, "t01.mkv": 400, "t02.mkv": 10})  # t01 done
+        assert d.completed_count == 2
