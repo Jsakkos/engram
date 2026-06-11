@@ -25,6 +25,55 @@ from app.matcher.vectorizer_config import apply_tfidf
 
 console = Console()
 
+# Nested scan-point lattice levels: n_k = 9 * 2**k + 1. Level k+1 inserts the
+# midpoint of every level-k gap, so each level is a strict subset of all deeper ones.
+_SCAN_LATTICE_LEVELS = (10, 19, 37, 73, 145)
+
+
+def canonical_scan_points(
+    video_duration,
+    *,
+    skip_initial,
+    skip_final=120,
+    chunk_len=30,
+    num_points=10,
+) -> list[int]:
+    """Evenly-spaced scan offsets on a nested lattice, stable across scan depths.
+
+    Levels follow ``n_k = 9 * 2**k + 1`` (10, 19, 37, 73, 145); a shallow scan's
+    offsets are a strict subset of every deeper scan's, so a transcript cache
+    keyed by (file, offset, duration) gets full reuse when a deep re-match
+    revisits a file. ``num_points`` snaps UP to the smallest level that covers
+    it (capped at 145); ``None`` or < 2 means the default 10.
+
+    Integer arithmetic (multiply before floor-divide) is mandatory for subset
+    exactness: level-k point i equals level-(k+1) point 2i because
+    ``n_{k+1} - 1 == 2 * (n_k - 1)``; per-level float intervals can differ in
+    the last ulp and break the equality after truncation.
+
+    Returns ``[]`` when no usable window remains (duration <= skips); offsets
+    are never negative, and adjacent lattice points that collide after floor
+    division on short files are deduplicated.
+    """
+    if not num_points or num_points < 2:
+        num_points = 10
+    n = next((lvl for lvl in _SCAN_LATTICE_LEVELS if lvl >= num_points), _SCAN_LATTICE_LEVELS[-1])
+
+    skip_initial = max(int(skip_initial), 0)
+    available = int(video_duration) - skip_initial - int(skip_final)
+    if available <= 0:
+        return []
+
+    points: list[int] = []
+    for i in range(n):
+        point = skip_initial + (i * available) // (n - 1)
+        if point >= video_duration - chunk_len:
+            continue
+        if points and points[-1] == point:
+            continue
+        points.append(point)
+    return points
+
 
 def load_precomputed_manifest(cache_dir) -> dict | None:
     """Load and validate the precomputed-cache manifest. Returns the dict or None.
@@ -1525,30 +1574,23 @@ class EpisodeMatcher:
                     ep_name = Path(rf).stem
                     coverages[str(rf)] = MatchCoverage(ep_name, ref_dur, video_duration)
 
-            # 5. Scan Chunks - Evenly Spaced Strategy
-            # Distribute scan points evenly across the episode (after skipping intro)
-            # Scales automatically based on media length
+            # 5. Scan Chunks - Canonical Nested Lattice
+            # Offsets come from canonical_scan_points so a shallow scan is a strict
+            # subset of any deeper re-match (transcript-cache reuse across depths).
 
             chunk_len = 30
-            skip_initial = self.skip_initial_duration  # 300s - skip opening credits
-            skip_final = 120  # Skip closing credits/black frames
-
-            available_duration = video_duration - skip_initial - skip_final
+            skip_initial = self.skip_initial_duration  # 90s - skip opening title cards
 
             # TF-IDF matching is fast (~1ms/query) and accurate. More sample
             # points reduce false positives from commentary/alternate audio tracks.
-            # Caller may request a denser scan (deep re-match) for disambiguation.
-            num_points = num_points if num_points and num_points > 1 else 10
-
-            # Calculate actual interval to evenly distribute points across available duration
-            interval = available_duration / (num_points - 1)
-
-            # Generate evenly-spaced scan points
-            scan_points = []
-            for i in range(num_points):
-                point = int(skip_initial + i * interval)
-                if point < video_duration - chunk_len:
-                    scan_points.append(point)
+            # Caller may request a denser scan (deep re-match) for disambiguation;
+            # canonical_scan_points handles None/<2 (default 10) and level snapping.
+            scan_points = canonical_scan_points(
+                video_duration,
+                skip_initial=skip_initial,
+                chunk_len=chunk_len,
+                num_points=num_points,
+            )
 
             model_config = self._model_config()
             model = get_cached_model(model_config)
@@ -1577,9 +1619,10 @@ class EpisodeMatcher:
                 reference_files=reference_files,
             )
 
+            span = f"{scan_points[0]}s-{scan_points[-1]}s" if scan_points else "empty"
             logger.info(
-                f"Scanning {len(scan_points)} chunks using {model_config['name']} + TF-IDF matching "
-                f"(~{interval:.0f}s intervals from {skip_initial}s to {video_duration - skip_final}s)"
+                f"Scanning {len(scan_points)} chunks using {model_config['name']} + TF-IDF "
+                f"matching (canonical lattice, span {span})"
             )
             logger.debug(
                 f"Scan points: {scan_points[:5]}... {scan_points[-3:]} (showing first 5 and last 3)"
