@@ -121,6 +121,10 @@ class JobManager:
         # so concurrent calls for the same path must not both pass the dedup guard.
         self._staging_locks: dict[str, asyncio.Lock] = {}
         self._last_job_created_at: dict[str, float] = {}
+        # Discs detected before first-run setup completed (P12): drive → label.
+        # In-memory only — the sentinel re-fires "inserted" for discs already in
+        # the drive on startup, so a restart mid-setup re-parks them.
+        self._parked_discs: dict[str, str] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
         self._staging_watcher: StagingWatcher | None = None
@@ -425,6 +429,10 @@ class JobManager:
             await self._create_job_for_disc(drive_letter, volume_label)
             await event_broadcaster.broadcast_drive_inserted(drive_letter, volume_label)
         elif event == "removed":
+            # A parked disc (inserted before setup completed) that gets ejected
+            # is simply forgotten — and the dashboard banner cleared.
+            if self._parked_discs.pop(drive_letter, None) is not None:
+                await event_broadcaster.broadcast_parked_discs(self.parked_discs)
             # A cancellation failure must not suppress the removal broadcast —
             # otherwise clients are stuck believing the disc is still present.
             try:
@@ -456,6 +464,50 @@ class JobManager:
             except Exception as e:
                 logger.error(
                     f"Failed to create job from staging directory {staging_dir}: {e}",
+                    exc_info=True,
+                )
+
+    # --- First-run setup gate (P12) ---
+
+    @property
+    def parked_discs(self) -> list[dict[str, str]]:
+        """Discs detected while first-run setup was incomplete (pipeline parked).
+
+        Serialized for the ``parked_discs`` WebSocket broadcast and the
+        ``GET /api/parked-discs`` banner seed.
+        """
+        return [
+            {"drive_id": drive, "volume_label": label}
+            for drive, label in self._parked_discs.items()
+        ]
+
+    async def resume_parked_discs(self) -> None:
+        """Start the pipeline for discs parked behind the setup gate.
+
+        Called when the setup wizard completes (``PUT /api/config`` with
+        ``setup_complete=true``) so a disc already in the drive starts
+        processing without an eject/reinsert. No-op when nothing is parked —
+        which is every settings save from an already-configured install.
+
+        Calls ``_create_job_for_disc`` directly rather than replaying through
+        ``_on_drive_event``: clients already received the ``drive_event`` when
+        the disc was first inserted (and parked), so re-broadcasting it would
+        be a duplicate. The new job announces itself via the IDENTIFYING
+        ``job_update`` that identification fires immediately.
+        """
+        if not self._parked_discs:
+            return
+        parked = dict(self._parked_discs)
+        self._parked_discs.clear()
+        await event_broadcaster.broadcast_parked_discs(self.parked_discs)
+        for drive_letter, volume_label in parked.items():
+            try:
+                await self._create_job_for_disc(drive_letter, volume_label)
+            except Exception:
+                # Parity with the sentinel's _notify backstop: log loudly, keep
+                # resuming the remaining drives.
+                logger.error(
+                    f"Failed to resume parked disc in {sanitize_log_value(drive_letter)}",
                     exc_info=True,
                 )
 
@@ -492,6 +544,28 @@ class JobManager:
 
     async def _create_job_for_disc(self, drive_letter: str, volume_label: str) -> None:
         """Create a new job when a disc is inserted."""
+        from app.services.config_service import get_config as get_db_config
+
+        db_config = await get_db_config()
+
+        # First-run setup gate (P12): until the wizard is completed, never start
+        # the identify/rip pipeline — staging/library paths, the MakeMKV license,
+        # and the TMDB token are all unconfirmed defaults. Park the disc instead;
+        # completing setup replays the insert via resume_parked_discs(), so no
+        # eject/reinsert is needed. Placed before the drive lock and the disc
+        # fingerprint probe so an unconfigured install does zero extra disc I/O.
+        # Cost: configured installs now pay one config read per disc insert —
+        # negligible at physical-disc frequency (the body needed the config for
+        # the staging path anyway; it's fetched once here and reused below).
+        if not db_config.setup_complete:
+            self._parked_discs[drive_letter] = volume_label
+            logger.info(
+                f"Setup not complete; parking disc in {sanitize_log_value(drive_letter)} "
+                f"(label: {sanitize_log_value(volume_label)}) instead of starting the pipeline"
+            )
+            await event_broadcaster.broadcast_parked_discs(self.parked_discs)
+            return
+
         if drive_letter not in self._drive_locks:
             self._drive_locks[drive_letter] = asyncio.Lock()
 
@@ -575,9 +649,6 @@ class JobManager:
                     )
                     return
 
-                from app.services.config_service import get_config as get_db_config
-
-                db_config = await get_db_config()
                 staging_dir = (
                     Path(db_config.staging_path).expanduser()
                     / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"

@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { apiFetch, apiFetchVoid } from '../../api/client';
-import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage } from '../../types';
+import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage } from '../../types';
 
 // Trailing-debounce window for refetches triggered by a burst of unknown
 // `job_update` messages, so we issue one fetch instead of N.
@@ -55,6 +55,9 @@ export function useJobManagement(devMode: boolean = false) {
     const [titlesMap, setTitlesMap] = useState<Record<number, DiscTitle[]>>({});
     const [updateStatus, setUpdateStatus] = useState<import('../../types').UpdateStatus | null>(null);
     const [disclosure, setDisclosure] = useState<import('../../types').FingerprintDisclosureRequiredMessage | null>(null);
+    // Discs detected before first-run setup completed — the backend parks them
+    // instead of ripping into unconfirmed paths (P12). Drives the dashboard banner.
+    const [parkedDiscs, setParkedDiscs] = useState<ParkedDisc[]>([]);
 
     // Use WebSocket URL that works with Vite proxy
     // When running on localhost:5173, connects to ws://localhost:5173/ws (proxied to backend)
@@ -158,6 +161,17 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }, []);
 
+    // Seed the parked-disc banner from REST; live changes ride the
+    // `parked_discs` WebSocket broadcast (full-list replace).
+    const syncParkedDiscs = useCallback(async () => {
+        try {
+            const data = await apiFetch<{ discs: ParkedDisc[] }>('/api/parked-discs');
+            setParkedDiscs(data.discs);
+        } catch {
+            // Non-critical — the banner just stays as-is until the next sync.
+        }
+    }, []);
+
     // Resync on (re)connect so the UI recovers from any drift while disconnected.
     const handleSocketOpen = useCallback(() => {
         if (initialConnectRef.current) {
@@ -169,8 +183,9 @@ export function useJobManagement(devMode: boolean = false) {
             console.log('🔌 WebSocket reconnected — resyncing jobs');
         }
         void syncUpdateStatus();
+        void syncParkedDiscs();
         fetchRef.current?.();
-    }, [syncUpdateStatus]);
+    }, [syncUpdateStatus, syncParkedDiscs]);
 
     const { isConnected, addMessageListener } = useWebSocket(wsUrl, { onOpen: handleSocketOpen });
 
@@ -186,8 +201,9 @@ export function useJobManagement(devMode: boolean = false) {
         if (!devMode) {
             fetchJobsAndTitles();
             void syncUpdateStatus();
+            void syncParkedDiscs();
         }
-    }, [devMode, fetchJobsAndTitles, syncUpdateStatus]);
+    }, [devMode, fetchJobsAndTitles, syncUpdateStatus, syncParkedDiscs]);
 
     async function cancelJob(jobId: string) {
         try {
@@ -385,6 +401,10 @@ export function useJobManagement(devMode: boolean = false) {
                     break;
                 }
 
+                case 'parked_discs':
+                    setParkedDiscs((message as ParkedDiscsMessage).discs);
+                    break;
+
                 default:
                     break;
             }
@@ -398,6 +418,7 @@ export function useJobManagement(devMode: boolean = false) {
         titlesMap,
         isConnected,
         updateStatus,
+        parkedDiscs,
         cancelJob,
         advanceJob,
         clearCompleted,

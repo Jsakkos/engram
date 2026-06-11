@@ -208,6 +208,18 @@ export interface FingerprintDisclosureRequiredMessage {
     server_url: string;
 }
 
+/** A disc detected while first-run setup was incomplete (pipeline parked). */
+export interface ParkedDisc {
+    drive_id: string;
+    volume_label: string;
+}
+
+/** Full-list replace of the parked-disc set — no client-side merge logic. */
+export interface ParkedDiscsMessage {
+    type: 'parked_discs';
+    discs: ParkedDisc[];
+}
+
 export type WebSocketMessage =
     | DriveEvent
     | JobUpdate
@@ -215,7 +227,8 @@ export type WebSocketMessage =
     | SubtitleEvent
     | TitlesDiscovered
     | UpdateStatusMessage
-    | FingerprintDisclosureRequiredMessage;
+    | FingerprintDisclosureRequiredMessage
+    | ParkedDiscsMessage;
 
 export interface Config {
     makemkv_path: string;

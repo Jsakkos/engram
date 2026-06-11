@@ -13,6 +13,7 @@ vi.mock("../hooks/useJobManagement", () => ({
     titlesMap: {},
     isConnected: true,
     updateStatus: null,
+    parkedDiscs: [],
     cancelJob: vi.fn(),
     advanceJob: vi.fn(),
     clearCompleted: vi.fn(),

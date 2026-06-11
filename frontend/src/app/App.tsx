@@ -26,6 +26,7 @@ import { pruneDismissedIds, selectPromptJobs } from "./promptSelection";
 import type { Job } from "../types";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { ParkedDiscBanner } from "./components/ParkedDiscBanner";
 import { AsrStatusBadge } from "./components/AsrStatusBadge";
 import {
   Splash,
@@ -137,7 +138,7 @@ function MainDashboard() {
   }, []);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   useUpdateSuccessToast(updateStatus);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
   const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
@@ -324,6 +325,20 @@ function MainDashboard() {
           onDismiss={() => setUpdateDismissed(true)}
         />
       )}
+
+      {/* Parked-disc banner — disc inserted before first-run setup completed (P12).
+          The backend holds the pipeline; completing setup releases the disc
+          automatically, so this clears itself (no dismiss). Rendered conditionally
+          as the direct AnimatePresence child — a child that merely returns null
+          internally never triggers the exit animation. */}
+      <AnimatePresence>
+        {parkedDiscs.length > 0 && (
+          <ParkedDiscBanner
+            discs={parkedDiscs}
+            onFinishSetup={() => setShowOnboarding(true)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Platform guidance banner for Linux/macOS users */}
       <AnimatePresence>
