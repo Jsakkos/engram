@@ -181,7 +181,13 @@ class ChromaprintMatcher:
 def _scan_points(
     video_duration: float, num_points: int, skip_initial: float, chunk_duration: int
 ) -> list[float]:
-    """Evenly-spaced start times across the body of the file (mirrors identify_episode)."""
+    """Evenly-spaced start times across the body of the file.
+
+    Intentionally does NOT share the ASR integer lattice from
+    ``canonical_scan_points``: the chromaprint path has no persistent
+    per-offset transcript cache, so float spacing is fine and there is no
+    cache-reuse requirement that mandates the nested lattice structure.
+    """
     usable_start = min(skip_initial, max(0.0, video_duration - chunk_duration))
     usable_end = max(usable_start, video_duration - chunk_duration)
     if num_points <= 1 or usable_end <= usable_start:

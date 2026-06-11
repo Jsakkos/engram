@@ -1465,9 +1465,12 @@ class EpisodeMatcher:
         """
         Identify episode using ranked voting with weighted confidence scoring.
 
-        ``num_points`` overrides the number of evenly-spaced audio scan points
-        (default 10); a denser scan yields more robust votes and a clearer
-        score gap — used by the "deep re-match" path to disambiguate conflicts.
+        ``num_points`` overrides the number of audio scan points (default 10);
+        the requested count is snapped up to the nearest lattice level
+        (10/19/37/73/145) — see ``canonical_scan_points`` — so the transcript
+        cache can be fully reused between shallow and deep scans. A denser scan
+        yields more robust votes and a clearer score gap — used by the "deep
+        re-match" path to disambiguate conflicts.
         ``min_vote_count`` overrides the minimum matched-chunk count required to
         accept a match (default ``self.min_vote_count``).
 

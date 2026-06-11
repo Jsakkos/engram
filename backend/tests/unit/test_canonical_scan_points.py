@@ -119,7 +119,9 @@ class TestEdgeCases:
         assert float_points == int_points
         assert all(isinstance(p, int) for p in float_points)
 
-    def test_no_negative_offsets_anywhere(self):
+    def test_no_negative_offsets_invariant(self):
+        """Default skip_initial=90 > 0 so the clamp never fires; this is a
+        smoke test for the normal path, not an exercise of the clamp guard."""
         for duration in (*DURATIONS, 215, 250, 300):
             for level in LEVELS:
                 points = canonical_scan_points(
@@ -127,10 +129,47 @@ class TestEdgeCases:
                 )
                 assert all(p >= 0 for p in points)
 
-    def test_tail_filter_respected_at_every_level(self):
+    def test_negative_skip_initial_clamps_to_zero(self):
+        """Negative skip_initial exercises the clamp guard — usable_start must
+        not go below 0."""
+        duration = 2700
+        points = canonical_scan_points(duration, skip_initial=-50, num_points=10)
+        assert points, "should return points for a long video"
+        assert all(p >= 0 for p in points), "clamp must prevent negative offsets"
+        assert points[0] == 0, "first point should start at 0, not a negative value"
+
+    def test_tail_filter_respected_invariant(self):
+        """Default skip_final=120 > chunk_len=30 so the tail filter never drops
+        a point when skip_initial=90; this is a smoke test for the normal path."""
         for duration in DURATIONS:
             for level in LEVELS:
                 points = canonical_scan_points(
                     duration, skip_initial=SKIP_INITIAL, num_points=level
                 )
                 assert all(p < duration - 30 for p in points)
+
+    def test_tail_filter_drops_points_when_skip_final_is_zero(self):
+        """skip_final=0 means the guard triggers only because chunk_len=30
+        enforces p < duration - chunk_len; use a tiny skip_final (1) so the
+        unfiltered lattice would include points inside the last chunk."""
+        duration = 2700
+        chunk_len = 30
+        # With skip_final=0 the effective tail boundary is duration - chunk_len.
+        # Use many points so the densest level places points near the end.
+        points = canonical_scan_points(
+            duration, skip_initial=0, skip_final=0, chunk_len=chunk_len, num_points=145
+        )
+        assert points, "should return points"
+        # Every returned point must be strictly before the tail boundary.
+        assert all(p < duration - chunk_len for p in points), (
+            "tail filter must drop points >= duration - chunk_len"
+        )
+        # The unfiltered lattice level 145 would place the last raw point at
+        # skip_initial + ((n-1) * available) // (n-1) == 0 + available == duration,
+        # which is >= duration - chunk_len, so the filter is non-trivial.
+        n = 145
+        available = duration - 0 - 0  # skip_initial=0, skip_final=0
+        raw_last = 0 + ((n - 1) * available) // (n - 1)  # == duration
+        assert raw_last >= duration - chunk_len, (
+            "raw lattice endpoint should violate the tail boundary so the filter is non-trivial"
+        )
