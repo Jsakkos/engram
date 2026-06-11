@@ -59,7 +59,7 @@ jobs:
 
       # Build once and load locally so we can smoke test before publishing.
       - name: Build image (load for smoke test)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -111,7 +111,7 @@ jobs:
       # Re-runs from the buildx cache, so this is fast.
       - name: Push image
         if: env.IS_RELEASE == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
