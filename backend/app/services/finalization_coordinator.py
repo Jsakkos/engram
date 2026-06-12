@@ -18,6 +18,7 @@ from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
+from app.services.identity_prompts import prompt_kind
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import RIP_FAILURE_ERROR_CODES
 
@@ -566,6 +567,44 @@ class FinalizationCoordinator:
         )
         await self._state_machine.transition_to_completed(job, session)
 
+    @staticmethod
+    def _retire_season_prompt(job) -> bool:
+        """Clear a ``kind="season"`` identity CTA ahead of a matching-outcome review park.
+
+        Walk-away B6: when cross-season matching ends inconclusive and
+        ``check_job_completion`` parks the job in REVIEW_NEEDED, the review
+        flow (season-roster UI) owns season selection from there — a lingering
+        season CTA would be a competing second control for the same question.
+        Mutates the job in place WITHOUT committing, so the clear rides the
+        same commit as the state transition. Returns True when a prompt was
+        cleared; the caller then broadcasts the ``identity_prompt_json=""``
+        clear (the transition's own broadcast doesn't carry the field).
+
+        Blocking kinds (name/reidentify) are deliberately untouched: the B4
+        stall path leaves them on review-parked jobs for the answer endpoints
+        (see ``_converge_identity_pending_job``'s skip path), and this seam is
+        only the matching-outcome transitions inside ``check_job_completion``
+        — never the shared transition helper.
+        """
+        if prompt_kind(job.identity_prompt_json) != "season":
+            return False
+        job.identity_prompt_json = None
+        return True
+
+    async def _park_in_review(self, session, job, reason: str) -> None:
+        """Matching-outcome review park: transition + retire any season CTA.
+
+        Used by ``check_job_completion``'s review transitions only — other
+        ``transition_to_review`` callers (rip-stall paths, B4 convergence)
+        must keep their blocking prompts and call the state machine directly.
+        """
+        cleared = self._retire_season_prompt(job)
+        await self._state_machine.transition_to_review(job, session, reason=reason)
+        if cleared:
+            # "" clears the CTA on the frontend merge (enumerated-WS clear
+            # pattern); state=None leaves the just-broadcast state unchanged.
+            await ws_manager.broadcast_job_update(job.id, None, identity_prompt_json="")
+
     async def check_job_completion(self, session, job_id: int):
         """Check if all titles in a job are processed, and if so, finalize."""
         session.expire_all()
@@ -635,7 +674,7 @@ class FinalizationCoordinator:
             )
             logger.warning(f"Job {job_id}: {reason}")
             await self._clear_review_state(session, job)
-            await self._state_machine.transition_to_review(job, session, reason=reason)
+            await self._park_in_review(session, job, reason)
             return
 
         # Auto-resolve same-episode collisions before any manual review: deep
@@ -669,7 +708,7 @@ class FinalizationCoordinator:
             # clear it now or a re-identify to the correct show would skip deep
             # re-match for its low-confidence titles.
             await self._clear_review_state(session, job)
-            await self._state_machine.transition_to_review(job, session, reason=reason)
+            await self._park_in_review(session, job, reason)
             return
 
         # Review takes priority: while ANY title still needs manual review, do
@@ -678,10 +717,10 @@ class FinalizationCoordinator:
         # creates mid-run; this avoids even starting finalization when the
         # matcher already flagged a title for review.)
         if has_review:
-            await self._state_machine.transition_to_review(
-                job,
+            await self._park_in_review(
                 session,
-                reason=f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
+                job,
+                f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
             )
         elif has_matched:
             try:

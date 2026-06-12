@@ -82,6 +82,8 @@ async def _seed_job(
     candidates_json=None,
     duration=1380,
     subtitle_status="completed",
+    detected_season=1,
+    identity_prompt_json=None,
 ) -> int:
     """Seed a job with the given (title_index, episode, output_filename, title_state) titles."""
     md = match_details_by_idx or {}
@@ -92,11 +94,12 @@ async def _seed_job(
             content_type=content_type,
             state=state,
             detected_title="Some Show",
-            detected_season=1,
+            detected_season=detected_season,
             staging_path=staging,
             tmdb_id=tmdb_id,
             candidates_json=candidates_json,
             subtitle_status=subtitle_status,
+            identity_prompt_json=identity_prompt_json,
         )
         session.add(job)
         await session.commit()
@@ -559,6 +562,120 @@ class TestCheckJobCompletion:
         # Escalation dispatched a re-match, so finalization is deferred.
         coord.finalize_disc_job.assert_not_called()
         assert coord._conflict_passes.get(job_id) == 37
+
+
+SEASON_PROMPT = json.dumps(
+    {
+        "kind": "season",
+        "reason": (
+            "Identified as 'Some Show' but the season could not be detected "
+            "from the disc label — select a season to continue."
+        ),
+    }
+)
+NAME_PROMPT = json.dumps({"kind": "name", "reason": "Disc label was unreadable"})
+
+
+@pytest.mark.unit
+class TestSeasonPromptRetirementOnReviewPark:
+    """Walk-away B6: when a matching outcome parks the job in REVIEW_NEEDED
+    (cross-season matching inconclusive), the review flow owns season selection
+    — check_job_completion retires a kind=season CTA in the same commit and
+    broadcasts the "" clear. Blocking kinds are never touched here."""
+
+    async def test_review_park_clears_season_prompt(self, tmp_path, monkeypatch):
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+        job_id = await _seed_job(
+            [
+                (0, "S01E01", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            detected_season=None,
+            identity_prompt_json=SEASON_PROMPT,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert job.identity_prompt_json is None
+        # The "" clear rides a dedicated job_update (state=None → unchanged).
+        broadcast.assert_awaited_once_with(job_id, None, identity_prompt_json="")
+
+    async def test_no_subtitles_park_clears_season_prompt(self, tmp_path, monkeypatch):
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+        # subtitle_status="failed" + zero matches → the #370 honest-review park.
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            detected_season=None,
+            subtitle_status="failed",
+            identity_prompt_json=SEASON_PROMPT,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert job.identity_prompt_json is None
+        broadcast.assert_awaited_once_with(job_id, None, identity_prompt_json="")
+
+    async def test_review_park_leaves_name_prompt_for_answer_endpoints(self, tmp_path, monkeypatch):
+        # Blocking prompts belong to the B4/B5 stall-path machinery — the
+        # matching-outcome park must not clear them.
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+        job_id = await _seed_job(
+            [
+                (0, "S01E01", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            detected_season=None,
+            identity_prompt_json=NAME_PROMPT,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert job.identity_prompt_json == NAME_PROMPT
+        broadcast.assert_not_awaited()
+
+    async def test_review_park_without_prompt_broadcasts_nothing_extra(self, tmp_path, monkeypatch):
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+        job_id = await _seed_job(
+            [
+                (0, "S01E01", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        broadcast.assert_not_awaited()
 
 
 @pytest.mark.unit

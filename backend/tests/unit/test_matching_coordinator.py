@@ -834,3 +834,276 @@ class TestConvergeJobToMatching:
             job = await session.get(DiscJob, job_id)
             assert job.state == JobState.REVIEW_NEEDED
         broadcast.assert_not_awaited()
+
+
+SEASON_PROMPT = json.dumps(
+    {
+        "kind": "season",
+        "reason": (
+            "Identified as 'Some Show' but the season could not be detected "
+            "from the disc label — select a season to continue."
+        ),
+    }
+)
+NAME_PROMPT = json.dumps({"kind": "name", "reason": "Disc label was unreadable"})
+
+
+async def _seed_pin_job(
+    session,
+    titles,
+    *,
+    drive_id="E:",
+    detected_season=None,
+    identity_prompt_json=None,
+):
+    """Seed an unknown-season job + (TitleState, matched_episode) titles."""
+    job = DiscJob(
+        drive_id=drive_id,
+        volume_label="SHOW_BOXSET_D3",
+        content_type=ContentType.TV,
+        state=JobState.MATCHING,
+        detected_title="Some Show",
+        detected_season=detected_season,
+        identity_prompt_json=identity_prompt_json,
+        staging_path="/tmp/staging",
+    )
+    session.add(job)
+    await session.commit()
+    await session.refresh(job)
+    for idx, (tstate, episode) in enumerate(titles):
+        session.add(
+            DiscTitle(
+                job_id=job.id,
+                title_index=idx,
+                duration_seconds=2600,
+                state=tstate,
+                matched_episode=episode,
+            )
+        )
+    await session.commit()
+    return job
+
+
+@pytest.mark.unit
+class TestSeasonPinning:
+    """Walk-away B6: _maybe_pin_converged_season pins detected_season once
+    cross-season matching converges (>=2 MATCHED agree, zero MATCHED disagree),
+    so later titles take the cheap single-season path."""
+
+    async def test_two_agree_zero_disagree_pins_and_broadcasts(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                ],
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+
+        async with _unit_session_factory() as session:
+            fresh = await session.get(DiscJob, job.id)
+            assert fresh.detected_season == 3
+        # state=None ("unchanged"); detected_season rides the enumerated-WS update.
+        broadcast.assert_awaited_once_with(
+            job.id, None, detected_season=3, identity_prompt_json=None
+        )
+
+    async def test_unpadded_episode_codes_still_pin(self, monkeypatch):
+        coord = _make_coord()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S3E1"),
+                    (TitleState.MATCHED, "s03e02"),
+                ],
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season == 3
+
+    async def test_matched_disagreement_blocks_pin(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                    (TitleState.MATCHED, "S04E01"),
+                ],
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season is None
+        broadcast.assert_not_awaited()
+
+    async def test_single_matched_title_does_not_pin(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(session, [(TitleState.MATCHED, "S03E01")])
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season is None
+        broadcast.assert_not_awaited()
+
+    async def test_review_titles_never_vote_for_a_pin(self, monkeypatch):
+        # REVIEW titles are low-confidence guesses — two of them agreeing with
+        # one MATCHED title must NOT pin.
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.REVIEW, "S03E02"),
+                    (TitleState.REVIEW, "S03E03"),
+                ],
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season is None
+        broadcast.assert_not_awaited()
+
+    async def test_review_disagreement_does_not_block_pin(self, monkeypatch):
+        # Symmetric rule: a disagreeing REVIEW guess doesn't veto two
+        # confident MATCHED votes either.
+        coord = _make_coord()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                    (TitleState.REVIEW, "S04E01"),
+                ],
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season == 3
+
+    async def test_extra_and_none_codes_are_ignored(self, monkeypatch):
+        coord = _make_coord()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                    (TitleState.MATCHED, "extra"),
+                    (TitleState.MATCHED, None),
+                ],
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season == 3
+
+    async def test_already_pinned_job_is_noop(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                ],
+                detected_season=2,
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            # Untouched — even though the matches say S3, the pin never
+            # overrides an existing season.
+            assert job.detected_season == 2
+        broadcast.assert_not_awaited()
+
+    async def test_import_job_never_pins(self, monkeypatch):
+        # Flat watch-folder imports legitimately mix seasons; two same-season
+        # early matches must not force later titles onto a single season.
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                ],
+                drive_id="import",
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season is None
+        broadcast.assert_not_awaited()
+
+    async def test_pin_retires_season_prompt_in_same_commit(self, monkeypatch):
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                ],
+                identity_prompt_json=SEASON_PROMPT,
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+
+        async with _unit_session_factory() as session:
+            fresh = await session.get(DiscJob, job.id)
+            assert fresh.detected_season == 3
+            assert fresh.identity_prompt_json is None
+        # "" clears the CTA on the frontend merge (enumerated-WS clear pattern).
+        broadcast.assert_awaited_once_with(job.id, None, detected_season=3, identity_prompt_json="")
+
+    async def test_pin_leaves_name_prompt_alone(self, monkeypatch):
+        # A blocking name prompt shouldn't coexist with MATCHED titles (it
+        # parks them QUEUED), but if it ever does, only the answer endpoints
+        # may clear it — pinning must not.
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                ],
+                identity_prompt_json=NAME_PROMPT,
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season == 3
+            assert job.identity_prompt_json == NAME_PROMPT
+        broadcast.assert_awaited_once_with(
+            job.id, None, detected_season=3, identity_prompt_json=None
+        )

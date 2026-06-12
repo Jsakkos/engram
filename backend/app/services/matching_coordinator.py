@@ -23,6 +23,7 @@ from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
+from app.services.identity_prompts import prompt_kind
 from app.services.job_state_machine import JobStateMachine
 from app.services.ripping_helpers import find_staging_file
 
@@ -62,6 +63,13 @@ def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int])
         <= (rt + EPISODE_DURATION_OVER_TOLERANCE_MIN)
         for rt in runtimes
     )
+
+
+# Season component of a matched_episode code ("S03E07" → 3). Anchored match, so
+# non-episode values ("extra", None, free text) simply don't parse and are
+# ignored by the season-pin convergence rule. Tolerant of zero-padding, same as
+# _same_episode_code below and finalization_coordinator's _EP_CODE_RE.
+_SEASON_FROM_EP_CODE_RE = re.compile(r"[Ss](\d{1,3})[Ee]\d{1,3}")
 
 
 def _same_episode_code(a: str | None, b: str | None) -> bool:
@@ -898,6 +906,104 @@ class MatchingCoordinator:
             ):
                 await ws_manager.broadcast_job_update(job_id, JobState.MATCHING.value)
 
+    async def _maybe_pin_converged_season(self, session, job_id: int) -> None:
+        """Pin ``job.detected_season`` once cross-season matching converges (B6).
+
+        A gate-D unknown-season disc matches every title across ALL seasons
+        (``detected_season is None`` → the matcher's season-unknown path),
+        which is expensive: TF-IDF against every season's references, per
+        title. Physical discs are season-coherent in practice, so once two
+        MATCHED titles agree on a season — with zero MATCHED disagreement —
+        the disc's season is effectively known. Pinning it makes subsequent
+        title dispatches take the cheap single-season path (each title
+        re-reads the job row in its own fresh session, both for the duration
+        pre-filter and for the matcher call) and re-engages the chromaprint
+        prepass (curator.match_single_file only runs the prepass when
+        ``season`` is truthy — the season-unknown branch returns before it).
+        Matches already in flight keep the season value they captured; they
+        finish their cross-season scan undisturbed.
+
+        Only MATCHED titles vote: REVIEW-state titles (low-confidence guesses)
+        and unparseable ``matched_episode`` values ("extra", None) are never
+        counted, on either side of the agree/disagree rule.
+
+        CONSTRAINT — imports must never pin: a flat watch-folder import
+        (``drive_id == "import"``) legitimately mixes episodes from MANY
+        seasons in one job, and its early titles can easily land same-season
+        by chance; pinning would then force every later title through the
+        wrong single-season scan. The zero-disagreement rule protects discs
+        (a genuinely mixed disc accrues a disagreeing MATCHED title and never
+        reaches 0-disagree), but it cannot protect an import's first two
+        titles — so imports are excluded outright.
+
+        Concurrency: parallel titles can commit MATCHED near-simultaneously
+        and both evaluate this. Double-pinning DIFFERENT seasons is
+        impossible: the MATCHED set only grows during matching, and a pin
+        requires every parsed MATCHED season to agree — a later evaluation
+        sees a superset that still contains the first pin's agreeing titles,
+        so conflicting evidence fails the zero-disagree rule instead. The
+        worst race residue is a duplicate pin of the SAME season (an
+        idempotent re-commit plus a duplicate broadcast).
+
+        Also retires a ``kind="season"`` identity CTA in the same commit —
+        the question answered itself. Blocking kinds (name/reidentify) are
+        left alone: they shouldn't coexist with MATCHED titles (blocking
+        prompts park titles QUEUED), but if one ever does, only the answer
+        endpoints may clear it.
+        """
+        job = await session.get(DiscJob, job_id)
+        if not job:
+            return
+        # Fresh read: this session loaded the job before the (long) match ran,
+        # and a sibling title's pin commits in ANOTHER session — with
+        # expire_on_commit=False, session.get alone would hand back that stale
+        # snapshot and re-run a pin that already happened.
+        await session.refresh(job)
+        if job.detected_season is not None:
+            return
+        if job.drive_id == "import":
+            return
+        matched_titles = (
+            (
+                await session.execute(
+                    select(DiscTitle).where(
+                        DiscTitle.job_id == job_id,
+                        DiscTitle.state == TitleState.MATCHED,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        seasons: list[int] = []
+        for t in matched_titles:
+            m = _SEASON_FROM_EP_CODE_RE.match((t.matched_episode or "").strip())
+            if m:
+                seasons.append(int(m.group(1)))
+        if len(seasons) < 2 or len(set(seasons)) != 1:
+            return
+
+        season = seasons[0]
+        job.detected_season = season
+        cleared = prompt_kind(job.identity_prompt_json) == "season"
+        if cleared:
+            job.identity_prompt_json = None
+        session.add(job)
+        await session.commit()
+        logger.info(
+            f"[MATCH] Job {job_id}: {len(seasons)} matched titles agree on season "
+            f"{season} with zero disagreement — pinning detected_season so remaining "
+            f"titles take the single-season path" + (" (season prompt retired)" if cleared else "")
+        )
+        # state=None → "unchanged" on the frontend merge; "" clears the CTA
+        # (the enumerated-WS clear pattern), None leaves it untouched.
+        await ws_manager.broadcast_job_update(
+            job_id,
+            None,
+            detected_season=season,
+            identity_prompt_json="" if cleared else None,
+        )
+
     async def _match_single_file_inner(
         self,
         job_id: int,
@@ -1302,6 +1408,20 @@ class MatchingCoordinator:
                     matches_rejected=matches_rejected,
                     match_details=title.match_details,
                 )
+
+                # Walk-away B6: this MATCHED commit may be the one that converges
+                # an unknown-season disc — evaluate the season pin now so the next
+                # dispatched title already takes the single-season path. Best-effort
+                # in its own guard: the match above is committed, and a pin failure
+                # must not trip the outer except into re-marking the title REVIEW.
+                if title.state == TitleState.MATCHED:
+                    try:
+                        await self._maybe_pin_converged_season(session, job_id)
+                    except Exception as e:
+                        logger.warning(
+                            f"[MATCH] Job {job_id}: season-pin evaluation failed: {e}",
+                            exc_info=True,
+                        )
 
                 # Check if ALL titles are done
                 await self._check_job_completion(session, job_id)
