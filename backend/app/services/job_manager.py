@@ -316,6 +316,7 @@ class JobManager:
                 old_state = job.state
                 job.state = JobState.FAILED
                 job.error_message = f"Server restarted while job was in {old_state.value} state"
+                job.identity_prompt_json = None  # answer is moot on a terminal row
                 job.updated_at = datetime.now(UTC)
                 logger.info(f"Cleaned up stale job {job.id} (was {old_state.value}, now FAILED)")
 

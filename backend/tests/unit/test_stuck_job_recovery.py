@@ -681,6 +681,31 @@ async def test_cleanup_stale_jobs_still_fails_matching(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_cleanup_stale_jobs_clears_identity_prompt(tmp_path):
+    """An active job with an identity prompt is FAILED on restart and its
+    identity_prompt_json is cleared.
+
+    The REST contract says identity_prompt_json is cleared when the answer
+    becomes moot. A FAILED row is terminal — the prompt is meaningless and must
+    not be served to the frontend.
+    """
+    job_id = await _make_job(
+        tmp_path,
+        content_type=ContentType.TV,
+        state=JobState.RIPPING,
+        identity_prompt_json=_IDENTITY_PROMPT,
+    )
+    # Confirm the prompt is set before cleanup.
+    assert (await _job(job_id)).identity_prompt_json == _IDENTITY_PROMPT
+
+    await job_manager._cleanup_stale_jobs()
+
+    j = await _job(job_id)
+    assert j.state == JobState.FAILED
+    assert j.identity_prompt_json is None
+
+
+@pytest.mark.asyncio
 async def test_recover_organizing_redrives_tv(tmp_path, monkeypatch):
     """A stranded TV ORGANIZING job re-runs the idempotent finalize (in the background)."""
     job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.ORGANIZING)
@@ -720,3 +745,88 @@ async def test_recover_organizing_fails_movie(tmp_path, monkeypatch):
 
     assert (await _job(job_id)).state == JobState.FAILED
     assert called == []  # finalize never invoked for a movie
+
+
+# --- watchdog B5: RIPPING + dead rip task clock-refresh branch ---------------
+
+
+@pytest.mark.asyncio
+async def test_watchdog_ripping_dead_task_no_prompt_queued_refreshes_clock(tmp_path):
+    """(B5a) RIPPING + dead rip task + no identity prompt + QUEUED titles → clock
+    refreshed, no reconcile/force-advance.
+
+    After a stale-rip reconcile cancels the rip task, mid-rip answer dispatches
+    matching while the job is still RIPPING. The watchdog must not force those
+    in-flight QUEUED tracks to review; the queue-drain clock-refresh absorbs them.
+    """
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.RIPPING)
+    t0 = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    cfg = AppConfig()
+    cfg.timeout_ripping_seconds = 1
+    # Stale clock — but the rip task is already dead (not in _active_jobs).
+    job_manager._last_activity[job_id] = time.monotonic() - 9999
+
+    job = await _job(job_id)
+    await job_manager._watchdog_check_job(job, cfg, time.monotonic())
+
+    # Title untouched — watchdog refreshed the clock and returned.
+    assert (await _title(t0)).state == TitleState.QUEUED
+    assert (await _job(job_id)).state == JobState.RIPPING
+    assert job_manager._last_activity[job_id] > time.monotonic() - 5
+
+
+@pytest.mark.asyncio
+async def test_watchdog_ripping_dead_task_blocking_prompt_does_not_refresh(tmp_path):
+    """(B5b) RIPPING + dead rip task + BLOCKING prompt still pending + QUEUED titles
+    → clock NOT refreshed, job not advanced either.
+
+    The accepted B4 residual: with an unanswered identity prompt the QUEUED titles
+    are parked (not progressing), so we preserve the stale clock so reconcile
+    keeps re-firing until the user answers. We do NOT advance here because
+    _identity_pending makes queue_draining False, so the normal stale-timeout path
+    decides what to do (stale clock >= timeout -> reconcile).
+    """
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(
+        tmp_path,
+        content_type=ContentType.TV,
+        state=JobState.RIPPING,
+        identity_prompt_json=_IDENTITY_PROMPT,
+    )
+    await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    cfg = AppConfig()
+    cfg.timeout_ripping_seconds = 1
+    stale_ts = time.monotonic() - 9999
+    job_manager._last_activity[job_id] = stale_ts
+
+    job = await _job(job_id)
+    # Use a snapshot of now so the stale-timeout check fires.
+    await job_manager._watchdog_check_job(job, cfg, time.monotonic())
+
+    # Clock was NOT refreshed by the queue-drain branch.
+    assert job_manager._last_activity[job_id] == stale_ts
+
+
+@pytest.mark.asyncio
+async def test_watchdog_ripping_dead_task_no_prompt_no_queued_times_out(tmp_path):
+    """(B5c) RIPPING + dead rip task + no identity prompt + ZERO queued/matching
+    titles -> falls through to the stale-timeout path (clock NOT refreshed by the
+    queue-drain branch), and the timeout fires -> reconcile_and_advance.
+    """
+    job_id = await _make_job(tmp_path, content_type=ContentType.TV, state=JobState.RIPPING)
+    stuck = await _add_title(job_id, 0, TitleState.RIPPING)  # no file -> FAILED on advance
+
+    cfg = AppConfig()
+    cfg.timeout_ripping_seconds = 1
+    job_manager._last_activity[job_id] = time.monotonic() - 9999
+
+    job = await _job(job_id)
+    await job_manager._watchdog_check_job(job, cfg, time.monotonic())
+
+    # Stale timeout fired -> reconcile_and_advance ran -> stuck title failed.
+    assert (await _title(stuck)).state == TitleState.FAILED
