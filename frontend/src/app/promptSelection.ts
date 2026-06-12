@@ -3,19 +3,73 @@ import type { Job, JobState } from '../types';
 export interface PromptJobs {
     namePromptJob: Job | null;
     seasonPromptJob: Job | null;
+    reidentifyPromptJob: Job | null;
 }
 
-/** Which identify prompt a review job should surface, if any. */
-export type PromptKind = 'name' | 'season';
+/** Which identify prompt a job should surface, if any. */
+export type PromptKind = 'name' | 'season' | 'reidentify';
+
+/** Parsed `identity_prompt_json` payload (walk-away Phase B). */
+export interface IdentityPrompt {
+    kind: PromptKind;
+    reason: string;
+}
 
 /**
- * Classify which identify prompt a single job needs from its review reason, or
- * null. Centralized so the modal opener and the on-card CTA stay in lockstep —
- * `selectPromptJobs` (which job to surface) and the card affordance (how to
- * open it on demand) both route through this one matcher. Does NOT check job
- * state or dismissal; callers filter on `review_needed` as needed.
+ * CTA label per prompt kind — shared by the expanded card and the compact row
+ * so the two affordances can never disagree. "Confirm title" matches the
+ * existing re-identify vocabulary ("Wrong title?" / "Fix title" / the
+ * Re-Identify Disc modal) and stays content-type neutral.
+ */
+export const PROMPT_CTA_LABELS: Record<PromptKind, string> = {
+    name: 'Name this disc',
+    season: 'Select season',
+    reidentify: 'Confirm title',
+};
+
+/**
+ * Parse a job's `identity_prompt_json` (walk-away Phase B). Tolerant by
+ * design: null/absent, `""` (the WS clear sentinel), malformed JSON, a
+ * non-object payload, and an unknown `kind` all return null — the caller then
+ * falls back to review_reason matching instead of crashing the dashboard on a
+ * bad broadcast.
+ */
+export function parseIdentityPrompt(job: Job): IdentityPrompt | null {
+    if (!job.identity_prompt_json) return null;
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(job.identity_prompt_json);
+    } catch {
+        return null;
+    }
+    if (!parsed || typeof parsed !== 'object') return null;
+    const { kind, reason } = parsed as { kind?: unknown; reason?: unknown };
+    if (kind !== 'name' && kind !== 'season' && kind !== 'reidentify') return null;
+    return { kind, reason: typeof reason === 'string' ? reason : '' };
+}
+
+/**
+ * Classify which identify prompt a single job needs, or null. Centralized so
+ * the modal opener and the on-card CTA stay in lockstep — `selectPromptJobs`
+ * (which job to surface) and the card affordance (how to open it on demand)
+ * both route through this one matcher. Does NOT check dismissal.
+ *
+ * Two sources, in priority order:
+ * 1. A live `identity_prompt_json` (walk-away Phase B) — the job rips with an
+ *    open identity question. Applies to RIPPING and REVIEW_NEEDED jobs (a
+ *    stall-parked review job can still carry a live prompt). Other states get
+ *    no CTA (e.g. a non-blocking season prompt riding into MATCHING — B6
+ *    pinning or rip-end convergence retires it).
+ * 2. The legacy review_reason substrings on REVIEW_NEEDED jobs — the B4
+ *    rip-end conversion replays an unanswered prompt as review_reason, so
+ *    this path keeps working unchanged for parked jobs.
  */
 export function classifyPromptJob(job: Job): PromptKind | null {
+    if (job.state === 'ripping' || job.state === 'review_needed') {
+        const prompt = parseIdentityPrompt(job);
+        if (prompt) return prompt.kind;
+    }
+    if (job.state !== 'review_needed') return null;
     if (
         (job.review_reason?.includes('label unreadable') && !job.detected_title) ||
         (job.review_reason?.includes('merged without separators') && job.content_type === 'tv')
@@ -53,12 +107,14 @@ export function shouldAutoOpenPrompt(promptJob: Job, jobs: Job[]): boolean {
 }
 
 /**
- * Pick which review jobs should surface a blocking prompt modal.
+ * Pick which jobs should surface a prompt modal — review-parked jobs and
+ * (walk-away Phase B) jobs that rip with an open identity question.
  *
  * Jobs whose id is in `dismissedIds` are skipped: dismissing a prompt
- * (Escape / backdrop click) parks the job in review instead of cancelling
- * it, and must not re-open the modal on the next jobs refresh. Recovery
- * paths stay available on the job card ("Wrong title?") and the Review page.
+ * (Escape / backdrop click) leaves the job alone (a review job stays parked;
+ * a ripping job keeps ripping) and must not re-open the modal on the next
+ * jobs refresh. Recovery paths stay available on the job card / compact-row
+ * CTA and the Review page.
  */
 /**
  * Drop dismissed ids whose jobs no longer exist. SQLite's auto-increment
@@ -74,10 +130,15 @@ export function pruneDismissedIds(dismissedIds: Set<number>, jobs: Job[]): void 
 }
 
 export function selectPromptJobs(jobs: Job[], dismissedIds: ReadonlySet<number>): PromptJobs {
-    const inReview = jobs.filter((j) => j.state === 'review_needed' && !dismissedIds.has(j.id));
+    // State eligibility lives in classifyPromptJob (ripping + review for live
+    // identity prompts, review-only for the review_reason fallback) — only
+    // dismissal is filtered here.
+    const candidates = jobs.filter((j) => !dismissedIds.has(j.id));
 
-    const namePromptJob = inReview.find((j) => classifyPromptJob(j) === 'name') ?? null;
-    const seasonPromptJob = inReview.find((j) => classifyPromptJob(j) === 'season') ?? null;
+    const namePromptJob = candidates.find((j) => classifyPromptJob(j) === 'name') ?? null;
+    const seasonPromptJob = candidates.find((j) => classifyPromptJob(j) === 'season') ?? null;
+    const reidentifyPromptJob =
+        candidates.find((j) => classifyPromptJob(j) === 'reidentify') ?? null;
 
-    return { namePromptJob, seasonPromptJob };
+    return { namePromptJob, seasonPromptJob, reidentifyPromptJob };
 }

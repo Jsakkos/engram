@@ -120,10 +120,13 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     (job.tmdb_id == null ||
       (countCandidates(job.candidates_json) >= 2 && !hasProcessedTitles));
 
-  // Which identify prompt this disc should surface (name / season), if any.
-  // Only meaningful while in review; the card + compact row turn this into the
-  // "Name this disc" / "Select season" CTA that opens the prompt on demand (P13).
-  const promptKind = job.state === 'review_needed' ? classifyPromptJob(job) : null;
+  // Which identify prompt this disc should surface (name / season /
+  // reidentify), if any. classifyPromptJob is state-aware: live identity
+  // prompts surface on RIPPING as well as REVIEW_NEEDED jobs (walk-away Phase
+  // B — the disc rips while the question is open); the review_reason fallback
+  // stays review-only. The card + compact row turn this into the
+  // "Name this disc" / "Select season" / "Confirm title" CTA (P13).
+  const promptKind = classifyPromptJob(job);
 
   // For enriched states, replace the raw disc-label subtitle with human-readable
   // metadata: episode range for TV, release year for movies. Falls back to the

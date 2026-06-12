@@ -141,6 +141,50 @@ describe('transformJobToDiscData — promptKind derivation', () => {
     );
     expect(disc.promptKind).toBeNull();
   });
+
+  it('surfaces a live identity prompt on a RIPPING job (walk-away Phase B)', () => {
+    const disc = transformJobToDiscData(
+      makeJob({
+        state: 'ripping',
+        identity_prompt_json: JSON.stringify({ kind: 'name', reason: 'Label unreadable.' }),
+      }),
+      [],
+    );
+    expect(disc.promptKind).toBe('name');
+  });
+
+  it("is 'reidentify' for a ripping same-name collision prompt", () => {
+    const disc = transformJobToDiscData(
+      makeJob({
+        state: 'ripping',
+        identity_prompt_json: JSON.stringify({
+          kind: 'reidentify',
+          reason: 'Multiple shows share this name.',
+        }),
+      }),
+      [],
+    );
+    expect(disc.promptKind).toBe('reidentify');
+  });
+
+  it('is null for a ripping job whose prompt was cleared with ""', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'ripping', identity_prompt_json: '' }),
+      [],
+    );
+    expect(disc.promptKind).toBeNull();
+  });
+
+  it('does not surface a leftover prompt outside ripping/review (e.g. matching)', () => {
+    const disc = transformJobToDiscData(
+      makeJob({
+        state: 'matching',
+        identity_prompt_json: JSON.stringify({ kind: 'season', reason: 'Pick one.' }),
+      }),
+      [],
+    );
+    expect(disc.promptKind).toBeNull();
+  });
 });
 
 describe('transformJobToDiscData — subtitle enrichment for terminal states', () => {

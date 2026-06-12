@@ -86,8 +86,18 @@ describe('CompactList', () => {
         expect(onIdentify).toHaveBeenCalledWith('1');
     });
 
+    it('offers "Confirm title" for a ripping reidentify-prompt row (walk-away Phase B)', () => {
+        const onIdentify = vi.fn();
+        renderList(
+            [makeDisc({ id: '1', state: 'ripping', needsReview: false, promptKind: 'reidentify' })],
+            { onIdentify },
+        );
+        fireEvent.click(screen.getByRole('button', { name: /confirm title/i }));
+        expect(onIdentify).toHaveBeenCalledWith('1');
+    });
+
     it('shows no identify action when the disc needs no prompt', () => {
         renderList([makeDisc({ id: '1', promptKind: null })], { onIdentify: vi.fn() });
-        expect(screen.queryByRole('button', { name: /name this disc|select season/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /name this disc|select season|confirm title/i })).not.toBeInTheDocument();
     });
 });

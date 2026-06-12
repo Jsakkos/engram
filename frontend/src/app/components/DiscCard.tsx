@@ -76,11 +76,13 @@ export interface DiscData {
   startedAt?: string;
   needsReview?: boolean;
   reviewReason?: string;
-  /** Which identify prompt this disc needs before it can proceed, if any —
-   *  'name' (unreadable label) or 'season' (show known, season unknown). Derived
-   *  in the adapter from the review reason; drives the on-card / compact-row
-   *  "Name this disc" / "Select season" CTA (P13). Null when no prompt applies. */
-  promptKind?: 'name' | 'season' | null;
+  /** Which identify prompt this disc should surface, if any — 'name'
+   *  (unreadable label), 'season' (show known, season unknown), or 'reidentify'
+   *  (ambiguous same-name identity). Derived in the adapter from the live
+   *  identity prompt (walk-away Phase B — surfaces while RIPPING too) or the
+   *  review reason; drives the on-card / compact-row CTA (P13). Null when no
+   *  prompt applies. */
+  promptKind?: 'name' | 'season' | 'reidentify' | null;
   /** Review is about confirming the disc's IDENTITY (an ambiguous/unconfirmed
    *  show), not assigning episodes. Derived in the adapter from a null tmdb_id
    *  (or a same-name collision with no ripped titles). Drives the on-card hint

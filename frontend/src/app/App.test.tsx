@@ -150,3 +150,70 @@ describe('App — P13 prompt surfacing', () => {
         expect(await screen.findByRole('dialog')).toBeInTheDocument();
     });
 });
+
+describe('App — walk-away Phase B identity prompts on RIPPING jobs', () => {
+    const namePrompt = JSON.stringify({ kind: 'name', reason: 'Disc label unreadable.' });
+    const reidentifyPrompt = JSON.stringify({
+        kind: 'reidentify',
+        reason: 'Multiple shows share this name.',
+    });
+
+    it('auto-opens the name modal when the prompt-bearing ripping job is the only active job', async () => {
+        mockJobs([makeJob({ id: 2, state: 'ripping', identity_prompt_json: namePrompt })]);
+        renderApp();
+
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog).toBeInTheDocument();
+        expect(screen.getByText(/identify disc/i)).toBeInTheDocument();
+    });
+
+    it('routes a reidentify prompt to the Re-Identify modal', async () => {
+        mockJobs([
+            makeJob({
+                id: 2,
+                state: 'ripping',
+                detected_title: 'Frasier',
+                identity_prompt_json: reidentifyPrompt,
+            }),
+        ]);
+        renderApp();
+
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/re-identify disc/i)).toBeInTheDocument();
+    });
+
+    it('shows the card CTA (no modal) when another job is also active', async () => {
+        mockJobs([
+            makeJob({ id: 1, state: 'ripping', volume_label: 'OTHER_DISC' }),
+            makeJob({
+                id: 2,
+                state: 'ripping',
+                volume_label: 'AMBIGUOUS',
+                identity_prompt_json: reidentifyPrompt,
+            }),
+        ]);
+        renderApp();
+
+        const cta = await screen.findByTestId('disccard-identify-cta');
+        expect(cta).toHaveTextContent(/confirm title/i);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('opens the Re-Identify modal on demand from the ripping card CTA', async () => {
+        mockJobs([
+            makeJob({ id: 1, state: 'ripping', volume_label: 'OTHER_DISC' }),
+            makeJob({
+                id: 2,
+                state: 'ripping',
+                volume_label: 'AMBIGUOUS',
+                identity_prompt_json: reidentifyPrompt,
+            }),
+        ]);
+        renderApp();
+
+        fireEvent.click(await screen.findByTestId('disccard-identify-cta'));
+
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/re-identify disc/i)).toBeInTheDocument();
+    });
+});

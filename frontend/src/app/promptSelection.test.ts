@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     classifyPromptJob,
+    parseIdentityPrompt,
     pruneDismissedIds,
     selectPromptJobs,
     shouldAutoOpenPrompt,
@@ -60,9 +61,89 @@ describe('selectPromptJobs', () => {
         expect(namePromptJob?.id).toBe(9);
     });
 
-    it('ignores jobs that are not in review', () => {
+    it('ignores review_reason on jobs that are not in review', () => {
         const ripping = makeJob({ id: 5, state: 'ripping', review_reason: 'label unreadable' });
         expect(selectPromptJobs([ripping], new Set()).namePromptJob).toBeNull();
+    });
+
+    it('surfaces a live identity prompt on a RIPPING job (walk-away Phase B)', () => {
+        const rippingWithPrompt = makeJob({
+            id: 6,
+            state: 'ripping',
+            identity_prompt_json: JSON.stringify({
+                kind: 'name',
+                reason: 'Disc label unreadable.',
+            }),
+        });
+        expect(selectPromptJobs([rippingWithPrompt], new Set()).namePromptJob?.id).toBe(6);
+    });
+
+    it('honors dismissal for a ripping prompt job', () => {
+        const rippingWithPrompt = makeJob({
+            id: 6,
+            state: 'ripping',
+            identity_prompt_json: JSON.stringify({ kind: 'season', reason: 'Pick a season.' }),
+        });
+        expect(selectPromptJobs([rippingWithPrompt], new Set([6])).seasonPromptJob).toBeNull();
+    });
+
+    it('surfaces a reidentify prompt in its own slot', () => {
+        const collision = makeJob({
+            id: 7,
+            state: 'ripping',
+            identity_prompt_json: JSON.stringify({
+                kind: 'reidentify',
+                reason: 'Multiple shows share this name.',
+            }),
+        });
+        const { namePromptJob, seasonPromptJob, reidentifyPromptJob } = selectPromptJobs(
+            [collision],
+            new Set(),
+        );
+        expect(reidentifyPromptJob?.id).toBe(7);
+        expect(namePromptJob).toBeNull();
+        expect(seasonPromptJob).toBeNull();
+    });
+});
+
+describe('parseIdentityPrompt', () => {
+    const withPrompt = (identity_prompt_json: string | null | undefined) =>
+        makeJob({ identity_prompt_json });
+
+    it('parses each known kind', () => {
+        for (const kind of ['name', 'season', 'reidentify'] as const) {
+            const job = withPrompt(JSON.stringify({ kind, reason: 'why' }));
+            expect(parseIdentityPrompt(job)).toEqual({ kind, reason: 'why' });
+        }
+    });
+
+    it('returns null for absent, null, and "" (the WS clear sentinel)', () => {
+        expect(parseIdentityPrompt(withPrompt(undefined))).toBeNull();
+        expect(parseIdentityPrompt(withPrompt(null))).toBeNull();
+        expect(parseIdentityPrompt(withPrompt(''))).toBeNull();
+    });
+
+    it('returns null for malformed JSON without throwing', () => {
+        expect(parseIdentityPrompt(withPrompt('{not json'))).toBeNull();
+    });
+
+    it('returns null for non-object payloads', () => {
+        expect(parseIdentityPrompt(withPrompt('"name"'))).toBeNull();
+        expect(parseIdentityPrompt(withPrompt('42'))).toBeNull();
+        expect(parseIdentityPrompt(withPrompt('null'))).toBeNull();
+    });
+
+    it('returns null for an unknown kind', () => {
+        expect(
+            parseIdentityPrompt(withPrompt(JSON.stringify({ kind: 'mystery', reason: 'x' }))),
+        ).toBeNull();
+    });
+
+    it('tolerates a missing reason', () => {
+        expect(parseIdentityPrompt(withPrompt(JSON.stringify({ kind: 'name' })))).toEqual({
+            kind: 'name',
+            reason: '',
+        });
     });
 });
 
@@ -103,6 +184,60 @@ describe('classifyPromptJob', () => {
         });
         expect(classifyPromptJob(job)).toBeNull();
     });
+
+    it('classifies a live identity prompt on a ripping job for all three kinds', () => {
+        for (const kind of ['name', 'season', 'reidentify'] as const) {
+            const job = makeJob({
+                state: 'ripping',
+                identity_prompt_json: JSON.stringify({ kind, reason: 'open question' }),
+            });
+            expect(classifyPromptJob(job)).toBe(kind);
+        }
+    });
+
+    it('classifies a live identity prompt on a stall-parked review job', () => {
+        const job = makeJob({
+            state: 'review_needed',
+            identity_prompt_json: JSON.stringify({ kind: 'reidentify', reason: 'twins' }),
+        });
+        expect(classifyPromptJob(job)).toBe('reidentify');
+    });
+
+    it('prefers the identity prompt over review_reason when both are present', () => {
+        const job = makeJob({
+            state: 'review_needed',
+            identity_prompt_json: JSON.stringify({ kind: 'season', reason: 'pick one' }),
+            review_reason: 'Disc label unreadable. Please enter the title to continue.',
+        });
+        expect(classifyPromptJob(job)).toBe('season');
+    });
+
+    it('does not surface a leftover prompt on states outside ripping/review (e.g. matching)', () => {
+        const job = makeJob({
+            state: 'matching',
+            identity_prompt_json: JSON.stringify({ kind: 'season', reason: 'pick one' }),
+        });
+        expect(classifyPromptJob(job)).toBeNull();
+    });
+
+    it('falls back to review_reason when the prompt is malformed or unknown-kind', () => {
+        const malformed = makeJob({
+            identity_prompt_json: '{broken',
+            review_reason: 'Disc label unreadable. Please enter the title to continue.',
+        });
+        expect(classifyPromptJob(malformed)).toBe('name');
+
+        const unknownKind = makeJob({
+            identity_prompt_json: JSON.stringify({ kind: 'mystery', reason: 'x' }),
+            review_reason: 'Show identified — select a season to continue.',
+        });
+        expect(classifyPromptJob(unknownKind)).toBe('season');
+    });
+
+    it('returns null for a ripping job with a malformed prompt and no review fallback', () => {
+        const job = makeJob({ state: 'ripping', identity_prompt_json: '{broken' });
+        expect(classifyPromptJob(job)).toBeNull();
+    });
 });
 
 describe('shouldAutoOpenPrompt', () => {
@@ -133,6 +268,29 @@ describe('shouldAutoOpenPrompt', () => {
     it('does NOT auto-open while another job is still in review', () => {
         const otherReview = makeJob({ id: 1, state: 'review_needed' });
         expect(shouldAutoOpenPrompt(promptJob, [otherReview, promptJob])).toBe(false);
+    });
+
+    it('auto-opens when the prompt-bearing RIPPING job is itself the only active job', () => {
+        // Walk-away Phase B: the disc rips while the question is open. The job
+        // being active itself must not suppress its own prompt — only OTHER
+        // active jobs do.
+        const rippingPrompt = makeJob({
+            id: 8,
+            state: 'ripping',
+            identity_prompt_json: JSON.stringify({ kind: 'name', reason: 'unreadable' }),
+        });
+        const done = makeJob({ id: 1, state: 'completed' });
+        expect(shouldAutoOpenPrompt(rippingPrompt, [done, rippingPrompt])).toBe(true);
+    });
+
+    it('does NOT auto-open a ripping prompt while another disc is active', () => {
+        const rippingPrompt = makeJob({
+            id: 8,
+            state: 'ripping',
+            identity_prompt_json: JSON.stringify({ kind: 'name', reason: 'unreadable' }),
+        });
+        const otherRipping = makeJob({ id: 9, state: 'ripping' });
+        expect(shouldAutoOpenPrompt(rippingPrompt, [otherRipping, rippingPrompt])).toBe(false);
     });
 });
 

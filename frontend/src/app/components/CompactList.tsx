@@ -4,6 +4,7 @@ import { sv } from "./synapse";
 import type { DiscData } from "./DiscCard";
 import { discStateLabel } from "./discState";
 import { formatEtaCompact } from "../../utils/formatting";
+import { PROMPT_CTA_LABELS } from "../promptSelection";
 
 const buttonBase: CSSProperties = {
   fontFamily: sv.mono,
@@ -16,8 +17,9 @@ const buttonBase: CSSProperties = {
  * Compact list view for the dashboard — sv-token row layout that mirrors the
  * SvPanel vocabulary used elsewhere (1px tinted border, sharp corners, mono
  * uppercase headers). Row actions mirror the expanded cards: Name this disc /
- * Select season for identify prompts (P13), Review for match reviews, Fix title
- * for identity reviews, Cancel for non-terminal jobs.
+ * Select season / Confirm title for identify prompts (P13 + walk-away Phase B),
+ * Review for match reviews, Fix title for identity reviews, Cancel for
+ * non-terminal jobs.
  */
 export function CompactList({
   discs,
@@ -30,8 +32,9 @@ export function CompactList({
   onReview: (id: string) => void;
   onCancel: (id: string) => void;
   onReIdentify: (id: string) => void;
-  /** Open the disc's identify prompt (name / season) on demand — the compact
-   *  counterpart to the expanded card's CTA. Shown for discs with a promptKind. */
+  /** Open the disc's identify prompt (name / season / reidentify) on demand —
+   *  the compact counterpart to the expanded card's CTA. Shown for discs with
+   *  a promptKind. */
   onIdentify?: (id: string) => void;
 }) {
   const colTemplate = "auto auto 1fr 140px 60px auto";
@@ -214,7 +217,7 @@ export function CompactList({
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {onIdentify && disc.promptKind && (
                   <CompactRowButton color={sv.cyan} onClick={() => onIdentify(disc.id)}>
-                    {disc.promptKind === "season" ? "Select season" : "Name this disc"}
+                    {PROMPT_CTA_LABELS[disc.promptKind]}
                   </CompactRowButton>
                 )}
                 {matchReview && (
