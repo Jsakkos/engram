@@ -181,7 +181,9 @@ async def _run_to_completion(p: TranscriptionPrewarmer, job_id: int) -> None:
     await p.start_for_job(job_id)
     task = p._tasks.get(job_id)
     if task is not None:
-        await task
+        # Bind the (None) result: a bare `await name` statement trips CodeQL's
+        # no-effect check even though the await drives the task to completion.
+        _ = await task
     await asyncio.sleep(0)  # let add_done_callback pop the dict entry
 
 
@@ -216,7 +218,7 @@ class TestStartForJob:
         assert starts == 1
 
         release.set()
-        await first_task
+        _ = await first_task  # bare `await name` trips CodeQL's no-effect check
         await asyncio.sleep(0)
         assert p._tasks == {}
 
@@ -355,7 +357,9 @@ class TestCancellation:
 
         p.cancel_for_job(job_id)
         with pytest.raises(asyncio.CancelledError):
-            await task
+            # Awaiting the cancelled task re-raises CancelledError; binding the
+            # result avoids CodeQL's no-effect FP on a bare `await name`.
+            _ = await task
 
         assert len(fake_matcher.transcribe_calls) == 1  # nothing after cancel
         assert p._tasks == {}
@@ -720,7 +724,7 @@ class TestFailSoftGranularity:
                 )
 
         fm = PartialFailMatcher()
-        p = TranscriptionPrewarmer(semaphore_provider=lambda: CountingSemaphore())
+        p = TranscriptionPrewarmer(semaphore_provider=CountingSemaphore)
         p._matcher = fm
 
         job_id, f = await _seed_review_job(tmp_path)

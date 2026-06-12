@@ -1478,6 +1478,8 @@ class EpisodeMatcher:
                 try:
                     Path(p).unlink(missing_ok=True)
                 except OSError:
+                    # Best-effort temp cleanup — a locked wav (e.g. Windows AV
+                    # scan) is reaped on a later run; missing_ok covers ENOENT.
                     pass
             # Drop the audio-chunk memo for the wav we just deleted so a future
             # compute path re-extracts instead of returning a dangling path

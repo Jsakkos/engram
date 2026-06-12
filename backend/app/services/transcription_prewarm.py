@@ -347,6 +347,8 @@ class TranscriptionPrewarmer:
                 try:
                     Path(p).unlink(missing_ok=True)
                 except OSError:
+                    # Best-effort temp cleanup — a locked wav (e.g. Windows AV
+                    # scan) is reaped on a later run; missing_ok covers ENOENT.
                     pass
             matcher.audio_chunks.pop((matcher._resolve_source(file_path), start, length), None)
 

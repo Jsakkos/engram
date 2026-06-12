@@ -423,16 +423,16 @@ class TestFailSafe:
         monkeypatch.setattr(ts, "_get_conn", failing_get_conn)
 
         # Before any failure the latch is off.
-        assert ts._bootstrap_warned is False
+        assert ts._bootstrap.warned is False
 
         # First failure sets the latch.
         ts.get("fk", 0, 30, _MK)
-        assert ts._bootstrap_warned is True
+        assert ts._bootstrap.warned is True
 
         # Subsequent failures leave it set (no reset between calls in degraded mode).
         ts.get("fk", 0, 30, _MK)
         ts.get("fk", 0, 30, _MK)
-        assert ts._bootstrap_warned is True
+        assert ts._bootstrap.warned is True
 
         # All 3 calls still attempted the DB (no early bail-out on failure).
         assert call_count[0] == 3
@@ -527,8 +527,8 @@ class TestCloseAndReset:
         monkeypatch.setattr(ts, "_get_conn", failing_get_conn)
         # Trigger a failure to set the latch.
         ts.get("fk", 0, 30, _MK)
-        assert ts._bootstrap_warned is True
+        assert ts._bootstrap.warned is True
 
         # Reset should clear the latch.
         ts.reset_module_state_for_tests()
-        assert ts._bootstrap_warned is False
+        assert ts._bootstrap.warned is False

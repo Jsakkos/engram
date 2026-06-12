@@ -83,11 +83,23 @@ _init_lock = threading.Lock()
 _put_counter_lock = threading.Lock()
 _put_counter: int = 0
 
-# Log-spam latch: after the first bootstrap failure we drop subsequent
-# failures to DEBUG so we don't flood the log with thousands of identical
-# warnings across 37-145 chunks × threads in degraded mode.
-_bootstrap_warned: bool = False
 _bootstrap_warned_lock = threading.Lock()
+
+
+class _BootstrapState:
+    """Log-spam latch: after the first bootstrap failure we drop subsequent
+    failures to DEBUG so we don't flood the log with thousands of identical
+    warnings across 37-145 chunks × threads in degraded mode.
+
+    Wrapped in an object rather than a bare module global (same rationale as
+    ``_SchemaState`` — avoids CodeQL's ``unused global variable`` false
+    positive on the ``global`` read-then-write-across-calls pattern).
+    """
+
+    warned: bool = False
+
+
+_bootstrap = _BootstrapState()
 
 
 class _SchemaState:
@@ -191,10 +203,9 @@ def _log_bootstrap_failure(exc: Exception) -> None:
     The latch is reset in ``close()`` / ``reset_module_state_for_tests()`` so
     recovery is possible once the environment is fixed.
     """
-    global _bootstrap_warned
     with _bootstrap_warned_lock:
-        first_time = not _bootstrap_warned
-        _bootstrap_warned = True
+        first_time = not _bootstrap.warned
+        _bootstrap.warned = True
 
     if first_time:
         logger.warning(
@@ -216,14 +227,13 @@ def close() -> None:
     Connections held by OTHER threads are left open — they drain when their
     owning thread exits.
     """
-    global _bootstrap_warned
     conn = getattr(_local, "conn", None)
     if conn is not None:
         conn.close()
         _local.conn = None
     _schema.initialized = False
     with _bootstrap_warned_lock:
-        _bootstrap_warned = False
+        _bootstrap.warned = False
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +405,6 @@ def reset_module_state_for_tests() -> None:
             ts.reset_module_state_for_tests()
     """
     global _put_counter
-    close()  # also resets _bootstrap_warned
+    close()  # also resets the bootstrap-warning latch (_bootstrap.warned)
     with _put_counter_lock:
         _put_counter = 0
