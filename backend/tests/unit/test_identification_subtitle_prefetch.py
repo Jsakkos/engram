@@ -3,13 +3,15 @@
 A disc labeled by disc number only ("Eureka D3") identifies the show but not
 the season. The disc path used to gate subtitle download on detected_season,
 silently skipping it — zero reference subtitles, every title failed matching
-at confidence 0, and the whole disc dead-ended in review. v2 design: the job
-parks in REVIEW_NEEDED for a season pick; the shared _start_tv_subtitle_prefetch
+at confidence 0, and the whole disc dead-ended in review. v2 design (reworked
+for walk-away B2): the job rips first with a non-blocking kind=season prompt
+as an optional shortcut; the shared _start_tv_subtitle_prefetch
 helper covers the season-known (single download) and season-unknown ("match
 across all seasons" escape hatch) resume paths, keyed by the job's tmdb_id.
 """
 
-from unittest.mock import AsyncMock, MagicMock, Mock
+import json
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -17,7 +19,6 @@ from app.api.websocket import manager as ws_manager
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType
 from app.services.identification_coordinator import IdentificationCoordinator
-from app.services.job_state_machine import JobStateMachine
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -200,9 +201,10 @@ class TestSetNameAndResumeStartsSubtitles:
 
 @pytest.mark.unit
 class TestGateUnknownSeasonDisc:
-    """The disc-path fate fork (#370): exactly-one-season shows auto-pin to S1
-    (no prompt); multi-season or unresolvable shows park in REVIEW_NEEDED with
-    the season prompt and stop before ripping."""
+    """The disc-path fate fork (#370, reworked for walk-away B2): exactly-one-
+    season shows auto-pin to S1 (no prompt); multi-season or unresolvable shows
+    set a NON-BLOCKING kind=season prompt and continue — the gate never parks
+    the job anymore (pre-B2 it transitioned to REVIEW_NEEDED here)."""
 
     async def _seed_identifying_job(self):
         async with _unit_session_factory() as session:
@@ -230,72 +232,42 @@ class TestGateUnknownSeasonDisc:
         coord._resolve_all_season_numbers = fake_resolve
         return coord
 
-    @staticmethod
-    def _real_state_machine():
-        broadcaster = MagicMock()
-        broadcaster.broadcast_job_completed = AsyncMock()
-        broadcaster.broadcast_job_failed = AsyncMock()
-        broadcaster.broadcast_job_state_changed = AsyncMock()
-        return JobStateMachine(broadcaster)
-
     async def test_single_season_auto_pins_s1(self):
         job_id = await self._seed_identifying_job()
-        # _state_machine is never touched on the auto-pin path; leave it unset.
         coord = self._bare_coord([1])
 
         async with _unit_session_factory() as session:
             job = await session.get(DiscJob, job_id)
-            parked = await coord._gate_unknown_season_disc(job, session, job_id)
+            await coord._gate_unknown_season_disc(job, session, job_id)
 
-        assert parked is False
         assert job.detected_season == 1
 
-        # Persisted, and the job stayed in IDENTIFYING (no review transition).
+        # Persisted, no prompt, and the job stayed in IDENTIFYING.
         async with _unit_session_factory() as session:
             reloaded = await session.get(DiscJob, job_id)
             assert reloaded.detected_season == 1
             assert reloaded.state == JobState.IDENTIFYING
+            assert reloaded.identity_prompt_json is None
 
-    async def test_multi_season_parks_in_review(self, monkeypatch):
-        async def _noop(*a, **k):
-            return None
-
-        monkeypatch.setattr(ws_manager, "broadcast_job_update", _noop)
-
+    @pytest.mark.parametrize("seasons", [[1, 2, 3], []])
+    async def test_multi_season_or_unresolvable_sets_season_prompt_without_parking(self, seasons):
+        """Multi-season AND unresolvable (empty list) both get the shortcut CTA:
+        detected_season stays None so the caller's all-seasons prefetch and
+        cross-season matching cover the disc either way."""
         job_id = await self._seed_identifying_job()
-        coord = self._bare_coord([1, 2, 3])
-        coord._state_machine = self._real_state_machine()
+        coord = self._bare_coord(seasons)
 
         async with _unit_session_factory() as session:
             job = await session.get(DiscJob, job_id)
-            parked = await coord._gate_unknown_season_disc(job, session, job_id)
+            await coord._gate_unknown_season_disc(job, session, job_id)
 
-        assert parked is True
-
-        # transition_to_review commits, so the parked state is persisted.
+        # The gate commits the prompt; the job is NOT parked and no season is pinned.
         async with _unit_session_factory() as session:
             reloaded = await session.get(DiscJob, job_id)
-            assert reloaded.state == JobState.REVIEW_NEEDED
-            assert "select a season" in reloaded.review_reason
-
-    async def test_unresolvable_show_also_parks(self, monkeypatch):
-        async def _noop(*a, **k):
-            return None
-
-        monkeypatch.setattr(ws_manager, "broadcast_job_update", _noop)
-
-        job_id = await self._seed_identifying_job()
-        # Empty season list (len != 1) parks rather than proceeding blind.
-        coord = self._bare_coord([])
-        coord._state_machine = self._real_state_machine()
-
-        async with _unit_session_factory() as session:
-            job = await session.get(DiscJob, job_id)
-            parked = await coord._gate_unknown_season_disc(job, session, job_id)
-
-        assert parked is True
-
-        async with _unit_session_factory() as session:
-            reloaded = await session.get(DiscJob, job_id)
-            assert reloaded.state == JobState.REVIEW_NEEDED
-            assert "select a season" in reloaded.review_reason
+            assert reloaded.state == JobState.IDENTIFYING
+            assert reloaded.detected_season is None
+            assert reloaded.review_reason is None
+            prompt = json.loads(reloaded.identity_prompt_json)
+            assert prompt["kind"] == "season"
+            # "select a season" is the SeasonPromptModal frontend contract.
+            assert "select a season" in prompt["reason"]

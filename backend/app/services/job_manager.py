@@ -35,7 +35,10 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.finalization_coordinator import FinalizationCoordinator
-from app.services.identification_coordinator import IdentificationCoordinator
+from app.services.identification_coordinator import (
+    NO_TITLE_REVIEW_REASON,
+    IdentificationCoordinator,
+)
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     INCOMPLETE_RIP_MESSAGE,
@@ -67,9 +70,10 @@ _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 
 # Fallback review_reason when a blocking identity prompt is malformed or carries
 # no usable reason text (walk-away Phase B). Reuses the staging-import no-title
-# literal; it matches NO classifyPromptJob substring, so the job is resolved on
-# the review page (no auto-modal) — same UX as that established path.
-_FALLBACK_IDENTITY_REVIEW_REASON = "Could not determine title. Please enter the title to continue."
+# literal (shared constant — identification_coordinator owns it); it matches NO
+# classifyPromptJob substring, so the job is resolved on the review page (no
+# auto-modal) — same UX as that established path.
+_FALLBACK_IDENTITY_REVIEW_REASON = NO_TITLE_REVIEW_REASON
 
 
 def _strip_review_flags(match_details: str | None) -> str | None:
@@ -2507,16 +2511,20 @@ class JobManager:
 
     @staticmethod
     def _identity_pending(job: DiscJob | None) -> bool:
-        """True when the job carries an unanswered identity question.
+        """True when the job carries an unanswered BLOCKING identity question.
 
         Walk-away Phase B: ``identity_prompt_json`` is set when a disc rips
-        first with an open identity question. Constraint: the gate is
-        *identity*, not season — ``detected_season`` may legitimately be None
-        (cross-season matching handles unknown seasons), so only an open
-        identity prompt defers matching. Matching without a confirmed show
-        identity would burn ASR against the wrong (or no) reference corpus.
+        first with an open identity question, but only kinds that mean "no
+        confirmed show identity" park titles (``name``/``reidentify``, plus
+        malformed prompts — fail closed). ``kind="season"`` is a shortcut CTA:
+        the show identity IS confirmed and cross-season matching handles the
+        unknown season, so its titles dispatch normally. Parking them would
+        hang the job permanently — QUEUED titles refresh the MATCHING
+        watchdog clock forever with no timeout and nothing ever dispatching.
+        Matching without a confirmed show identity, by contrast, would burn
+        ASR against the wrong (or no) reference corpus.
         """
-        return job is not None and job.identity_prompt_json is not None
+        return JobManager._blocking_identity_prompt(job) is not None
 
     @staticmethod
     def _blocking_identity_prompt(job: DiscJob | None) -> dict | None:
@@ -2531,9 +2539,9 @@ class JobManager:
         we can't interpret must not let the job advance as if identity were
         confirmed.
 
-        Note: ``_identity_pending`` (the mid-rip QUEUED-parking gate) is
-        deliberately NOT kind-aware yet — the gate-rework task refines its
-        call sites. Use this helper for convergence decisions.
+        ``_identity_pending`` (the mid-rip QUEUED-parking gate) delegates
+        here, so the parking gates and the rip-end convergence can never
+        disagree about which prompts block.
         """
         if job is None or job.identity_prompt_json is None:
             return None

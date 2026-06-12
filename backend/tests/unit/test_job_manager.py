@@ -189,6 +189,42 @@ class TestOnTitleRippedIdentityGate:
         discdb.assert_not_called()
         dispatch.assert_not_called()
 
+    async def test_reidentify_prompt_also_parks(self, tmp_path, monkeypatch):
+        """kind=reidentify means no confirmed identity — same park as kind=name."""
+        job, title = await _seed(
+            content_type=ContentType.TV,
+            identity_prompt_json=json.dumps({"kind": "reidentify", "reason": "twins"}),
+        )
+        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        path = tmp_path / "show_t00.mkv"
+        path.write_text("")
+
+        await job_manager._on_title_ripped(job.id, 1, path, [title])
+        await asyncio.sleep(0)
+
+        assert (await _get_title(title.id)).state == TitleState.QUEUED
+        discdb.assert_not_called()
+        dispatch.assert_not_called()
+
+    async def test_season_prompt_dispatches_normally(self, tmp_path, monkeypatch):
+        """kind=season is a shortcut CTA, not a blocking identity question: the
+        ripped title goes QUEUED→dispatch like any TV title (B2 item 1). Parking
+        it would hang the job forever — the season-prompt job reaches MATCHING
+        and _has_pending_match_work refreshes the watchdog clock with nothing
+        ever dispatching."""
+        job, title = await _seed(content_type=ContentType.TV, identity_prompt_json=_SEASON_PROMPT)
+        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        path = tmp_path / "show_t00.mkv"
+        path.write_text("")
+
+        await job_manager._on_title_ripped(job.id, 1, path, [title])
+        await asyncio.sleep(0)
+
+        t = await _get_title(title.id)
+        assert t.state == TitleState.QUEUED  # flip to MATCHING is post-semaphore
+        discdb.assert_awaited_once()
+        dispatch.assert_awaited_once()
+
 
 @pytest.mark.unit
 class TestDispatchPendingMatches:

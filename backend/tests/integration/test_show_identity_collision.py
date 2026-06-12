@@ -56,10 +56,11 @@ async def test_match_single_file_forwards_tmdb_id(monkeypatch):
     assert seen == {"show_name": "Frasier", "tmdb_id": 195241}
 
 
-async def test_ambiguous_disc_routes_to_review_with_candidate_reason(monkeypatch):
+async def test_ambiguous_disc_rips_first_with_reidentify_prompt(monkeypatch):
     """Coordinator seam: an ambiguous-identity analysis must NOT be intercepted by the
     generic 'words merged' TMDB-lookup-failed guard; it must fall through to the
-    needs_review branch and surface the candidate-naming reason.
+    needs_review branch and convert to rip-first (walk-away B2) — RIPPING with a
+    kind=reidentify prompt carrying the candidate-naming reason verbatim.
     """
     from app.core.analyst import TitleInfo
     from app.services.job_manager import job_manager
@@ -97,16 +98,18 @@ async def test_ambiguous_disc_routes_to_review_with_candidate_reason(monkeypatch
     analysis.needs_review = True
     analysis.tmdb_id = None
     analysis.review_reason = candidate_reason
+    twins = [
+        {"tmdb_id": 3452, "name": "Frasier", "year": "1993", "popularity": 75.6},
+        {"tmdb_id": 195241, "name": "Frasier", "year": "2023", "popularity": 5.7},
+    ]
     analysis._tmdb_signal = TmdbSignal(
         content_type=ContentType.TV,
         confidence=0.6,
         tmdb_id=None,
         tmdb_name="Frasier",
         ambiguous_identity=True,
-        candidates=[
-            {"tmdb_id": 3452, "name": "Frasier", "year": "1993", "popularity": 75.6},
-            {"tmdb_id": 195241, "name": "Frasier", "year": "2023", "popularity": 5.7},
-        ],
+        candidates=twins,
+        all_candidates=twins,
     )
     analysis._discdb_signal = None
 
@@ -115,8 +118,15 @@ async def test_ambiguous_disc_routes_to_review_with_candidate_reason(monkeypatch
 
     monkeypatch.setattr(coord, "_run_classification", fake_run_classification)
 
-    # Capture WebSocket job updates so we can assert the candidate reason reaches the
-    # client (the ReIdentifyModal banner relies on it), not just the DB.
+    ran_ripping = []
+
+    async def fake_run_ripping(jid):
+        ran_ripping.append(jid)
+
+    monkeypatch.setattr(coord, "_run_ripping", fake_run_ripping)
+
+    # Capture WebSocket job updates so we can assert the prompt (with the candidate
+    # reason the ReIdentifyModal banner relies on) reaches the client, not just the DB.
     import app.services.identification_coordinator as idc
 
     broadcasts: list[tuple[str, dict]] = []
@@ -129,28 +139,37 @@ async def test_ambiguous_disc_routes_to_review_with_candidate_reason(monkeypatch
     # Drive the real identify_disc flow.
     await coord.identify_disc(job_id)
 
-    # Reload from DB and assert correct routing.
+    # Reload from DB and assert correct routing: rip-first with a reidentify prompt.
+    import json as _json
+
     async with async_session() as session:
         refreshed = await session.get(DiscJob, job_id)
-        assert refreshed.state == JobState.REVIEW_NEEDED, (
-            f"Expected REVIEW_NEEDED, got {refreshed.state}"
+        assert refreshed.state == JobState.RIPPING, f"Expected RIPPING, got {refreshed.state}"
+        assert refreshed.review_reason is None
+        prompt = _json.loads(refreshed.identity_prompt_json)
+        assert prompt["kind"] == "reidentify"
+        assert "Multiple shows match" in prompt["reason"], (
+            f"Candidate reason not found in prompt: {prompt['reason']!r}"
         )
-        assert "Multiple shows match" in (refreshed.review_reason or ""), (
-            f"Candidate reason not found in review_reason: {refreshed.review_reason!r}"
+        assert "words merged" not in prompt["reason"], (
+            f"Generic 'words merged' message incorrectly set: {prompt['reason']!r}"
         )
-        assert "words merged" not in (refreshed.review_reason or ""), (
-            f"Generic 'words merged' message incorrectly set: {refreshed.review_reason!r}"
-        )
+        # The twins survive on the job for the ReIdentifyModal quick-pick.
+        assert "195241" in (refreshed.candidates_json or "")
 
-    # The WS broadcast for the review must carry the candidate reason.
-    review_reasons = [
-        kwargs.get("review_reason")
+    assert ran_ripping == [job_id]
+
+    # The WS broadcast for the rip must carry the prompt with the candidate reason.
+    ripping_prompts = [
+        kwargs.get("identity_prompt_json")
         for state, kwargs in broadcasts
-        if state == JobState.REVIEW_NEEDED.value
+        if state == JobState.RIPPING.value
     ]
-    assert any("Multiple shows match" in (r or "") for r in review_reasons), (
-        f"No REVIEW_NEEDED broadcast carried the candidate reason; saw: {review_reasons!r}"
+    assert any("Multiple shows match" in (p or "") for p in ripping_prompts), (
+        f"No RIPPING broadcast carried the reidentify prompt; saw: {ripping_prompts!r}"
     )
+    # And nothing broadcast a pre-rip review park.
+    assert not any(state == JobState.REVIEW_NEEDED.value for state, _ in broadcasts)
 
 
 def _frasier_signal(tmdb_id, ambiguous=False):
@@ -228,29 +247,37 @@ async def _drive_identify(monkeypatch, *, volume_label, signal):
     return job_id, flags["subtitles"], flags["ripping"]
 
 
-async def test_no_year_twin_routes_to_review_before_ripping(monkeypatch):
-    """Frasier backstop: a no-year disc with a same-name twin must go to REVIEW
-    (with a no-year candidate reason) and must NOT download subtitles or rip — even
+async def test_no_year_twin_rips_first_with_reidentify_prompt(monkeypatch):
+    """Frasier backstop (reworked for walk-away B2): a no-year disc with a
+    same-name twin rips first carrying a kind=reidentify prompt (with the
+    no-year candidate reason verbatim) and must NOT download subtitles — even
     though the materiality gate did not fire and a popularity-best tmdb_id is set."""
+    import json as _json
+
     job_id, started_subtitles, ran_ripping = await _drive_identify(
         monkeypatch, volume_label="FRASIER_S1D1", signal=_frasier_signal(3452)
     )
 
     async with async_session() as session:
         refreshed = await session.get(DiscJob, job_id)
-        assert refreshed.state == JobState.REVIEW_NEEDED
-        assert "no year" in (refreshed.review_reason or "").lower()
-        assert "195241" in (refreshed.review_reason or "")
+        assert refreshed.state == JobState.RIPPING
+        assert refreshed.review_reason is None
+        prompt = _json.loads(refreshed.identity_prompt_json)
+        assert prompt["kind"] == "reidentify"
+        assert "no year" in prompt["reason"].lower()
+        assert "195241" in prompt["reason"]
         # The popularity-best guess is kept as the pre-selection; twins are persisted.
         assert refreshed.tmdb_id == 3452
         assert "195241" in (refreshed.candidates_json or "")
 
+    # Identity is uncertain → no prefetch; the rip starts anyway.
     assert started_subtitles is False
-    assert ran_ripping is False
+    assert ran_ripping is True
 
 
 async def test_year_in_label_skips_no_year_flag_and_rips(monkeypatch):
-    """A year in the label disambiguates twins, so identify proceeds normally."""
+    """A year in the label disambiguates twins, so identify proceeds normally
+    (no prompt, prefetch + rip as today)."""
     job_id, started_subtitles, ran_ripping = await _drive_identify(
         monkeypatch, volume_label="FRASIER_2023_S1D1", signal=_frasier_signal(195241)
     )
@@ -258,6 +285,7 @@ async def test_year_in_label_skips_no_year_flag_and_rips(monkeypatch):
     async with async_session() as session:
         refreshed = await session.get(DiscJob, job_id)
         assert refreshed.state != JobState.REVIEW_NEEDED
+        assert refreshed.identity_prompt_json is None
 
     assert started_subtitles is True
     assert ran_ripping is True

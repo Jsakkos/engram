@@ -173,6 +173,37 @@ async def test_reconcile_stuck_identity_pending_parks_queued(tmp_path, monkeypat
     dispatch.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_reconcile_stuck_season_prompt_dispatches_normally(tmp_path, monkeypatch):
+    """kind=season is a non-blocking shortcut CTA (B2): identity is confirmed,
+    so a recovered TV title dispatches into cross-season matching instead of
+    parking — a parked season-prompt job would hang forever (QUEUED titles
+    refresh the watchdog clock and nothing ever dispatches)."""
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(
+        tmp_path,
+        content_type=ContentType.TV,
+        state=JobState.RIPPING,
+        identity_prompt_json='{"kind": "season", "reason": "select a season to continue."}',
+    )
+    tid = await _add_title(job_id, 0, TitleState.RIPPING, output=str(f))
+
+    from unittest.mock import AsyncMock
+
+    discdb = AsyncMock(return_value=False)
+    dispatch = AsyncMock()
+    monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
+    monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    await job_manager.reconcile_stuck_titles(job_id)
+    await asyncio.sleep(0.05)
+
+    assert (await _title(tid)).state == TitleState.QUEUED  # MATCHING flip is post-semaphore
+    dispatch.assert_awaited_once()
+
+
 # --- QUEUED state: completion check treats it as active --------------------
 
 
