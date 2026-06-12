@@ -65,6 +65,11 @@ logger = logging.getLogger(__name__)
 # marks the user's pick non-rematchable).
 _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 
+# Fallback review_reason when a blocking identity prompt is malformed or carries
+# no usable reason text (walk-away Phase B). Reuses the established
+# identification literal so the frontend still opens the name-prompt modal.
+_FALLBACK_IDENTITY_REVIEW_REASON = "Could not determine title. Please enter the title to continue."
+
 
 def _strip_review_flags(match_details: str | None) -> str | None:
     """Remove stale review-reason keys from a match_details JSON string.
@@ -2172,6 +2177,30 @@ class JobManager:
             except (OSError, RuntimeError) as e:
                 logger.warning(f"Could not eject disc from {drive_id}: {e}")
 
+            # Post-rip convergence (walk-away Phase B4): re-read the job row —
+            # the locals captured at setup go stale once mid-rip identity
+            # answers (B5) can mutate the job, so the fresh DB values drive the
+            # TV-vs-movie fork below. (No-op today: nothing mutates mid-rip yet,
+            # so the locals and the row agree.)
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if not job:
+                    return
+                content_type = job.content_type
+                detected_title = job.detected_title
+                blocking_prompt = self._blocking_identity_prompt(job)
+
+            if blocking_prompt is not None:
+                # An unanswered BLOCKING identity question (kind=name/reidentify)
+                # survived to rip end → the job parks in pooled review. Recover
+                # stranded titles FIRST, while the prompt is still set, so the
+                # identity gate inside parks them in QUEUED (clearing the prompt
+                # before reconciling would let non-TV strays leak to MATCHED).
+                await self._backfill_unmatched_titles(job_id, output_dir, sorted_titles)
+                await self.reconcile_stuck_titles(job_id)
+                await self._converge_identity_pending_job(job_id, blocking_prompt)
+                return
+
             if content_type == ContentType.TV:
                 await self._backfill_unmatched_titles(job_id, output_dir, sorted_titles)
 
@@ -2323,6 +2352,54 @@ class JobManager:
                     job, session, error_message=error_message or "Ripping failed"
                 )
 
+    async def _converge_identity_pending_job(self, job_id: int, prompt: dict) -> None:
+        """Park a rip-finished job whose identity question is still open in review.
+
+        Walk-away Phase B4: the non-blocking identity CTA converts into the
+        blocking pooled-review payload at rip end — ``review_reason`` carries
+        the prompt's reason verbatim (preserving the frontend literal
+        contracts: "label unreadable", "merged without separators",
+        candidates_json-driven modals) and ``identity_prompt_json`` is cleared
+        in the same commit. Parked QUEUED titles stay QUEUED (active in
+        ``check_job_completion``); the review flow and the answer endpoints
+        (B5) own them. The Phase A transcript prewarmer fires automatically via
+        the state machine's ``on_transition`` observer — no explicit kickoff.
+        """
+        safe_job = sanitize_log_value(job_id)
+        reason = prompt.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            reason = _FALLBACK_IDENTITY_REVIEW_REASON
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            if job.state != JobState.RIPPING:
+                # e.g. every title stalled → route_rip_failure_to_review already
+                # parked the job in REVIEW_NEEDED with its own reason. Leave the
+                # prompt in place — the review flow / answer endpoints own it.
+                logger.info(
+                    f"Job {safe_job}: skipping identity convergence — job already in "
+                    f"{job.state.value}"
+                )
+                return
+            job.identity_prompt_json = None
+            succeeded = await state_machine.transition_to_review(
+                job, session, reason=reason, broadcast=False
+            )
+        if succeeded:
+            # "" deliberately: the enumerated-WS clear pattern ("" clears the
+            # field on the frontend merge; None means "unchanged").
+            await ws_manager.broadcast_job_update(
+                job_id,
+                JobState.REVIEW_NEEDED.value,
+                review_reason=reason,
+                identity_prompt_json="",
+            )
+            logger.info(
+                f"Job {safe_job}: rip finished with unanswered identity prompt "
+                f"(kind={sanitize_log_value(prompt.get('kind'))}) → REVIEW_NEEDED"
+            )
+
     async def _resolve_multi_title_movie(
         self,
         job: DiscJob,
@@ -2437,6 +2514,39 @@ class JobManager:
         identity would burn ASR against the wrong (or no) reference corpus.
         """
         return job is not None and job.identity_prompt_json is not None
+
+    @staticmethod
+    def _blocking_identity_prompt(job: DiscJob | None) -> dict | None:
+        """Parse ``identity_prompt_json``; return the prompt only when it BLOCKS.
+
+        Prompt-kind semantics (walk-away Phase B): ``kind="season"`` is
+        non-blocking — the show identity is known and cross-season matching
+        proceeds, so the CTA is just a shortcut — and returns None here, same
+        as no prompt at all. ``kind="name"``/``"reidentify"`` mean there is no
+        confirmed show identity, so they block. Malformed JSON or an
+        unrecognized kind also blocks (fail closed, with a warning): a prompt
+        we can't interpret must not let the job advance as if identity were
+        confirmed.
+
+        Note: ``_identity_pending`` (the mid-rip QUEUED-parking gate) is
+        deliberately NOT kind-aware yet — the gate-rework task refines its
+        call sites. Use this helper for convergence decisions.
+        """
+        if job is None or job.identity_prompt_json is None:
+            return None
+        try:
+            prompt = json.loads(job.identity_prompt_json)
+        except (json.JSONDecodeError, TypeError):
+            prompt = None
+        if not isinstance(prompt, dict):
+            logger.warning(
+                f"Job {job.id}: malformed identity_prompt_json "
+                f"({sanitize_log_value(job.identity_prompt_json)!r}) — treating as blocking"
+            )
+            return {"kind": "unknown", "reason": _FALLBACK_IDENTITY_REVIEW_REASON}
+        if prompt.get("kind") == "season":
+            return None
+        return prompt
 
     async def _on_title_ripped(
         self, job_id: int, rip_index: int, path: Path, sorted_titles: list[DiscTitle]
