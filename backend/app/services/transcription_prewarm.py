@@ -229,7 +229,9 @@ class TranscriptionPrewarmer:
         from app.matcher.asr_models import get_cached_model, model_output_key
         from app.matcher.episode_identification import (
             canonical_scan_points,
-            get_video_duration,
+            get_video_duration,  # int (np.ceil) — same helper transcribe_full keys its
+            # L2 row with. Do NOT swap in srt_utils.get_video_duration (returns float):
+            # a fractional duration would fork the (0, duration) full-file cache key.
         )
 
         duration = await asyncio.to_thread(get_video_duration, str(file_path))
