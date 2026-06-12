@@ -2557,6 +2557,12 @@ class JobManager:
             return {"kind": "unknown", "reason": _FALLBACK_IDENTITY_REVIEW_REASON}
         if prompt.get("kind") == "season":
             return None
+        if prompt.get("kind") not in ("name", "reidentify"):
+            # Unrecognized kind (newer writer?) — fail closed, but say so.
+            logger.warning(
+                f"Job {job.id}: unrecognized identity prompt kind "
+                f"{prompt.get('kind')!r} — treating as blocking"
+            )
         return prompt
 
     async def _on_title_ripped(

@@ -615,7 +615,7 @@ class IdentificationCoordinator:
     async def _rip_first_with_prompt(
         self, job, session, job_id: int, *, kind: str, reason: str
     ) -> None:
-        """Ship a job to RIPPING carrying a non-blocking identity prompt (B2).
+        """Ship a job to RIPPING carrying an identity prompt instead of parking (B2).
 
         Replaces a pre-rip REVIEW_NEEDED park: ``reason`` is recorded VERBATIM
         — the texts are frontend contracts (modal routing keys on substrings
