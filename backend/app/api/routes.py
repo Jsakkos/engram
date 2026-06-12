@@ -283,6 +283,9 @@ class ConfigResponse(BaseModel):
     tmdb_configured: bool
     max_concurrent_matches: int
     enable_gpu_acceleration: bool
+    # Background pre-transcription (transcript cache prewarmer)
+    enable_background_pretranscription: bool
+    pretranscribe_full_file: bool
     ffmpeg_path: str
     conflict_resolution_default: str
     # Analyst thresholds
@@ -363,6 +366,9 @@ class ConfigUpdate(BaseModel):
     tmdb_api_key: str | None = None
     max_concurrent_matches: int | None = None
     enable_gpu_acceleration: bool | None = None
+    # Background pre-transcription (transcript cache prewarmer)
+    enable_background_pretranscription: bool | None = None
+    pretranscribe_full_file: bool | None = None
     ffmpeg_path: str | None = None
     conflict_resolution_default: str | None = None
     # Analyst thresholds
@@ -1222,6 +1228,9 @@ async def get_config() -> ConfigResponse:
         tmdb_configured=bool(config.tmdb_api_key),
         max_concurrent_matches=config.max_concurrent_matches,
         enable_gpu_acceleration=config.enable_gpu_acceleration,
+        # Background pre-transcription (transcript cache prewarmer)
+        enable_background_pretranscription=config.enable_background_pretranscription,
+        pretranscribe_full_file=config.pretranscribe_full_file,
         ffmpeg_path=config.ffmpeg_path,
         conflict_resolution_default=config.conflict_resolution_default,
         # Analyst thresholds

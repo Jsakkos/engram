@@ -49,6 +49,7 @@ from app.services.ripping_helpers import (
     resolve_title_from_filename,
 )
 from app.services.simulation_service import SimulationService
+from app.services.transcription_prewarm import TranscriptionPrewarmer
 
 # Per-disc ContentHash is computable the instant a disc mounts (validated on
 # real hardware: +0.00s after mount, 4/4 inserts). The retry exists only for a
@@ -140,6 +141,13 @@ class JobManager:
             self._analyst, self._extractor, event_broadcaster, state_machine
         )
         self._simulation = SimulationService(event_broadcaster, state_machine)
+        # Transcript prewarmer: fills the persistent ASR cache while a job sits
+        # in review, so the user's eventual re-match is near-instant. It draws
+        # chunks through the SAME match semaphore as live matching (acquired
+        # per chunk), so real matches always preempt it between chunks.
+        self._prewarmer = TranscriptionPrewarmer(
+            semaphore_provider=lambda: self._matching._match_semaphore
+        )
 
         # Wire cross-coordinator callbacks
         self._matching.set_callbacks(
@@ -179,9 +187,17 @@ class JobManager:
         state_machine.on_terminal_state(self._cleanup.on_job_terminal)
         state_machine.on_terminal_state(self._matching.clear_job_caches)
         state_machine.on_terminal_state(self._finalization.on_terminal_clear_conflicts)
+        state_machine.on_terminal_state(self._prewarmer.on_job_terminal)
 
         # Reset the watchdog activity clock whenever a job changes phase.
         state_machine.on_transition(self._note_activity_on_transition)
+        # Prewarm transcripts whenever a job parks in review. Registering on the
+        # state machine is the single chokepoint every review-parking path flows
+        # through (finalization's check_job_completion, the ambiguous-movie
+        # post-rip review, FILE_EXISTS conflicts, ...) and fires only AFTER the
+        # REVIEW_NEEDED transition committed. Pre-rip reviews (e.g. name prompt)
+        # also land here, but with no files on disk the task no-ops cheaply.
+        state_machine.on_transition(self._start_prewarm_on_review)
 
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
@@ -397,6 +413,9 @@ class JobManager:
             logger.info(f"Cancelled job {job_id}")
 
         self._active_jobs.clear()
+
+        # Stop any background transcript prewarming.
+        self._prewarmer.cancel_all()
 
         # Drain any MakeMKV subprocesses so none survive shutdown as orphans.
         await self._extractor.shutdown()
@@ -803,6 +822,10 @@ class JobManager:
         season: int | None = None,
     ) -> None:
         """Set a user-provided name for an unlabeled disc and resume ripping."""
+        # The real pipeline owns the ASR from here; it reuses whatever the
+        # prewarmer already cached. cancel_for_job prevents future chunks;
+        # the in-flight thread still finishes its current chunk (~60 s).
+        self._prewarmer.cancel_for_job(job_id)
         await self._identification.set_name_and_resume(job_id, name, content_type_str, season)
 
         task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
@@ -818,6 +841,10 @@ class JobManager:
         tmdb_id: int | None = None,
     ) -> None:
         """Re-identify a job with user-corrected metadata."""
+        # A real match (or re-rip) starts now — stop background prewarming.
+        # cancel_for_job prevents future chunks; the in-flight thread still
+        # finishes its current chunk (~60 s).
+        self._prewarmer.cancel_for_job(job_id)
         result = await self._identification.re_identify(
             job_id, title, content_type_str, season, tmdb_id
         )
@@ -834,6 +861,10 @@ class JobManager:
 
     async def _rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for already-ripped titles."""
+        # The real match owns the GPU now; it reuses what the prewarmer cached.
+        # cancel_for_job prevents future chunks; the in-flight thread still
+        # finishes its current chunk (~60 s).
+        self._prewarmer.cancel_for_job(job_id)
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job or not job.staging_path:
@@ -941,6 +972,11 @@ class JobManager:
             self._last_activity.pop(job_id, None)
         else:
             self._last_activity[job_id] = time.monotonic()
+
+    def _start_prewarm_on_review(self, job_id: int, state: JobState) -> None:
+        """on_transition observer: prewarm transcripts when a job parks in review."""
+        if state == JobState.REVIEW_NEEDED:
+            self._prewarmer.kickoff(job_id)
 
     @staticmethod
     def _has_complete_output(output_dir: Path, title_index: int) -> bool:
@@ -1299,10 +1335,18 @@ class JobManager:
         edition: str | None = None,
     ) -> None:
         """Apply a user's review decision for a title."""
+        # Organization (shutil.move) starts now — stop background prewarming so
+        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
+        # in-flight thread finishes its current chunk (~60s) before yielding.
+        self._prewarmer.cancel_for_job(job_id)
         await self._finalization.apply_review(job_id, title_id, episode_code, edition)
 
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""
+        # Organization (shutil.move) starts now — stop background prewarming so
+        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
+        # in-flight thread finishes its current chunk (~60s) before yielding.
+        self._prewarmer.cancel_for_job(job_id)
         await self._finalization.apply_review_batch(job_id, decisions)
 
     async def reassign_episode(
@@ -1425,6 +1469,10 @@ class JobManager:
         in review for confirmation and never auto-organized. Pipeline/escalation/
         conflict callers invoke the coordinator method directly (advisory False).
         """
+        # A real (user-initiated) match starts now — stop background prewarming.
+        # cancel_for_job prevents future chunks; the in-flight thread still
+        # finishes its current chunk (~60 s).
+        self._prewarmer.cancel_for_job(job_id)
         await self._matching.rematch_single_title(
             job_id,
             title_id,

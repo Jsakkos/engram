@@ -60,6 +60,20 @@ class AppConfig(SQLModel, table=True):
         default=False, sa_column_kwargs={"server_default": text("0")}
     )
 
+    # Background pre-transcription (persistent ASR transcript cache). When a job
+    # parks in review, a prewarmer background-transcribes the canonical scan-grid
+    # chunks for its unresolved tracks so a later re-match is near-instant.
+    # server_default="1" so the column arrives enabled for pre-existing databases.
+    enable_background_pretranscription: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )
+    # Also pre-transcribe the ENTIRE file (the full-file fallback input). Expensive
+    # (~5-10 min GPU per file) — for users with idle GPUs who hit the full-file
+    # fallback often. Off by default.
+    pretranscribe_full_file: bool = Field(
+        default=False, sa_column_kwargs={"server_default": text("0")}
+    )
+
     # FFmpeg path (empty string = use PATH)
     ffmpeg_path: str = ""
 

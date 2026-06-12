@@ -9,7 +9,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import chardet
-import ctranslate2
 import numpy as np
 from loguru import logger
 from rich.console import Console
@@ -18,12 +17,95 @@ from scipy.sparse import vstack as scipy_vstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
-from app.matcher.asr_models import get_cached_model
+from app.matcher import transcript_store
+from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
 
 console = Console()
+
+# Nested scan-point lattice levels: n_k = 9 * 2**k + 1. Level k+1 inserts the
+# midpoint of every level-k gap, so each level is a strict subset of all deeper ones.
+_SCAN_LATTICE_LEVELS = (10, 19, 37, 73, 145)
+
+
+def snap_to_lattice_level(num_points) -> int:
+    """Smallest lattice level >= ``num_points``, capped at the deepest (145).
+
+    The single source of truth for how a requested scan depth realizes on the
+    lattice: ``canonical_scan_points`` snaps through here, and depth constants
+    elsewhere (deep re-match, conflict-escalation ladder) are validated against
+    it so requested and realized depths can't drift. ``None`` or < 2 means the
+    default shallow scan (10).
+    """
+    if not num_points or num_points < 2:
+        num_points = 10
+    return next(
+        (lvl for lvl in _SCAN_LATTICE_LEVELS if lvl >= num_points), _SCAN_LATTICE_LEVELS[-1]
+    )
+
+
+def floor_to_lattice_level(num_points) -> int:
+    """Largest lattice level <= ``num_points``, never below the base level (10).
+
+    The cost-ceiling counterpart of :func:`snap_to_lattice_level`: use it when a
+    depth budget (e.g. "enough points for ~full coverage") must not be overshot —
+    snapping UP past the budget would transcribe overlapping audio for no new
+    evidence. Below the base level the matcher can't scan any shallower, so 10 is
+    returned (``canonical_scan_points`` dedups colliding points on short files).
+
+    Unlike :func:`snap_to_lattice_level`, ``num_points`` must be an ``int``; passing
+    ``None`` raises ``TypeError``.  The sole caller feeds ``_full_coverage_points``,
+    which always returns an int, so this is never an issue in practice.
+    """
+    for lvl in reversed(_SCAN_LATTICE_LEVELS):
+        if lvl <= num_points:
+            return lvl
+    return _SCAN_LATTICE_LEVELS[0]
+
+
+def canonical_scan_points(
+    video_duration,
+    *,
+    skip_initial,
+    skip_final=120,
+    chunk_len=30,
+    num_points=10,
+) -> list[int]:
+    """Evenly-spaced scan offsets on a nested lattice, stable across scan depths.
+
+    Levels follow ``n_k = 9 * 2**k + 1`` (10, 19, 37, 73, 145); a shallow scan's
+    offsets are a strict subset of every deeper scan's, so a transcript cache
+    keyed by (file, offset, duration) gets full reuse when a deep re-match
+    revisits a file. ``num_points`` snaps UP to the smallest level that covers
+    it (capped at 145); ``None`` or < 2 means the default 10.
+
+    Integer arithmetic (multiply before floor-divide) is mandatory for subset
+    exactness: level-k point i equals level-(k+1) point 2i because
+    ``n_{k+1} - 1 == 2 * (n_k - 1)``; per-level float intervals can differ in
+    the last ulp and break the equality after truncation.
+
+    Returns ``[]`` when no usable window remains (duration <= skips); offsets
+    are never negative, and adjacent lattice points that collide after floor
+    division on short files are deduplicated.
+    """
+    n = snap_to_lattice_level(num_points)
+
+    skip_initial = max(int(skip_initial), 0)
+    available = int(video_duration) - skip_initial - int(skip_final)
+    if available <= 0:
+        return []
+
+    points: list[int] = []
+    for i in range(n):
+        point = skip_initial + (i * available) // (n - 1)
+        if point >= video_duration - chunk_len:
+            continue
+        if points and points[-1] == point:
+            continue
+        points.append(point)
+    return points
 
 
 def load_precomputed_manifest(cache_dir) -> dict | None:
@@ -909,7 +991,12 @@ class EpisodeMatcher:
         )
         self.model_name = model_name
         self.requested_workers = max(1, int(requested_workers or 1))
-        self.device = device or ("cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu")
+        # Effective startup-pinned device (set_asr_device), NOT the raw GPU probe:
+        # probing ctranslate2 directly here claimed "cuda" even when the user had
+        # disabled GPU ASR, which would poison _model_config() — and through it the
+        # persistent transcript-cache model_key (claiming cuda/float16 for output
+        # actually produced on cpu/int8).
+        self.device = device or detect_asr_device()
         self.temp_dir = Path(tempfile.gettempdir()) / "whisper_chunks"
         self.temp_dir.mkdir(exist_ok=True)
         # Initialize subtitle cache
@@ -990,6 +1077,77 @@ class EpisodeMatcher:
         if len(self.transcriptions) >= self._max_transcription_cache:
             self.transcriptions.clear()
         self.transcriptions[key] = text
+
+    def _model_key_for(self, model) -> str:
+        """L2 transcript-cache model identity, preferring the LOADED model's device.
+
+        ``FasterWhisperModel.load()`` can silently fall back CUDA→CPU when the math
+        libraries are missing; deriving the key from the loaded object's post-load
+        ``device`` means a persisted key can't claim cuda/float16 for output that
+        was actually produced on cpu/int8. Model objects that don't expose a
+        resolved device (e.g. test fakes) fall back to ``_model_config()``, whose
+        device is the startup-pinned effective value (see __init__).
+        """
+        config = self._model_config()
+        loaded_device = getattr(model, "device", None)
+        if loaded_device in ("cpu", "cuda"):
+            config["device"] = loaded_device
+        return model_output_key(config)
+
+    def transcribe_chunk_cached(
+        self,
+        video_file,
+        start_time,
+        chunk_len,
+        model,
+        *,
+        file_key=None,
+        model_key=None,
+        temp_files=None,
+    ) -> str:
+        """Transcribe one chunk through the layered cache: L1 dict → L2 SQLite → Whisper.
+
+        On an L1/L2 hit no wav is extracted, so nothing is appended to
+        ``temp_files`` (same as the historical L1-hit path); on compute the
+        extracted wav IS appended (before transcription, so cleanup happens even
+        if Whisper raises) and the text is written through to BOTH layers so it
+        survives process restarts and re-matches.
+
+        ``file_key``/``model_key`` may be precomputed by the caller (one stat +
+        one key derivation per identify_episode call, reused across offsets);
+        when absent they are derived here so direct callers stay correct.
+        ``transcript_store`` is fail-safe — a broken cache degrades to "just
+        transcribe again", never into a matching error.
+        """
+        chunk_key = self._transcription_key(video_file, start_time, chunk_len)
+        # L1: in-memory memo (persists across identify_episode calls).
+        text = self.transcriptions.get(chunk_key)
+        if text is not None:
+            return text
+
+        if file_key is None:
+            file_key = transcript_store.file_key_for(video_file)
+        if model_key is None:
+            model_key = self._model_key_for(model)
+
+        # L2: persistent store. "" is a valid cached transcript (silent audio);
+        # only None is a miss. On a hit, also populate L1 for this process.
+        text = transcript_store.get(file_key, start_time, chunk_len, model_key)
+        if text is not None:
+            self._remember_transcription(chunk_key, text)
+            return text
+
+        audio_path = self.extract_audio_chunk(video_file, start_time, duration=chunk_len)
+        if temp_files is not None:
+            temp_files.append(audio_path)  # Track for caller's cleanup
+        # `or ""` guards a wrapper returning {"text": None}: caching None would
+        # make this offset a perpetual miss (the `is None` guards above would
+        # re-transcribe it every season). The caller's `len(text) < 10` check
+        # still skips genuinely empty audio.
+        text = (model.transcribe(audio_path).get("text") or "").strip()
+        self._remember_transcription(chunk_key, text)
+        transcript_store.put(file_key, start_time, chunk_len, model_key, text)
+        return text
 
     def extract_audio_chunk(self, mkv_file, start_time, duration=None):
         """Extract a chunk of audio from MKV file with caching."""
@@ -1290,24 +1448,44 @@ class EpisodeMatcher:
             )
             return None
 
-        model_config = self._model_config()
+        # The full-file wav (tens of MB) is tracked here and removed in the
+        # finally below — mirroring identify_episode's temp_files_to_remove.
+        # On an L1/L2 hit no wav is extracted, so the list stays empty.
+        temp_files: list[str] = []
         try:
             # Memoized by (source, 0, duration): the full-file fallback fires once per
             # candidate season when no chunk votes, so without this the season-unknown
             # path re-transcribes the ENTIRE file per season — the single biggest cost.
+            # transcribe_chunk_cached layers the persistent L2 store underneath, so a
+            # full-file transcript is also persisted when produced (free at that point)
+            # and survives restarts; nothing prewarms full files. The L1 check stays
+            # first so an in-memory hit doesn't even touch the model loader.
             full_key = self._transcription_key(video_file, 0, duration)
             full = self.transcriptions.get(full_key)
             if full is None:
-                model = get_cached_model(model_config)
-                audio_path = self.extract_audio_chunk(video_file, start_time=0, duration=duration)
-                full = (model.transcribe(audio_path).get("text") or "").strip()
-                self._remember_transcription(full_key, full)
+                model = get_cached_model(self._model_config())
+                full = self.transcribe_chunk_cached(
+                    video_file, 0, duration, model, temp_files=temp_files
+                )
         except Exception as e:
             logger.warning(
                 f"transcribe_full: transcription failed for {video_file}: {e}",
                 exc_info=True,
             )
             return None
+        finally:
+            for p in temp_files:
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except OSError:
+                    # Best-effort temp cleanup — a locked wav (e.g. Windows AV
+                    # scan) is reaped on a later run; missing_ok covers ENOENT.
+                    pass
+            # Drop the audio-chunk memo for the wav we just deleted so a future
+            # compute path re-extracts instead of returning a dangling path
+            # (same hygiene as TranscriptionPrewarmer._transcribe_span).
+            if temp_files:
+                self.audio_chunks.pop((self._resolve_source(video_file), 0, duration), None)
 
         if len(full) < 50:
             logger.info(f"transcribe_full: too little text ({len(full)} chars) for {video_file}")
@@ -1351,10 +1529,14 @@ class EpisodeMatcher:
             self._tfidf_cache[signature] = tm
             return tm
 
-    def _match_full_file(self, video_file, model_config, reference_files, duration, tfidf_matcher):
+    def _match_full_file(self, video_file, reference_files, tfidf_matcher):
         """
         Fallback: matching by transcribing the ENTIRE file.
         This is resource intensive but necessary if chunk matching fails.
+
+        Model interaction (loading, duration lookup, the layered transcript
+        cache) lives entirely in ``transcribe_full``; this method only matches
+        the resulting text against the references.
 
         ``tfidf_matcher`` is the per-call matcher already prepared for this season
         (passed in, not read from shared state, so a concurrent season can't swap
@@ -1416,9 +1598,12 @@ class EpisodeMatcher:
         """
         Identify episode using ranked voting with weighted confidence scoring.
 
-        ``num_points`` overrides the number of evenly-spaced audio scan points
-        (default 10); a denser scan yields more robust votes and a clearer
-        score gap — used by the "deep re-match" path to disambiguate conflicts.
+        ``num_points`` overrides the number of audio scan points (default 10);
+        the requested count is snapped up to the nearest lattice level
+        (10/19/37/73/145) — see ``canonical_scan_points`` — so the transcript
+        cache can be fully reused between shallow and deep scans. A denser scan
+        yields more robust votes and a clearer score gap — used by the "deep
+        re-match" path to disambiguate conflicts.
         ``min_vote_count`` overrides the minimum matched-chunk count required to
         accept a match (default ``self.min_vote_count``).
 
@@ -1525,33 +1710,30 @@ class EpisodeMatcher:
                     ep_name = Path(rf).stem
                     coverages[str(rf)] = MatchCoverage(ep_name, ref_dur, video_duration)
 
-            # 5. Scan Chunks - Evenly Spaced Strategy
-            # Distribute scan points evenly across the episode (after skipping intro)
-            # Scales automatically based on media length
+            # 5. Scan Chunks - Canonical Nested Lattice
+            # Offsets come from canonical_scan_points so a shallow scan is a strict
+            # subset of any deeper re-match (transcript-cache reuse across depths).
 
             chunk_len = 30
-            skip_initial = self.skip_initial_duration  # 300s - skip opening credits
-            skip_final = 120  # Skip closing credits/black frames
-
-            available_duration = video_duration - skip_initial - skip_final
+            skip_initial = self.skip_initial_duration  # 90s - skip opening title cards
 
             # TF-IDF matching is fast (~1ms/query) and accurate. More sample
             # points reduce false positives from commentary/alternate audio tracks.
-            # Caller may request a denser scan (deep re-match) for disambiguation.
-            num_points = num_points if num_points and num_points > 1 else 10
-
-            # Calculate actual interval to evenly distribute points across available duration
-            interval = available_duration / (num_points - 1)
-
-            # Generate evenly-spaced scan points
-            scan_points = []
-            for i in range(num_points):
-                point = int(skip_initial + i * interval)
-                if point < video_duration - chunk_len:
-                    scan_points.append(point)
+            # Caller may request a denser scan (deep re-match) for disambiguation;
+            # canonical_scan_points handles None/<2 (default 10) and level snapping.
+            scan_points = canonical_scan_points(
+                video_duration,
+                skip_initial=skip_initial,
+                chunk_len=chunk_len,
+                num_points=num_points,
+            )
 
             model_config = self._model_config()
             model = get_cached_model(model_config)
+            # L2 transcript-cache identity, computed ONCE per call (one stat, one
+            # key derivation) and passed into every chunk lookup below.
+            l2_file_key = transcript_store.file_key_for(video_file)
+            l2_model_key = self._model_key_for(model)
 
             # Resolve the TF-IDF matcher for THIS season's reference set as a
             # per-call local — never a shared instance slot. The matcher singleton
@@ -1577,9 +1759,10 @@ class EpisodeMatcher:
                 reference_files=reference_files,
             )
 
+            span = f"{scan_points[0]}s-{scan_points[-1]}s" if scan_points else "empty"
             logger.info(
-                f"Scanning {len(scan_points)} chunks using {model_config['name']} + TF-IDF matching "
-                f"(~{interval:.0f}s intervals from {skip_initial}s to {video_duration - skip_final}s)"
+                f"Scanning {len(scan_points)} chunks using {model_config['name']} + TF-IDF "
+                f"matching (canonical lattice, span {span})"
             )
             logger.debug(
                 f"Scan points: {scan_points[:5]}... {scan_points[-3:]} (showing first 5 and last 3)"
@@ -1593,24 +1776,21 @@ class EpisodeMatcher:
                 scan_percent = 10.0 + (i / len(scan_points)) * 80.0
 
                 try:
-                    # Transcribe, memoized by (source, offset, duration). On a hit
-                    # (e.g. a later candidate season re-scanning the same file) we
-                    # skip both ffmpeg extraction and Whisper — only the ~1ms TF-IDF
-                    # match below re-runs.
-                    chunk_key = self._transcription_key(video_file, start_time, chunk_len)
-                    text = self.transcriptions.get(chunk_key)
-                    if text is None:
-                        audio_path = self.extract_audio_chunk(
-                            video_file, start_time, duration=chunk_len
-                        )
-                        temp_files_to_remove.append(audio_path)  # Track for cleanup
-                        # `or ""` guards a wrapper returning {"text": None}: caching
-                        # None would make this offset a perpetual miss (the `is None`
-                        # guard above would re-transcribe it every season). Matches
-                        # transcribe_full; the `len(text) < 10` check below still skips
-                        # genuinely empty audio.
-                        text = (model.transcribe(audio_path).get("text") or "").strip()
-                        self._remember_transcription(chunk_key, text)
+                    # Transcribe through the layered cache (L1 dict → L2 SQLite →
+                    # Whisper). On a hit (a later candidate season re-scanning the
+                    # same file, or a re-match after a restart) we skip both ffmpeg
+                    # extraction and Whisper — only the ~1ms TF-IDF match below
+                    # re-runs. The wav is appended to temp_files_to_remove only
+                    # when actually extracted (compute path).
+                    text = self.transcribe_chunk_cached(
+                        video_file,
+                        start_time,
+                        chunk_len,
+                        model,
+                        file_key=l2_file_key,
+                        model_key=l2_model_key,
+                        temp_files=temp_files_to_remove,
+                    )
 
                     if len(text) < 10:
                         logger.debug(
@@ -1843,9 +2023,7 @@ class EpisodeMatcher:
                 f"or calibrated confidence ≥ {self.confidence_accept_floor}, with enough votes). "
                 f"Attempting FULL FILE fallback..."
             )
-            match = self._match_full_file(
-                video_file, model_config, reference_files, video_duration, tfidf_matcher
-            )
+            match = self._match_full_file(video_file, reference_files, tfidf_matcher)
 
             if match:
                 # Intentional exception to calibration: the full-file fallback

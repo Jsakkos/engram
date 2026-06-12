@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 # Stricter matcher parameters for the "deep re-match" conflict path: sample more
 # audio chunks (vs the default 10) for more robust votes + a clearer score gap,
 # and require more matched chunks before accepting (vs the default 2).
-STRICT_SCAN_POINTS = 25
+# Deep re-match depths must be lattice levels (see canonical_scan_points):
+# canonical_scan_points snaps ANY requested depth to a lattice level, so a
+# non-lattice constant silently realizes onto a different grid — requested !=
+# realized — causing ladder dedup/exhaustion bookkeeping and pass counters to lie.
+STRICT_SCAN_POINTS = 37
 STRICT_MIN_VOTES = 4
 
 # Duration pre-filter tolerances (minutes). DVD/Blu-ray episode tracks run LONGER

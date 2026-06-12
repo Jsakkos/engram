@@ -108,6 +108,8 @@ interface ConfigData {
     libraryTvPath: string;
     tmdbApiKey: string;
     maxConcurrentMatches: number;
+    enableBackgroundPretranscription: boolean;
+    pretranscribeFullFile: boolean;
     ffmpegPath: string;
     conflictResolutionDefault: string;
     episodeOrderingPreference: 'aired' | 'dvd';
@@ -184,6 +186,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         libraryTvPath: '',
         tmdbApiKey: '',
         maxConcurrentMatches: 2,
+        enableBackgroundPretranscription: true,
+        pretranscribeFullFile: false,
         ffmpegPath: '',
         conflictResolutionDefault: 'ask',
         episodeOrderingPreference: 'aired',
@@ -293,6 +297,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     libraryTvPath: data.library_tv_path || '',
                     tmdbApiKey: data.tmdb_api_key === '***' ? '' : (data.tmdb_api_key || ''),
                     maxConcurrentMatches: data.max_concurrent_matches ?? 2,
+                    enableBackgroundPretranscription: data.enable_background_pretranscription ?? true,
+                    pretranscribeFullFile: data.pretranscribe_full_file ?? false,
                     ffmpegPath: data.ffmpeg_path || '',
                     conflictResolutionDefault: data.conflict_resolution_default || 'ask',
                     episodeOrderingPreference: data.episode_ordering_preference || 'aired',
@@ -450,6 +456,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     library_tv_path: config.libraryTvPath,
                     tmdb_api_key: config.tmdbApiKey,
                     max_concurrent_matches: config.maxConcurrentMatches,
+                    enable_background_pretranscription: config.enableBackgroundPretranscription,
+                    pretranscribe_full_file: config.pretranscribeFullFile,
                     ffmpeg_path: config.ffmpegPath,
                     conflict_resolution_default: config.conflictResolutionDefault,
                     episode_ordering_preference: config.episodeOrderingPreference,
@@ -1327,6 +1335,40 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <div id={GPU_ANCHOR_ID}>
                             <GpuAccelerationSetting />
                         </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.enableBackgroundPretranscription}
+                                    onChange={(e) => handleInputChange('enableBackgroundPretranscription', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Background Pre-Transcription</strong>
+                                    <span className="checkbox-hint">
+                                        While a job waits in the review queue, transcribe its unresolved tracks in the background so re-matching after your review is near-instant. Runs in the background while jobs wait for your review; transcripts are cached locally.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {config.enableBackgroundPretranscription && (
+                            <div className="form-group checkbox-group">
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={config.pretranscribeFullFile}
+                                        onChange={(e) => handleInputChange('pretranscribeFullFile', e.target.checked)}
+                                    />
+                                    <span className="checkbox-text">
+                                        <strong>Pre-Transcribe Entire Files</strong>
+                                        <span className="checkbox-hint">
+                                            Also transcribe each unresolved track end-to-end, not just short samples. Expensive (roughly 5&ndash;10 minutes of GPU time per file, substantially longer on CPU) &mdash; worth it when matches often fall back to full-file transcription.
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label htmlFor="conflictResolution">Default Conflict Resolution</label>

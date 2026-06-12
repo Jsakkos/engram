@@ -4,6 +4,19 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Episode re-matching no longer re-runs speech recognition** — Whisper transcripts are now kept in a persistent on-disk cache keyed by the exact file, audio offset, and speech-recognition model, so re-matching a track — after a review decision, a "Wrong title?" re-identification, a "Re-match", or even a full app restart — reuses the transcription work it already did instead of grinding through it again. Re-matches that used to take minutes now take seconds. The cache prunes itself, and a re-ripped file simply gets fresh entries, so stale transcripts are never served.
+- **Background pre-transcription while a disc waits in review** — while a job sits in Needs Review, Engram now quietly transcribes its unresolved tracks in the background (politely yielding to any live matching, and stopping the moment you act on the job), so by the time you pick an episode or fix the show identity the re-match is near-instant. On by default with a **Background Pre-Transcription** toggle in Settings → Preferences, plus an optional **Pre-Transcribe Entire Files** mode for setups that often hit the expensive full-file fallback.
+
+### Changed
+
+- **Deep re-match passes now build on each other instead of starting over** — the escalating "deep re-match" scan depths are aligned to a nested grid of audio offsets, so a deeper pass re-visits exactly the chunks a shallower pass already transcribed plus new ones in between; combined with the persistent transcript cache, each escalation only pays for the new offsets. A requested scan depth now equals the realized depth, and the final escalation tier no longer runs a redundant deeper pass on typical-length episodes.
+
+### Fixed
+
+- **Disabling GPU acceleration now fully applies to episode matching** — the matcher could still select CUDA for its transcription model after GPU ASR was turned off (or when the CUDA libraries weren't usable), because it probed the GPU hardware directly instead of honoring the device resolved at startup. It now follows the same startup-pinned device as the rest of the app — including the cached-transcript identity — so "GPU off" means matching genuinely runs on the CPU.
+
 ## [0.20.0] - 2026-06-11
 
 _Highlights: completed disc cards now summarize their contents at a glance — TV cards show the season and matched episode range, movie cards show the year — instead of repeating the raw volume label; plus a fix for a ripping card that could visibly flicker between "ripping" and "matched" on slow or dirty discs._

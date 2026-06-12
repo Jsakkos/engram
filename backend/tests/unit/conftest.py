@@ -131,6 +131,10 @@ async def isolate_database(monkeypatch):
     _cleanup_mod = importlib.import_module("app.services.cleanup_service")
     _final_mod = importlib.import_module("app.services.finalization_coordinator")
     _match_mod = importlib.import_module("app.services.matching_coordinator")
+    # transcription_prewarm spawns background tasks off REVIEW_NEEDED transitions
+    # (via job_manager's module-level state machine) — patch it too so a prewarm
+    # task kicked off by an unrelated unit test never touches engram.db.
+    _prewarm_mod = importlib.import_module("app.services.transcription_prewarm")
 
     monkeypatch.setattr(_db_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_config_mod, "async_session", _unit_session_factory)
@@ -138,6 +142,7 @@ async def isolate_database(monkeypatch):
     monkeypatch.setattr(_cleanup_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_final_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_match_mod, "async_session", _unit_session_factory)
+    monkeypatch.setattr(_prewarm_mod, "async_session", _unit_session_factory)
 
     # Redirect the cached sync engine in config_service so get_config_sync()
     # uses the in-memory test database instead of connecting to engram.db.
@@ -151,6 +156,19 @@ async def isolate_database(monkeypatch):
     # explicit tmp paths, so they're unaffected.
     _reg_mod = importlib.import_module("app.core.makemkv_registration")
     monkeypatch.setattr(_reg_mod, "write_makemkv_settings", lambda *a, **k: False)
+
+    # Stub the production prewarmer's kickoff so that unit tests which
+    # transition jobs into REVIEW_NEEDED (via the real module-level
+    # JobStateMachine) never spawn real background tasks.  Real tasks build an
+    # EpisodeMatcher in a thread, call ffprobe on fake files, and hold DB
+    # sessions on the StaticPool — when the autouse isolate_database fixture
+    # later calls drop_all the task is still alive → OperationalError: database
+    # table is locked.  Tests that want to assert on kickoff calls replace
+    # _prewarmer entirely with their own MagicMock (via monkeypatch.setattr on
+    # jm.job_manager._prewarmer), which takes precedence over this stub; see
+    # TestJobManagerWiring.
+    _jm_inst = _jm_mod.job_manager
+    monkeypatch.setattr(_jm_inst._prewarmer, "kickoff", lambda job_id: None)  # no-op stub
 
     yield
 

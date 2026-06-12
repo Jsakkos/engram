@@ -694,9 +694,7 @@ class TestMatchFullFileSurfacesTranscript:
         with patch.object(matcher, "transcribe_full", return_value="long fake transcript " * 50):
             result = matcher._match_full_file(
                 video_file=tmp_path / "x.mkv",
-                model_config={"type": "whisper", "name": "small", "device": "cpu"},
                 reference_files=[tmp_path / "S01E03.srt"],
-                duration=1320,
                 tfidf_matcher=tfidf_mock,
             )
 

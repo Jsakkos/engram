@@ -24,6 +24,25 @@ def _isolate_tmdb_persistent_cache(tmp_path, monkeypatch):
     tmdb_persistent_cache.close()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_transcript_store(tmp_path, monkeypatch):
+    """Redirect the on-disk ASR transcript cache to a tmp_path-scoped SQLite file.
+
+    Without this, every test inherits the developer's real
+    ``~/.engram/cache/transcripts.sqlite`` — a populated row for a previously
+    matched file could silently satisfy ``transcribe_chunk_cached`` lookups in
+    unrelated matcher tests (zero ``model.transcribe`` calls where the test
+    expects N), and tests would write their fake transcripts into the real
+    cache.
+    """
+    from app.matcher import transcript_store
+
+    transcript_store.reset_module_state_for_tests()
+    monkeypatch.setattr(transcript_store, "CACHE_DB_PATH", tmp_path / "transcripts.sqlite")
+    yield
+    transcript_store.reset_module_state_for_tests()
+
+
 @pytest.fixture
 def temp_cache_dir(tmp_path):
     """Isolated cache directory for each test."""
