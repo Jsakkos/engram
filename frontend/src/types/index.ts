@@ -61,6 +61,14 @@ export interface Job {
      * ReIdentifyModal. Null/absent when there was no same-name collision.
      */
     candidates_json?: string | null;
+    /**
+     * Non-blocking identity CTA for rip-first jobs (walk-away Phase B). Raw JSON
+     * string: `{ "kind": "name" | "season" | "reidentify", "reason": "<human text>" }`.
+     * Present while the user has an unanswered identity question but the job is
+     * already ripping. Null/absent when no prompt is pending.
+     * Nothing sets this in production yet — plumbing only until B2-B5 land.
+     */
+    identity_prompt_json?: string | null;
 }
 
 export interface DiscTitle {
@@ -121,6 +129,8 @@ export interface JobUpdate {
     /** "" forwarded by the backend clears the field on the {...job, ...message}
      *  merge; absent means unchanged (#243). */
     tmdb_degraded_reason?: string | null;
+    /** "" clears a resolved prompt; absent means unchanged (walk-away Phase B). */
+    identity_prompt_json?: string | null;
 }
 
 export interface TitleUpdate {

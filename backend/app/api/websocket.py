@@ -102,6 +102,7 @@ class ConnectionManager:
         review_reason: str | None = None,
         conflict_status: str | None = None,
         tmdb_degraded_reason: str | None = None,
+        identity_prompt_json: str | None = None,
     ) -> None:
         """Broadcast a job status update.
 
@@ -153,6 +154,9 @@ class ConnectionManager:
         # (e.g. after a re-identify with a now-working key); None means "unchanged".
         if tmdb_degraded_reason is not None:
             data["tmdb_degraded_reason"] = tmdb_degraded_reason
+        # "" forwarded deliberately: clears a resolved prompt on the frontend merge.
+        if identity_prompt_json is not None:
+            data["identity_prompt_json"] = identity_prompt_json
         await self.broadcast(data)
 
     async def broadcast_drive_event(

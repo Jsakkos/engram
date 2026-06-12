@@ -472,3 +472,41 @@ class TestSchemaMigration:
             ).fetchone()
             assert row is not None
             assert row[0] == payload
+
+    async def test_identity_prompt_json_round_trips(self, migration_engine, migration_factory):
+        """disc_jobs must persist identity_prompt_json so the frontend can surface the
+        non-blocking identity CTA for rip-first jobs (walk-away Phase B).
+
+        Regression guard: the column must exist in the model (so frozen-build
+        _add_missing_columns adds it), default to None, and round-trip a JSON string.
+        """
+        async with migration_engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        # The model must expose identity_prompt_json for the frozen-build reconciler
+        # (_get_expected_columns derives from model metadata).
+        import app.database as db_mod
+
+        assert "identity_prompt_json" in db_mod._get_expected_columns("disc_jobs")
+
+        prompt = '{"kind": "season", "reason": "Could not detect season automatically"}'
+        async with migration_factory() as session:
+            session.add(
+                DiscJob(drive_id="E:", volume_label="WALK_AWAY_S1D1", identity_prompt_json=prompt)
+            )
+            await session.commit()
+
+        async with migration_factory() as session:
+            row = (
+                await session.execute(text("SELECT identity_prompt_json FROM disc_jobs LIMIT 1"))
+            ).fetchone()
+            assert row is not None
+            assert row[0] == prompt
+
+        # Default: null when not set (not an empty string or other sentinel)
+        async with migration_factory() as session:
+            job_no_prompt = DiscJob(drive_id="F:", volume_label="NO_PROMPT")
+            session.add(job_no_prompt)
+            await session.commit()
+            await session.refresh(job_no_prompt)
+            assert job_no_prompt.identity_prompt_json is None

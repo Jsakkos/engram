@@ -107,6 +107,15 @@ class DiscJob(SQLModel, table=True):
         default="library", sa_column_kwargs={"server_default": text("'library'")}
     )
     review_reason: str | None = None  # Human-readable reason why review is needed
+    # Non-blocking identity CTA for jobs that rip first and ask questions later
+    # (walk-away Phase B). JSON: {"kind": "name"|"season"|"reidentify",
+    # "reason": "<human-readable text>"}
+    # Set at identify-time by IdentificationCoordinator when the disc ships to
+    # RIPPING with an open identity question; cleared when the user answers (B5)
+    # or the answer becomes moot (job reaches COMPLETED/FAILED); converted to
+    # review_reason if REVIEW_NEEDED is still needed at rip-end (B4).
+    # Owned by: IdentificationCoordinator (set) / FinalizationCoordinator (convert).
+    identity_prompt_json: str | None = Field(default=None)
     conflict_status: str | None = None  # Transient note while auto-resolving episode conflicts
     # Why classification ran without TMDB (key absent/rejected) — shown verbatim
     # on the job card so degraded heuristic-only results name their cause (#243).

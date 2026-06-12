@@ -382,6 +382,78 @@ class TestFingerprintDisclosureEvents:
 
 
 @pytest.mark.asyncio
+class TestIdentityPromptJsonWS:
+    """Verify identity_prompt_json round-trips through broadcast_job_update.
+
+    Regression guard for the REST/WS serializer-drift bug class: a field present
+    in the REST payload but absent from the WS broadcast silently defaults in the
+    UI (which reads live state only from WS). The test directly exercises the
+    ConnectionManager.broadcast_job_update() signature so any future parameter
+    rename is caught immediately.
+    """
+
+    async def test_identity_prompt_json_forwarded_when_set(self):
+        """When identity_prompt_json is not None, it must appear in the WS payload."""
+        manager = ConnectionManager()
+        sent: list[dict] = []
+
+        async def _capture(message: dict) -> None:
+            sent.append(message)
+
+        manager.broadcast = _capture  # type: ignore[method-assign]
+
+        prompt = '{"kind": "season", "reason": "Could not detect season automatically"}'
+        await manager.broadcast_job_update(
+            job_id=7,
+            state="ripping",
+            identity_prompt_json=prompt,
+        )
+
+        assert len(sent) == 1
+        msg = sent[0]
+        assert msg["type"] == "job_update"
+        assert msg["job_id"] == 7
+        assert msg["state"] == "ripping"
+        assert msg["identity_prompt_json"] == prompt
+
+    async def test_identity_prompt_json_omitted_when_none(self):
+        """When identity_prompt_json is None (default), the key is omitted from
+        the payload so the frontend merge does not overwrite an existing value."""
+        manager = ConnectionManager()
+        sent: list[dict] = []
+
+        async def _capture(message: dict) -> None:
+            sent.append(message)
+
+        manager.broadcast = _capture  # type: ignore[method-assign]
+
+        await manager.broadcast_job_update(job_id=8, state="ripping")
+
+        assert len(sent) == 1
+        assert "identity_prompt_json" not in sent[0]
+
+    async def test_identity_prompt_json_empty_string_clears_field(self):
+        """An empty string must be forwarded (not suppressed) so the frontend
+        merge clears a resolved prompt — mirrors the tmdb_degraded_reason pattern."""
+        manager = ConnectionManager()
+        sent: list[dict] = []
+
+        async def _capture(message: dict) -> None:
+            sent.append(message)
+
+        manager.broadcast = _capture  # type: ignore[method-assign]
+
+        await manager.broadcast_job_update(
+            job_id=9,
+            state="ripping",
+            identity_prompt_json="",
+        )
+
+        assert len(sent) == 1
+        assert sent[0]["identity_prompt_json"] == ""
+
+
+@pytest.mark.asyncio
 class TestUpdateStatusEvents:
     """Test auto-update status broadcasting."""
 

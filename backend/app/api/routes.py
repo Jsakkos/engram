@@ -144,6 +144,10 @@ class JobResponse(BaseModel):
     tmdb_year: int | None = None
     destination_mode: str = "library"
     created_at: datetime | str | None = None
+    # Non-blocking identity CTA for rip-first jobs (walk-away Phase B). Raw JSON
+    # string: {"kind": "name"|"season"|"reidentify", "reason": "<human text>"}.
+    # Null when no prompt is pending. Nothing sets this in production yet (B2-B5).
+    identity_prompt_json: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -216,6 +220,10 @@ class JobDetailResponse(BaseModel):
     # JSON list of same-name TMDB twins (e.g. Frasier 1993 + 2023) recorded at
     # identify time; lets the UI offer "did you mean ...?" on a wrong-show review.
     candidates_json: str | None = None
+    # Non-blocking identity CTA for rip-first jobs (walk-away Phase B). Raw JSON
+    # string: {"kind": "name"|"season"|"reidentify", "reason": "<human text>"}.
+    # Null when no prompt is pending. Nothing sets this in production yet (B2-B5).
+    identity_prompt_json: str | None = None
     # Transient auto-resolution note (e.g. "Resolving episode conflicts — pass 2 of 3"
     # / "Deep re-matching low-confidence titles — pass 1 of 3"). Set while the
     # finalization coordinator is auto-escalating; cleared on resolution.
@@ -872,6 +880,7 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "error_message": job.error_message,
         "review_reason": job.review_reason,
         "candidates_json": job.candidates_json,
+        "identity_prompt_json": job.identity_prompt_json,
         "conflict_status": job.conflict_status,
         "tmdb_degraded_reason": job.tmdb_degraded_reason,
         "classification_source": job.classification_source,
