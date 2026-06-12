@@ -66,7 +66,7 @@ export interface Job {
      * string: `{ "kind": "name" | "season" | "reidentify", "reason": "<human text>" }`.
      * Present while the user has an unanswered identity question but the job is
      * already ripping. Null/absent when no prompt is pending.
-     * Nothing sets this in production yet — plumbing only until B2-B5 land.
+     * Set by the backend during disc identification when an open identity question ships with the rip (walk-away Phase B).
      */
     identity_prompt_json?: string | null;
 }

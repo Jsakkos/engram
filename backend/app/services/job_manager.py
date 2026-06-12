@@ -1641,6 +1641,10 @@ class JobManager:
             job.updated_at = datetime.now(UTC)
             if next_state == JobState.COMPLETED:
                 job.progress_percent = 100.0
+            if next_state in (JobState.COMPLETED, JobState.FAILED):
+                # lightweight sim-only path skips the state machine; uphold its
+                # terminal prompt-clear invariant by hand
+                job.identity_prompt_json = None
             await session.commit()
 
             await ws_manager.broadcast_job_update(job_id, next_state.value)

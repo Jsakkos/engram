@@ -106,6 +106,53 @@ async def test_simulate_advance_job(client):
 
 
 @pytest.mark.asyncio
+async def test_advance_job_to_completed_clears_identity_prompt(client):
+    """Advancing a job to COMPLETED via advance-job clears identity_prompt_json (fix #2)."""
+    import json as stdlib_json
+
+    from app.database import async_session as db_session
+    from app.models import DiscJob, JobState
+
+    # Create a job with a live identity prompt
+    response = await client.post(
+        "/api/simulate/insert-disc",
+        json={
+            "volume_label": "PROMPT_CLEAR_TEST",
+            "content_type": "tv",
+            "detected_title": "My Show",
+            "simulate_ripping": False,
+            "identity_pending": "season",
+        },
+    )
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    # Confirm the prompt is set
+    async with db_session() as session:
+        job = await session.get(DiscJob, job_id)
+    assert job is not None
+    assert job.state == JobState.RIPPING
+    assert job.identity_prompt_json is not None
+    prompt = stdlib_json.loads(job.identity_prompt_json)
+    assert prompt["kind"] == "season"
+
+    # Advance through RIPPING → MATCHING → ORGANIZING → COMPLETED
+    states_to_advance = [JobState.RIPPING, JobState.MATCHING, JobState.ORGANIZING]
+    for _ in states_to_advance:
+        adv = await client.post(f"/api/simulate/advance-job/{job_id}")
+        assert adv.status_code == 200
+
+    # Verify job is COMPLETED and identity_prompt_json is cleared
+    async with db_session() as session:
+        job = await session.get(DiscJob, job_id)
+    assert job is not None
+    assert job.state == JobState.COMPLETED
+    assert job.identity_prompt_json is None, (
+        f"Expected identity_prompt_json=None after COMPLETED, got {job.identity_prompt_json!r}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_simulate_remove_disc(client):
     """Test simulating disc removal."""
     response = await client.post(

@@ -455,6 +455,9 @@ class SimulationService:
                         actual_size_bytes=min(title_actual, title_bytes),
                     )
 
+                # identity_pending is not plumbed into the realistic path; if it
+                # ever is, mirror _simulate_ripping's BLOCKING_KINDS gate here or
+                # titles will skip the QUEUED park.
                 post_rip_state = (
                     TitleState.QUEUED if content_type == ContentType.TV else TitleState.MATCHED
                 )
