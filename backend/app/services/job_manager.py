@@ -66,8 +66,9 @@ logger = logging.getLogger(__name__)
 _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 
 # Fallback review_reason when a blocking identity prompt is malformed or carries
-# no usable reason text (walk-away Phase B). Reuses the established
-# identification literal so the frontend still opens the name-prompt modal.
+# no usable reason text (walk-away Phase B). Reuses the staging-import no-title
+# literal; it matches NO classifyPromptJob substring, so the job is resolved on
+# the review page (no auto-modal) — same UX as that established path.
 _FALLBACK_IDENTITY_REVIEW_REASON = "Could not determine title. Please enter the title to continue."
 
 
