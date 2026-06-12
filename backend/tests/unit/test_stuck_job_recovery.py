@@ -30,6 +30,7 @@ async def _make_job(
     *,
     content_type: ContentType = ContentType.TV,
     state: JobState = JobState.MATCHING,
+    identity_prompt_json: str | None = None,
 ) -> int:
     async with db.async_session() as session:
         job = DiscJob(
@@ -38,6 +39,7 @@ async def _make_job(
             content_type=content_type,
             state=state,
             staging_path=str(staging),
+            identity_prompt_json=identity_prompt_json,
         )
         session.add(job)
         await session.commit()
@@ -133,6 +135,42 @@ async def test_reconcile_stuck_tv_with_file_queues_match(tmp_path, monkeypatch):
     # no-op, so the post-semaphore QUEUED→MATCHING flip never runs here).
     assert (await _title(tid)).state == TitleState.QUEUED
     assert called.get("match") == (job_id, tid, str(f))
+
+
+_IDENTITY_PROMPT = '{"kind": "name", "reason": "Disc label unreadable"}'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content_type", [ContentType.TV, ContentType.MOVIE])
+async def test_reconcile_stuck_identity_pending_parks_queued(tmp_path, monkeypatch, content_type):
+    """Identity gate (walk-away Phase B): with an unanswered identity prompt, a
+    recovered orphaned title parks in QUEUED — no matching dispatch, and no
+    non-TV fall-through to MATCHED (that would mark it matched with no
+    identity). dispatch_pending_matches releases it after the answer."""
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(
+        tmp_path,
+        content_type=content_type,
+        state=JobState.RIPPING,
+        identity_prompt_json=_IDENTITY_PROMPT,
+    )
+    tid = await _add_title(job_id, 0, TitleState.RIPPING, output=str(f))
+
+    from unittest.mock import AsyncMock
+
+    discdb = AsyncMock(return_value=False)
+    dispatch = AsyncMock()
+    monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
+    monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    await job_manager.reconcile_stuck_titles(job_id)
+    await asyncio.sleep(0.05)
+
+    assert (await _title(tid)).state == TitleState.QUEUED
+    discdb.assert_not_called()
+    dispatch.assert_not_called()
 
 
 # --- QUEUED state: completion check treats it as active --------------------

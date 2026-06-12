@@ -132,6 +132,13 @@ class JobManager:
         # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
         self._last_activity: dict[int, float] = {}
         self._watchdog_task: asyncio.Task | None = None
+        # Title ids with a live (spawned, not yet finished) match task. Guards
+        # _dispatch_title_match against double-spawning a title's match: the
+        # QUEUED→MATCHING flip happens only post-semaphore in match_single_file,
+        # so "still QUEUED" alone can't distinguish an undispatched title from
+        # one whose task is parked waiting for a slot. Entries are removed by
+        # the task's done callback (runs on success, failure, and cancel).
+        self._inflight_match_dispatch: set[int] = set()
 
         # Create coordinators
         self._cleanup = CleanupService()
@@ -1018,6 +1025,11 @@ class JobManager:
         marked FAILED. Guarantees no selected title is stranded in RIPPING once the
         MakeMKV subprocess has exited (the orphaned-last-title bug). Recovers work
         rather than discarding it.
+
+        Identity gate (walk-away Phase B): with an unanswered identity prompt,
+        recovered titles park in QUEUED with no dispatch — same gate as
+        ``_on_title_ripped`` — so an orphaned title can't slip into matching
+        (or MATCHED, for non-TV) without a confirmed identity.
         """
         recovered: list[tuple[int, Path]] = []
         async with async_session() as session:
@@ -1035,6 +1047,7 @@ class JobManager:
 
             staging = Path(job.staging_path) if job.staging_path else None
             is_tv = job.content_type == ContentType.TV
+            identity_pending = self._identity_pending(job)
 
             for title in stuck:
                 file_path = self._find_title_file(title, staging)
@@ -1060,8 +1073,11 @@ class JobManager:
                 title.output_filename = str(file_path)
                 # Enqueued for matching → QUEUED (the post-semaphore flip to MATCHING
                 # happens in match_single_file once a slot is acquired). Movies skip
-                # matching entirely → MATCHED.
-                title.state = TitleState.QUEUED if is_tv else TitleState.MATCHED
+                # matching entirely → MATCHED — unless the identity prompt is
+                # pending, in which case every type parks in QUEUED.
+                title.state = (
+                    TitleState.QUEUED if (is_tv or identity_pending) else TitleState.MATCHED
+                )
                 session.add(title)
                 logger.info(
                     f"Job {sanitize_log_value(job_id)}: recovered orphaned title "
@@ -1074,35 +1090,15 @@ class JobManager:
                     title.state.value,
                     output_filename=str(file_path),
                 )
-                if is_tv:
+                if is_tv and not identity_pending:
                     recovered.append((title.id, file_path))
             await session.commit()
 
-        # Queue matching for recovered TV titles (mirrors _on_title_ripped), each
-        # outside the session above so match tasks own their own sessions.
+        # Queue matching for recovered TV titles (same dispatch as
+        # _on_title_ripped), each outside the session above so match tasks own
+        # their own sessions.
         for title_id, file_path in recovered:
-            applied = False
-            async with async_session() as session:
-                title = await session.get(DiscTitle, title_id)
-                if title is None:
-                    logger.warning(
-                        f"Job {sanitize_log_value(job_id)}: recovered title "
-                        f"{sanitize_log_value(title_id)} vanished before re-queue"
-                    )
-                    continue
-                applied = await self._matching.try_discdb_assignment(job_id, title, session)
-                if applied:
-                    await self._finalization.check_job_completion(session, job_id)
-            if not applied:
-                # match_single_file self-tags the job log context.
-                task = asyncio.create_task(
-                    self._matching.match_single_file(job_id, title_id, file_path)
-                )
-                task.add_done_callback(
-                    lambda t, jid=job_id, tid=title_id: self._matching.on_match_task_done(
-                        t, jid, tid
-                    )
-                )
+            await self._dispatch_title_match(job_id, title_id, file_path)
 
     async def reconcile_and_advance(self, job_id: int, *, reason: str = "forced") -> bool:
         """Force a stuck job to its next resting state (watchdog + manual advance).
@@ -2418,6 +2414,19 @@ class JobManager:
             infos, runtime, min_feature_duration=config.analyst_movie_min_duration
         )
 
+    @staticmethod
+    def _identity_pending(job: DiscJob | None) -> bool:
+        """True when the job carries an unanswered identity question.
+
+        Walk-away Phase B: ``identity_prompt_json`` is set when a disc rips
+        first with an open identity question. Constraint: the gate is
+        *identity*, not season — ``detected_season`` may legitimately be None
+        (cross-season matching handles unknown seasons), so only an open
+        identity prompt defers matching. Matching without a confirmed show
+        identity would burn ASR against the wrong (or no) reference corpus.
+        """
+        return job is not None and job.identity_prompt_json is not None
+
     async def _on_title_ripped(
         self, job_id: int, rip_index: int, path: Path, sorted_titles: list[DiscTitle]
     ) -> None:
@@ -2432,8 +2441,15 @@ class JobManager:
             title.output_filename = str(path)
 
             job = await session.get(DiscJob, job_id)
+            is_tv = job is not None and job.content_type == ContentType.TV
+            # Identity gate (walk-away Phase B): with an unanswered identity
+            # prompt, EVERY content type parks in QUEUED — an unknown-type job
+            # must not fall into the non-TV → MATCHED branch below (that would
+            # mark titles matched with no identity). dispatch_pending_matches
+            # releases the parked titles once the prompt is answered.
+            identity_pending = self._identity_pending(job)
             if title.state in (TitleState.PENDING, TitleState.RIPPING):
-                if job and job.content_type == ContentType.TV:
+                if is_tv or identity_pending:
                     # Enqueued for matching → QUEUED; the QUEUED→MATCHING flip
                     # happens in match_single_file once a slot is acquired.
                     title.state = TitleState.QUEUED
@@ -2455,21 +2471,109 @@ class JobManager:
                 f"Title detected: {path.name} → title_index={title.title_index} "
                 f"(Title {title.id}, Job {job_id}) — queuing for matching"
             )
+            title_id = title.id
 
-            if job and job.content_type == ContentType.TV:
-                discdb_applied = await self._matching.try_discdb_assignment(job_id, title, session)
-                if discdb_applied:
-                    await self._finalization.check_job_completion(session, job_id)
-                else:
-                    # match_single_file self-tags the job log context.
-                    task = asyncio.create_task(
-                        self._matching.match_single_file(job_id, title.id, path)
+        if identity_pending:
+            logger.info(
+                f"Job {job_id}: identity prompt pending — title {title_id} held in QUEUED "
+                f"(matching deferred until the identity question is answered)"
+            )
+            return
+
+        if is_tv:
+            await self._dispatch_title_match(job_id, title_id, path)
+
+    async def _dispatch_title_match(self, job_id: int, title_id: int, file_path: Path) -> bool:
+        """Run the standard per-title match dispatch for a ripped file.
+
+        Shared by ``_on_title_ripped``, ``reconcile_stuck_titles``, and
+        ``dispatch_pending_matches`` so the sites can't diverge: TheDiscDB
+        assignment first (then a completion check, since no match task will
+        run), otherwise a ``match_single_file`` task with the standard done
+        callback. Owns its session — match tasks must own their own sessions.
+
+        Skips a title that already has a live match task (see
+        ``_inflight_match_dispatch``), making repeat dispatch safe. Returns
+        True when work was dispatched (DiscDB assignment or match task), False
+        when skipped (in-flight, or title vanished).
+        """
+        if title_id in self._inflight_match_dispatch:
+            logger.debug(
+                f"Job {job_id}: title {title_id} already has a live match task — skipping dispatch"
+            )
+            return False
+
+        applied = False
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if title is None:
+                logger.warning(
+                    f"Job {sanitize_log_value(job_id)}: title "
+                    f"{sanitize_log_value(title_id)} vanished before match dispatch"
+                )
+                return False
+            applied = await self._matching.try_discdb_assignment(job_id, title, session)
+            if applied:
+                await self._finalization.check_job_completion(session, job_id)
+        if applied:
+            return True
+
+        self._inflight_match_dispatch.add(title_id)
+        # match_single_file self-tags the job log context.
+        task = asyncio.create_task(self._matching.match_single_file(job_id, title_id, file_path))
+        task.add_done_callback(
+            lambda t, jid=job_id, tid=title_id: self._on_match_dispatch_done(t, jid, tid)
+        )
+        return True
+
+    def _on_match_dispatch_done(self, task: asyncio.Task, job_id: int, title_id: int) -> None:
+        """Release the in-flight dispatch guard, then run the matching done callback."""
+        self._inflight_match_dispatch.discard(title_id)
+        self._matching.on_match_task_done(task, job_id, title_id)
+
+    async def dispatch_pending_matches(self, job_id: int) -> int:
+        """Dispatch matching for the job's QUEUED titles whose ripped file exists.
+
+        Retroactive release for titles parked by the identity gate in
+        ``_on_title_ripped`` (walk-away Phase B): the answer endpoints call this
+        once the user resolves the identity question mid-rip. Nothing calls it
+        yet — it lands with the gate so the park and its release ship together.
+        Caller contract: this runs *episode* matching, so only call it for jobs
+        resolved to TV — an answer that resolves the job to movie must route to
+        the movie feature-resolution path instead.
+
+        Idempotent at the dispatch level: only QUEUED titles qualify, and
+        ``_dispatch_title_match`` skips titles with a live match task (the
+        QUEUED→MATCHING flip happens only post-semaphore, so the in-flight set
+        — not title state — is what prevents a double spawn). Returns the
+        number of titles dispatched.
+        """
+        pending: list[tuple[int, Path]] = []
+        async with async_session() as session:
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            for t in result.scalars().all():
+                if t.state != TitleState.QUEUED or not t.output_filename:
+                    continue
+                file_path = Path(t.output_filename)
+                if not file_path.exists():
+                    logger.warning(
+                        f"Job {sanitize_log_value(job_id)}: queued title "
+                        f"{sanitize_log_value(t.id)} skipped — ripped file missing "
+                        f"({sanitize_log_value(file_path.name)})"
                     )
-                    task.add_done_callback(
-                        lambda t, jid=job_id, tid=title.id: self._matching.on_match_task_done(
-                            t, jid, tid
-                        )
-                    )
+                    continue
+                pending.append((t.id, file_path))
+
+        dispatched = 0
+        for title_id, file_path in pending:
+            if await self._dispatch_title_match(job_id, title_id, file_path):
+                dispatched += 1
+        if dispatched:
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: dispatched matching for "
+                f"{dispatched} queued title(s)"
+            )
+        return dispatched
 
     async def _on_title_error(
         self,

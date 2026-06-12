@@ -170,6 +170,12 @@ async def isolate_database(monkeypatch):
     _jm_inst = _jm_mod.job_manager
     monkeypatch.setattr(_jm_inst._prewarmer, "kickoff", lambda job_id: None)  # no-op stub
 
+    # Clear the in-flight match-dispatch guard on the singleton: a prior test
+    # whose event loop closed before a match task's done callback ran can leak
+    # a title id here, and title ids restart at 1 with each fresh in-memory DB
+    # — a stale entry would silently skip an unrelated test's dispatch.
+    _jm_inst._inflight_match_dispatch.clear()
+
     yield
 
     async with _unit_engine.begin() as conn:

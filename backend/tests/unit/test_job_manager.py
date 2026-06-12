@@ -35,7 +35,12 @@ def _quiet_ws(monkeypatch):
     monkeypatch.setattr(ws_manager, "broadcast_title_update", _noop)
 
 
-async def _seed(content_type=ContentType.TV, staging="/tmp/staging", **title_kwargs):
+async def _seed(
+    content_type=ContentType.TV,
+    staging="/tmp/staging",
+    identity_prompt_json=None,
+    **title_kwargs,
+):
     async with _unit_session_factory() as session:
         job = DiscJob(
             drive_id="E:",
@@ -45,6 +50,7 @@ async def _seed(content_type=ContentType.TV, staging="/tmp/staging", **title_kwa
             detected_title="Some Show",
             detected_season=1,
             staging_path=staging,
+            identity_prompt_json=identity_prompt_json,
         )
         session.add(job)
         await session.commit()
@@ -128,6 +134,170 @@ class TestOnTitleRipped:
 
         t = await _get_title(title.id)
         assert t.state == TitleState.RIPPING  # unchanged
+
+
+_PROMPT = json.dumps({"kind": "name", "reason": "Disc label unreadable"})
+
+
+@pytest.mark.unit
+class TestOnTitleRippedIdentityGate:
+    """Walk-away Phase B: an unanswered identity prompt parks ripped titles in
+    QUEUED with no dispatch (matching with no/uncertain show identity wastes ASR
+    against the wrong — or no — reference corpus). dispatch_pending_matches
+    releases them once the prompt is answered."""
+
+    def _stub_dispatch(self, monkeypatch):
+        discdb = AsyncMock(return_value=False)
+        dispatch = AsyncMock()
+        monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
+        monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+        return discdb, dispatch
+
+    async def test_tv_with_prompt_parks_queued_without_dispatch(self, tmp_path, monkeypatch):
+        job, title = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
+        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        path = tmp_path / "show_t00.mkv"
+        path.write_text("")
+
+        await job_manager._on_title_ripped(job.id, 1, path, [title])
+        await asyncio.sleep(0)
+
+        t = await _get_title(title.id)
+        assert t.state == TitleState.QUEUED
+        assert t.output_filename == str(path)
+        discdb.assert_not_called()
+        dispatch.assert_not_called()
+
+    @pytest.mark.parametrize("content_type", [ContentType.UNKNOWN, ContentType.MOVIE])
+    async def test_non_tv_with_prompt_parks_queued_not_matched(
+        self, tmp_path, monkeypatch, content_type
+    ):
+        """An identity-pending job must NOT fall into the non-TV → MATCHED branch:
+        that would mark titles matched with no identity."""
+        job, title = await _seed(content_type=content_type, identity_prompt_json=_PROMPT)
+        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        path = tmp_path / "disc_t00.mkv"
+        path.write_text("")
+
+        await job_manager._on_title_ripped(job.id, 1, path, [title])
+        await asyncio.sleep(0)
+
+        t = await _get_title(title.id)
+        assert t.state == TitleState.QUEUED
+        discdb.assert_not_called()
+        dispatch.assert_not_called()
+
+
+@pytest.mark.unit
+class TestDispatchPendingMatches:
+    """dispatch_pending_matches releases identity-gated QUEUED titles: dispatch
+    exactly the QUEUED titles whose ripped file exists, idempotently."""
+
+    def _stub_dispatch(self, monkeypatch, discdb_applied=False):
+        discdb = AsyncMock(return_value=discdb_applied)
+        dispatch = AsyncMock()
+        monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
+        monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+        return discdb, dispatch
+
+    async def _add_title(self, job_id, index, state, output=None):
+        async with _unit_session_factory() as session:
+            t = DiscTitle(
+                job_id=job_id,
+                title_index=index,
+                duration_seconds=1380,
+                state=state,
+                output_filename=output,
+            )
+            session.add(t)
+            await session.commit()
+            await session.refresh(t)
+            return t
+
+    async def test_dispatches_only_queued_titles_with_existing_files(self, tmp_path, monkeypatch):
+        job, ripping = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
+        f = tmp_path / "show_t01.mkv"
+        f.write_text("")
+        queued_ok = await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
+        await self._add_title(job.id, 2, TitleState.QUEUED, output=str(tmp_path / "missing.mkv"))
+        await self._add_title(job.id, 3, TitleState.QUEUED, output=None)
+        g = tmp_path / "show_t04.mkv"
+        g.write_text("")
+        await self._add_title(job.id, 4, TitleState.MATCHED, output=str(g))
+        _discdb, dispatch = self._stub_dispatch(monkeypatch)
+
+        count = await job_manager.dispatch_pending_matches(job.id)
+        await asyncio.sleep(0)
+
+        assert count == 1
+        dispatch.assert_awaited_once_with(job.id, queued_ok.id, f)
+        # The RIPPING seed title is untouched.
+        assert (await _get_title(ripping.id)).state == TitleState.RIPPING
+
+    async def test_discdb_assignment_path_checks_completion(self, tmp_path, monkeypatch):
+        job, _ = await _seed(content_type=ContentType.TV)
+        f = tmp_path / "show_t01.mkv"
+        f.write_text("")
+        await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
+        _discdb, dispatch = self._stub_dispatch(monkeypatch, discdb_applied=True)
+        completion = AsyncMock()
+        monkeypatch.setattr(job_manager._finalization, "check_job_completion", completion)
+
+        count = await job_manager.dispatch_pending_matches(job.id)
+
+        assert count == 1
+        completion.assert_awaited_once()
+        dispatch.assert_not_called()
+
+    async def test_double_dispatch_does_not_double_match(self, tmp_path, monkeypatch):
+        """The in-flight guard makes repeat dispatch safe: the QUEUED→MATCHING
+        flip happens only post-semaphore in match_single_file, so a title whose
+        task is still parked waiting for a slot is still QUEUED — state alone
+        cannot prevent a double spawn."""
+        job, _ = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
+        f = tmp_path / "show_t01.mkv"
+        f.write_text("")
+        title = await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
+
+        monkeypatch.setattr(
+            job_manager._matching, "try_discdb_assignment", AsyncMock(return_value=False)
+        )
+        release = asyncio.Event()
+        calls = []
+
+        async def slow_match(jid, tid, path):
+            calls.append((jid, tid))
+            await release.wait()  # park like a saturated match semaphore
+
+        monkeypatch.setattr(job_manager._matching, "match_single_file", slow_match)
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+        first = await job_manager.dispatch_pending_matches(job.id)
+        await asyncio.sleep(0)  # let the match task start and park on the event
+        # Title is still QUEUED (flip is post-semaphore) — a second dispatch
+        # must not spawn a second match for it.
+        assert (await _get_title(title.id)).state == TitleState.QUEUED
+        second = await job_manager.dispatch_pending_matches(job.id)
+        await asyncio.sleep(0)
+
+        assert first == 1
+        assert second == 0
+        assert calls == [(job.id, title.id)]
+
+        # Let the task finish; the done callback releases the guard so a later
+        # legitimate re-dispatch isn't blocked forever.
+        release.set()
+        await asyncio.sleep(0.05)
+        assert title.id not in job_manager._inflight_match_dispatch
+
+    async def test_no_queued_titles_is_noop(self, tmp_path, monkeypatch):
+        job, _ = await _seed(content_type=ContentType.TV)
+        _discdb, dispatch = self._stub_dispatch(monkeypatch)
+
+        assert await job_manager.dispatch_pending_matches(job.id) == 0
+        dispatch.assert_not_called()
 
 
 @pytest.mark.unit
