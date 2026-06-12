@@ -123,18 +123,36 @@ class TestJobLifecycleEvents:
         assert call_args[1]["eta"] is None
 
     async def test_broadcast_job_failed(self, broadcaster, mock_ws_manager):
-        """Test broadcasting job failure."""
+        """Test broadcasting job failure (identity_prompt_json=None → "unchanged")."""
         await broadcaster.broadcast_job_failed(1, "Ripping failed")
 
         mock_ws_manager.broadcast_job_update.assert_called_once_with(
-            1, JobState.FAILED.value, error="Ripping failed"
+            1, JobState.FAILED.value, error="Ripping failed", identity_prompt_json=None
         )
 
     async def test_broadcast_job_completed(self, broadcaster, mock_ws_manager):
-        """Test broadcasting job completion."""
+        """Test broadcasting job completion (identity_prompt_json=None → "unchanged")."""
         await broadcaster.broadcast_job_completed(1)
 
-        mock_ws_manager.broadcast_job_update.assert_called_once_with(1, JobState.COMPLETED.value)
+        mock_ws_manager.broadcast_job_update.assert_called_once_with(
+            1, JobState.COMPLETED.value, identity_prompt_json=None
+        )
+
+    async def test_terminal_broadcasts_forward_identity_prompt_clear(
+        self, broadcaster, mock_ws_manager
+    ):
+        """Walk-away B5 terminal clear: "" must reach the WS layer verbatim —
+        it's the enumerated clear pattern the frontend merge relies on."""
+        await broadcaster.broadcast_job_completed(1, identity_prompt_json="")
+        mock_ws_manager.broadcast_job_update.assert_called_once_with(
+            1, JobState.COMPLETED.value, identity_prompt_json=""
+        )
+
+        mock_ws_manager.broadcast_job_update.reset_mock()
+        await broadcaster.broadcast_job_failed(1, "boom", identity_prompt_json="")
+        mock_ws_manager.broadcast_job_update.assert_called_once_with(
+            1, JobState.FAILED.value, error="boom", identity_prompt_json=""
+        )
 
 
 @pytest.mark.asyncio

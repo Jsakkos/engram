@@ -838,16 +838,21 @@ class JobManager:
         content_type_str: str,
         season: int | None = None,
     ) -> None:
-        """Set a user-provided name for an unlabeled disc and resume ripping."""
+        """Set a user-provided name for an unlabeled disc and resume the pipeline.
+
+        The coordinator decides the ``resume_action`` (see
+        ``IdentificationCoordinator.set_name_and_resume``); this wrapper spawns
+        a rip task ONLY for ``"start_rip"`` — a mid-rip or post-rip answer must
+        never start a second rip (the double-rip hazard, walk-away B5).
+        """
         # The real pipeline owns the ASR from here; it reuses whatever the
         # prewarmer already cached. cancel_for_job prevents future chunks;
         # the in-flight thread still finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
-        await self._identification.set_name_and_resume(job_id, name, content_type_str, season)
-
-        task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
-        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
-        self._active_jobs[job_id] = task
+        result = await self._identification.set_name_and_resume(
+            job_id, name, content_type_str, season
+        )
+        await self._apply_identity_resume_action(job_id, result["resume_action"])
 
     async def re_identify_job(
         self,
@@ -857,7 +862,11 @@ class JobManager:
         season: int | None = None,
         tmdb_id: int | None = None,
     ) -> None:
-        """Re-identify a job with user-corrected metadata."""
+        """Re-identify a job with user-corrected metadata.
+
+        Same resume contract as :meth:`set_name_and_resume`: the coordinator
+        returns a ``resume_action`` and only ``"start_rip"`` spawns a rip task.
+        """
         # A real match (or re-rip) starts now — stop background prewarming.
         # cancel_for_job prevents future chunks; the in-flight thread still
         # finishes its current chunk (~60 s).
@@ -865,16 +874,93 @@ class JobManager:
         result = await self._identification.re_identify(
             job_id, title, content_type_str, season, tmdb_id
         )
+        await self._apply_identity_resume_action(job_id, result["resume_action"])
 
-        if result["has_ripped"]:
-            # Post-rip: re-run matching for existing files
-            task = asyncio.create_task(with_job_log_context(job_id, self._rerun_matching(job_id)))
-        else:
-            # Pre-rip: start ripping with corrected metadata
-            task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
+    async def _apply_identity_resume_action(self, job_id: int, action: str) -> None:
+        """Run the JobManager side of an identity answer (walk-away B5).
 
+        ``"start_rip"``/``"rerun_matching"``/``"resolve_movie"`` spawn a
+        background task registered in ``_active_jobs``. ``"dispatch_matches"``
+        and ``"release_movie_titles"`` act inline on already-running work — a
+        mid-rip answer leaves the live rip task as the registered owner, so no
+        task is spawned (spawning ``_run_ripping`` here is the double-rip
+        hazard the coordinator contract exists to prevent).
+        """
+        if action == "dispatch_matches":
+            dispatched = await self.dispatch_pending_matches(job_id)
+            if dispatched == 0:
+                # Post-rip resume (REVIEW_NEEDED → MATCHING) with nothing left
+                # to dispatch (e.g. every title already terminal/REVIEW): run
+                # the completion check so the job doesn't strand in MATCHING.
+                # Mid-rip (still RIPPING) zero-dispatch is normal — titles are
+                # dispatched as they rip now that the prompt is cleared.
+                async with async_session() as session:
+                    job = await session.get(DiscJob, job_id)
+                    if job and job.state == JobState.MATCHING:
+                        await self._finalization.check_job_completion(session, job_id)
+            return
+        if action == "release_movie_titles":
+            await self._release_parked_movie_titles(job_id)
+            return
+
+        coro_factory = {
+            "start_rip": self._run_ripping,
+            "rerun_matching": self._rerun_matching,
+            "resolve_movie": self._resume_movie_post_rip,
+        }.get(action)
+        if coro_factory is None:
+            raise ValueError(f"Unknown identity resume action: {action!r}")
+        task = asyncio.create_task(with_job_log_context(job_id, coro_factory(job_id)))
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
+
+    async def _release_parked_movie_titles(self, job_id: int) -> None:
+        """Flip identity-parked QUEUED titles to MATCHED after a mid-rip non-TV answer.
+
+        Mirrors the non-TV branch of ``_on_title_ripped``: movies skip episode
+        matching, so titles the identity gate parked in QUEUED become MATCHED
+        the moment the answer resolves the job to a movie. The still-running
+        rip's movie tail (``_finalize_ripped_movie``) completes them at rip end.
+        """
+        released: list[int] = []
+        async with async_session() as session:
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            for t in result.scalars().all():
+                if t.state == TitleState.QUEUED:
+                    t.state = TitleState.MATCHED
+                    session.add(t)
+                    released.append(t.id)
+            await session.commit()
+        for title_id in released:
+            await ws_manager.broadcast_title_update(job_id, title_id, TitleState.MATCHED.value)
+        if released:
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: released {len(released)} "
+                f"identity-parked title(s) to MATCHED (movie answer)"
+            )
+
+    async def _resume_movie_post_rip(self, job_id: int) -> None:
+        """Finish a ripped job that an identity answer just resolved to a movie.
+
+        Walk-away B5: reuses the rip-end movie tail (TheDiscDB MainMovie /
+        feature-vs-extras resolution, then organize + complete) instead of the
+        TV ``_rerun_matching`` path, which would episode-match a movie.
+        """
+        try:
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if not job or not job.staging_path:
+                    return
+                output_dir = Path(job.staging_path)
+                volume_label = job.volume_label
+                detected_title = job.detected_title
+            # Recover strays exactly like the rip-end flow; with the prompt
+            # cleared and a non-TV content type, recovered titles go MATCHED.
+            await self.reconcile_stuck_titles(job_id)
+            await self._finalize_ripped_movie(job_id, output_dir, volume_label, detected_title)
+        except Exception as e:
+            logger.exception(f"Error resuming movie job {sanitize_log_value(job_id)} post-rip")
+            await self._fail_job(job_id, str(e))
 
     async def _rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for already-ripped titles."""
@@ -1239,6 +1325,15 @@ class JobManager:
             JobState.ORGANIZING: config.timeout_organizing_seconds,
         }.get(state)
 
+    def _rip_task_alive(self, job_id: int) -> bool:
+        """Whether the job's registered background task is still running.
+
+        ``_active_jobs`` keeps finished tasks around (nothing prunes on
+        success), so membership alone doesn't mean "live" — check done().
+        """
+        task = self._active_jobs.get(job_id)
+        return task is not None and not task.done()
+
     async def _has_pending_match_work(self, job_id: int) -> bool:
         """True if the job still has tracks QUEUED for or actively MATCHING.
 
@@ -1269,7 +1364,23 @@ class JobManager:
         # waiting tracks alone (the original import-storm bug force-advanced them
         # all to REVIEW here). A genuinely hung *active* match is recovered by the
         # per-track timeout in the matcher, which frees the slot to drain the queue.
-        if job.state == JobState.MATCHING and await self._has_pending_match_work(job.id):
+        #
+        # Walk-away B5: the same applies to a RIPPING job whose rip task is gone
+        # (e.g. a stale-rip reconcile cancelled it) once its identity question is
+        # answered — a mid-rip answer dispatches matching with NO state change, so
+        # the drain runs while the job is still RIPPING; re-firing reconcile would
+        # dump those in-flight matches to review. Both extra conditions matter:
+        # a LIVE rip task keeps the fs-monitor heartbeat as the sole authority (a
+        # stalled rip must still trip the timeout even if matches progress), and
+        # an UNANSWERED identity prompt means the QUEUED titles are parked, not
+        # progressing — the clock stays stale so reconcile keeps re-firing (the
+        # accepted B4 residual) until the user answers.
+        queue_draining = job.state == JobState.MATCHING or (
+            job.state == JobState.RIPPING
+            and not self._rip_task_alive(job.id)
+            and not self._identity_pending(job)
+        )
+        if queue_draining and await self._has_pending_match_work(job.id):
             self._last_activity[job.id] = now
             return
         last = self._last_activity.get(job.id)
@@ -2184,9 +2295,8 @@ class JobManager:
 
             # Post-rip convergence (walk-away Phase B4): re-read the job row —
             # the locals captured at setup go stale once mid-rip identity
-            # answers (B5) can mutate the job, so the fresh DB values drive the
-            # TV-vs-movie fork below. (No-op today: nothing mutates mid-rip yet,
-            # so the locals and the row agree.) volume_label is deliberately NOT
+            # answers (B5) mutate the job, so the fresh DB values drive the
+            # TV-vs-movie fork below. volume_label is deliberately NOT
             # re-read: answers set detected_title, never the label; the movie
             # organize fallback may keep the setup-time label.
             async with async_session() as session:
@@ -2197,6 +2307,7 @@ class JobManager:
                 detected_title = job.detected_title
                 blocking_prompt = self._blocking_identity_prompt(job)
 
+            answered_mid_convergence = False
             if blocking_prompt is not None:
                 # An unanswered BLOCKING identity question (kind=name/reidentify)
                 # survived to rip end → the job parks in pooled review. Recover
@@ -2205,8 +2316,20 @@ class JobManager:
                 # before reconciling would let non-TV strays leak to MATCHED).
                 await self._backfill_unmatched_titles(job_id, output_dir, sorted_titles)
                 await self.reconcile_stuck_titles(job_id)
-                await self._converge_identity_pending_job(job_id, blocking_prompt)
-                return
+                if await self._converge_identity_pending_job(job_id, blocking_prompt):
+                    return
+                # B5 race tolerance: the prompt was answered between the
+                # post-rip read above and the convergence re-read (the
+                # backfill/reconcile awaits yield the loop). Re-read the
+                # corrected identity and continue down the normal post-rip
+                # flow — the repeated backfill/reconcile below are idempotent.
+                answered_mid_convergence = True
+                async with async_session() as session:
+                    job = await session.get(DiscJob, job_id)
+                    if not job:
+                        return
+                    content_type = job.content_type
+                    detected_title = job.detected_title
 
             if content_type == ContentType.TV:
                 await self._backfill_unmatched_titles(job_id, output_dir, sorted_titles)
@@ -2237,6 +2360,13 @@ class JobManager:
                             f"job already in {job.state.value}"
                         )
 
+                if answered_mid_convergence:
+                    # The mid-window answer's dispatch may have raced the
+                    # backfill/reconcile above (titles parked QUEUED after the
+                    # answer's sweep) — sweep again. Idempotent: QUEUED-only
+                    # plus the in-flight dispatch guard.
+                    await self.dispatch_pending_matches(job_id)
+
             else:
                 # Movie post-ripping flow
 
@@ -2244,85 +2374,7 @@ class JobManager:
                 # MATCHED) so the main-feature selection below sees every ripped file.
                 await self.reconcile_stuck_titles(job_id)
 
-                async with async_session() as session:
-                    job = await session.get(DiscJob, job_id)
-                    if not job:
-                        return
-
-                    titles_result = await session.execute(
-                        select(DiscTitle).where(DiscTitle.job_id == job_id)
-                    )
-                    ripped_titles = [t for t in titles_result.scalars().all() if t.is_selected]
-
-                    if len(ripped_titles) > 1:
-                        sent_to_review = await self._resolve_multi_title_movie(
-                            job, job_id, ripped_titles, session
-                        )
-                        if sent_to_review:
-                            return
-
-                    # Single title flow (Standard Movie). Commit ORGANIZING and
-                    # release the session before the blocking organize so no DB
-                    # connection is held across it (mirrors the rip itself).
-                    job.state = JobState.ORGANIZING
-                    await session.commit()
-
-                await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
-
-                organize_result = await asyncio.to_thread(
-                    movie_organizer.organize,
-                    output_dir,
-                    volume_label,
-                    detected_title,
-                )
-
-                async with async_session() as session:
-                    job = await session.get(DiscJob, job_id)
-                    if not job:
-                        return
-
-                    if organize_result["success"]:
-                        job.final_path = str(organize_result["main_file"])
-                        job.progress_percent = 100.0
-
-                        extras_mapping = organize_result.get("extras_mapping", {})
-
-                        titles_result = await session.execute(
-                            select(DiscTitle).where(DiscTitle.job_id == job_id)
-                        )
-                        for t in titles_result.scalars().all():
-                            if t.state not in (
-                                TitleState.COMPLETED,
-                                TitleState.FAILED,
-                            ):
-                                t.state = TitleState.COMPLETED
-                                t.organized_from = t.output_filename
-                                output_basename = (
-                                    Path(t.output_filename).name if t.output_filename else None
-                                )
-                                if output_basename and output_basename in extras_mapping:
-                                    t.organized_to = str(extras_mapping[output_basename])
-                                    t.is_extra = True
-                                else:
-                                    t.organized_to = str(organize_result.get("main_file") or "")
-                                session.add(t)
-                                await ws_manager.broadcast_title_update(
-                                    job_id,
-                                    t.id,
-                                    TitleState.COMPLETED.value,
-                                    organized_from=t.organized_from,
-                                    organized_to=t.organized_to,
-                                )
-                        await session.commit()
-
-                        await state_machine.transition_to_completed(job, session)
-                        logger.info(f"Job {safe_job} completed: {organize_result['main_file']}")
-                    else:
-                        await state_machine.transition_to_failed(
-                            job,
-                            session,
-                            error_message=organize_result["error"],
-                        )
+                await self._finalize_ripped_movie(job_id, output_dir, volume_label, detected_title)
 
         except asyncio.CancelledError:
             logger.info(f"Job {safe_job} was cancelled")
@@ -2359,7 +2411,105 @@ class JobManager:
                     job, session, error_message=error_message or "Ripping failed"
                 )
 
-    async def _converge_identity_pending_job(self, job_id: int, prompt: dict) -> None:
+    async def _finalize_ripped_movie(
+        self,
+        job_id: int,
+        output_dir: Path,
+        volume_label: str,
+        detected_title: str | None,
+    ) -> None:
+        """Run the movie tail of a finished rip: feature resolution → organize.
+
+        Shared by the rip-end movie branch of ``_run_ripping`` and the post-rip
+        identity-answer path (``_resume_movie_post_rip``, walk-away B5) so the
+        two can't diverge. Multi-title discs go through TheDiscDB-MainMovie /
+        feature-vs-extras resolution (possibly parking in review); otherwise
+        the job organizes and completes. Title state is not a gate here — the
+        completion loop finishes every non-terminal title, including ones an
+        identity answer released to MATCHED or left QUEUED.
+        """
+        safe_job = sanitize_log_value(job_id)
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+
+            titles_result = await session.execute(
+                select(DiscTitle).where(DiscTitle.job_id == job_id)
+            )
+            ripped_titles = [t for t in titles_result.scalars().all() if t.is_selected]
+
+            if len(ripped_titles) > 1:
+                sent_to_review = await self._resolve_multi_title_movie(
+                    job, job_id, ripped_titles, session
+                )
+                if sent_to_review:
+                    return
+
+            # Single title flow (Standard Movie). Commit ORGANIZING and
+            # release the session before the blocking organize so no DB
+            # connection is held across it (mirrors the rip itself).
+            job.state = JobState.ORGANIZING
+            await session.commit()
+
+        await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
+
+        organize_result = await asyncio.to_thread(
+            movie_organizer.organize,
+            output_dir,
+            volume_label,
+            detected_title,
+        )
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+
+            if organize_result["success"]:
+                job.final_path = str(organize_result["main_file"])
+                job.progress_percent = 100.0
+
+                extras_mapping = organize_result.get("extras_mapping", {})
+
+                titles_result = await session.execute(
+                    select(DiscTitle).where(DiscTitle.job_id == job_id)
+                )
+                for t in titles_result.scalars().all():
+                    if t.state not in (
+                        TitleState.COMPLETED,
+                        TitleState.FAILED,
+                    ):
+                        t.state = TitleState.COMPLETED
+                        t.organized_from = t.output_filename
+                        output_basename = (
+                            Path(t.output_filename).name if t.output_filename else None
+                        )
+                        if output_basename and output_basename in extras_mapping:
+                            t.organized_to = str(extras_mapping[output_basename])
+                            t.is_extra = True
+                        else:
+                            t.organized_to = str(organize_result.get("main_file") or "")
+                        session.add(t)
+                        await ws_manager.broadcast_title_update(
+                            job_id,
+                            t.id,
+                            TitleState.COMPLETED.value,
+                            organized_from=t.organized_from,
+                            organized_to=t.organized_to,
+                        )
+                await session.commit()
+
+                await state_machine.transition_to_completed(job, session)
+                logger.info(f"Job {safe_job} completed: {organize_result['main_file']}")
+            else:
+                await state_machine.transition_to_failed(
+                    job,
+                    session,
+                    error_message=organize_result["error"],
+                )
+
+    async def _converge_identity_pending_job(self, job_id: int, prompt: dict) -> bool:
         """Park a rip-finished job whose identity question is still open in review.
 
         Walk-away Phase B4: the non-blocking identity CTA converts into the
@@ -2371,6 +2521,14 @@ class JobManager:
         ``check_job_completion``); the review flow and the answer endpoints
         (B5) own them. The Phase A transcript prewarmer fires automatically via
         the state machine's ``on_transition`` observer — no explicit kickoff.
+
+        Returns True when the rip-end flow should stop here (job parked in
+        review, already out of RIPPING, or gone). Returns False when the
+        prompt was ANSWERED between the caller's post-rip prompt read and this
+        re-read (B5 race tolerance — the backfill/reconcile awaits in between
+        yield the event loop): the caller then falls through to the normal
+        post-rip flow with the corrected identity instead of parking an
+        answered job behind a stale question.
         """
         safe_job = sanitize_log_value(job_id)
         reason = prompt.get("reason")
@@ -2379,7 +2537,7 @@ class JobManager:
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job:
-                return
+                return True
             if job.state != JobState.RIPPING:
                 # e.g. every title stalled → route_rip_failure_to_review already
                 # parked the job in REVIEW_NEEDED with its own reason. Leave the
@@ -2388,7 +2546,14 @@ class JobManager:
                     f"Job {safe_job}: skipping identity convergence — job already in "
                     f"{job.state.value}"
                 )
-                return
+                return True
+            if self._blocking_identity_prompt(job) is None:
+                # Answered (or otherwise no longer blocking) on the fresh row.
+                logger.info(
+                    f"Job {safe_job}: identity prompt answered mid-convergence — "
+                    f"skipping review park"
+                )
+                return False
             job.identity_prompt_json = None
             succeeded = await state_machine.transition_to_review(
                 job, session, reason=reason, broadcast=False
@@ -2406,6 +2571,7 @@ class JobManager:
                 f"Job {safe_job}: rip finished with unanswered identity prompt "
                 f"(kind={sanitize_log_value(prompt.get('kind'))}) → REVIEW_NEEDED"
             )
+        return True
 
     async def _resolve_multi_title_movie(
         self,
@@ -2690,12 +2856,13 @@ class JobManager:
         """Dispatch matching for the job's QUEUED titles whose ripped file exists.
 
         Retroactive release for titles parked by the identity gate in
-        ``_on_title_ripped`` (walk-away Phase B): the answer endpoints call this
-        once the user resolves the identity question mid-rip. Nothing calls it
-        yet — it lands with the gate so the park and its release ship together.
-        Caller contract: this runs *episode* matching, so only call it for jobs
-        resolved to TV — an answer that resolves the job to movie must route to
-        the movie feature-resolution path instead.
+        ``_on_title_ripped`` (walk-away Phase B): the identity-answer paths call
+        this (via ``_apply_identity_resume_action``, B5) once the user resolves
+        the question. Callers MUST clear ``identity_prompt_json`` first — this
+        does not self-check the prompt. Caller contract: this runs *episode*
+        matching, so only call it for jobs resolved to TV — an answer that
+        resolves the job to movie must route to the movie feature-resolution
+        path instead.
 
         Idempotent at the dispatch level: only QUEUED titles qualify, and
         ``_dispatch_title_match`` skips titles with a live match task (the

@@ -429,6 +429,62 @@ class TestValidation:
 
 
 # ---------------------------------------------------------------------------
+# Identity answer endpoints (walk-away B5)
+# ---------------------------------------------------------------------------
+
+
+class TestIdentityAnswerRoutesAcceptRipping:
+    """set-name and re-identify accept RIPPING (mid-rip answers, walk-away B5)
+    in addition to REVIEW_NEEDED; everything else is still rejected."""
+
+    async def test_set_name_accepted_while_ripping(self, client):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.RIPPING)
+        with patch.object(job_manager, "set_name_and_resume", new_callable=AsyncMock) as mock_set:
+            response = await client.post(
+                f"/api/jobs/{job.id}/set-name",
+                json={"name": "Eureka", "content_type": "tv", "season": 2},
+            )
+
+        assert response.status_code == 200
+        mock_set.assert_awaited_once_with(job.id, "Eureka", "tv", 2)
+
+    async def test_re_identify_accepted_while_ripping(self, client):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.RIPPING)
+        with patch.object(job_manager, "re_identify_job", new_callable=AsyncMock) as mock_re_id:
+            response = await client.post(
+                f"/api/jobs/{job.id}/re-identify",
+                json={"title": "Frasier", "content_type": "tv", "tmdb_id": 195241},
+            )
+
+        assert response.status_code == 200
+        mock_re_id.assert_awaited_once_with(job.id, "Frasier", "tv", None, 195241)
+
+    async def test_set_name_still_rejected_in_other_states(self, client):
+        job = await _seed_job(state=JobState.MATCHING)
+        response = await client.post(
+            f"/api/jobs/{job.id}/set-name",
+            json={"name": "Eureka", "content_type": "tv"},
+        )
+        assert response.status_code == 400
+
+    async def test_re_identify_still_rejected_in_other_states(self, client):
+        job = await _seed_job(state=JobState.COMPLETED)
+        response = await client.post(
+            f"/api/jobs/{job.id}/re-identify",
+            json={"title": "Frasier", "content_type": "tv"},
+        )
+        assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
 

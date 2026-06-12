@@ -135,8 +135,20 @@ class JobStateMachine:
             job.error_message = error_message
 
         # Set completed_at timestamp for terminal states
+        prompt_cleared = False
         if to_state in (JobState.COMPLETED, JobState.FAILED):
             job.completed_at = datetime.now(UTC)
+            # Walk-away Phase B: a terminal job can't act on an identity answer
+            # — retire the non-blocking CTA in the same commit (the model's
+            # "cleared when the answer becomes moot" contract; e.g. a gate-D
+            # season prompt outlived by decisive cross-season matching). The
+            # clear rides the terminal broadcast below as "" (the enumerated-WS
+            # clear pattern). The B4 rip-end convergence clears the prompt
+            # itself before transitioning to REVIEW_NEEDED (non-terminal), so
+            # there is no double handling.
+            if job.identity_prompt_json is not None:
+                job.identity_prompt_json = None
+                prompt_cleared = True
 
         # Persist to database
         await session.commit()
@@ -151,12 +163,16 @@ class JobStateMachine:
         # Broadcast state change if requested (failure is non-fatal since DB is committed)
         if broadcast:
             try:
+                # Only attach identity_prompt_json when a prompt was actually
+                # retired — "" clears it on the frontend merge, None/absent
+                # means "unchanged" (B1 WS clear pattern).
+                cleared_kwargs = {"identity_prompt_json": ""} if prompt_cleared else {}
                 if to_state == JobState.FAILED:
                     await self._broadcaster.broadcast_job_failed(
-                        job.id, error_message or "Unknown error"
+                        job.id, error_message or "Unknown error", **cleared_kwargs
                     )
                 elif to_state == JobState.COMPLETED:
-                    await self._broadcaster.broadcast_job_completed(job.id)
+                    await self._broadcaster.broadcast_job_completed(job.id, **cleared_kwargs)
                 else:
                     await self._broadcaster.broadcast_job_state_changed(job.id, to_state)
             except Exception as e:

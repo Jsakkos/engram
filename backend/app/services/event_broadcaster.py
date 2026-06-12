@@ -61,13 +61,30 @@ class EventBroadcaster:
             eta=eta_seconds,
         )
 
-    async def broadcast_job_failed(self, job_id: int, error_message: str):
-        """Broadcast job failure."""
-        await self._ws.broadcast_job_update(job_id, JobState.FAILED.value, error=error_message)
+    async def broadcast_job_failed(
+        self, job_id: int, error_message: str, identity_prompt_json: str | None = None
+    ):
+        """Broadcast job failure.
 
-    async def broadcast_job_completed(self, job_id: int):
-        """Broadcast job completion."""
-        await self._ws.broadcast_job_update(job_id, JobState.COMPLETED.value)
+        ``identity_prompt_json=""`` clears a retired walk-away identity CTA on
+        the frontend merge (terminal clear, B5); None means "unchanged".
+        """
+        await self._ws.broadcast_job_update(
+            job_id,
+            JobState.FAILED.value,
+            error=error_message,
+            identity_prompt_json=identity_prompt_json,
+        )
+
+    async def broadcast_job_completed(self, job_id: int, identity_prompt_json: str | None = None):
+        """Broadcast job completion.
+
+        ``identity_prompt_json=""`` clears a retired walk-away identity CTA on
+        the frontend merge (terminal clear, B5); None means "unchanged".
+        """
+        await self._ws.broadcast_job_update(
+            job_id, JobState.COMPLETED.value, identity_prompt_json=identity_prompt_json
+        )
 
     # --- Title Discovery Events ---
 

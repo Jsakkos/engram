@@ -770,13 +770,67 @@ class TestRunRippingIdentityConvergence:
             identity_prompt_json=json.dumps({"kind": "name"}),
         )
 
-        await job_manager._converge_identity_pending_job(job.id, {"kind": "name"})
+        assert await job_manager._converge_identity_pending_job(job.id, {"kind": "name"}) is True
 
         async with _unit_session_factory() as session:
             refreshed = await session.get(DiscJob, job.id)
         assert refreshed.state == JobState.REVIEW_NEEDED
         assert refreshed.review_reason == jm_mod._FALLBACK_IDENTITY_REVIEW_REASON
         assert refreshed.identity_prompt_json is None
+
+    async def test_converge_skips_park_when_prompt_answered_mid_window(self, rip_env):
+        """B5 race tolerance (the B4 TOCTOU note): an answer landing between
+        the rip-end prompt read and convergence clears the prompt on the row —
+        convergence must re-check the fresh row and NOT park the answered job
+        behind a stale question."""
+        job, _title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(rip_env),
+            identity_prompt_json=None,  # the answer already cleared it
+        )
+
+        converged = await job_manager._converge_identity_pending_job(
+            job.id, {"kind": "name", "reason": "Disc label unreadable"}
+        )
+
+        assert converged is False  # caller falls through to the normal flow
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job.id)
+        assert refreshed.state == JobState.RIPPING  # untouched
+        assert refreshed.review_reason is None
+
+    async def test_run_ripping_falls_through_when_answered_during_convergence(
+        self, rip_env, monkeypatch
+    ):
+        """End-to-end race: the answer lands during the backfill/reconcile
+        window. The job must continue down the normal TV post-rip path
+        (RIPPING→MATCHING) instead of parking in review with a stale reason."""
+        job, _title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(rip_env),
+            is_selected=True,
+            identity_prompt_json=_PROMPT,
+        )
+
+        async def answer_during_backfill(*args, **kwargs):
+            # Simulate the B5 answer endpoint committing mid-window.
+            async with _unit_session_factory() as s:
+                j = await s.get(DiscJob, job.id)
+                j.identity_prompt_json = None
+                j.detected_title = "Answered Show"
+                await s.commit()
+
+        monkeypatch.setattr(
+            job_manager, "_backfill_unmatched_titles", AsyncMock(side_effect=answer_during_backfill)
+        )
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[]))
+
+        await job_manager._run_ripping(job.id)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job.id)
+        assert refreshed.state == JobState.MATCHING  # normal TV path, not REVIEW_NEEDED
+        assert refreshed.review_reason is None
 
 
 async def _seed_two_selected(staging):

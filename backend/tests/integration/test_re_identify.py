@@ -243,12 +243,16 @@ async def test_re_identify_drops_stale_year_on_identity_change(client):
 
 @pytest.mark.asyncio
 async def test_re_identify_rejects_wrong_state(client):
-    """Re-identify should return 400 for jobs not in REVIEW_NEEDED state."""
+    """Re-identify should return 400 for jobs not in REVIEW_NEEDED or RIPPING.
+
+    RIPPING is accepted since walk-away B5 (mid-rip identity answers), so the
+    rejection pin uses MATCHING.
+    """
     async with async_session() as session:
         job = DiscJob(
             volume_label="TEST_DISC",
             drive_id="E:",
-            state=JobState.RIPPING,
+            state=JobState.MATCHING,
             content_type=ContentType.TV,
             detected_title="Some Show",
         )

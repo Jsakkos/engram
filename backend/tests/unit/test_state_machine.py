@@ -260,6 +260,74 @@ class TestConvenienceMethods:
 
 
 @pytest.mark.asyncio
+class TestTerminalIdentityPromptClear:
+    """Walk-away B5: a terminal job can't act on an identity answer — the
+    non-blocking CTA is retired in the same commit as completed_at (the
+    model's "cleared when the answer becomes moot" contract) and the ""
+    clear rides the terminal broadcast."""
+
+    _PROMPT = '{"kind": "season", "reason": "select a season"}'
+
+    async def test_completed_clears_prompt_and_broadcasts_clear(
+        self, state_machine, sample_job, mock_session, mock_broadcaster
+    ):
+        """A gate-D job completing via decisive cross-season matching must not
+        carry a dead season CTA into COMPLETED."""
+        sample_job.state = JobState.ORGANIZING
+        sample_job.identity_prompt_json = self._PROMPT
+
+        result = await state_machine.transition_to_completed(sample_job, mock_session)
+
+        assert result is True
+        assert sample_job.identity_prompt_json is None
+        mock_session.commit.assert_awaited()  # cleared in the same commit
+        mock_broadcaster.broadcast_job_completed.assert_called_once_with(
+            sample_job.id, identity_prompt_json=""
+        )
+
+    async def test_failed_clears_prompt_and_broadcasts_clear(
+        self, state_machine, sample_job, mock_session, mock_broadcaster
+    ):
+        sample_job.state = JobState.RIPPING
+        sample_job.identity_prompt_json = self._PROMPT
+
+        result = await state_machine.transition_to_failed(
+            sample_job, mock_session, error_message="boom"
+        )
+
+        assert result is True
+        assert sample_job.identity_prompt_json is None
+        mock_broadcaster.broadcast_job_failed.assert_called_once_with(
+            sample_job.id, "boom", identity_prompt_json=""
+        )
+
+    async def test_terminal_without_prompt_broadcasts_without_clear(
+        self, state_machine, sample_job, mock_session, mock_broadcaster
+    ):
+        """No prompt → no identity_prompt_json kwarg at all (None would still
+        be "unchanged", but the call shape stays identical to pre-B5)."""
+        sample_job.state = JobState.ORGANIZING
+        sample_job.identity_prompt_json = None
+
+        await state_machine.transition_to_completed(sample_job, mock_session)
+
+        mock_broadcaster.broadcast_job_completed.assert_called_once_with(sample_job.id)
+
+    async def test_non_terminal_transition_leaves_prompt(
+        self, state_machine, sample_job, mock_session, mock_broadcaster
+    ):
+        """REVIEW_NEEDED and other non-terminal states never clear here — the
+        B4 convergence and the answer endpoints own those clears (no double
+        handling)."""
+        sample_job.state = JobState.RIPPING
+        sample_job.identity_prompt_json = self._PROMPT
+
+        await state_machine.transition_to_review(sample_job, mock_session, reason="r")
+
+        assert sample_job.identity_prompt_json == self._PROMPT
+
+
+@pytest.mark.asyncio
 class TestErrorCases:
     """Test error handling in state machine."""
 

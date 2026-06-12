@@ -1064,8 +1064,13 @@ async def set_job_name(
     req: SetNameRequest,
     job: DiscJob = Depends(get_job_or_404),
 ) -> dict:
-    """Set a user-provided name for a disc with unreadable volume label, then resume ripping."""
-    if job.state != JobState.REVIEW_NEEDED:
+    """Set a user-provided name for a disc with unreadable volume label and resume the pipeline.
+
+    Accepted while RIPPING too (walk-away B5): the non-blocking identity CTA can
+    be answered mid-rip — metadata updates and parked titles dispatch without
+    interrupting the rip.
+    """
+    if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING):
         raise HTTPException(status_code=400, detail="Job is not awaiting name input")
 
     from app.services.job_manager import job_manager
@@ -1088,11 +1093,15 @@ async def re_identify_job(
     req: ReIdentifyRequest,
     job: DiscJob = Depends(get_job_or_404),
 ) -> dict:
-    """Re-identify a disc with user-corrected title, content type, and optional TMDB ID."""
-    if job.state != JobState.REVIEW_NEEDED:
+    """Re-identify a disc with user-corrected title, content type, and optional TMDB ID.
+
+    Accepted while RIPPING too (walk-away B5): a mid-rip answer updates the
+    metadata and dispatches parked titles without interrupting the rip.
+    """
+    if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING):
         raise HTTPException(
             status_code=400,
-            detail=f"Job must be in review_needed state, currently: {job.state.value}",
+            detail=f"Job must be in review_needed or ripping state, currently: {job.state.value}",
         )
 
     from app.services.job_manager import job_manager

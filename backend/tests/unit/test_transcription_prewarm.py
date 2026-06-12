@@ -467,7 +467,11 @@ class TestJobManagerWiring:
     async def test_set_name_and_resume_cancels_prewarm(self, monkeypatch):
         mock_prewarmer = MagicMock()
         monkeypatch.setattr(jm.job_manager, "_prewarmer", mock_prewarmer)
-        monkeypatch.setattr(jm.job_manager._identification, "set_name_and_resume", AsyncMock())
+        monkeypatch.setattr(
+            jm.job_manager._identification,
+            "set_name_and_resume",
+            AsyncMock(return_value={"job_id": 11, "resume_action": "start_rip"}),
+        )
         run_ripping = AsyncMock()
         monkeypatch.setattr(jm.job_manager, "_run_ripping", run_ripping)
 
@@ -482,7 +486,9 @@ class TestJobManagerWiring:
         monkeypatch.setattr(
             jm.job_manager._identification,
             "re_identify",
-            AsyncMock(return_value={"has_ripped": True}),
+            AsyncMock(
+                return_value={"job_id": 12, "has_ripped": True, "resume_action": "rerun_matching"}
+            ),
         )
         monkeypatch.setattr(jm.job_manager, "_rerun_matching", AsyncMock())
 
