@@ -1551,12 +1551,23 @@ class JobManager:
         happens once a match slot is acquired), movie titles to MATCHED. Only acts
         on titles currently in RIPPING. Failures are logged at ``on_error_level``
         and swallowed so progress tracking is never interrupted.
+
+        Identity gate (walk-away Phase B): mirrors ``_on_title_ripped`` — when
+        the job carries an unanswered identity prompt, every content type parks
+        in QUEUED regardless of ``content_type``, so a pending-prompt + fs-monitor
+        poll-timing race cannot leak a title to MATCHED and make it invisible to
+        ``dispatch_pending_matches`` (which only releases QUEUED titles).
         """
-        new_state = TitleState.QUEUED if content_type == ContentType.TV else TitleState.MATCHED
+        is_tv = content_type == ContentType.TV
         try:
             async with async_session() as sess:
                 title_db = await sess.get(DiscTitle, title_id)
                 if title_db and title_db.state == TitleState.RIPPING:
+                    job = await sess.get(DiscJob, job_id)
+                    identity_pending = self._identity_pending(job)
+                    new_state = (
+                        TitleState.QUEUED if (is_tv or identity_pending) else TitleState.MATCHED
+                    )
                     title_db.state = new_state
                     sess.add(title_db)
                     await sess.commit()
@@ -2496,29 +2507,46 @@ class JobManager:
         ``_inflight_match_dispatch``), making repeat dispatch safe. Returns
         True when work was dispatched (DiscDB assignment or match task), False
         when skipped (in-flight, or title vanished).
+
+        TOCTOU note: the membership check and ``add`` are separated by NO
+        awaits — both run in a single event-loop turn, so they are effectively
+        atomic on asyncio's single-threaded event loop.  Any early-return path
+        that does NOT ultimately spawn a ``create_task`` must ``discard`` the
+        sentinel so a subsequent legitimate dispatch is not permanently blocked.
         """
         if title_id in self._inflight_match_dispatch:
             logger.debug(
                 f"Job {job_id}: title {title_id} already has a live match task — skipping dispatch"
             )
             return False
+        # Claim the slot immediately — no awaits between here and the check
+        # above so the claim is atomic on the single event loop.  All paths
+        # that don't reach create_task must discard the sentinel.
+        self._inflight_match_dispatch.add(title_id)
 
         applied = False
-        async with async_session() as session:
-            title = await session.get(DiscTitle, title_id)
-            if title is None:
-                logger.warning(
-                    f"Job {sanitize_log_value(job_id)}: title "
-                    f"{sanitize_log_value(title_id)} vanished before match dispatch"
-                )
-                return False
-            applied = await self._matching.try_discdb_assignment(job_id, title, session)
-            if applied:
-                await self._finalization.check_job_completion(session, job_id)
+        try:
+            async with async_session() as session:
+                title = await session.get(DiscTitle, title_id)
+                if title is None:
+                    logger.warning(
+                        f"Job {sanitize_log_value(job_id)}: title "
+                        f"{sanitize_log_value(title_id)} vanished before match dispatch"
+                    )
+                    self._inflight_match_dispatch.discard(title_id)
+                    return False
+                applied = await self._matching.try_discdb_assignment(job_id, title, session)
+                if applied:
+                    await self._finalization.check_job_completion(session, job_id)
+        except Exception:
+            self._inflight_match_dispatch.discard(title_id)
+            raise
         if applied:
+            # DiscDB path resolved the title — no match task needed; release
+            # the sentinel so a future re-dispatch (e.g. after a re-rip) works.
+            self._inflight_match_dispatch.discard(title_id)
             return True
 
-        self._inflight_match_dispatch.add(title_id)
         # match_single_file self-tags the job log context.
         task = asyncio.create_task(self._matching.match_single_file(job_id, title_id, file_path))
         task.add_done_callback(

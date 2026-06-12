@@ -768,3 +768,128 @@ class TestCreateJobForDiscDedup:
         await self._insert("DISC_B")
 
         assert len(await self._jobs_for_drive()) == 0
+
+
+@pytest.mark.unit
+class TestDispatchTitleMatchTOCTOU:
+    """Fix 1 (B3 review): the in-flight sentinel is claimed BEFORE any await, so
+    two concurrent ``_dispatch_title_match`` calls for the same title cannot both
+    slip through the membership check and spawn duplicate match tasks (TOCTOU).
+
+    The discdb-applied early-return path must also discard the sentinel so a
+    future legitimate dispatch is not permanently blocked."""
+
+    def _stub_matching(self, monkeypatch, discdb_applied=False):
+        discdb = AsyncMock(return_value=discdb_applied)
+        release = asyncio.Event()
+        calls = []
+
+        async def slow_match(jid, tid, path):
+            calls.append((jid, tid))
+            await release.wait()
+
+        monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
+        monkeypatch.setattr(job_manager._matching, "match_single_file", slow_match)
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+        return discdb, calls, release
+
+    async def test_concurrent_calls_spawn_exactly_one_task(self, tmp_path, monkeypatch):
+        """Two concurrent _dispatch_title_match for the same title must not
+        double-spawn: the sentinel is claimed before any await so both coroutines
+        can't both pass the membership check."""
+        job, title = await _seed(content_type=ContentType.TV)
+        _discdb, calls, release = self._stub_matching(monkeypatch)
+
+        f = tmp_path / "show_t00.mkv"
+        f.write_text("")
+
+        # Fire both dispatches concurrently — no await between them on the
+        # caller side, so both enter _dispatch_title_match before either
+        # has a chance to add to the set.  The fixed code claims the slot
+        # synchronously before the first await, making this race impossible.
+        first, second = await asyncio.gather(
+            job_manager._dispatch_title_match(job.id, title.id, f),
+            job_manager._dispatch_title_match(job.id, title.id, f),
+        )
+        await asyncio.sleep(0)
+
+        # Exactly one dispatch returns True, the other False.
+        assert sorted([first, second]) == [False, True]
+        assert calls == [(job.id, title.id)]
+
+        # Let the task finish; sentinel released so future dispatches work.
+        release.set()
+        await asyncio.sleep(0.05)
+        assert title.id not in job_manager._inflight_match_dispatch
+
+    async def test_discdb_applied_path_releases_sentinel(self, tmp_path, monkeypatch):
+        """When DiscDB assignment resolves the title (no match task spawned),
+        the sentinel must be discarded so a subsequent dispatch is not blocked."""
+        job, title = await _seed(content_type=ContentType.TV)
+        _discdb, _calls, _release = self._stub_matching(monkeypatch, discdb_applied=True)
+        completion = AsyncMock()
+        monkeypatch.setattr(job_manager._finalization, "check_job_completion", completion)
+
+        f = tmp_path / "show_t00.mkv"
+        f.write_text("")
+
+        result = await job_manager._dispatch_title_match(job.id, title.id, f)
+        assert result is True
+        # Sentinel must be released — no match task was spawned.
+        assert title.id not in job_manager._inflight_match_dispatch
+
+        # A follow-up dispatch (e.g. after a re-rip) must not be blocked.
+        result2 = await job_manager._dispatch_title_match(job.id, title.id, f)
+        assert result2 is True
+
+
+@pytest.mark.unit
+class TestTransitionTitleOutOfRippingGate:
+    """Fix 2 (B3 review): ``_transition_title_out_of_ripping`` applies the same
+    identity gate as ``_on_title_ripped``.  A pending identity prompt must park
+    every content-type in QUEUED, not MATCHED, so titles stay visible to
+    ``dispatch_pending_matches`` and don't leak through unmatched."""
+
+    async def test_tv_without_prompt_parks_queued(self, monkeypatch):
+        job, title = await _seed(content_type=ContentType.TV)
+        await job_manager._transition_title_out_of_ripping(
+            job.id, title.id, ContentType.TV, expected_size=1024, actual_size=1024
+        )
+        t = await _get_title(title.id)
+        assert t.state == TitleState.QUEUED
+
+    async def test_movie_without_prompt_becomes_matched(self, monkeypatch):
+        job, title = await _seed(content_type=ContentType.MOVIE)
+        await job_manager._transition_title_out_of_ripping(
+            job.id, title.id, ContentType.MOVIE, expected_size=1024, actual_size=1024
+        )
+        t = await _get_title(title.id)
+        assert t.state == TitleState.MATCHED
+
+    @pytest.mark.parametrize("content_type", [ContentType.UNKNOWN, ContentType.MOVIE])
+    async def test_non_tv_with_prompt_parks_queued_not_matched(self, monkeypatch, content_type):
+        """An identity-pending job must NOT leak to MATCHED via the fs-monitor
+        path, just as it cannot via _on_title_ripped."""
+        job, title = await _seed(content_type=content_type, identity_prompt_json=_PROMPT)
+        await job_manager._transition_title_out_of_ripping(
+            job.id, title.id, content_type, expected_size=1024, actual_size=1024
+        )
+        t = await _get_title(title.id)
+        assert t.state == TitleState.QUEUED
+
+    async def test_tv_with_prompt_parks_queued(self, monkeypatch):
+        job, title = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
+        await job_manager._transition_title_out_of_ripping(
+            job.id, title.id, ContentType.TV, expected_size=1024, actual_size=1024
+        )
+        t = await _get_title(title.id)
+        assert t.state == TitleState.QUEUED
+
+    async def test_non_ripping_title_is_untouched(self, monkeypatch):
+        """Guard: only RIPPING titles are transitioned."""
+        job, title = await _seed(content_type=ContentType.TV, state=TitleState.QUEUED)
+        await job_manager._transition_title_out_of_ripping(
+            job.id, title.id, ContentType.TV, expected_size=1024, actual_size=1024
+        )
+        t = await _get_title(title.id)
+        assert t.state == TitleState.QUEUED  # unchanged (was QUEUED, not RIPPING)
