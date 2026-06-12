@@ -1107,3 +1107,28 @@ class TestSeasonPinning:
         broadcast.assert_awaited_once_with(
             job.id, None, detected_season=3, identity_prompt_json=None
         )
+
+    async def test_malformed_prompt_json_is_left_alone_and_does_not_crash(self, monkeypatch):
+        # prompt_kind() returns None for unparseable JSON, so the pin proceeds
+        # but must neither clear the payload (fail-closed interpretation of a
+        # malformed prompt belongs to _blocking_identity_prompt) nor raise.
+        coord = _make_coord()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+
+        async with _unit_session_factory() as session:
+            job = await _seed_pin_job(
+                session,
+                [
+                    (TitleState.MATCHED, "S03E01"),
+                    (TitleState.MATCHED, "S03E02"),
+                ],
+                identity_prompt_json="{not valid json",
+            )
+            await coord._maybe_pin_converged_season(session, job.id)
+            await session.refresh(job)
+            assert job.detected_season == 3
+            assert job.identity_prompt_json == "{not valid json"
+        broadcast.assert_awaited_once_with(
+            job.id, None, detected_season=3, identity_prompt_json=None
+        )

@@ -29,6 +29,12 @@ from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
+from app.services.identity_prompts import (
+    IdentityResumeResult,
+    ReIdentifyResumeResult,
+    ResumeAction,
+    mid_rip_resume_action,
+)
 from app.services.job_state_machine import JobStateMachine
 from app.services.ripping_helpers import build_title_list
 
@@ -204,7 +210,14 @@ class IdentificationCoordinator:
         self._finalize_disc_job = finalize_disc_job
 
     async def identify_disc(self, job_id: int) -> None:
-        """Identify the disc contents using MakeMKV and the Analyst."""
+        """Identify the disc contents using MakeMKV and the Analyst.
+
+        Walk-away B2 path map: the four former pre-rip parks (A unreadable
+        label, B TV-without-TMDB, C same-name collision, D unknown season) now
+        ship to RIPPING with an ``identity_prompt_json`` CTA — see
+        tests/unit/test_identify_rip_first_gates.py's module docstring for the
+        gate-by-gate table and where each seam is pinned.
+        """
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job:
@@ -361,13 +374,13 @@ class IdentificationCoordinator:
                             f"extras={extra_indices}"
                         )
 
-                # Broadcast titles discovered with full metadata
+                # Broadcast titles discovered with full metadata (db_titles is
+                # also reused by gate A's permissive selection just below).
                 titles_result = await session.execute(
                     select(DiscTitle).where(DiscTitle.job_id == job_id)
                 )
-                title_list = build_title_list(
-                    titles_result.scalars().all(), include_video_resolution=True
-                )
+                db_titles = list(titles_result.scalars().all())
+                title_list = build_title_list(db_titles, include_video_resolution=True)
                 await ws_manager.broadcast_titles_discovered(
                     job_id,
                     title_list,
@@ -383,10 +396,7 @@ class IdentificationCoordinator:
                 # titles park QUEUED under the blocking prompt (B3) and the
                 # job converges to pooled review at rip end if unanswered (B4).
                 if not job.detected_title:
-                    titles_result = await session.execute(
-                        select(DiscTitle).where(DiscTitle.job_id == job_id)
-                    )
-                    apply_permissive_title_selection(list(titles_result.scalars().all()))
+                    apply_permissive_title_selection(db_titles)
                     logger.info(
                         f"Job {job_id}: no title detected (volume label: '{job.volume_label}'), "
                         f"ripping first and prompting for a name"
@@ -1077,7 +1087,7 @@ class IdentificationCoordinator:
         name: str,
         content_type_str: str,
         season: int | None = None,
-    ) -> dict:
+    ) -> IdentityResumeResult:
         """Set a user-provided name for a disc and resume the pipeline.
 
         Accepts a job in REVIEW_NEEDED (a pre-rip park, the B4 post-rip
@@ -1145,7 +1155,7 @@ class IdentificationCoordinator:
                 # with its reason intact and the user answers again there
                 # (review-resume); matching dispatched below still proceeds.
                 target_state = JobState.RIPPING
-                resume_action = "dispatch_matches" if is_tv else "release_movie_titles"
+                resume_action: ResumeAction = mid_rip_resume_action(is_tv)
             elif has_ripped:
                 job.review_reason = None
                 if is_tv:
@@ -1192,7 +1202,7 @@ class IdentificationCoordinator:
         content_type_str: str,
         season: int | None = None,
         tmdb_id: int | None = None,
-    ) -> dict:
+    ) -> ReIdentifyResumeResult:
         """Re-identify a job with user-corrected metadata.
 
         Accepts a job in REVIEW_NEEDED (today's review answer) or RIPPING (a
@@ -1298,7 +1308,7 @@ class IdentificationCoordinator:
                 # tasks; the running rip continues and the rip-end re-read
                 # (B4) picks up the corrected identity.
                 target_state = JobState.RIPPING
-                resume_action = "dispatch_matches" if is_tv else "release_movie_titles"
+                resume_action: ResumeAction = mid_rip_resume_action(is_tv)
                 # The identify-time prefetch was skipped while the identity
                 # question was open (B2 gates B/C) — kick it now. Known season
                 # → that season; unknown → all seasons (cross-season matching).

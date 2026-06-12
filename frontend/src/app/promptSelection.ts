@@ -107,16 +107,6 @@ export function shouldAutoOpenPrompt(promptJob: Job, jobs: Job[]): boolean {
 }
 
 /**
- * Pick which jobs should surface a prompt modal — review-parked jobs and
- * (walk-away Phase B) jobs that rip with an open identity question.
- *
- * Jobs whose id is in `dismissedIds` are skipped: dismissing a prompt
- * (Escape / backdrop click) leaves the job alone (a review job stays parked;
- * a ripping job keeps ripping) and must not re-open the modal on the next
- * jobs refresh. Recovery paths stay available on the job card / compact-row
- * CTA and the Review page.
- */
-/**
  * Drop dismissed ids whose jobs no longer exist. SQLite's auto-increment
  * resets after a DEBUG reset-all-jobs, so a fresh job can reuse a
  * previously-dismissed id — without pruning, its prompt would be silently
@@ -129,6 +119,16 @@ export function pruneDismissedIds(dismissedIds: Set<number>, jobs: Job[]): void 
     }
 }
 
+/**
+ * Pick which jobs should surface a prompt modal — review-parked jobs and
+ * (walk-away Phase B) jobs that rip with an open identity question.
+ *
+ * Jobs whose id is in `dismissedIds` are skipped: dismissing a prompt
+ * (Escape / backdrop click) leaves the job alone (a review job stays parked;
+ * a ripping job keeps ripping) and must not re-open the modal on the next
+ * jobs refresh. Recovery paths stay available on the job card / compact-row
+ * CTA and the Review page.
+ */
 export function selectPromptJobs(jobs: Job[], dismissedIds: ReadonlySet<number>): PromptJobs {
     // State eligibility lives in classifyPromptJob (ripping + review for live
     // identity prompts, review-only for the review_reason fallback) — only

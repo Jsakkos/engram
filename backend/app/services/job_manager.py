@@ -39,6 +39,7 @@ from app.services.identification_coordinator import (
     NO_TITLE_REVIEW_REASON,
     IdentificationCoordinator,
 )
+from app.services.identity_prompts import BLOCKING_KINDS, ResumeAction
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     INCOMPLETE_RIP_MESSAGE,
@@ -877,7 +878,7 @@ class JobManager:
         )
         await self._apply_identity_resume_action(job_id, result["resume_action"])
 
-    async def _apply_identity_resume_action(self, job_id: int, action: str) -> None:
+    async def _apply_identity_resume_action(self, job_id: int, action: ResumeAction) -> None:
         """Run the JobManager side of an identity answer (walk-away B5).
 
         ``"start_rip"``/``"rerun_matching"``/``"resolve_movie"`` spawn a
@@ -2724,7 +2725,7 @@ class JobManager:
             return {"kind": "unknown", "reason": _FALLBACK_IDENTITY_REVIEW_REASON}
         if prompt.get("kind") == "season":
             return None
-        if prompt.get("kind") not in ("name", "reidentify"):
+        if prompt.get("kind") not in BLOCKING_KINDS:
             # Unrecognized kind (newer writer?) — fail closed, but say so.
             logger.warning(
                 f"Job {job.id}: unrecognized identity prompt kind "

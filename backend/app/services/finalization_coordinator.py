@@ -922,6 +922,8 @@ class FinalizationCoordinator:
                     f"Job {job_id}: {review_count} title(s) need review — "
                     f"deferring organization until the disc is fully resolved"
                 )
+                # Direct call: organize-outcome park, not via _park_in_review —
+                # that helper is check_job_completion-only (it retires season CTAs).
                 await self._state_machine.transition_to_review(
                     job,
                     session,

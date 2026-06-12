@@ -20,6 +20,7 @@ from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
+from app.services.identity_prompts import BLOCKING_KINDS
 from app.services.job_state_machine import JobStateMachine
 from app.services.ripping_helpers import build_title_list
 
@@ -237,7 +238,7 @@ class SimulationService:
                         job.candidates_json = candidates_json
                     # Blocking kinds (name/reidentify) park newly-ripped titles in
                     # QUEUED until the user answers — mirror _on_title_ripped's gate.
-                    is_blocking = identity_pending in ("name", "reidentify")
+                    is_blocking = identity_pending in BLOCKING_KINDS
                     if is_blocking:
                         for t in titles:
                             t.state = TitleState.QUEUED
@@ -493,7 +494,7 @@ class SimulationService:
         method returns early.  ``season`` is non-blocking; its titles flow normally.
         """
         # B4 sim convergence: blocking prompt still open → park in REVIEW_NEEDED.
-        if identity_pending in ("name", "reidentify"):
+        if identity_pending in BLOCKING_KINDS:
             from app.services.job_manager import job_manager
 
             # Re-read the prompt from the DB row (it may have been answered already).
@@ -508,12 +509,19 @@ class SimulationService:
                 prompt = None
 
             if prompt is not None:
-                await job_manager._converge_identity_pending_job(job_id, prompt)
-                logger.info(
-                    f"[SIMULATE] Job {job_id}: rip ended with open identity prompt "
-                    f"(kind={identity_pending}) → converged to REVIEW_NEEDED"
-                )
-                return
+                # Honor the convergence verdict (same shape as the real
+                # _run_ripping call site): False means the prompt was answered
+                # between our prompt read above and the convergence re-read —
+                # fall through to the normal post-rip flow with the corrected
+                # identity instead of abandoning the job mid-pipeline.
+                if await job_manager._converge_identity_pending_job(job_id, prompt):
+                    logger.info(
+                        f"[SIMULATE] Job {job_id}: rip ended with open identity prompt "
+                        f"(kind={identity_pending}) → converged to REVIEW_NEEDED"
+                    )
+                    return
+                await session.refresh(job)
+                content_type = job.content_type or content_type
 
         if content_type == ContentType.TV:
             if job_id in self._subtitle_ready:
@@ -561,7 +569,7 @@ class SimulationService:
         import random
 
         # Blocking prompt kinds — titles park in QUEUED until user answers.
-        blocking = identity_pending in ("name", "reidentify")
+        blocking = identity_pending in BLOCKING_KINDS
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)

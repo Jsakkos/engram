@@ -657,7 +657,39 @@ class TestSeasonPromptRetirementOnReviewPark:
         assert job.identity_prompt_json == NAME_PROMPT
         broadcast.assert_not_awaited()
 
+    async def test_review_park_with_malformed_prompt_json_leaves_it_and_does_not_crash(
+        self, tmp_path, monkeypatch
+    ):
+        # prompt_kind() returns None for unparseable JSON, so _park_in_review
+        # treats it like "no season CTA": the park proceeds, the payload is
+        # left for the fail-closed B4/B5 machinery, and no extra clear is sent.
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+        job_id = await _seed_job(
+            [
+                (0, "S01E01", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            detected_season=None,
+            identity_prompt_json="{not valid json",
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert job.identity_prompt_json == "{not valid json"
+        broadcast.assert_not_awaited()
+
     async def test_review_park_without_prompt_broadcasts_nothing_extra(self, tmp_path, monkeypatch):
+        # Scope: asserts _park_in_review itself emits no EXTRA broadcast (the
+        # patched ws_manager.broadcast_job_update used for the "" CTA clear).
+        # The transition_to_review state change broadcasts through the state
+        # machine's own broadcaster, which is not patched or asserted here.
         broadcast = AsyncMock()
         monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
         job_id = await _seed_job(

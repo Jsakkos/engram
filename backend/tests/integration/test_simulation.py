@@ -483,13 +483,16 @@ async def test_identity_pending_blocking_with_simulate_ripping_converges_to_revi
     assert response.status_code == 200
     job_id = response.json()["job_id"]
 
-    # Wait for the rip + convergence to finish (with a timeout)
+    # Wait for the rip + convergence to finish (with a timeout). Poll for a
+    # terminal/review state rather than "left RIPPING": the job spends a
+    # moment in IDENTIFYING before the rip task flips it, so `!= RIPPING`
+    # could break on that pre-rip state and assert against a half-run pipeline.
     deadline = 30
     for _ in range(deadline * 10):
         await asyncio.sleep(0.1)
         async with db_session() as session:
             job = await session.get(DiscJob, job_id)
-        if job and job.state != JobState.RIPPING:
+        if job and job.state in (JobState.REVIEW_NEEDED, JobState.COMPLETED, JobState.FAILED):
             break
 
     assert job is not None

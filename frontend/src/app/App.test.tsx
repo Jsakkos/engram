@@ -270,11 +270,10 @@ describe('App — B7 modal re-open race suppression', () => {
         // Modal must stay closed — dismissal recorded on submit blocks re-open.
         // After submit AnimatePresence may keep the exiting element in DOM at
         // opacity:0; a stale tick must not open a NEW dialog on top of it.
-        // We verify this by confirming the dialog element did not change identity.
+        // Either the dialog is gone (exit completed) or it is the SAME node
+        // still exiting — a different node would mean the modal re-opened.
         const afterDialog = screen.queryByRole('dialog');
-        if (afterDialog) {
-            expect(afterDialog).toBe(dialogBeforeSubmit); // same DOM node = still just exiting
-        }
+        expect(afterDialog === null || afterDialog === dialogBeforeSubmit).toBe(true);
     });
 
     it('reidentify submit + stale tick: modal stays closed', async () => {
@@ -299,11 +298,40 @@ describe('App — B7 modal re-open race suppression', () => {
             rerender();
         });
 
-        // Either the dialog is gone (exit completed) or it's the same exiting node.
+        // Either the dialog is gone (exit completed) or it is the SAME node
+        // still exiting — a different node would mean the modal re-opened.
         const afterDialog = screen.queryByRole('dialog');
-        if (afterDialog) {
-            expect(afterDialog).toBe(dialogBeforeSubmit);
-        }
+        expect(afterDialog === null || afterDialog === dialogBeforeSubmit).toBe(true);
+    });
+});
+
+describe('App — auto-opened modal survives a new active job', () => {
+    const reidentifyPrompt = JSON.stringify({ kind: 'reidentify', reason: 'Ambiguous title.' });
+
+    it('an auto-opened reidentify modal STAYS open when a second job becomes active', async () => {
+        // The only-active-job rule (P13) gates auto-OPENING; it deliberately
+        // never auto-CLOSES. Yanking an open modal away mid-typing because an
+        // unrelated disc started ripping would lose the user's input.
+        const job = makeJob({
+            id: 6,
+            state: 'ripping',
+            detected_title: 'Frasier',
+            identity_prompt_json: reidentifyPrompt,
+        });
+        mockJobs([job]);
+        const { rerender } = renderApp();
+
+        const dialog = await screen.findByRole('dialog');
+        expect(screen.getByText(/re-identify disc/i)).toBeInTheDocument();
+
+        // A second job becomes active — the auto-open condition is now false.
+        act(() => {
+            mockJobs([job, makeJob({ id: 7, state: 'ripping', volume_label: 'OTHER_DISC' })]);
+            rerender();
+        });
+
+        // Same dialog node, still open — not closed and not re-mounted.
+        expect(screen.getByRole('dialog')).toBe(dialog);
     });
 });
 

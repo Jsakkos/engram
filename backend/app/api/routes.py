@@ -35,6 +35,7 @@ from app.matcher.episode_identification import reference_coverage
 from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
+from app.services.identity_prompts import BLOCKING_KINDS
 
 logger = logging.getLogger(__name__)
 
@@ -144,9 +145,10 @@ class JobResponse(BaseModel):
     tmdb_year: int | None = None
     destination_mode: str = "library"
     created_at: datetime | str | None = None
-    # Non-blocking identity CTA for rip-first jobs (walk-away Phase B). Raw JSON
-    # string: {"kind": "name"|"season"|"reidentify", "reason": "<human text>"}.
-    # Null when no prompt is pending. Nothing sets this in production yet (B2-B5).
+    # Identity CTA for rip-first jobs (walk-away Phase B). Raw JSON string:
+    # {"kind": "name"|"season"|"reidentify", "reason": "<human text>"}.
+    # Null when no prompt is pending; set by identify_disc's B2 gates and
+    # cleared by the answer endpoints / B4 rip-end convergence.
     identity_prompt_json: str | None = None
 
     model_config = {"from_attributes": True}
@@ -220,9 +222,7 @@ class JobDetailResponse(BaseModel):
     # JSON list of same-name TMDB twins (e.g. Frasier 1993 + 2023) recorded at
     # identify time; lets the UI offer "did you mean ...?" on a wrong-show review.
     candidates_json: str | None = None
-    # Non-blocking identity CTA for rip-first jobs (walk-away Phase B). Raw JSON
-    # string: {"kind": "name"|"season"|"reidentify", "reason": "<human text>"}.
-    # Null when no prompt is pending. Nothing sets this in production yet (B2-B5).
+    # Identity CTA for rip-first jobs (walk-away Phase B) — see JobResponse.
     identity_prompt_json: str | None = None
     # Transient auto-resolution note (e.g. "Resolving episode conflicts — pass 2 of 3"
     # / "Deep re-matching low-confidence titles — pass 1 of 3"). Set while the
@@ -1075,7 +1075,13 @@ async def set_job_name(
 
     from app.services.job_manager import job_manager
 
-    await job_manager.set_name_and_resume(job.id, req.name, req.content_type, req.season)
+    try:
+        await job_manager.set_name_and_resume(job.id, req.name, req.content_type, req.season)
+    except ValueError as e:
+        # TOCTOU: the state check above read a snapshot; the coordinator
+        # re-validates on a fresh row and raises if the job moved on (e.g.
+        # the rip finished and organized between the check and the call).
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return {"status": "ok", "job_id": job.id}
 
 
@@ -1106,7 +1112,14 @@ async def re_identify_job(
 
     from app.services.job_manager import job_manager
 
-    await job_manager.re_identify_job(job.id, req.title, req.content_type, req.season, req.tmdb_id)
+    try:
+        await job_manager.re_identify_job(
+            job.id, req.title, req.content_type, req.season, req.tmdb_id
+        )
+    except ValueError as e:
+        # TOCTOU: the state check above read a snapshot; the coordinator
+        # re-validates on a fresh row and raises if the job moved on.
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return {"status": "re-identifying", "job_id": job.id}
 
 
@@ -2197,7 +2210,8 @@ async def bootstrap_accept(
 # --- Simulation Endpoints (debug mode only) ---
 
 
-_VALID_IDENTITY_PENDING = {"name", "season", "reidentify"}
+# Blocking kinds park titles; "season" is the one non-blocking shortcut CTA.
+_VALID_IDENTITY_PENDING = BLOCKING_KINDS | {"season"}
 
 
 class SimulateDiscRequest(BaseModel):

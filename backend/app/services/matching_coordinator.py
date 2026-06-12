@@ -65,9 +65,11 @@ def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int])
     )
 
 
-# Season component of a matched_episode code ("S03E07" → 3). Anchored match, so
-# non-episode values ("extra", None, free text) simply don't parse and are
-# ignored by the season-pin convergence rule. Tolerant of zero-padding, same as
+# Season component of a matched_episode code ("S03E07" → 3). Used via
+# ``.match`` — PREFIX-anchored only: non-episode values like "extra"/None don't
+# parse and are ignored by the season-pin convergence rule, but a string that
+# merely STARTS with an episode code would (matched_episode is matcher-emitted,
+# so that's fine in practice). Tolerant of zero-padding, same as
 # _same_episode_code below and finalization_coordinator's _EP_CODE_RE.
 _SEASON_FROM_EP_CODE_RE = re.compile(r"[Ss](\d{1,3})[Ee]\d{1,3}")
 
