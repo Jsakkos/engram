@@ -79,6 +79,7 @@ class SimulationService:
         simulate_ripping = params.get("simulate_ripping", False)
         rip_speed_multiplier = params.get("rip_speed_multiplier", 10)
         title_params = params.get("titles", [])
+        identity_pending = params.get("identity_pending")
 
         content_type = ContentType(content_type_str)
         effective_season = detected_season if content_type == ContentType.TV else None
@@ -200,15 +201,46 @@ class SimulationService:
                     total_titles=len(title_params),
                 )
             elif simulate_ripping:
+                # Apply identity_prompt_json before spawning the rip task so the
+                # RIPPING broadcast inside _simulate_ripping carries it.
+                if identity_pending:
+                    prompt_json, candidates_json = self._build_identity_prompt(
+                        identity_pending, detected_title or volume_label
+                    )
+                    job.identity_prompt_json = prompt_json
+                    if candidates_json is not None:
+                        job.candidates_json = candidates_json
+                    await session.commit()
                 task = asyncio.create_task(
                     with_job_log_context(
                         job.id,
-                        self._simulate_ripping(job.id, titles, rip_speed_multiplier, content_type),
+                        self._simulate_ripping(
+                            job.id,
+                            titles,
+                            rip_speed_multiplier,
+                            content_type,
+                            identity_pending=identity_pending,
+                        ),
                     )
                 )
                 task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task
             else:
+                # Static RIPPING — set prompt on the DB row and broadcast it.
+                identity_prompt_json: str | None = None
+                if identity_pending:
+                    identity_prompt_json, candidates_json = self._build_identity_prompt(
+                        identity_pending, detected_title or volume_label
+                    )
+                    job.identity_prompt_json = identity_prompt_json
+                    if candidates_json is not None:
+                        job.candidates_json = candidates_json
+                    # Blocking kinds (name/reidentify) park newly-ripped titles in
+                    # QUEUED until the user answers — mirror _on_title_ripped's gate.
+                    is_blocking = identity_pending in ("name", "reidentify")
+                    if is_blocking:
+                        for t in titles:
+                            t.state = TitleState.QUEUED
                 job.state = JobState.RIPPING
                 await session.commit()
                 await ws_manager.broadcast_job_update(
@@ -218,9 +250,48 @@ class SimulationService:
                     detected_title=detected_title,
                     detected_season=effective_season,
                     total_titles=len(title_params),
+                    identity_prompt_json=identity_prompt_json or "",
                 )
 
             return job.id
+
+    def _build_identity_prompt(
+        self,
+        kind: str,
+        title: str,
+    ) -> tuple[str, str | None]:
+        """Build ``identity_prompt_json`` + optional ``candidates_json`` for a sim job.
+
+        Returns ``(identity_prompt_json, candidates_json | None)``.
+
+        Reason literals mirror what IdentificationCoordinator emits so the
+        frontend modal routing (substring-keyed) works correctly in E2E tests.
+        """
+        if kind == "name":
+            reason = "Disc label unreadable. Please enter the title to continue."
+            return json.dumps({"kind": "name", "reason": reason}), None
+
+        if kind == "season":
+            reason = (
+                f"Identified as '{title}' but the season could not "
+                f"be detected from the disc label — select a season to continue."
+            )
+            return json.dumps({"kind": "season", "reason": reason}), None
+
+        # kind == "reidentify": seed plausible same-name candidates
+        candidates = [
+            {"tmdb_id": 100001, "name": title, "year": "1993", "popularity": 42.5},
+            {"tmdb_id": 100002, "name": title, "year": "2023", "popularity": 15.3},
+        ]
+        listed = "; ".join(f"{c['name']} ({c['year']}, #{c['tmdb_id']})" for c in candidates)
+        reason = (
+            f'"{title}" has multiple same-name shows on TMDB and the disc label has no '
+            f"year to tell them apart: {listed}. Pick the correct one."
+        )
+        return (
+            json.dumps({"kind": "reidentify", "reason": reason}),
+            json.dumps(candidates),
+        )
 
     async def simulate_disc_insert_realistic(self, params: dict) -> int:
         """Simulate disc insertion using real MKV files from staging."""
@@ -412,8 +483,38 @@ class SimulationService:
         session: AsyncSession,
         *,
         subtitle_timeout: float,
+        identity_pending: str | None = None,
     ) -> None:
-        """Move a simulated job from ripping into matching/organizing completion."""
+        """Move a simulated job from ripping into matching/organizing completion.
+
+        When a blocking identity prompt (``name``/``reidentify``) is still open at
+        rip-end, the job is converged to REVIEW_NEEDED via
+        ``_converge_identity_pending_job`` — same as the real B4 path — and this
+        method returns early.  ``season`` is non-blocking; its titles flow normally.
+        """
+        # B4 sim convergence: blocking prompt still open → park in REVIEW_NEEDED.
+        if identity_pending in ("name", "reidentify"):
+            from app.services.job_manager import job_manager
+
+            # Re-read the prompt from the DB row (it may have been answered already).
+            await session.refresh(job)
+            prompt_raw = job.identity_prompt_json
+            if prompt_raw:
+                try:
+                    prompt = json.loads(prompt_raw)
+                except (json.JSONDecodeError, TypeError):
+                    prompt = {"kind": identity_pending, "reason": ""}
+            else:
+                prompt = None
+
+            if prompt is not None:
+                await job_manager._converge_identity_pending_job(job_id, prompt)
+                logger.info(
+                    f"[SIMULATE] Job {job_id}: rip ended with open identity prompt "
+                    f"(kind={identity_pending}) → converged to REVIEW_NEEDED"
+                )
+                return
+
         if content_type == ContentType.TV:
             if job_id in self._subtitle_ready:
                 logger.info(f"[SIMULATE] Job {job_id}: waiting for subtitle download...")
@@ -453,9 +554,14 @@ class SimulationService:
         titles: list[DiscTitle],
         speed_multiplier: int,
         content_type: ContentType,
+        *,
+        identity_pending: str | None = None,
     ) -> None:
         """Simulate the ripping process with realistic progress updates."""
         import random
+
+        # Blocking prompt kinds — titles park in QUEUED until user answers.
+        blocking = identity_pending in ("name", "reidentify")
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -463,7 +569,20 @@ class SimulationService:
                 return
 
             job.state = JobState.RIPPING
+            # identity_prompt_json was already written to the DB row before task
+            # creation; re-read it here so the initial RIPPING broadcast carries it.
+            identity_prompt_json = job.identity_prompt_json
             await session.commit()
+
+            await ws_manager.broadcast_job_update(
+                job_id,
+                JobState.RIPPING.value,
+                content_type=(job.content_type.value if job.content_type else None),
+                detected_title=job.detected_title,
+                detected_season=job.detected_season,
+                total_titles=len(titles),
+                identity_prompt_json=identity_prompt_json or "",
+            )
 
             total_bytes = sum(t.file_size_bytes for t in titles)
             cumulative_bytes = 0
@@ -519,9 +638,16 @@ class SimulationService:
                 title_db = await session.get(DiscTitle, title.id)
                 if title_db:
                     title_db.output_filename = f"simulated_title_{title.title_index}.mkv"
-                    post_rip_state = (
-                        TitleState.QUEUED if content_type == ContentType.TV else TitleState.MATCHED
-                    )
+                    # Blocking prompt: park ripped titles in QUEUED (mirrors the
+                    # B3 _on_title_ripped gate — no identity, no dispatch).
+                    if blocking:
+                        post_rip_state = TitleState.QUEUED
+                    else:
+                        post_rip_state = (
+                            TitleState.QUEUED
+                            if content_type == ContentType.TV
+                            else TitleState.MATCHED
+                        )
                     title_db.state = post_rip_state
                     await session.commit()
                     await ws_manager.broadcast_title_update(
@@ -532,10 +658,16 @@ class SimulationService:
                         file_size_bytes=title_db.file_size_bytes,
                     )
 
-            # Move to matching
+            # Move to matching / convergence
             job = await session.get(DiscJob, job_id)
             await self._finish_simulated_rip(
-                job, job_id, titles, content_type, session, subtitle_timeout=10
+                job,
+                job_id,
+                titles,
+                content_type,
+                session,
+                subtitle_timeout=10,
+                identity_pending=identity_pending,
             )
 
     async def _simulate_subtitle_download(self, job_id: int, total: int, show_name: str) -> None:

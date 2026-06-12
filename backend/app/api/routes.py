@@ -2197,6 +2197,9 @@ async def bootstrap_accept(
 # --- Simulation Endpoints (debug mode only) ---
 
 
+_VALID_IDENTITY_PENDING = {"name", "season", "reidentify"}
+
+
 class SimulateDiscRequest(BaseModel):
     """Request model for simulating a disc insertion."""
 
@@ -2210,12 +2213,32 @@ class SimulateDiscRequest(BaseModel):
     rip_speed_multiplier: int = 10
     force_review_needed: bool = False
     review_reason: str | None = None
+    identity_pending: str | None = None
+    """Inject a walk-away identity prompt on the RIPPING job (DEBUG only).
+
+    Allowed values: ``"name"`` | ``"season"`` | ``"reidentify"``.  Sets
+    ``identity_prompt_json`` with the real reason literal the frontend keys on
+    so E2E tests exercise the actual modal routing without a physical disc.
+    Blocking kinds (``name`` / ``reidentify``) park titles in QUEUED;
+    ``season`` lets titles dispatch normally.  When ``simulate_ripping=True``
+    and a blocking prompt is pending, the completed rip converges to
+    REVIEW_NEEDED (same as the real B4 path).
+    """
 
 
 @router.post("/simulate/insert-disc", dependencies=[Depends(require_debug)])
 async def simulate_insert_disc(req: SimulateDiscRequest) -> dict:
     """Simulate a disc insertion. Only available in debug mode."""
     from app.services.job_manager import job_manager
+
+    if req.identity_pending is not None and req.identity_pending not in _VALID_IDENTITY_PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"identity_pending must be one of {sorted(_VALID_IDENTITY_PENDING)!r}, "
+                f"got {req.identity_pending!r}"
+            ),
+        )
 
     params = req.model_dump()
     if not params.get("force_review_needed") and params.get("detected_title") is None:
