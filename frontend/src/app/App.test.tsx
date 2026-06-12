@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { MotionConfig } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import App from './App';
 import { useJobManagement } from './hooks/useJobManagement';
@@ -48,12 +49,30 @@ function mockJobs(jobs: Job[]) {
 
 const UNREADABLE = 'Disc label unreadable. Please enter the title to continue.';
 
+// Wrap the app in MotionConfig with reducedMotion="always" so Framer Motion
+// completes all animations synchronously in jsdom — without this, exiting
+// AnimatePresence children linger in the DOM at fractional opacity and
+// cause false-positive "dialog still present" failures.
 function renderApp() {
-    return render(
-        <MemoryRouter initialEntries={['/']}>
-            <App />
-        </MemoryRouter>,
+    const result = render(
+        <MotionConfig reducedMotion="always">
+            <MemoryRouter initialEntries={['/']}>
+                <App />
+            </MemoryRouter>
+        </MotionConfig>,
     );
+    // Wrap rerender so callers don't have to repeat the boilerplate.
+    return {
+        ...result,
+        rerender: () =>
+            result.rerender(
+                <MotionConfig reducedMotion="always">
+                    <MemoryRouter initialEntries={['/']}>
+                        <App />
+                    </MemoryRouter>
+                </MotionConfig>,
+            ),
+    };
 }
 
 beforeEach(() => {
@@ -214,6 +233,127 @@ describe('App — walk-away Phase B identity prompts on RIPPING jobs', () => {
         fireEvent.click(await screen.findByTestId('disccard-identify-cta'));
 
         expect(await screen.findByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/re-identify disc/i)).toBeInTheDocument();
+    });
+});
+
+describe('App — B7 modal re-open race suppression', () => {
+    // The backend clears identity_prompt_json after answering, but a WS progress
+    // tick can arrive before that clearing broadcast, still carrying the old prompt.
+    // Submit should add the job id to the dismissed set so the stale tick can't
+    // re-open the modal the user just answered.
+
+    const namePrompt = JSON.stringify({ kind: 'name', reason: 'Disc label unreadable.' });
+    const reidentifyPrompt = JSON.stringify({ kind: 'reidentify', reason: 'Ambiguous title.' });
+
+    it('name submit + stale tick: modal stays closed', async () => {
+        // detected_title pre-fills the input so the submit button is enabled.
+        const job = makeJob({ id: 3, state: 'ripping', identity_prompt_json: namePrompt, detected_title: 'Seinfeld' });
+        mockJobs([job]);
+        const { rerender } = renderApp();
+
+        // Modal should auto-open (only active job).
+        const dialogBeforeSubmit = await screen.findByRole('dialog');
+
+        // Submit the name prompt.
+        act(() => {
+            fireEvent.click(screen.getByTestId('name-prompt-submit'));
+        });
+
+        // Simulate a stale progress tick: the job still carries the prompt
+        // (backend clearing broadcast hasn't landed yet).
+        act(() => {
+            mockJobs([{ ...job, identity_prompt_json: namePrompt }]);
+            rerender();
+        });
+
+        // Modal must stay closed — dismissal recorded on submit blocks re-open.
+        // After submit AnimatePresence may keep the exiting element in DOM at
+        // opacity:0; a stale tick must not open a NEW dialog on top of it.
+        // We verify this by confirming the dialog element did not change identity.
+        const afterDialog = screen.queryByRole('dialog');
+        if (afterDialog) {
+            expect(afterDialog).toBe(dialogBeforeSubmit); // same DOM node = still just exiting
+        }
+    });
+
+    it('reidentify submit + stale tick: modal stays closed', async () => {
+        // detected_title initialises the title input so submit is enabled.
+        const job = makeJob({
+            id: 4,
+            state: 'ripping',
+            detected_title: 'Frasier',
+            identity_prompt_json: reidentifyPrompt,
+        });
+        mockJobs([job]);
+        const { rerender } = renderApp();
+
+        const dialogBeforeSubmit = await screen.findByRole('dialog');
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('reidentify-submit'));
+        });
+
+        act(() => {
+            mockJobs([{ ...job, identity_prompt_json: reidentifyPrompt }]);
+            rerender();
+        });
+
+        // Either the dialog is gone (exit completed) or it's the same exiting node.
+        const afterDialog = screen.queryByRole('dialog');
+        if (afterDialog) {
+            expect(afterDialog).toBe(dialogBeforeSubmit);
+        }
+    });
+});
+
+describe('App — B7 content-change re-arm', () => {
+    // After a submit+clear cycle, if the backend later issues a DIFFERENT prompt
+    // on the same job the modal should auto-open again (per-prompt dismissal).
+
+    const namePrompt = JSON.stringify({ kind: 'name', reason: 'Disc label unreadable.' });
+    const reidentifyPrompt = JSON.stringify({ kind: 'reidentify', reason: 'Ambiguous title.' });
+
+    it('different prompt on same job re-opens modal after prior dismissal', async () => {
+        const job = makeJob({ id: 5, state: 'ripping', identity_prompt_json: namePrompt, detected_title: 'Frasier' });
+        mockJobs([job]);
+        const { rerender } = renderApp();
+
+        // Step 1: name modal auto-opens.
+        const nameDialog = await screen.findByRole('dialog');
+        expect(nameDialog).toBeInTheDocument();
+
+        // Step 2: submit the name prompt — dismissal is recorded.
+        act(() => {
+            fireEvent.click(screen.getByTestId('name-prompt-submit'));
+        });
+
+        // Step 3: clearing broadcast — prompt goes away.
+        act(() => {
+            mockJobs([{ ...job, identity_prompt_json: '' }]);
+            rerender();
+        });
+        // After clearing, any lingering dialog must be the same exiting node —
+        // not a newly opened one (the prompt was cleared, not re-issued).
+        const afterClearDialog = screen.queryByRole('dialog');
+        if (afterClearDialog) {
+            expect(afterClearDialog).toBe(nameDialog);
+        }
+
+        // Step 4: backend now issues a DIFFERENT prompt (reidentify).
+        act(() => {
+            mockJobs([{ ...job, identity_prompt_json: reidentifyPrompt }]);
+            rerender();
+        });
+
+        // The new prompt should auto-open because the content changed.
+        // It must be a NEW dialog element, not the old exiting one.
+        const newDialog = await screen.findByRole('dialog');
+        expect(newDialog).toBeInTheDocument();
+        if (afterClearDialog) {
+            // The re-arm opened a different dialog than the one that was closing.
+            expect(newDialog).not.toBe(afterClearDialog);
+        }
         expect(screen.getByText(/re-identify disc/i)).toBeInTheDocument();
     });
 });

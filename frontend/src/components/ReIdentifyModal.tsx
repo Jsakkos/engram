@@ -649,6 +649,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                                 type="button"
                                 onClick={handleSubmit}
                                 disabled={!title.trim()}
+                                data-testid="reidentify-submit"
                                 whileHover={title.trim() ? { scale: 1.02 } : {}}
                                 whileTap={title.trim() ? { scale: 0.97 } : {}}
                                 style={{

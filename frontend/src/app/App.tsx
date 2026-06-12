@@ -181,9 +181,36 @@ function MainDashboard() {
   // below). We never auto-CLOSE a modal here just because another job became
   // active — only a vanished candidate (resolved / dismissed / removed) closes
   // it — so a manually opened prompt is never yanked shut by a jobs refresh.
+  //
+  // B7 race suppression: dismissal is per-PROMPT, not per-job. Submit/cancel
+  // suppress THIS question only. The effect below re-arms for a DIFFERENT
+  // non-empty identity_prompt_json on the same job (e.g. name prompt answered,
+  // then a reidentify prompt appears later).
   const dismissedPromptIdsRef = useRef<Set<number>>(new Set());
+  // Tracks the last-seen non-empty identity_prompt_json per job id so we can
+  // detect when a new/different prompt arrives and un-dismiss that job.
+  const lastSeenPromptJsonRef = useRef<Map<number, string>>(new Map());
   useEffect(() => {
     pruneDismissedIds(dismissedPromptIdsRef.current, jobs);
+
+    // Content-change un-dismiss: if a job now carries a DIFFERENT non-empty
+    // identity_prompt_json than the last time we saw it, the backend has issued
+    // a new question — the old dismissal no longer applies. Remove the id from
+    // the dismissed set so the new prompt can auto-open if eligible.
+    // When the prompt clears ("" / null), just update the tracking map without
+    // un-dismissing — the job resolved, it wasn't re-prompted.
+    for (const job of jobs) {
+      const current = job.identity_prompt_json || '';
+      const last = lastSeenPromptJsonRef.current.get(job.id) ?? '';
+      if (current !== last) {
+        if (current) {
+          // A new/different non-empty prompt arrived — un-dismiss so it can fire.
+          dismissedPromptIdsRef.current.delete(job.id);
+        }
+        lastSeenPromptJsonRef.current.set(job.id, current);
+      }
+    }
+
     const {
       namePromptJob: needsName,
       seasonPromptJob: needsSeason,
@@ -718,6 +745,11 @@ function MainDashboard() {
             job={namePromptJob}
             initialTitle={namePromptJob.detected_title ?? ''}
             onSubmit={(name, contentType, season) => {
+              // B7: dismiss before closing so a progress tick inside the POST
+              // round-trip window can't re-select this job and re-open the modal.
+              // Dismissal is per-prompt — content-change un-dismiss (above) will
+              // re-arm the job if the backend issues a different prompt later.
+              dismissedPromptIdsRef.current.add(namePromptJob.id);
               setJobName(namePromptJob.id, name, contentType, season);
               setNamePromptJob(null);
             }}
@@ -739,6 +771,8 @@ function MainDashboard() {
           <SeasonPromptModal
             job={seasonPromptJob}
             onSubmit={(season) => {
+              // B7: dismiss before closing to block re-open during POST round-trip.
+              dismissedPromptIdsRef.current.add(seasonPromptJob.id);
               setJobName(
                 seasonPromptJob.id,
                 seasonPromptJob.detected_title ?? seasonPromptJob.volume_label,
@@ -765,6 +799,11 @@ function MainDashboard() {
           <ReIdentifyModal
             job={reIdentifyTarget}
             onSubmit={(title, contentType, season, tmdbId) => {
+              // B7: dismiss before closing. The reidentify modal never auto-closes
+              // (see note below), so without this a stale identity_prompt_json on
+              // the next progress tick would re-open the modal the user just
+              // answered and double-POST on a confused re-submit.
+              dismissedPromptIdsRef.current.add(reIdentifyTarget.id);
               reIdentifyJob(reIdentifyTarget.id, title, contentType, season, tmdbId);
               setReIdentifyTarget(null);
             }}
