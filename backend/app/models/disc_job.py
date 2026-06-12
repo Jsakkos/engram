@@ -114,7 +114,7 @@ class DiscJob(SQLModel, table=True):
     # RIPPING with an open identity question; cleared when the user answers (B5)
     # or the answer becomes moot (job reaches COMPLETED/FAILED); converted to
     # review_reason if REVIEW_NEEDED is still needed at rip-end (B4).
-    # Owned by: IdentificationCoordinator (set) / FinalizationCoordinator (convert).
+    # Owned by: IdentificationCoordinator (set) / JobManager._converge_identity_pending_job (convert).
     identity_prompt_json: str | None = Field(default=None)
     conflict_status: str | None = None  # Transient note while auto-resolving episode conflicts
     # Why classification ran without TMDB (key absent/rejected) — shown verbatim

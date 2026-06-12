@@ -2182,7 +2182,9 @@ class JobManager:
             # the locals captured at setup go stale once mid-rip identity
             # answers (B5) can mutate the job, so the fresh DB values drive the
             # TV-vs-movie fork below. (No-op today: nothing mutates mid-rip yet,
-            # so the locals and the row agree.)
+            # so the locals and the row agree.) volume_label is deliberately NOT
+            # re-read: answers set detected_title, never the label; the movie
+            # organize fallback may keep the setup-time label.
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
                 if not job:
