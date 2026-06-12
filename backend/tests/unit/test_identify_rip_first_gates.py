@@ -67,6 +67,51 @@ class TestApplyPermissiveTitleSelection:
     def test_empty_list_is_noop(self):
         apply_permissive_title_selection([])  # must not raise
 
+    def test_finalized_play_all_not_reselected(self):
+        """Regression: a long COMPLETED+is_extra play-all must stay deselected
+        even when it is the longest title on the disc (B2 review regression)."""
+        # Play-all concat row: longest title, already finalized before rip.
+        play_all = DiscTitle(
+            job_id=1,
+            title_index=0,
+            duration_seconds=5000,
+            state=TitleState.COMPLETED,
+            is_extra=True,
+            is_selected=False,
+        )
+        # Episode-length PENDING titles that should be selected.
+        ep1 = DiscTitle(job_id=1, title_index=1, duration_seconds=1320, state=TitleState.PENDING)
+        ep2 = DiscTitle(job_id=1, title_index=2, duration_seconds=1380, state=TitleState.PENDING)
+        # Short PENDING title that falls below the 900-s floor.
+        short = DiscTitle(job_id=1, title_index=3, duration_seconds=300, state=TitleState.PENDING)
+
+        apply_permissive_title_selection([play_all, ep1, ep2, short])
+
+        # Finalized play-all: must remain deselected and COMPLETED.
+        assert play_all.is_selected is False
+        assert play_all.state == TitleState.COMPLETED
+        # Episode titles above floor: selected.
+        assert ep1.is_selected is True
+        assert ep2.is_selected is True
+        # Short title: deselected.
+        assert short.is_selected is False
+
+    def test_all_ineligible_is_noop(self):
+        """When every title is finalized/extra the helper must not select anything."""
+        play_all = DiscTitle(
+            job_id=1,
+            title_index=0,
+            duration_seconds=5000,
+            state=TitleState.COMPLETED,
+            is_extra=True,
+            is_selected=False,
+        )
+        apply_permissive_title_selection([play_all])
+
+        # Nothing should be selected.
+        assert play_all.is_selected is False
+        assert play_all.state == TitleState.COMPLETED
+
 
 def _make_analysis(
     content_type,

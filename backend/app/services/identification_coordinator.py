@@ -61,14 +61,23 @@ def apply_permissive_title_selection(titles: list[DiscTitle]) -> None:
     bar, the single longest title, so the disc always produces something to
     identify post-rip. No-op on an empty list (identification already fails a
     disc with no titles before selection).
+
+    Only PENDING, non-extra titles are eligible. Titles finalized before rip
+    (e.g. Play-All concat rows set to COMPLETED+is_extra by the TV branch) must
+    not be re-selected — doing so wastes rip time on a multi-hour concat and
+    adds an output_filename to a row that was intentionally finalized. When no
+    eligible titles remain (all finalized), the helper is a no-op.
     """
     if not titles:
         return
-    keep = [t for t in titles if (t.duration_seconds or 0) >= PERMISSIVE_MIN_DURATION_SECONDS]
+    eligible = [t for t in titles if t.state == TitleState.PENDING and not t.is_extra]
+    if not eligible:
+        return
+    keep = [t for t in eligible if (t.duration_seconds or 0) >= PERMISSIVE_MIN_DURATION_SECONDS]
     if not keep:
-        keep = [max(titles, key=lambda t: t.duration_seconds or 0)]
+        keep = [max(eligible, key=lambda t: t.duration_seconds or 0)]
     keep_ids = {id(t) for t in keep}
-    for t in titles:
+    for t in eligible:
         t.is_selected = id(t) in keep_ids
 
 
