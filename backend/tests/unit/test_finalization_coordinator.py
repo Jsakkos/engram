@@ -604,8 +604,14 @@ class TestSeasonPromptRetirementOnReviewPark:
         job, _ = await _load(job_id)
         assert job.state == JobState.REVIEW_NEEDED
         assert job.identity_prompt_json is None
-        # The "" clear rides a dedicated job_update (state=None → unchanged).
-        broadcast.assert_awaited_once_with(job_id, None, identity_prompt_json="")
+        # ONE combined message: new state + review_reason + the "" CTA clear
+        # (transition broadcasts with broadcast=False, so no separate clear).
+        broadcast.assert_awaited_once_with(
+            job_id,
+            JobState.REVIEW_NEEDED.value,
+            review_reason="1 title(s) need manual episode assignment",
+            identity_prompt_json="",
+        )
 
     async def test_no_subtitles_park_clears_season_prompt(self, tmp_path, monkeypatch):
         broadcast = AsyncMock()
@@ -630,7 +636,13 @@ class TestSeasonPromptRetirementOnReviewPark:
         job, _ = await _load(job_id)
         assert job.state == JobState.REVIEW_NEEDED
         assert job.identity_prompt_json is None
-        broadcast.assert_awaited_once_with(job_id, None, identity_prompt_json="")
+        # ONE combined message carrying the #370 honest-review reason + "" clear.
+        broadcast.assert_awaited_once()
+        args, kwargs = broadcast.call_args
+        assert args[0] == job_id
+        assert args[1] == JobState.REVIEW_NEEDED.value
+        assert kwargs["identity_prompt_json"] == ""
+        assert "no reference subtitles" in kwargs["review_reason"]
 
     async def test_review_park_leaves_name_prompt_for_answer_endpoints(self, tmp_path, monkeypatch):
         # Blocking prompts belong to the B4/B5 stall-path machinery — the

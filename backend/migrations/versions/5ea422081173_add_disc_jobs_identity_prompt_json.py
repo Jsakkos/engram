@@ -10,9 +10,9 @@ needed (Phase B4). Nullable — absence means no pending prompt.
 Frozen builds skip Alembic entirely and converge via database.py::_add_missing_columns(),
 which honours nullable → DEFAULT NULL — the two paths must stay in agreement.
 
-Revision ID: f0a1b2c3d4e5
+Revision ID: 5ea422081173
 Revises: 37a6eb38baeb
-Create Date: 2026-06-11 18:00:00.000000
+Create Date: 2026-06-12 19:39:37.690159
 
 """
 
@@ -22,7 +22,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "f0a1b2c3d4e5"
+revision: str = "5ea422081173"
 down_revision: str | Sequence[str] | None = "37a6eb38baeb"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

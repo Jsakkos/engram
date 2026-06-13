@@ -336,6 +336,18 @@ class TestDispatchPendingMatches:
         assert await job_manager.dispatch_pending_matches(job.id) == 0
         dispatch.assert_not_called()
 
+    async def test_non_tv_job_is_skipped(self, tmp_path, monkeypatch):
+        """Defensive guard: a misrouted caller passing a MOVIE job must not
+        episode-match its titles, even with QUEUED titles whose files exist."""
+        job, _ = await _seed(content_type=ContentType.MOVIE)
+        f = tmp_path / "movie_t01.mkv"
+        f.write_text("")
+        await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
+        _discdb, dispatch = self._stub_dispatch(monkeypatch)
+
+        assert await job_manager.dispatch_pending_matches(job.id) == 0
+        dispatch.assert_not_called()
+
 
 @pytest.mark.unit
 class TestRerunMatching:

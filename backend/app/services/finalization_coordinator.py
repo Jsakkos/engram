@@ -577,8 +577,9 @@ class FinalizationCoordinator:
         season CTA would be a competing second control for the same question.
         Mutates the job in place WITHOUT committing, so the clear rides the
         same commit as the state transition. Returns True when a prompt was
-        cleared; the caller then broadcasts the ``identity_prompt_json=""``
-        clear (the transition's own broadcast doesn't carry the field).
+        cleared; the caller then emits ONE combined broadcast (new state +
+        review_reason + the ``identity_prompt_json=""`` clear) rather than a
+        state broadcast followed by a separate clear.
 
         Blocking kinds (name/reidentify) are deliberately untouched: the B4
         stall path leaves them on review-parked jobs for the answer endpoints
@@ -599,11 +600,24 @@ class FinalizationCoordinator:
         must keep their blocking prompts and call the state machine directly.
         """
         cleared = self._retire_season_prompt(job)
-        await self._state_machine.transition_to_review(job, session, reason=reason)
-        if cleared:
-            # "" clears the CTA on the frontend merge (enumerated-WS clear
-            # pattern); state=None leaves the just-broadcast state unchanged.
-            await ws_manager.broadcast_job_update(job.id, None, identity_prompt_json="")
+        if not cleared:
+            await self._state_machine.transition_to_review(job, session, reason=reason)
+            return
+        # Season CTA retired: emit ONE atomic message (new state + reason + the
+        # "" CTA clear) instead of a state broadcast followed by a separate
+        # clear. The two-message form left a window where a client re-rendering
+        # between them saw REVIEW_NEEDED with the season CTA still live and
+        # could auto-open the season modal. Dropping the second message is NOT
+        # an option: the frontend merge treats a missing/None
+        # identity_prompt_json as "unchanged", so only the explicit "" clears
+        # the CTA. Mirrors _converge_identity_pending_job (job_manager).
+        succeeded = await self._state_machine.transition_to_review(
+            job, session, reason=reason, broadcast=False
+        )
+        if succeeded:
+            await ws_manager.broadcast_job_update(
+                job.id, job.state.value, review_reason=reason, identity_prompt_json=""
+            )
 
     async def check_job_completion(self, session, job_id: int):
         """Check if all titles in a job are processed, and if so, finalize."""

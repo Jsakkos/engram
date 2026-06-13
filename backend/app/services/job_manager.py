@@ -2868,7 +2868,8 @@ class JobManager:
         does not self-check the prompt. Caller contract: this runs *episode*
         matching, so only call it for jobs resolved to TV — an answer that
         resolves the job to movie must route to the movie feature-resolution
-        path instead.
+        path instead. A defensive content-type guard returns 0 (and logs) for a
+        non-TV job so a misrouted caller can't episode-match movie titles.
 
         Idempotent at the dispatch level: only QUEUED titles qualify, and
         ``_dispatch_title_match`` skips titles with a live match task (the
@@ -2878,6 +2879,17 @@ class JobManager:
         """
         pending: list[tuple[int, Path]] = []
         async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job and job.content_type != ContentType.TV:
+                # Defensive: this runs EPISODE matching, so a caller that passed
+                # the wrong resume action (e.g. routed a movie-resolved answer
+                # here instead of the feature-resolution path) must not silently
+                # episode-match movie titles. Skip rather than corrupt.
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: dispatch_pending_matches called "
+                    f"on non-TV job (content_type={job.content_type}) — skipping"
+                )
+                return 0
             result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
             for t in result.scalars().all():
                 if t.state != TitleState.QUEUED or not t.output_filename:
