@@ -3,14 +3,26 @@
 This document enumerates exactly what Engram transmits when the fingerprint contribution
 feature is active, why each field exists, and what privacy controls are available to the
 user. It is the canonical reference for the contribution wire format as defined in
-`engram-fingerprint-server/src/schemas.ts` (`ContributionRequestSchema`) and implemented
-in `backend/app/services/contribution_uploader.py`.
+`engram-fingerprint-server/src/schemas.ts` (`ContributionRequestSchema` and
+`ContributeDiscRequestSchema`) and implemented in
+`backend/app/services/contribution_uploader.py`.
+
+Engram contributes two kinds of record, both gated behind the **same** consent toggle
+(`enable_fingerprint_contributions`) and the **same** disclosure acceptance
+(`fingerprint_disclosure_accepted`), and both covered by the same pseudonym and the same
+`/v1/forget` deletion path:
+
+1. **Audio fingerprints** — a short perceptual fingerprint of an episode's audio, sent to
+   `/v1/contribute` (§1).
+2. **Disc-layout identity records** — a pressed disc's content hash plus how its titles
+   map to episodes, sent to `/v1/contribute-disc` (§1.5). This is **release-level**
+   (factory-pressing) data, not personal: it describes the disc, not you.
 
 ---
 
-## 1. What Is Sent — Field-by-Field
+## 1. What Is Sent — Field-by-Field (Audio Fingerprint)
 
-Every contribution is a single JSON object `POST`-ed to `/v1/contribute`. The server
+Every audio-fingerprint contribution is a single JSON object `POST`-ed to `/v1/contribute`. The server
 validates it against `ContributionRequestSchema` and rejects anything that does not
 conform. The following table covers every field in that schema — nothing is omitted and
 nothing extra is sent.
@@ -46,6 +58,40 @@ The result is approximately 7 KB per episode. **It is not audio. It cannot be de
 back into audio.** It is also not a subtitle, a transcript, or any kind of text. It is a
 compact numeric signature of acoustic patterns — useful only for matching against other
 chromaprint signatures.
+
+---
+
+## 1.5 Disc-Layout Identity Records (`/v1/contribute-disc`)
+
+In addition to per-episode audio fingerprints, Engram contributes a **disc-layout identity
+record** when a disc job completes. This is a single JSON object `POST`-ed to
+`/v1/contribute-disc`, validated against `ContributeDiscRequestSchema`. Its purpose: once
+enough independent users contribute the **same** pressed disc with the **same**
+title→episode mapping, the network can recognize that disc instantly on future inserts and
+skip audio matching entirely.
+
+| Field | Type / Format | What it is | Why it exists |
+|---|---|---|---|
+| `wire_format_version` | `integer`, always `1` | Protocol version literal | Lets the server reject or migrate old/future clients |
+| `pseudonym` | `string`, UUIDv4 | The same per-install random identifier as §3 | Groups contributions for rate-limiting and the `/v1/forget` path |
+| `disc_content_hash_b64` | `string`, standard base64 (**required**) | TheDiscDB content hash of the disc (see §2) | The disc-release key the network promotes against |
+| `tmdb_id` | `integer` | TMDB numeric ID of the show or movie | Which title the disc belongs to |
+| `content_type` | `"tv"` or `"movie"` | Whether the disc is a TV-season disc or a movie | Shapes how the layout is interpreted |
+| `season` | `integer ≥ 0` or `null` | Season number (`null` for movies) | Part of the disc coordinate |
+| `titles` | `array` of title rows | The disc's full title layout (see below) | The mapping the network promotes once corroborated |
+| `client_version` | `string`, 1–100 chars | Engram version string (`app.__version__`) | Lets the server quarantine known-buggy clients |
+
+Each row in `titles` describes one track on the disc: its `title_index`,
+`duration_seconds`, `size_bytes`, an `assignment` (`episode` / `main_movie` / `extra` /
+`discarded`), the `season`/`episode` it maps to (when applicable), the local
+`match_confidence`, and the `match_source`. **No filenames, paths, or file contents are in
+these rows** — only the disc's structural layout (durations and byte sizes come from the
+disc's own directory metadata) and which episode each title was identified as.
+
+This record is **release-level, not personal**: it describes a factory-pressed disc that is
+identical for everyone who owns that pressing, exactly like the disc content hash itself
+(§2). A disc whose layout was handed to the client *by* the network (i.e. every identified
+title came from `network_disc`) is **not** re-contributed, to avoid a feedback loop.
 
 ---
 
@@ -95,9 +141,12 @@ Properties:
 
 ## 4. What Is NOT Sent
 
-The following data is explicitly **absent** from `ContributionRequestSchema` and is
-therefore never transmitted. If a field is not in that schema, the server will not
-accept it even if a modified client tried to send it.
+The following data is explicitly **absent** from `ContributionRequestSchema` **and**
+`ContributeDiscRequestSchema` and is therefore never transmitted by either path. If a field
+is not in those schemas, the server will not accept it even if a modified client tried to
+send it. (The disc-layout record's `titles` rows carry only structural metadata — track
+index, duration, byte size, assignment, and the matched episode — never filenames or
+paths.)
 
 - **File names** — the MKV filename, the staging path, the library path, or any part
   of the user's directory structure.
@@ -120,9 +169,9 @@ accept it even if a modified client tried to send it.
 ### 5.1 Opt-out toggle
 
 `enable_fingerprint_contributions` (config field, default `true`) disables all uploads
-when set to `false`. The uploader service checks this flag before every batch; if it is
-`false`, nothing leaves the machine. The toggle is exposed in the ConfigWizard settings
-UI.
+when set to `false` — **both** audio fingerprints and disc-layout records share this single
+toggle. The uploader service checks this flag before every batch of either kind; if it is
+`false`, nothing leaves the machine. The toggle is exposed in the ConfigWizard settings UI.
 
 ### 5.2 Just-in-time disclosure gate
 
@@ -134,24 +183,43 @@ enable_fingerprint_contributions == true
 AND fingerprint_disclosure_accepted == true
 ```
 
-If fingerprints are queued but the user has not yet accepted the disclosure modal, the
-uploader fires a `fingerprint_disclosure_required` WebSocket event to trigger the
-`FingerprintDisclosureModal` in the UI. Nothing is uploaded until the user explicitly
-clicks "Accept and start contributing." Clicking "Disable contributions" sets
-`enable_fingerprint_contributions = false` and no upload occurs.
+If **either** audio fingerprints **or** disc-layout records are queued but the user has not
+yet accepted the disclosure modal, the uploader fires a `fingerprint_disclosure_required`
+WebSocket event to trigger the `FingerprintDisclosureModal` in the UI — the pending count
+covers both queues. Nothing is uploaded until the user explicitly clicks "Accept and start
+contributing." Clicking "Disable contributions" sets `enable_fingerprint_contributions =
+false` and no upload occurs.
 
 ### 5.3 Local audit log
 
 Every successful upload appends a line to
-`~/.engram/cache/contribution_log.jsonl`. Each line is a JSON object:
+`~/.engram/cache/contribution_log.jsonl`. Each line is a JSON object tagged with a `kind`
+(`"episode"` or `"disc"`). An episode upload logs:
 
 ```json
 {
   "ts": "2026-05-28T12:34:56.789Z",
+  "kind": "episode",
   "contrib_id": 42,
   "tmdb_id": 1399,
   "season": 1,
   "episode": 3,
+  "pseudonym_prefix": "a1b2c3d4"
+}
+```
+
+A disc-layout upload logs the disc coordinate and a title count (never the title rows
+themselves):
+
+```json
+{
+  "ts": "2026-05-28T12:34:56.789Z",
+  "kind": "disc",
+  "contrib_id": 7,
+  "tmdb_id": 1399,
+  "content_type": "tv",
+  "season": 1,
+  "title_count": 6,
   "pseudonym_prefix": "a1b2c3d4"
 }
 ```
