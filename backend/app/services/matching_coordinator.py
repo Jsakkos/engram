@@ -336,9 +336,13 @@ class MatchingCoordinator:
         if mapping.title_type not in ("Episode", "MainMovie"):
             return False
 
+        # Provenance: "discdb" (TheDiscDB) or "network_disc" (disc-hash network).
+        # Old persisted mappings predate the field; getattr keeps them on "discdb".
+        source = getattr(mapping, "source", "discdb") or "discdb"
+        origin = "disc network" if source == "network_disc" else "TheDiscDB"
         episode_code = f"S{mapping.season:02d}E{mapping.episode:02d}"
         logger.info(
-            f"Job {job_id}: TheDiscDB pre-assigned title {title.title_index} "
+            f"Job {job_id}: {origin} pre-assigned title {title.title_index} "
             f"→ {episode_code} ({mapping.episode_title!r}) — skipping audio matching"
         )
 
@@ -346,12 +350,12 @@ class MatchingCoordinator:
         title.match_confidence = 0.99
         title.match_details = json.dumps(
             {
-                "source": "discdb",
+                "source": source,
                 "episode_title": mapping.episode_title,
                 "matched_episode": episode_code,
             }
         )
-        title.match_source = "discdb"
+        title.match_source = source
         title.discdb_match_details = title.match_details
         title.state = TitleState.MATCHED
         session.add(title)

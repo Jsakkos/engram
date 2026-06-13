@@ -1132,3 +1132,64 @@ class TestSeasonPinning:
         broadcast.assert_awaited_once_with(
             job.id, None, detected_season=3, identity_prompt_json=None
         )
+
+
+@pytest.mark.unit
+class TestTryDiscdbAssignmentSource:
+    """try_discdb_assignment stamps match_source/details from mapping.source."""
+
+    async def test_network_disc_mapping_stamps_network_source(self):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=4)
+            job_id, title_id = job.id, title.id
+
+        coord.set_discdb_mappings(
+            job_id,
+            [
+                DiscDbTitleMapping(
+                    index=4,
+                    title_type="Episode",
+                    season=1,
+                    episode=3,
+                    source="network_disc",
+                )
+            ],
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title_id)
+            assigned = await coord.try_discdb_assignment(job_id, title, session)
+            assert assigned is True
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.matched_episode == "S01E03"
+            assert t.match_source == "network_disc"
+            assert json.loads(t.match_details)["source"] == "network_disc"
+
+    async def test_default_mapping_stamps_discdb_source(self):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=4)
+            job_id, title_id = job.id, title.id
+
+        # Default source (omitted) -> "discdb".
+        coord.set_discdb_mappings(
+            job_id,
+            [DiscDbTitleMapping(index=4, title_type="Episode", season=1, episode=3)],
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title_id)
+            assigned = await coord.try_discdb_assignment(job_id, title, session)
+            assert assigned is True
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.match_source == "discdb"
+            assert json.loads(t.match_details)["source"] == "discdb"

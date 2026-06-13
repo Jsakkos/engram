@@ -113,7 +113,7 @@ export function FingerprintDisclosureModal({
                                         lineHeight: 1.3,
                                     }}
                                 >
-                                    Engram is about to start contributing audio fingerprints.
+                                    Engram is about to start contributing audio fingerprints and disc records.
                                 </h2>
                                 <motion.div
                                     style={{
@@ -139,8 +139,9 @@ export function FingerprintDisclosureModal({
                             }}
                         >
                             The local matcher just identified an episode. Engram can upload a short
-                            audio fingerprint to the Engram fingerprint network so future users
-                            identify the same episode instantly — no subtitles, no LLM call.
+                            audio fingerprint — and a disc-layout identity record for the disc — to
+                            the Engram fingerprint network so future users identify the same episode
+                            (or recognize the whole disc) instantly — no subtitles, no LLM call.
                         </p>
 
                         <div style={{ height: 1, background: sv.line }} />
@@ -165,6 +166,11 @@ export function FingerprintDisclosureModal({
                                     <>
                                         The disc release identifier from TheDiscDB (m2ts file-size hash;
                                         not the file).
+                                    </>,
+                                    <>
+                                        A disc-layout identity record — the disc&apos;s content hash plus
+                                        how its titles map to episodes (release-level data about the
+                                        pressed disc, not personal).
                                     </>,
                                     <>
                                         A random per-install ID —{' '}

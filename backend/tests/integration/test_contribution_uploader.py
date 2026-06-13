@@ -6,12 +6,13 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlmodel import select
 
 import app.services.contribution_uploader as uploader_mod
 from app.database import async_session, init_db
 from app.main import app
 from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL, AppConfig
-from app.models.fingerprint import FingerprintContribution
+from app.models.fingerprint import DiscContribution, FingerprintContribution
 
 ContributionUploader = uploader_mod.ContributionUploader
 _MAX_ATTEMPTS = uploader_mod._MAX_ATTEMPTS
@@ -32,6 +33,7 @@ async def setup_db():
     await init_db()
     async with async_session() as session:
         await session.execute(text("DELETE FROM fingerprint_contributions"))
+        await session.execute(text("DELETE FROM disc_contributions"))
         await session.execute(text("DELETE FROM disc_titles"))
         await session.execute(text("DELETE FROM disc_jobs"))
         await session.commit()
@@ -1566,3 +1568,360 @@ async def test_force_delete_still_rejects_uploaded_contribution(setup_db, client
             assert await session.get(FingerprintContribution, contrib_id) is not None
     finally:
         app.dependency_overrides.pop(require_localhost, None)
+
+
+# ---------------------------------------------------------------------------
+# Disc-layout contributions (Phase C) — DiscContribution rows drained in _drain.
+# ---------------------------------------------------------------------------
+
+_DISC_TITLES = [
+    {
+        "title_index": 0,
+        "duration_seconds": 1400,
+        "size_bytes": 1_000_000,
+        "assignment": "episode",
+        "season": 1,
+        "episode": 1,
+        "match_confidence": 0.95,
+        "match_source": "engram_asr",
+    },
+    {
+        "title_index": 1,
+        "duration_seconds": 1410,
+        "size_bytes": 1_010_000,
+        "assignment": "episode",
+        "season": 1,
+        "episode": 2,
+        "match_confidence": 0.91,
+        "match_source": "engram_asr",
+    },
+]
+
+
+def _make_disc_row(
+    *,
+    pseudonym: str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    disc_content_hash: bytes = b"\xaa\xbb\xcc\xdd",
+    tmdb_id: int = 1399,
+    content_type: str = "tv",
+    season: int | None = 1,
+    titles: list | None = None,
+    upload_status: str | None = None,
+) -> DiscContribution:
+    return DiscContribution(
+        disc_content_hash=disc_content_hash,
+        tmdb_id=tmdb_id,
+        content_type=content_type,
+        season=season,
+        titles_json=json.dumps(_DISC_TITLES if titles is None else titles),
+        pseudonym=pseudonym,
+        upload_status=upload_status,
+    )
+
+
+def _all_gates_pass_config(*, pseudonym: str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"):
+    from unittest.mock import MagicMock
+
+    return MagicMock(
+        fingerprint_server_url="https://fp.example.com",
+        contribution_pseudonym=pseudonym,
+        enable_fingerprint_contributions=True,
+        fingerprint_disclosure_accepted=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_disc_contribution_uploads_and_matches_contract(setup_db, tmp_path, monkeypatch):
+    """A pending DiscContribution uploads to /v1/contribute-disc and the body
+    matches the server contract: b64 hash decodes to raw bytes, titles parsed,
+    content_type/season/tmdb_id correct, wire_format_version 1, client_version set."""
+    import base64
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    import app as app_mod
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    disc_hash = b"\x01\x02\x03\x04\x05\x06"
+    async with async_session() as session:
+        session.add(_make_disc_row(disc_content_hash=disc_hash))
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod, "get_config", AsyncMock(return_value=_all_gates_pass_config())
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+
+    captured: dict = {}
+    captured_url: dict = {}
+
+    async def fake_post(url, **kwargs):
+        captured_url["url"] = url
+        captured.update(kwargs.get("json", {}))
+        return mock_resp
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=fake_post)
+        MockClient.return_value = mock_client
+
+        await ContributionUploader()._drain()
+
+    assert captured_url["url"] == "https://fp.example.com/v1/contribute-disc"
+    assert set(captured.keys()) == {
+        "wire_format_version",
+        "pseudonym",
+        "disc_content_hash_b64",
+        "tmdb_id",
+        "content_type",
+        "season",
+        "titles",
+        "client_version",
+    }
+    assert captured["wire_format_version"] == 1
+    assert base64.b64decode(captured["disc_content_hash_b64"]) == disc_hash
+    assert captured["tmdb_id"] == 1399
+    assert captured["content_type"] == "tv"
+    assert captured["season"] == 1
+    assert captured["titles"] == _DISC_TITLES
+    assert captured["client_version"] == app_mod.__version__
+
+    async with async_session() as session:
+        rows = (await session.execute(select(DiscContribution))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].upload_status == "success"
+    assert rows[0].uploaded_at is not None
+
+
+@pytest.mark.asyncio
+async def test_disc_contribution_writes_disc_audit_entry(setup_db, tmp_path, monkeypatch):
+    """A successful disc upload appends a JSONL audit line tagged kind='disc'."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    log_path = tmp_path / "contrib.jsonl"
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", log_path)
+
+    async with async_session() as session:
+        session.add(_make_disc_row())
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod, "get_config", AsyncMock(return_value=_all_gates_pass_config())
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        MockClient.return_value = mock_client
+        await ContributionUploader()._drain()
+
+    assert log_path.exists()
+    line = json.loads(log_path.read_text().strip())
+    assert line["kind"] == "disc"
+    assert line["tmdb_id"] == 1399
+    assert line["season"] == 1
+    assert line["content_type"] == "tv"
+    # Privacy: no raw pseudonym, only an 8-char prefix; no full titles payload.
+    assert len(line["pseudonym_prefix"]) == 8
+    assert "titles" not in line
+    assert "pseudonym" not in line
+
+
+@pytest.mark.asyncio
+async def test_disc_contribution_marks_failed_on_4xx(setup_db, monkeypatch):
+    """A 4xx (other than 429) permanently marks the disc row upload_status='failed'."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    async with async_session() as session:
+        session.add(_make_disc_row())
+        await session.commit()
+
+    exc = httpx.HTTPStatusError("400", request=MagicMock(), response=MagicMock(status_code=400))
+    monkeypatch.setattr(
+        uploader_mod, "get_config", AsyncMock(return_value=_all_gates_pass_config())
+    )
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=exc)
+        MockClient.return_value = mock_client
+        await ContributionUploader()._drain()
+
+    async with async_session() as session:
+        row = (await session.execute(select(DiscContribution))).scalars().one()
+    assert row.upload_status == "failed"
+    assert "400" in (row.upload_error_msg or "")
+
+
+@pytest.mark.asyncio
+async def test_disc_contribution_stays_pending_on_5xx(setup_db, monkeypatch):
+    """A 5xx is transient: the row stays recoverable (None) and attempts are bumped."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    async with async_session() as session:
+        session.add(_make_disc_row())
+        await session.commit()
+
+    exc = httpx.HTTPStatusError("503", request=MagicMock(), response=MagicMock(status_code=503))
+    monkeypatch.setattr(
+        uploader_mod, "get_config", AsyncMock(return_value=_all_gates_pass_config())
+    )
+    with patch("httpx.AsyncClient") as MockClient, patch("asyncio.sleep", AsyncMock()):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=exc)
+        MockClient.return_value = mock_client
+        await ContributionUploader()._drain()
+
+    async with async_session() as session:
+        row = (await session.execute(select(DiscContribution))).scalars().one()
+    assert row.upload_status is None
+    assert row.upload_attempts == _MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_disc_only_queue_triggers_disclosure_and_uploads_nothing(setup_db, monkeypatch):
+    """With ONLY a disc row queued and disclosure not accepted, the drain fires the
+    JIT disclosure event and uploads nothing (the gate considers disc rows too)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    async with async_session() as session:
+        session.add(_make_disc_row())
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                contribution_pseudonym="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                enable_fingerprint_contributions=True,
+                fingerprint_disclosure_accepted=False,
+            )
+        ),
+    )
+
+    with (
+        patch("httpx.AsyncClient") as MockClient,
+        patch(
+            "app.services.event_broadcaster.EventBroadcaster.broadcast_fingerprint_disclosure_required",
+            new_callable=AsyncMock,
+        ) as mock_broadcast,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock()
+        MockClient.return_value = mock_client
+        await ContributionUploader()._drain()
+        mock_client.post.assert_not_called()
+
+    mock_broadcast.assert_called_once()
+    assert mock_broadcast.call_args[0][0] == 1  # one item queued
+    assert mock_broadcast.call_args[0][1] == "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+
+    async with async_session() as session:
+        row = (await session.execute(select(DiscContribution))).scalars().one()
+    assert row.upload_status is None
+
+
+@pytest.mark.asyncio
+async def test_disc_contribution_skipped_when_opted_out(setup_db, monkeypatch):
+    """enable_fingerprint_contributions=False → no disc upload at all."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    async with async_session() as session:
+        session.add(_make_disc_row())
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod,
+        "get_config",
+        AsyncMock(
+            return_value=MagicMock(
+                fingerprint_server_url="https://fp.example.com",
+                enable_fingerprint_contributions=False,
+                fingerprint_disclosure_accepted=True,
+            )
+        ),
+    )
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock()
+        MockClient.return_value = mock_client
+        await ContributionUploader()._drain()
+        mock_client.post.assert_not_called()
+
+    async with async_session() as session:
+        row = (await session.execute(select(DiscContribution))).scalars().one()
+    assert row.upload_status is None
+
+
+@pytest.mark.asyncio
+async def test_mixed_drain_uploads_episode_and_disc_and_counts_both(
+    setup_db, tmp_path, monkeypatch
+):
+    """A mixed drain uploads BOTH episode and disc rows; the returned count reflects both."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.setattr(uploader_mod, "CONTRIBUTION_LOG_PATH", tmp_path / "contrib.jsonl")
+
+    async with async_session() as session:
+        session.add(
+            FingerprintContribution(
+                chromaprint_blob=_make_valid_blob(),
+                tmdb_id=1399,
+                season=1,
+                episode=7,
+                match_confidence=0.95,
+                match_source="engram_asr",
+                pseudonym="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            )
+        )
+        session.add(_make_disc_row())
+        await session.commit()
+
+    monkeypatch.setattr(
+        uploader_mod, "get_config", AsyncMock(return_value=_all_gates_pass_config())
+    )
+
+    posted_urls: list[str] = []
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+
+    async def fake_post(url, **kwargs):
+        posted_urls.append(url)
+        return mock_resp
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=fake_post)
+        MockClient.return_value = mock_client
+
+        drained = await ContributionUploader()._drain()
+
+    assert drained == 2
+    assert any(u.endswith("/v1/contribute") for u in posted_urls)
+    assert any(u.endswith("/v1/contribute-disc") for u in posted_urls)
+
+    async with async_session() as session:
+        ep = (await session.execute(select(FingerprintContribution))).scalars().one()
+        disc = (await session.execute(select(DiscContribution))).scalars().one()
+    assert ep.upload_status == "success"
+    assert disc.upload_status == "success"

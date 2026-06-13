@@ -9,17 +9,19 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 from loguru import logger
+from sqlalchemy import func
 from sqlmodel import select
 
 from app import __version__
 from app.database import async_session
 from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
-from app.models.fingerprint import FingerprintContribution
+from app.models.fingerprint import DiscContribution, FingerprintContribution
 from app.services.config_service import get_config
 from app.services.zstd_varint_codec import encode_zstd_varint, fingerprint_sha256
 
@@ -85,14 +87,21 @@ class ContributionUploader:
     async def _drain(self) -> int:
         """Upload pending contributions in back-to-back batches until empty.
 
+        Sweeps two queues with identical consent gates and retry semantics:
+        episode-level ``FingerprintContribution`` rows first, then whole-disc
+        ``DiscContribution`` rows (Phase C). Each row drains via the same
+        id-cursor + ``_CONCURRENCY`` semaphore pattern.
+
         Pre-flight privacy gate — nothing leaves the machine unless BOTH hold:
           1. the user has not opted out (enable_fingerprint_contributions),
           2. the user has accepted the disclosure (fingerprint_disclosure_accepted).
         The server URL falls back to DEFAULT_FINGERPRINT_SERVER_URL when unset, so
-        existing installs (NULL column) still engage. If data is queued but
-        consent is missing, fire the JIT disclosure event — and upload nothing.
+        existing installs (NULL column) still engage. If data is queued in EITHER
+        queue but consent is missing, fire the JIT disclosure event — and upload
+        nothing.
 
-        Returns the number of rows successfully uploaded this drain.
+        Returns the number of rows successfully uploaded this drain (episode +
+        disc combined).
         """
         # Pre-check: if disabled, do nothing — don't even open a client.
         if not (await get_config()).enable_fingerprint_contributions:
@@ -101,72 +110,133 @@ class ContributionUploader:
 
         drained = 0
         semaphore = asyncio.Semaphore(_CONCURRENCY)
+        # One client for the whole drain → HTTP keep-alive across every batch/row.
+        async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:
+            # Episode contributions first, then disc-layout contributions. Both
+            # honor the same per-batch opt-out / disclosure gates; the disclosure
+            # gate counts BOTH queues so a disc-only backlog still prompts. A
+            # consent stop (opt-out or disclosure-not-accepted) in the episode
+            # sweep halts the WHOLE drain — disc rows must not slip past it.
+            ep_drained, stop = await self._sweep_queue(
+                FingerprintContribution, self._upload_row, client, semaphore
+            )
+            drained += ep_drained
+            if not stop:
+                disc_drained, _ = await self._sweep_queue(
+                    DiscContribution, self._upload_disc_row, client, semaphore
+                )
+                drained += disc_drained
+
+        return drained
+
+    async def _sweep_queue(
+        self,
+        model: type[FingerprintContribution] | type[DiscContribution],
+        upload_row: Callable[[int, httpx.AsyncClient, str, asyncio.Semaphore], Awaitable[bool]],
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+    ) -> tuple[int, bool]:
+        """Drain one pending-contribution queue (``model``) batch-by-batch.
+
+        ``upload_row`` is the per-row coroutine for this model (``_upload_row`` for
+        episodes, ``_upload_disc_row`` for discs). Consent gates and the id-cursor
+        sweep are identical across both queues.
+
+        Returns ``(uploaded, stop_drain)`` where ``stop_drain`` is True when the
+        sweep halted on a consent gate (mid-drain opt-out or disclosure not
+        accepted) — the caller must then skip any remaining queues.
+        """
+        drained = 0
+        stop_drain = False
         # Id-cursor so the drain sweeps the pending queue exactly once. Transient
         # failures leave the row pending (upload_status=None) for a later drain to
         # retry — without the cursor those still-None rows would be re-selected
         # within this same drain forever. A *new* _drain() resets last_id to 0 and
         # re-sweeps, which is what makes a recovered server re-pick burned rows.
         last_id = 0
-        # One client for the whole drain → HTTP keep-alive across every batch/row.
-        async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:
-            while True:
-                # Re-read config each batch so a mid-drain opt-out (or disclosure
-                # revocation) takes effect within one batch, not only at the next
-                # idle tick — a long backlog drain can run for minutes.
-                cfg = await get_config()
-                if not cfg.enable_fingerprint_contributions:
-                    logger.info("fingerprint contributions disabled mid-drain; stopping")
-                    break
-                # NULL/blank stored URL means "use the default network base origin".
-                server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
+        while True:
+            # Re-read config each batch so a mid-drain opt-out (or disclosure
+            # revocation) takes effect within one batch, not only at the next
+            # idle tick — a long backlog drain can run for minutes.
+            cfg = await get_config()
+            if not cfg.enable_fingerprint_contributions:
+                logger.info("fingerprint contributions disabled mid-drain; stopping")
+                stop_drain = True
+                break
+            # NULL/blank stored URL means "use the default network base origin".
+            server_url = cfg.fingerprint_server_url or DEFAULT_FINGERPRINT_SERVER_URL
 
-                # Collect IDs in a short-lived session so the connection is
-                # released before any per-row upload work.
-                async with async_session() as session:
-                    stmt = (
-                        select(FingerprintContribution.id)
-                        .where(FingerprintContribution.upload_status.is_(None))
-                        .where(FingerprintContribution.id > last_id)
-                        .order_by(FingerprintContribution.id)
-                        .limit(_BATCH_SIZE)
-                    )
-                    row_ids = (await session.execute(stmt)).scalars().all()
-
-                if not row_ids:
-                    break
-                # Advance past this batch so transiently-failed rows (still None)
-                # aren't re-selected later in this same drain.
-                last_id = row_ids[-1]
-
-                if not cfg.fingerprint_disclosure_accepted:
-                    # Data is queued but the user hasn't consented yet. Prompt; don't upload.
-                    logger.info(
-                        "%d fingerprint contribution(s) queued but disclosure not accepted; "
-                        "prompting user",
-                        len(row_ids),
-                    )
-                    await self._notify_disclosure_required(
-                        len(row_ids), cfg.contribution_pseudonym, server_url
-                    )
-                    break
-
-                # One row failing must not abort the batch.
-                results = await asyncio.gather(
-                    *(
-                        self._upload_row(row_id, client, server_url, semaphore)
-                        for row_id in row_ids
-                    ),
-                    return_exceptions=True,
+            # Collect IDs in a short-lived session so the connection is
+            # released before any per-row upload work.
+            async with async_session() as session:
+                stmt = (
+                    select(model.id)
+                    .where(model.upload_status.is_(None))
+                    .where(model.id > last_id)
+                    .order_by(model.id)
+                    .limit(_BATCH_SIZE)
                 )
-                for r in results:
-                    if r is True:
-                        drained += 1
-                    elif isinstance(r, Exception):
-                        # r is a gathered exception, not the active one — pass it
-                        # explicitly so loguru captures its traceback.
-                        logger.opt(exception=r).warning("Contribution upload task errored")
+                row_ids = (await session.execute(stmt)).scalars().all()
 
-        return drained
+            if not row_ids:
+                break
+            # Advance past this batch so transiently-failed rows (still None)
+            # aren't re-selected later in this same drain.
+            last_id = row_ids[-1]
+
+            if not cfg.fingerprint_disclosure_accepted:
+                # Data is queued but the user hasn't consented yet. Prompt; don't
+                # upload. Count BOTH queues so the modal shows the real pending
+                # total even when only one queue tripped this gate.
+                pending = await self._count_pending()
+                logger.info(
+                    "%d contribution(s) queued but disclosure not accepted; prompting user",
+                    pending,
+                )
+                await self._notify_disclosure_required(
+                    pending, cfg.contribution_pseudonym, server_url
+                )
+                stop_drain = True
+                break
+
+            # One row failing must not abort the batch.
+            results = await asyncio.gather(
+                *(upload_row(row_id, client, server_url, semaphore) for row_id in row_ids),
+                return_exceptions=True,
+            )
+            for r in results:
+                if r is True:
+                    drained += 1
+                elif isinstance(r, Exception):
+                    # r is a gathered exception, not the active one — pass it
+                    # explicitly so loguru captures its traceback.
+                    logger.opt(exception=r).warning("Contribution upload task errored")
+
+        return drained, stop_drain
+
+    @staticmethod
+    async def _count_pending() -> int:
+        """Count rows awaiting upload across BOTH contribution queues.
+
+        Used only for the disclosure-modal display count — it must reflect disc
+        rows too so a disc-only backlog reports a truthful total.
+        """
+        async with async_session() as session:
+            ep = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(FingerprintContribution)
+                    .where(FingerprintContribution.upload_status.is_(None))
+                )
+            ).scalar_one()
+            disc = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(DiscContribution)
+                    .where(DiscContribution.upload_status.is_(None))
+                )
+            ).scalar_one()
+        return int(ep) + int(disc)
 
     async def _upload_row(
         self,
@@ -175,7 +245,7 @@ class ContributionUploader:
         server_url: str,
         semaphore: asyncio.Semaphore,
     ) -> bool:
-        """Upload one queued row under the concurrency semaphore.
+        """Upload one queued episode row under the concurrency semaphore.
 
         Uses its own short-lived DB session so each row's status update commits
         independently (the engram DB is WAL-mode, so concurrent writers are fine).
@@ -187,6 +257,26 @@ class ContributionUploader:
                 if row is None:
                     return False  # deleted between the ID query and now
                 await self._upload_one(row, session, client=client, server_url=server_url)
+                return row.upload_status == "success"
+
+    async def _upload_disc_row(
+        self,
+        row_id: int,
+        client: httpx.AsyncClient,
+        server_url: str,
+        semaphore: asyncio.Semaphore,
+    ) -> bool:
+        """Upload one queued disc-layout row under the concurrency semaphore.
+
+        Mirrors ``_upload_row`` for ``DiscContribution`` rows. Returns True when
+        the row was uploaded successfully.
+        """
+        async with semaphore:
+            async with async_session() as session:
+                row = await session.get(DiscContribution, row_id)
+                if row is None:
+                    return False  # deleted between the ID query and now
+                await self._upload_one_disc(row, session, client=client, server_url=server_url)
                 return row.upload_status == "success"
 
     async def _notify_disclosure_required(
@@ -326,13 +416,132 @@ class ContributionUploader:
             f"{contrib.upload_attempts} total attempts); left pending for retry"
         )
 
+    async def _upload_one_disc(
+        self,
+        contrib: DiscContribution,
+        session,
+        client: httpx.AsyncClient,
+        server_url: str,
+    ) -> None:
+        """Upload one whole-disc layout contribution to ``/v1/contribute-disc``.
+
+        Mirrors ``_upload_one``'s exact transient/permanent classification and
+        per-drain retry budget — the only differences are the endpoint, the body
+        shape (disc-layout per the server's ``ContributeDiscRequestSchema``), and
+        the ``kind="disc"`` audit entry.
+        """
+        try:
+            payload = {
+                "wire_format_version": 1,
+                "pseudonym": contrib.pseudonym,
+                "disc_content_hash_b64": base64.b64encode(contrib.disc_content_hash).decode(
+                    "ascii"
+                ),
+                "tmdb_id": contrib.tmdb_id,
+                "content_type": contrib.content_type,
+                "season": contrib.season,
+                "titles": json.loads(contrib.titles_json),
+                "client_version": __version__,
+            }
+        except Exception as e:
+            logger.error(
+                f"Failed to build disc payload for contrib {contrib.id}: {e}", exc_info=True
+            )
+            contrib.upload_status = "failed"
+            contrib.upload_error_msg = f"Disc payload error: {e}"
+            await session.commit()
+            return
+
+        # Per-drain retry budget (see _upload_one): _MAX_ATTEMPTS is NOT a lifetime
+        # cap. Transient exhaustion leaves the row pending for a later drain.
+        for attempt in range(_MAX_ATTEMPTS):
+            backoff: float = 2**attempt
+            try:
+                resp = await client.post(
+                    f"{server_url.rstrip('/')}/v1/contribute-disc",
+                    json=payload,
+                )
+                resp.raise_for_status()
+
+                contrib.upload_status = "success"
+                contrib.uploaded_at = datetime.now(UTC)
+                # Clear any transient-error message from a prior drain.
+                contrib.upload_error_msg = None
+                await session.commit()
+                self._append_disc_audit_log(contrib)
+                logger.info(
+                    f"Uploaded disc contribution {contrib.id} "
+                    f"(tmdb={contrib.tmdb_id} type={contrib.content_type} s{contrib.season})"
+                )
+                return
+
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                if status == 429:
+                    # Rate limited — transient. Honor Retry-After (capped, 0 = now);
+                    # fall back to exponential when the header is absent.
+                    retry_after = _retry_after_seconds(e.response.headers.get("Retry-After"))
+                    if retry_after is not None:
+                        backoff = min(retry_after, _MAX_RETRY_AFTER)
+                    contrib.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Disc contrib {contrib.id}: rate limited (429), "
+                        f"backoff {backoff}s, attempt {attempt + 1}"
+                    )
+                elif 400 <= status < 500:
+                    contrib.upload_status = "failed"
+                    contrib.upload_error_msg = f"HTTP {status} (permanent)"
+                    contrib.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Disc contrib {contrib.id}: permanent HTTP {status}; marking failed"
+                    )
+                    return
+                else:
+                    # 5xx — transient, fall through to retry
+                    contrib.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Disc contrib {contrib.id}: transient HTTP {status}, attempt {attempt + 1}"
+                    )
+
+            except httpx.HTTPError as e:
+                contrib.upload_attempts += 1
+                await session.commit()
+                logger.warning(
+                    f"Disc contrib {contrib.id}: network error, attempt {attempt + 1}: {e}"
+                )
+
+            if attempt < _MAX_ATTEMPTS - 1:
+                await asyncio.sleep(backoff)
+
+        # Transient retries exhausted for THIS drain — leave upload_status=None so a
+        # later drain re-picks the row once the server recovers (4xx already returned
+        # above with upload_status="failed").
+        contrib.upload_error_msg = (
+            f"Transient errors after {contrib.upload_attempts} attempt(s); "
+            "will retry on a later drain"
+        )
+        await session.commit()
+        logger.warning(
+            f"Disc contrib {contrib.id}: transient errors persisted this drain ("
+            f"{contrib.upload_attempts} total attempts); left pending for retry"
+        )
+
     @staticmethod
     def _append_audit_log(contrib: FingerprintContribution) -> None:
-        """Append a redacted audit line to the JSONL contribution log."""
+        """Append a redacted audit line for an episode contribution.
+
+        Tagged ``kind="episode"`` to distinguish it from disc entries (see
+        ``_append_disc_audit_log``). Carries no raw pseudonym — only an 8-char
+        prefix (enough to correlate, not to reconstruct the full UUID).
+        """
         try:
             CONTRIBUTION_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             entry = {
                 "ts": datetime.now(UTC).isoformat(),
+                "kind": "episode",
                 "contrib_id": contrib.id,
                 "tmdb_id": contrib.tmdb_id,
                 "season": contrib.season,
@@ -343,3 +552,32 @@ class ContributionUploader:
                 fh.write(json.dumps(entry) + "\n")
         except Exception:
             logger.warning("Failed to write contribution audit log", exc_info=True)
+
+    @staticmethod
+    def _append_disc_audit_log(contrib: DiscContribution) -> None:
+        """Append a redacted audit line for a whole-disc contribution.
+
+        Mirrors ``_append_audit_log``'s privacy posture — no raw pseudonym (only
+        an 8-char prefix), no titles payload. Tagged ``kind="disc"`` and carries
+        ``content_type`` + ``title_count`` instead of an episode number.
+        """
+        try:
+            CONTRIBUTION_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                title_count = len(json.loads(contrib.titles_json))
+            except Exception:
+                title_count = None
+            entry = {
+                "ts": datetime.now(UTC).isoformat(),
+                "kind": "disc",
+                "contrib_id": contrib.id,
+                "tmdb_id": contrib.tmdb_id,
+                "content_type": contrib.content_type,
+                "season": contrib.season,
+                "title_count": title_count,
+                "pseudonym_prefix": (contrib.pseudonym or "")[:8],
+            }
+            with CONTRIBUTION_LOG_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry) + "\n")
+        except Exception:
+            logger.warning("Failed to write disc contribution audit log", exc_info=True)

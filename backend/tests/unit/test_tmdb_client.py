@@ -9,6 +9,7 @@ from app.matcher import tmdb_client
 from app.matcher.tmdb_client import (
     _fetch_show_id_cached,
     clear_caches,
+    fetch_movie_details,
     fetch_season_details,
     fetch_show_details,
     fetch_show_id,
@@ -185,6 +186,38 @@ class TestLruCache:
         # The two return values are distinct objects (deepcopy contract).
         assert first is not second
         assert first["genres"] is not second["genres"]
+
+    def test_fetch_movie_details_no_key_returns_none_without_caching(self):
+        """Mirrors the show-details no-key short-circuit: without a key the
+        public wrapper returns None and never populates the inner LRU."""
+        from app.matcher.tmdb_client import _fetch_movie_details_cached
+
+        with patch("app.services.config_service.get_config_sync") as cfg:
+            cfg.return_value.tmdb_api_key = ""
+            assert fetch_movie_details(27205) is None
+        assert _fetch_movie_details_cached.cache_info().currsize == 0
+
+    def test_fetch_movie_details_returns_title_and_caches(self):
+        """A configured key fetches /movie/{id}; the title is read from the
+        ``title`` field and a second call is served from cache (one round-trip).
+        Mirrors ``test_fetch_show_details_returns_independent_dict_per_call``."""
+        with patch("app.matcher.tmdb_client.requests.get") as mock_get:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = Mock()
+            mock_response.json.return_value = {"title": "Inception", "runtime": 148}
+            mock_get.return_value = mock_response
+            with patch("app.services.config_service.get_config_sync") as cfg:
+                cfg.return_value.tmdb_api_key = "test"
+                first = fetch_movie_details(27205)
+                # Caller mutates the returned dict.
+                first["title"] = "MUTATED"
+                second = fetch_movie_details(27205)
+
+        assert mock_get.call_count == 1
+        # Mutation on the first object did NOT leak into the cached second.
+        assert second["title"] == "Inception"
+        assert first is not second
 
 
 @pytest.mark.unit

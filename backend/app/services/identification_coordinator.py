@@ -17,6 +17,10 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError
+from app.core.fingerprint_disc_classifier import (
+    identify_disc_via_network,
+    network_titles_to_mappings,
+)
 from app.core.tmdb_classifier import (
     TMDB_DEGRADED_AUTH_FAILED,
     TMDB_DEGRADED_NOT_CONFIGURED,
@@ -151,6 +155,36 @@ def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
         if fa.isdigit():
             return int(fa)
     return None
+
+
+def _resolve_tmdb_display_name(tmdb_id: int, content_type: ContentType) -> str | None:
+    """Best-effort display name for a tmdb_id (the disc network returns only an id).
+
+    TV -> the cached ``fetch_show_details`` ``name``; movie -> the cached
+    ``fetch_movie_details`` ``title``. Both are public, cached, key-aware
+    wrappers. Sync + network-bound (call via ``asyncio.to_thread``). Swallows
+    every error and returns ``None`` — the caller still applies the override
+    keyed on tmdb_id.
+    """
+    if not tmdb_id:
+        return None
+    try:
+        if content_type == ContentType.TV:
+            from app.matcher.tmdb_client import fetch_show_details
+
+            details = fetch_show_details(tmdb_id)
+            name = (details or {}).get("name")
+            return str(name) if name else None
+
+        # Movie: resolve title via the public, cached /movie/{id} wrapper.
+        from app.matcher.tmdb_client import fetch_movie_details
+
+        data = fetch_movie_details(tmdb_id)
+        title = (data or {}).get("title")
+        return str(title) if title else None
+    except Exception as e:
+        logger.warning(f"TMDB display-name lookup failed for id {tmdb_id}: {e}", exc_info=True)
+        return None
 
 
 class IdentificationCoordinator:
@@ -1421,6 +1455,44 @@ class IdentificationCoordinator:
                 logger.warning(f"Job {job_id}: {context}: {e}", exc_info=True)
                 return None
 
+        # Disc-hash network identification (walk-away Phase C). Best-effort: a
+        # confident crowd-promoted hit gives an identity (and, for the top tier,
+        # a verified episode mapping) with ZERO audio matching. Gated on the
+        # opt-in flag AND a known content hash; everything is swallowed by
+        # identify_disc_via_network so this can never break classification. The
+        # override is APPLIED below (after the analyst runs) so the analyst's
+        # base name/season are present as a fallback; ``network_signal`` being a
+        # confident-tier result also suppresses the AI fallback (no clobber).
+        network_signal = None
+        network_confident = False
+        network_content_type: ContentType | None = None
+        if getattr(config, "enable_fingerprint_identification", False) and job.content_hash:
+            network_signal = await identify_disc_via_network(
+                job.content_hash, getattr(config, "fingerprint_server_url", None)
+            )
+            if network_signal and network_signal.tier in ("canonical", "confirmed"):
+                # Map the content type up front. An unrecognized value (not
+                # "tv"/"movie") means a confident tier is carrying a garbage
+                # type — don't trust it: skip the override entirely and fall
+                # through to the normal TMDB/AI/heuristic flow.
+                network_content_type = {
+                    "tv": ContentType.TV,
+                    "movie": ContentType.MOVIE,
+                }.get(network_signal.content_type)
+                if network_content_type is None:
+                    logger.warning(
+                        f"Job {job_id}: disc network hit with unrecognized "
+                        f"content_type={network_signal.content_type!r} "
+                        f"(tier={network_signal.tier}) — ignoring (not a confident override)"
+                    )
+                else:
+                    network_confident = True
+                    logger.info(
+                        f"Job {job_id}: disc network hit — tier={network_signal.tier} "
+                        f"tmdb_id={network_signal.tmdb_id} "
+                        f"({network_signal.unique_contributors} contributors)"
+                    )
+
         # Attempt TheDiscDB lookup
         from app.core.features import DISCDB_ENABLED
 
@@ -1527,10 +1599,13 @@ class IdentificationCoordinator:
                 )
                 tmdb_signal = tv_retry
 
-        # AI-powered identification fallback (not for staging)
+        # AI-powered identification fallback (not for staging). Skipped when the
+        # disc network already resolved a confident identity — that result takes
+        # precedence and must not be clobbered by a lower-trust AI guess.
         ai_identified_name = None
         if (
             not is_staging
+            and not network_confident
             and not tmdb_signal
             and not (discdb_signal and discdb_signal.confidence >= 0.90)
             and config.ai_identification_enabled
@@ -1585,8 +1660,55 @@ class IdentificationCoordinator:
             analysis.detected_name = ai_identified_name
             analysis.classification_source = "ai"
 
+        # Disc-network override (walk-away Phase C). A confident crowd-promoted
+        # hit is authoritative: it sets identity directly from tmdb_id (the
+        # network returns no name, so the display name is resolved best-effort —
+        # a failed lookup still applies the override). For the top tier
+        # (canonical) we additionally pre-assign episodes via the EXISTING DiscDB
+        # mapping machinery (verified ±2s/±1% against scanned titles), letting
+        # try_discdb_assignment skip ASR at rip time. "confirmed" is identity
+        # only — episodes are still verified by chromaprint/ASR. This runs BEFORE
+        # the TheDiscDB block and wins over it (network_confident guards that
+        # block) so the network result is never clobbered downstream.
+        if network_confident:
+            # Recognized type guaranteed by the gate above (unrecognized types
+            # never set network_confident, so they fall through to TMDB/AI).
+            net_type = network_content_type
+            analysis.content_type = net_type
+            analysis.tmdb_id = network_signal.tmdb_id
+            analysis.confidence = 0.99 if network_signal.tier == "canonical" else 0.95
+            analysis.classification_source = "fingerprint_network"
+            analysis.needs_review = False
+
+            resolved_name = await asyncio.to_thread(
+                _resolve_tmdb_display_name, network_signal.tmdb_id, net_type
+            )
+            if resolved_name:
+                analysis.detected_name = resolved_name
+            if (
+                net_type == ContentType.TV
+                and network_signal.season is not None
+                and analysis.detected_season is None
+            ):
+                analysis.detected_season = network_signal.season
+
+            if network_signal.tier == "canonical":
+                mappings = network_titles_to_mappings(network_signal.titles, titles)
+                if mappings:
+                    self._set_discdb_mappings(job_id, mappings)
+                    job.discdb_mappings_json = json.dumps([asdict(m) for m in mappings])
+                logger.info(
+                    f"Job {job_id}: disc network canonical override — tmdb_id="
+                    f"{network_signal.tmdb_id}, {len(mappings)} verified mapping(s) applied"
+                )
+            else:
+                logger.info(
+                    f"Job {job_id}: disc network confirmed override — tmdb_id="
+                    f"{network_signal.tmdb_id} (identity only, episodes verified by ASR)"
+                )
+
         # If TheDiscDB returned a high-confidence match, override the analysis
-        if discdb_signal and discdb_signal.confidence >= 0.90:
+        if not network_confident and discdb_signal and discdb_signal.confidence >= 0.90:
             if not is_staging:
                 logger.info(
                     f"Job {job_id}: TheDiscDB override — "
@@ -1607,7 +1729,13 @@ class IdentificationCoordinator:
                 job.discdb_mappings_json = json.dumps(
                     [asdict(m) for m in discdb_signal.title_mappings]
                 )
-        elif discdb_signal:
+        elif discdb_signal and not network_confident:
+            # Symmetry with the AI fallback and the high-confidence DiscDB block:
+            # a confident network override owns identity (its tmdb_id is
+            # authoritative), so a DiscDB-derived name — possibly a different
+            # match — must not back-fill even when the network's best-effort
+            # name came back blank. The pure DiscDB path (network disabled / no
+            # hit) is unaffected.
             if not is_staging:
                 logger.info(
                     f"Job {job_id}: TheDiscDB low-confidence signal "

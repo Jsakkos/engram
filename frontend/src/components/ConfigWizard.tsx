@@ -1026,9 +1026,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                     <strong>Contribute audio fingerprints</strong>
                                     <span className="checkbox-hint">
                                         Engram extracts a perceptual audio fingerprint from each ripped title and shares
-                                        it with the community catalog so everyone&apos;s rips identify faster. Only the
-                                        fingerprint is sent — never audio, filenames, or paths. Untick to keep
-                                        fingerprints entirely on this machine.
+                                        it with the community catalog so everyone&apos;s rips identify faster. It also
+                                        contributes disc-layout identity records — a pressed disc&apos;s content hash plus
+                                        how its titles map to episodes (release-level data about the disc, not you). Only
+                                        the fingerprint and disc layout are sent — never audio, filenames, or paths. Both
+                                        share this toggle and your anonymous ID. Untick to keep everything on this machine.
                                     </span>
                                 </span>
                             </label>
