@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-13
+
+_Highlights: the walk-away workflow — drop a disc and walk away. Ripping now starts immediately even when Engram has a question about the disc (an unreadable label, an unknown season, or two same-named shows): the question rides along on the job card as a button you can answer any time, or pools into a single Needs Review visit at the end, instead of stopping the disc before it rips. Re-matching is dramatically faster thanks to a persistent on-disk transcript cache and background pre-transcription while a disc waits in review — and, with the opt-in fingerprint network, a disc the community has already mapped is recognized instantly by its content hash, pre-assigning every episode and skipping audio matching entirely._
+
 ### Added
 
 - **Drop a disc and walk away — ripping now starts immediately even when Engram has a question about the disc** — an unreadable label, a box-set disc that doesn't reveal its season, or two same-named shows used to stop the disc in review *before* ripping, so a headless-server user visited the dashboard twice: once at insert to answer, and again at the end for episode review (the exact friction raised in the follow-up discussion on #370). The disc now rips first, and the open question rides along on the job card as a button — **Name this disc**, **Select season**, or **Confirm title** — you can answer any time. Answer during the rip and matching picks up seamlessly with zero stops; ignore it and the disc finishes ripping, then pools the question into one Needs Review visit at the end. The season question usually answers itself: matching searches across seasons automatically, and once two episodes agree on a season the disc is pinned to it and the prompt quietly disappears. (#370)
