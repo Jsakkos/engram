@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -130,8 +131,8 @@ class ContributionUploader:
 
     async def _sweep_queue(
         self,
-        model: type,
-        upload_row,
+        model: type[FingerprintContribution] | type[DiscContribution],
+        upload_row: Callable[[int, httpx.AsyncClient, str, asyncio.Semaphore], Awaitable[bool]],
         client: httpx.AsyncClient,
         semaphore: asyncio.Semaphore,
     ) -> tuple[int, bool]:

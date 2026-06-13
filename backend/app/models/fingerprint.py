@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import text
+from sqlalchemy import Index, text
 from sqlmodel import Field, SQLModel
 
 
@@ -71,6 +71,12 @@ class DiscContribution(SQLModel, table=True):
     """
 
     __tablename__ = "disc_contributions"
+    # Composite index for the enqueue dedup probe, which filters on
+    # (pseudonym, disc_content_hash) (then titles_json) before every insert.
+    # Declared on the MODEL — not only the migration — because frozen builds
+    # skip Alembic and create this table via create_all over the metadata, so
+    # an index on the migration alone would never reach end users.
+    __table_args__ = (Index("ix_disc_contributions_dedup", "pseudonym", "disc_content_hash"),)
 
     id: int | None = Field(default=None, primary_key=True)
     queued_at: datetime = Field(

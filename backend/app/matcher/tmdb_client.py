@@ -517,6 +517,69 @@ def _fetch_show_details_cached(show_id: int) -> dict | None:
     return response.json()
 
 
+def fetch_movie_details(movie_id: int) -> dict | None:
+    """Public entry for ``/movie/{id}`` details; mirrors ``fetch_show_details``.
+
+    Returns the parsed TMDB movie dict (use the ``title`` field for the display
+    name) or None when the key is absent / the request fails. Short-circuits
+    WITHOUT caching when no API key is configured (see ``fetch_show_id`` for the
+    no-cache early-return rationale). Network failures are caught HERE so a
+    transient failure isn't cached by ``@lru_cache``, and every call returns a
+    ``deepcopy`` so a caller mutating a nested field can't corrupt the cached
+    entry for subsequent callers.
+    """
+    from app.services.config_service import get_config_sync
+
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return None
+
+    persistent_key = f"movie_details:{movie_id}"
+    cached_persistent = tmdb_persistent_cache.get(persistent_key)
+    if cached_persistent is not None:
+        return copy.deepcopy(cached_persistent)
+
+    try:
+        cached = _fetch_movie_details_cached(movie_id)
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to fetch movie details for ID {movie_id}: {e}", exc_info=True)
+        return None
+
+    if cached is not None:
+        tmdb_persistent_cache.put(persistent_key, cached, tmdb_persistent_cache.TTL_MOVIE)
+    return copy.deepcopy(cached) if cached is not None else None
+
+
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_movie_details_cached(movie_id: int) -> dict | None:
+    """Cached implementation for ``fetch_movie_details``. Caller guarantees the key.
+
+    Mirrors ``_fetch_show_details_cached`` — returns ``response.json()`` directly;
+    mutation protection lives in the public wrapper's per-call ``deepcopy``.
+    """
+    from app.services.config_service import get_config_sync
+
+    config = get_config_sync()
+    api_key = config.tmdb_api_key
+
+    if not api_key:
+        raise RuntimeError(
+            "_fetch_movie_details_cached called without a TMDB API key; "
+            "use the public fetch_movie_details wrapper"
+        )
+
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}"
+
+    headers, params = _tmdb_auth(api_key)
+
+    # Let RequestException propagate (see _fetch_show_details_cached) so the
+    # retry decorator can retry and lru_cache never caches a transient None.
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
 def fetch_popular_shows(page: int = 1) -> list[dict]:
     """Fetch popular TV shows from TMDB.
 
@@ -974,5 +1037,6 @@ def clear_caches() -> None:
     """
     _fetch_show_id_cached.cache_clear()
     _fetch_show_details_cached.cache_clear()
+    _fetch_movie_details_cached.cache_clear()
     _fetch_season_details_cached.cache_clear()
     tmdb_persistent_cache.clear()

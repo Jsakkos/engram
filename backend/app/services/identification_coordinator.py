@@ -160,10 +160,11 @@ def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
 def _resolve_tmdb_display_name(tmdb_id: int, content_type: ContentType) -> str | None:
     """Best-effort display name for a tmdb_id (the disc network returns only an id).
 
-    TV -> the cached ``fetch_show_details`` ``name``; movie -> ``/movie/{id}``
-    ``title`` via the same authenticated TMDB GET the runtime fetcher uses. Sync
-    + network-bound (call via ``asyncio.to_thread``). Swallows every error and
-    returns ``None`` — the caller still applies the override keyed on tmdb_id.
+    TV -> the cached ``fetch_show_details`` ``name``; movie -> the cached
+    ``fetch_movie_details`` ``title``. Both are public, cached, key-aware
+    wrappers. Sync + network-bound (call via ``asyncio.to_thread``). Swallows
+    every error and returns ``None`` — the caller still applies the override
+    keyed on tmdb_id.
     """
     if not tmdb_id:
         return None
@@ -175,14 +176,10 @@ def _resolve_tmdb_display_name(tmdb_id: int, content_type: ContentType) -> str |
             name = (details or {}).get("name")
             return str(name) if name else None
 
-        # Movie: resolve title via the public-key /movie/{id} route.
-        from app.matcher.tmdb_client import _tmdb_get_json
-        from app.services.config_service import get_config_sync
+        # Movie: resolve title via the public, cached /movie/{id} wrapper.
+        from app.matcher.tmdb_client import fetch_movie_details
 
-        api_key = get_config_sync().tmdb_api_key
-        if not api_key:
-            return None
-        data = _tmdb_get_json(f"https://api.themoviedb.org/3/movie/{tmdb_id}", api_key)
+        data = fetch_movie_details(tmdb_id)
         title = (data or {}).get("title")
         return str(title) if title else None
     except Exception as e:
@@ -1691,7 +1688,7 @@ class IdentificationCoordinator:
             if (
                 net_type == ContentType.TV
                 and network_signal.season is not None
-                and not analysis.detected_season
+                and analysis.detected_season is None
             ):
                 analysis.detected_season = network_signal.season
 

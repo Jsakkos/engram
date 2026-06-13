@@ -366,6 +366,58 @@ class TestRunClassificationNetworkDisc:
         assert applied[0].index == 0
         assert job.discdb_mappings_json is not None
 
+    async def test_network_does_not_clobber_analyst_season_zero(self, monkeypatch):
+        """A genuine Season 0 (specials/OVAs) detected by the analyst must survive
+        the network override. Season 0 is falsy, so the guard must compare with
+        ``is None`` (not ``not analysis.detected_season``) or the network's season
+        would wrongly overwrite it."""
+        analyst = MagicMock()
+        # Analyst confidently detected specials (Season 0).
+        analyst.analyze.return_value = _analysis(detected_name=None, detected_season=0)
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        # Network hit carries season=2 — it must NOT clobber the analyst's 0.
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=_net_signal(tier="confirmed", season=2)),
+        )
+        monkeypatch.setattr(
+            "app.matcher.tmdb_client.fetch_show_details",
+            Mock(return_value={"name": "Breaking Bad"}),
+        )
+
+        scanned = [self._scanned(0, 2820, 5_000_000_000)]
+        job = _job_with_hash()
+        analysis = await coord._run_classification(job, 1, scanned, None, is_staging=False)
+
+        assert analysis.classification_source == "fingerprint_network"
+        # The analyst's Season 0 is preserved — the network did not overwrite it.
+        assert analysis.detected_season == 0
+
+    async def test_network_fills_season_when_analyst_unset(self, monkeypatch):
+        """When the analyst left season unset (None), the network's season fills it."""
+        analyst = MagicMock()
+        analyst.analyze.return_value = _analysis(detected_name=None, detected_season=None)
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=_net_signal(tier="confirmed", season=2)),
+        )
+        monkeypatch.setattr(
+            "app.matcher.tmdb_client.fetch_show_details",
+            Mock(return_value={"name": "Breaking Bad"}),
+        )
+
+        scanned = [self._scanned(0, 2820, 5_000_000_000)]
+        analysis = await coord._run_classification(
+            _job_with_hash(), 1, scanned, None, is_staging=False
+        )
+
+        assert analysis.detected_season == 2
+
     async def test_confirmed_hit_is_identity_only_no_mappings(self, monkeypatch):
         analyst = MagicMock()
         analyst.analyze.return_value = _analysis(detected_name=None)

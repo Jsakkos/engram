@@ -39,7 +39,17 @@ def upgrade() -> None:
         sa.Column("upload_status", sa.String(), nullable=True),
         sa.Column("upload_error_msg", sa.String(), nullable=True),
     )
+    # Composite index for the enqueue dedup probe (filters on
+    # pseudonym + disc_content_hash before each insert). Mirrors the
+    # DiscContribution model's __table_args__ so Alembic-upgraded and
+    # create_all (frozen-build) databases converge on the same schema.
+    op.create_index(
+        "ix_disc_contributions_dedup",
+        "disc_contributions",
+        ["pseudonym", "disc_content_hash"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_disc_contributions_dedup", table_name="disc_contributions")
     op.drop_table("disc_contributions")

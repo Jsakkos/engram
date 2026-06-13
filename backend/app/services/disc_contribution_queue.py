@@ -54,7 +54,7 @@ def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None,
     """Classify a title into (assignment, season, episode).
 
     - is_extra → "extra"
-    - TV episode (matched_episode matches S<d>E<d>, not extra) → "episode"
+    - TV episode (matched_episode matches S<d>E<d>) → "episode"
     - MOVIE kept main feature (content_type MOVIE, not extra, organized) → "main_movie"
     - anything else (unmatched / skipped / discarded) → "discarded"
 
@@ -75,7 +75,7 @@ def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None,
 
     code = (title.matched_episode or "").strip()
     m = _EPISODE_RE.match(code)
-    if m and code.lower() != "extra":
+    if m:
         return "episode", int(m.group(1)), int(m.group(2))
 
     # Movie main feature: the kept, organized (COMPLETED) non-extra title on a
