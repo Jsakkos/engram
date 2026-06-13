@@ -16,6 +16,7 @@ import json
 import re
 
 from loguru import logger
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, TitleState
@@ -56,6 +57,18 @@ def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None,
     - TV episode (matched_episode matches S<d>E<d>, not extra) → "episode"
     - MOVIE kept main feature (content_type MOVIE, not extra, organized) → "main_movie"
     - anything else (unmatched / skipped / discarded) → "discarded"
+
+    Note on the TV/MOVIE asymmetry: a TV title keeps "episode" purely from its
+    SxxExx code, regardless of organize state — the code itself is the identity.
+    A MOVIE main feature has no code to key on, so it additionally requires the
+    kept/COMPLETED (organized) state before we call it "main_movie". This asymmetry
+    is intentional and conservative: without a code, organize state is the only
+    signal that the title is the feature rather than a discarded/extra track.
+
+    Note on multi-episode codes: a combined code like "S01E01E02" does NOT match
+    the single-episode _EPISODE_RE and falls through to "discarded". That is a
+    deliberate, safe under-count — better to drop the row than to emit a wrong
+    single-episode assignment (e.g. claiming the title is only S01E01).
     """
     if title.is_extra:
         return "extra", None, None
@@ -167,12 +180,37 @@ async def enqueue_disc_contribution(
         season = (
             getattr(job, "detected_season", None) if job.content_type == ContentType.TV else None
         )
+        titles_json = json.dumps(rows)
+
+        # Idempotency guard. A job can transition COMPLETED → COMPLETED again (the
+        # state machine treats a same-state transition as success and re-fires its
+        # terminal callbacks), so this enqueue can run twice for one disc. Mirror
+        # the server's dedup key — (pseudonym, disc_content_hash, titles_json) — and
+        # skip if an identical row already exists. Keying on titles_json (not the
+        # hash alone) is deliberate: a CORRECTED mapping (e.g. the user re-reviewed
+        # an episode assignment) produces a different titles_json and is NEW evidence
+        # that MUST still enqueue. Best-effort, like the rest of this function.
+        existing = (
+            await session.execute(
+                select(DiscContribution)
+                .where(DiscContribution.pseudonym == pseudonym)
+                .where(DiscContribution.disc_content_hash == disc_hash)
+                .where(DiscContribution.titles_json == titles_json)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            logger.debug(
+                f"Skipping disc contribution for {label}: already queued for this disc+mapping"
+            )
+            return
+
         row = DiscContribution(
             disc_content_hash=disc_hash,
             tmdb_id=tmdb_id_val,
             content_type=job.content_type.value,  # "tv" | "movie"
             season=season,
-            titles_json=json.dumps(rows),
+            titles_json=titles_json,
             pseudonym=pseudonym,
             upload_status=None,
         )

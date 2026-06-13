@@ -174,9 +174,23 @@ def test_unknown_source_defaults_to_engram_asr():
 # --------------------------------------------------------------------------- #
 
 
-async def _enqueue(job, titles, **kw):
+def _mock_session(existing_row=None):
+    """An AsyncMock session whose dedup SELECT returns ``existing_row``.
+
+    The enqueue runs ``(await session.execute(...)).scalar_one_or_none()`` for its
+    idempotency guard; default ``None`` means "no duplicate exists" so the insert
+    proceeds.
+    """
     session = AsyncMock()
     session.add = MagicMock()
+    result = MagicMock()
+    result.scalar_one_or_none = MagicMock(return_value=existing_row)
+    session.execute = AsyncMock(return_value=result)
+    return session
+
+
+async def _enqueue(job, titles, **kw):
+    session = _mock_session()
     defaults = dict(contributions_enabled=True, pseudonym=PSEUDO)
     defaults.update(kw)
     await enqueue_disc_contribution(session, job, titles, **defaults)
@@ -288,6 +302,82 @@ async def test_enqueue_proceeds_for_mixed_network_and_independent():
     ]
     session = await _enqueue(_tv_job(), titles)
     session.add.assert_called_once()
+
+
+# --------------------------------------------------------------------------- #
+# Idempotency guard (dedup on pseudonym + hash + titles_json)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+async def mem_session():
+    """A throwaway in-memory SQLite session (StaticPool) — never the real engram.db.
+
+    Exercises the dedup guard's real SELECT against a real table without touching
+    any on-disk database, so two enqueue calls in one DB see each other's rows.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from sqlmodel import SQLModel
+
+    eng = create_async_engine(
+        "sqlite+aiosqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with eng.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    factory = sessionmaker(eng, class_=_AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+    await eng.dispose()
+
+
+@pytest.mark.asyncio
+async def test_enqueue_same_disc_twice_inserts_once(mem_session):
+    from sqlmodel import select as _select
+
+    titles = [_title(1, matched_episode="S02E05", match_source="engram")]
+    for _ in range(2):
+        await enqueue_disc_contribution(
+            mem_session, _tv_job(), titles, contributions_enabled=True, pseudonym=PSEUDO
+        )
+        await mem_session.commit()
+
+    rows = (await mem_session.execute(_select(DiscContribution))).scalars().all()
+    assert len(rows) == 1, "second enqueue of the same disc+mapping must be a no-op"
+
+
+@pytest.mark.asyncio
+async def test_enqueue_corrected_mapping_inserts_second_row(mem_session):
+    from sqlmodel import select as _select
+
+    # Same disc + pseudonym, first mapping.
+    await enqueue_disc_contribution(
+        mem_session,
+        _tv_job(),
+        [_title(1, matched_episode="S02E05", match_source="engram")],
+        contributions_enabled=True,
+        pseudonym=PSEUDO,
+    )
+    await mem_session.commit()
+
+    # CORRECTED episode assignment → different titles_json → NEW evidence that
+    # must still enqueue (dedup keys on titles_json, not the hash alone).
+    await enqueue_disc_contribution(
+        mem_session,
+        _tv_job(),
+        [_title(1, matched_episode="S02E06", match_source="user")],
+        contributions_enabled=True,
+        pseudonym=PSEUDO,
+    )
+    await mem_session.commit()
+
+    rows = (await mem_session.execute(_select(DiscContribution))).scalars().all()
+    assert len(rows) == 2, "a corrected mapping must contribute a new row"
+    assert rows[0].titles_json != rows[1].titles_json
 
 
 # --------------------------------------------------------------------------- #
