@@ -107,6 +107,12 @@ class DiscDbTitleMapping:
     episode: int | None = None
     duration_seconds: int = 0
     size_bytes: int = 0
+    # Provenance of this mapping: "discdb" (TheDiscDB) or "network_disc" (the
+    # crowd-promoted disc-hash network). Defaulted so old persisted JSON that
+    # predates this field deserializes cleanly via DiscDbTitleMapping(**m) and
+    # so it round-trips through asdict() for new rows. Stamped onto the matched
+    # title's match_source in try_discdb_assignment.
+    source: str = "discdb"
 
 
 @dataclass

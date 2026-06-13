@@ -48,6 +48,8 @@ def _config(**kw):
         ai_identification_enabled=False,
         ai_api_key=None,
         ai_provider="anthropic",
+        enable_fingerprint_identification=False,
+        fingerprint_server_url="https://server",
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -262,3 +264,237 @@ class TestRunClassification:
         assert analysis is result
         assert analysis._discdb_signal is None
         assert analysis._tmdb_signal is None
+
+
+def _net_signal(tier="canonical", **kw):
+    from app.core.fingerprint_disc_classifier import NetworkDiscSignal, NetworkDiscTitle
+
+    base = dict(
+        tmdb_id=1396,
+        content_type="tv",
+        season=2,
+        tier=tier,
+        unique_contributors=5,
+        mean_confidence=0.9,
+        titles=[
+            NetworkDiscTitle(
+                title_index=0,
+                duration_seconds=2820,
+                size_bytes=5_000_000_000,
+                assignment="episode",
+                season=2,
+                episode=1,
+            )
+        ],
+    )
+    base.update(kw)
+    return NetworkDiscSignal(**base)
+
+
+def _job_with_hash(volume_label="THE_OFFICE_S1D1", content_hash="AB" * 16):
+    j = _job(volume_label)
+    j.content_hash = content_hash
+    return j
+
+
+@pytest.mark.unit
+class TestRunClassificationNetworkDisc:
+    """Phase C: network disc-hash identification overrides + zero-ASR mappings."""
+
+    def _scanned(self, index, duration, size):
+        return SimpleNamespace(
+            index=index, duration_seconds=duration, size_bytes=size, chapter_count=0
+        )
+
+    async def test_canonical_hit_overrides_and_sets_mappings(self, monkeypatch):
+        analyst = MagicMock()
+        analyst.analyze.return_value = _analysis(detected_name=None)
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=_net_signal(tier="canonical")),
+        )
+        # Best-effort name resolution succeeds.
+        monkeypatch.setattr(
+            "app.matcher.tmdb_client.fetch_show_details",
+            Mock(return_value={"name": "Breaking Bad"}),
+        )
+
+        scanned = [self._scanned(0, 2820, 5_000_000_000)]
+        job = _job_with_hash()
+        analysis = await coord._run_classification(job, 1, scanned, None, is_staging=False)
+
+        assert analysis.content_type == ContentType.TV
+        assert analysis.tmdb_id == 1396
+        assert analysis.classification_source == "fingerprint_network"
+        assert analysis.needs_review is False
+        assert analysis.confidence >= 0.95
+        assert analysis.detected_name == "Breaking Bad"
+        assert analysis.detected_season == 2
+        # Mappings were persisted for the rip-time auto-assign path.
+        coord._set_discdb_mappings.assert_called_once()
+        applied = coord._set_discdb_mappings.call_args[0][1]
+        assert len(applied) == 1
+        assert applied[0].source == "network_disc"
+        assert applied[0].index == 0
+        assert job.discdb_mappings_json is not None
+
+    async def test_confirmed_hit_is_identity_only_no_mappings(self, monkeypatch):
+        analyst = MagicMock()
+        analyst.analyze.return_value = _analysis(detected_name=None)
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=_net_signal(tier="confirmed")),
+        )
+        monkeypatch.setattr(
+            "app.matcher.tmdb_client.fetch_show_details",
+            Mock(return_value={"name": "Breaking Bad"}),
+        )
+
+        scanned = [self._scanned(0, 2820, 5_000_000_000)]
+        job = _job_with_hash()
+        analysis = await coord._run_classification(job, 1, scanned, None, is_staging=False)
+
+        assert analysis.content_type == ContentType.TV
+        assert analysis.tmdb_id == 1396
+        assert analysis.classification_source == "fingerprint_network"
+        assert analysis.needs_review is False
+        # Identity only — episodes verified by ASR later, so no pre-assignment.
+        coord._set_discdb_mappings.assert_not_called()
+        assert job.discdb_mappings_json is None
+
+    async def test_candidate_tier_is_noop(self, monkeypatch):
+        analyst = MagicMock()
+        result = _analysis(
+            content_type=ContentType.MOVIE, detected_name="Heuristic", confidence=0.4
+        )
+        analyst.analyze.return_value = result
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=_net_signal(tier="candidate")),
+        )
+
+        analysis = await coord._run_classification(_job_with_hash(), 1, [], None, is_staging=False)
+
+        # Below the confidence bar — existing flow untouched.
+        assert analysis is result
+        assert analysis.classification_source != "fingerprint_network"
+        coord._set_discdb_mappings.assert_not_called()
+
+    async def test_miss_is_noop(self, monkeypatch):
+        analyst = MagicMock()
+        result = _analysis(content_type=ContentType.MOVIE, detected_name="Heuristic")
+        analyst.analyze.return_value = result
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=None),
+        )
+
+        analysis = await coord._run_classification(_job_with_hash(), 1, [], None, is_staging=False)
+        assert analysis is result
+        coord._set_discdb_mappings.assert_not_called()
+
+    async def test_disabled_flag_skips_network(self, monkeypatch):
+        analyst = MagicMock()
+        analyst.analyze.return_value = _analysis(detected_name="Heuristic")
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=False))
+
+        spy = AsyncMock(return_value=_net_signal())
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network", spy
+        )
+
+        await coord._run_classification(_job_with_hash(), 1, [], None, is_staging=False)
+        spy.assert_not_called()
+
+    async def test_no_content_hash_skips_network(self, monkeypatch):
+        analyst = MagicMock()
+        analyst.analyze.return_value = _analysis(detected_name="Heuristic")
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        spy = AsyncMock(return_value=_net_signal())
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network", spy
+        )
+
+        job = _job()  # no content_hash
+        await coord._run_classification(job, 1, [], None, is_staging=False)
+        spy.assert_not_called()
+
+    async def test_network_not_clobbered_by_ai_fallback(self, monkeypatch):
+        analyst = MagicMock()
+        analyst.analyze.return_value = _analysis(detected_name=None)
+        coord = _make_coord(analyst)
+        _patch_config(
+            monkeypatch,
+            _config(
+                enable_fingerprint_identification=True,
+                tmdb_api_key="key",
+                ai_identification_enabled=True,
+                ai_api_key="aikey",
+            ),
+        )
+
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=_net_signal(tier="canonical")),
+        )
+        monkeypatch.setattr(
+            "app.matcher.tmdb_client.fetch_show_details",
+            Mock(return_value={"name": "Breaking Bad"}),
+        )
+        # TMDB label lookup fails so the AI fallback would otherwise engage.
+        tmdb_mock = Mock(return_value=None)
+        monkeypatch.setattr("app.core.tmdb_classifier.classify_from_tmdb", tmdb_mock)
+        ai_mock = AsyncMock(return_value={"title": "Wrong Show"})
+        monkeypatch.setattr("app.core.ai_identifier.identify_from_label", ai_mock)
+
+        scanned = [self._scanned(0, 2820, 5_000_000_000)]
+        analysis = await coord._run_classification(
+            _job_with_hash(), 1, scanned, None, is_staging=False
+        )
+
+        # Network identity wins; AI fallback must not run / overwrite.
+        assert analysis.classification_source == "fingerprint_network"
+        assert analysis.detected_name == "Breaking Bad"
+        assert analysis.tmdb_id == 1396
+        ai_mock.assert_not_called()
+
+    async def test_name_resolution_failure_still_applies_override(self, monkeypatch):
+        analyst = MagicMock()
+        analyst.analyze.return_value = _analysis(detected_name=None)
+        coord = _make_coord(analyst)
+        _patch_config(monkeypatch, _config(enable_fingerprint_identification=True))
+
+        monkeypatch.setattr(
+            "app.services.identification_coordinator.identify_disc_via_network",
+            AsyncMock(return_value=_net_signal(tier="canonical")),
+        )
+        # Name lookup raises -> swallowed, override still applied via tmdb_id.
+        monkeypatch.setattr(
+            "app.matcher.tmdb_client.fetch_show_details",
+            Mock(side_effect=RuntimeError("boom")),
+        )
+
+        scanned = [self._scanned(0, 2820, 5_000_000_000)]
+        analysis = await coord._run_classification(
+            _job_with_hash(), 1, scanned, None, is_staging=False
+        )
+
+        assert analysis.content_type == ContentType.TV
+        assert analysis.tmdb_id == 1396
+        assert analysis.classification_source == "fingerprint_network"
+        assert analysis.needs_review is False
