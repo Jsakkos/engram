@@ -105,7 +105,9 @@ def build_title_rows(job: DiscJob, titles: list[DiscTitle]) -> list[dict]:
                 "assignment": assignment,
                 "season": season,
                 "episode": episode,
-                "match_confidence": float(title.match_confidence or 0.0),
+                # Clamp to [0, 1] — the server schema rejects out-of-range
+                # match_confidence, and a single bad row 400s the WHOLE disc.
+                "match_confidence": max(0.0, min(1.0, float(title.match_confidence or 0.0))),
                 "match_source": _map_source(title.match_source),
             }
         )
