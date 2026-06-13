@@ -206,6 +206,10 @@ class JobManager:
         state_machine.on_terminal_state(self._matching.clear_job_caches)
         state_machine.on_terminal_state(self._finalization.on_terminal_clear_conflicts)
         state_machine.on_terminal_state(self._prewarmer.on_job_terminal)
+        # Walk-away Phase C: enqueue a whole-disc layout contribution when a job
+        # COMPLETES (FAILED jobs never contribute). Best-effort — a raised enqueue
+        # is caught here and never crashes the terminal-state dispatch.
+        state_machine.on_terminal_state(self._enqueue_disc_contribution_on_terminal)
 
         # Reset the watchdog activity clock whenever a job changes phase.
         state_machine.on_transition(self._note_activity_on_transition)
@@ -1082,6 +1086,41 @@ class JobManager:
         """on_transition observer: prewarm transcripts when a job parks in review."""
         if state == JobState.REVIEW_NEEDED:
             self._prewarmer.kickoff(job_id)
+
+    async def _enqueue_disc_contribution_on_terminal(self, job_id: int, state: JobState) -> None:
+        """on_terminal_state hook: enqueue a whole-disc contribution on COMPLETED.
+
+        FAILED jobs do not contribute. Loads the job + its titles in a fresh
+        session and hands them to the disc-contribution enqueue. Best-effort: any
+        failure is logged and swallowed (the enqueue itself is also defensive), so
+        a contribution can never break the terminal-state dispatch or completion.
+        """
+        if state != JobState.COMPLETED:
+            return
+        try:
+            from app.services.config_service import get_config
+            from app.services.disc_contribution_queue import enqueue_disc_contribution
+
+            config = await get_config()
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if job is None:
+                    return
+                titles = (
+                    (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                    .scalars()
+                    .all()
+                )
+                await enqueue_disc_contribution(
+                    session,
+                    job,
+                    list(titles),
+                    contributions_enabled=config.enable_fingerprint_contributions,
+                    pseudonym=config.contribution_pseudonym,
+                )
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"Job {job_id}: disc contribution enqueue failed: {e}", exc_info=True)
 
     @staticmethod
     def _has_complete_output(output_dir: Path, title_index: int) -> bool:
