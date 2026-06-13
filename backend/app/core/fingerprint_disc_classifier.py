@@ -110,7 +110,13 @@ def _parse_signal(data: object) -> NetworkDiscSignal | None:
     season = int(season) if isinstance(season, int) else None
 
     titles: list[NetworkDiscTitle] = []
-    for t in disc.get("titles") or []:
+    raw_titles = disc.get("titles")
+    # Defensive: a truthy non-list ``titles`` (e.g. ``5``) would make the
+    # iteration below raise. Treat any non-list as an empty list so a
+    # partially-valid disc stays usable rather than failing wholesale.
+    if not isinstance(raw_titles, list):
+        raw_titles = []
+    for t in raw_titles:
         if not isinstance(t, dict):
             continue
         try:
@@ -132,13 +138,25 @@ def _parse_signal(data: object) -> NetworkDiscSignal | None:
             # Skip an individual malformed title rather than failing the disc.
             continue
 
+    # Defensive: aggregate stats are non-essential. A truthy-but-non-numeric
+    # value (e.g. ``"x"`` / ``{}``) would otherwise raise out of int()/float();
+    # coerce a bad value to 0 / 0.0 rather than dropping the whole signal.
+    try:
+        unique_contributors = int(disc.get("unique_contributors", 0) or 0)
+    except (TypeError, ValueError):
+        unique_contributors = 0
+    try:
+        mean_confidence = float(disc.get("mean_confidence", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        mean_confidence = 0.0
+
     return NetworkDiscSignal(
         tmdb_id=tmdb_id,
         content_type=content_type,
         season=season,
         tier=tier,
-        unique_contributors=int(disc.get("unique_contributors", 0) or 0),
-        mean_confidence=float(disc.get("mean_confidence", 0.0) or 0.0),
+        unique_contributors=unique_contributors,
+        mean_confidence=mean_confidence,
         titles=titles,
     )
 
@@ -170,11 +188,20 @@ async def identify_disc_via_network(
             resp = await client.get(f"{base}/v1/identify-disc", params={"hash": fp})
             resp.raise_for_status()
             data = resp.json()
+        # Parse INSIDE the guard: a malformed-but-truthy body must never
+        # propagate out of this best-effort call (a garbage server response
+        # must not fail the disc job). _parse_signal is itself hardened, but
+        # the outer Exception net below is the actual guarantee.
+        return _parse_signal(data)
     except (httpx.HTTPError, ValueError) as e:
+        # Expected best-effort failures (network/HTTP/JSON-decode) — debug only.
         logger.debug(f"Network disc identify failed (best-effort, ignoring): {e}")
         return None
-
-    return _parse_signal(data)
+    except Exception as e:  # noqa: BLE001 — best-effort: NEVER raise.
+        # Last-resort net so no input or server response can break
+        # classification. Anything reaching here is unexpected, so warn.
+        logger.warning(f"Network disc identify: unexpected error (ignoring): {e}")
+        return None
 
 
 def network_titles_to_mappings(
@@ -199,6 +226,12 @@ def network_titles_to_mappings(
     mappings: list[DiscDbTitleMapping] = []
     used_indices: set[int] = set()
 
+    # Binding is greedy first-fit: network titles are matched in list order and
+    # each consumes the first not-yet-used scanned title within tolerance, so an
+    # earlier network title can claim a scanned title a later one could also have
+    # matched. This is safe because real episode durations/sizes are distinct
+    # enough to disambiguate within the ±2s / ±1% windows — two titles that both
+    # fit the same scanned title would be near-duplicates anyway.
     for net in net_titles:
         if net.assignment not in _MAPPABLE_ASSIGNMENTS:
             continue

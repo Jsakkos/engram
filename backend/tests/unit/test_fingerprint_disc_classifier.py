@@ -189,6 +189,69 @@ async def test_garbage_disc_fields_return_none(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_truthy_non_iterable_titles_does_not_raise(monkeypatch):
+    """A valid identity whose ``titles`` is a truthy non-iterable (e.g. ``5``)
+    must NOT raise — the disc stays usable with an empty title list."""
+    payload = {
+        "disc": {
+            "tmdb_id": 1396,
+            "content_type": "tv",
+            "tier": "canonical",
+            "titles": 5,  # truthy non-iterable -> `for t in 5` would TypeError
+        }
+    }
+    _patch_get(monkeypatch, payload=payload)
+    sig = await identify_disc_via_network("00" * 16, "https://server")
+    # Belt-and-suspenders: signal survives, titles coerced to empty.
+    assert sig is not None
+    assert sig.tmdb_id == 1396
+    assert sig.titles == []
+
+
+@pytest.mark.asyncio
+async def test_truthy_non_numeric_aggregate_fields_do_not_raise(monkeypatch):
+    """Truthy-but-non-numeric ``unique_contributors`` / ``mean_confidence``
+    (e.g. ``"x"`` / ``{}``) must be coerced to 0 / 0.0, never raise."""
+    payload = {
+        "disc": {
+            "tmdb_id": 1396,
+            "content_type": "tv",
+            "tier": "canonical",
+            "unique_contributors": "x",  # truthy non-numeric -> int() would raise
+            "mean_confidence": {},  # truthy non-numeric -> float() would raise
+            "titles": [],
+        }
+    }
+    _patch_get(monkeypatch, payload=payload)
+    sig = await identify_disc_via_network("00" * 16, "https://server")
+    assert sig is not None
+    assert sig.unique_contributors == 0
+    assert sig.mean_confidence == 0.0
+
+
+@pytest.mark.asyncio
+async def test_wholly_bizarre_body_never_raises(monkeypatch):
+    """The outer guard is the real guarantee: no server body, however bizarre,
+    propagates an exception out of ``identify_disc_via_network``."""
+    for body in (
+        {"disc": {"tmdb_id": 1396, "content_type": "tv", "tier": "x", "titles": [1, 2, 3]}},
+        {"disc": {"tmdb_id": object(), "content_type": "tv", "tier": "x"}},
+        {"disc": 12345},
+        [1, 2, 3],
+        "not-a-dict",
+        42,
+    ):
+        # Must return without raising regardless of body shape.
+        out = await _identify_with_body(monkeypatch, body)
+        assert out is None or isinstance(out, NetworkDiscSignal)
+
+
+async def _identify_with_body(monkeypatch, body):
+    _patch_get(monkeypatch, payload=body)
+    return await identify_disc_via_network("00" * 16, "https://server")
+
+
+@pytest.mark.asyncio
 async def test_blank_server_url_falls_back_to_default(monkeypatch):
     captured: dict = {}
     _patch_get(monkeypatch, payload={"disc": None}, captured=captured)

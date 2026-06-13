@@ -1468,17 +1468,33 @@ class IdentificationCoordinator:
         # confident-tier result also suppresses the AI fallback (no clobber).
         network_signal = None
         network_confident = False
+        network_content_type: ContentType | None = None
         if getattr(config, "enable_fingerprint_identification", False) and job.content_hash:
             network_signal = await identify_disc_via_network(
                 job.content_hash, getattr(config, "fingerprint_server_url", None)
             )
             if network_signal and network_signal.tier in ("canonical", "confirmed"):
-                network_confident = True
-                logger.info(
-                    f"Job {job_id}: disc network hit — tier={network_signal.tier} "
-                    f"tmdb_id={network_signal.tmdb_id} "
-                    f"({network_signal.unique_contributors} contributors)"
-                )
+                # Map the content type up front. An unrecognized value (not
+                # "tv"/"movie") means a confident tier is carrying a garbage
+                # type — don't trust it: skip the override entirely and fall
+                # through to the normal TMDB/AI/heuristic flow.
+                network_content_type = {
+                    "tv": ContentType.TV,
+                    "movie": ContentType.MOVIE,
+                }.get(network_signal.content_type)
+                if network_content_type is None:
+                    logger.warning(
+                        f"Job {job_id}: disc network hit with unrecognized "
+                        f"content_type={network_signal.content_type!r} "
+                        f"(tier={network_signal.tier}) — ignoring (not a confident override)"
+                    )
+                else:
+                    network_confident = True
+                    logger.info(
+                        f"Job {job_id}: disc network hit — tier={network_signal.tier} "
+                        f"tmdb_id={network_signal.tmdb_id} "
+                        f"({network_signal.unique_contributors} contributors)"
+                    )
 
         # Attempt TheDiscDB lookup
         from app.core.features import DISCDB_ENABLED
@@ -1658,7 +1674,9 @@ class IdentificationCoordinator:
         # the TheDiscDB block and wins over it (network_confident guards that
         # block) so the network result is never clobbered downstream.
         if network_confident:
-            net_type = ContentType.TV if network_signal.content_type == "tv" else ContentType.MOVIE
+            # Recognized type guaranteed by the gate above (unrecognized types
+            # never set network_confident, so they fall through to TMDB/AI).
+            net_type = network_content_type
             analysis.content_type = net_type
             analysis.tmdb_id = network_signal.tmdb_id
             analysis.confidence = 0.99 if network_signal.tier == "canonical" else 0.95
@@ -1714,7 +1732,13 @@ class IdentificationCoordinator:
                 job.discdb_mappings_json = json.dumps(
                     [asdict(m) for m in discdb_signal.title_mappings]
                 )
-        elif discdb_signal:
+        elif discdb_signal and not network_confident:
+            # Symmetry with the AI fallback and the high-confidence DiscDB block:
+            # a confident network override owns identity (its tmdb_id is
+            # authoritative), so a DiscDB-derived name — possibly a different
+            # match — must not back-fill even when the network's best-effort
+            # name came back blank. The pure DiscDB path (network disabled / no
+            # hit) is unaffected.
             if not is_staging:
                 logger.info(
                     f"Job {job_id}: TheDiscDB low-confidence signal "
