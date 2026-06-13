@@ -408,7 +408,7 @@ class TestApplyIdentityResumeAction:
 
         resume.assert_awaited_once_with(42)
         task = job_manager._active_jobs.pop(42)
-        await task
+        _ = await task
 
     async def test_start_rip_spawns_rip_task(self, monkeypatch):
         run_ripping = AsyncMock()
@@ -419,7 +419,7 @@ class TestApplyIdentityResumeAction:
 
         run_ripping.assert_awaited_once_with(43)
         task = job_manager._active_jobs.pop(43)
-        await task
+        _ = await task
 
     async def test_zero_dispatch_in_matching_runs_completion_check(self, monkeypatch):
         """Post-rip resume with nothing left to dispatch (e.g. every title in

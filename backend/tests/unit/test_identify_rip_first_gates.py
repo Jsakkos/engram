@@ -24,10 +24,6 @@ from app.core.analyst import DiscAnalysisResult, TitleInfo
 from app.core.extractor import RipResult
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
-from app.services.identification_coordinator import (
-    IdentificationCoordinator,
-    apply_permissive_title_selection,
-)
 from app.services.job_manager import job_manager
 from app.services.job_state_machine import JobStateMachine
 from tests.unit.conftest import _unit_session_factory
@@ -48,12 +44,12 @@ class TestApplyPermissiveTitleSelection:
 
     def test_mixed_durations_selects_only_long_titles(self):
         titles = self._titles(1500, 120, 900, 899)
-        apply_permissive_title_selection(titles)
+        idc.apply_permissive_title_selection(titles)
         assert [t.is_selected for t in titles] == [True, False, True, False]
 
     def test_all_short_disc_selects_only_the_longest(self):
         titles = self._titles(120, 600, 45)
-        apply_permissive_title_selection(titles)
+        idc.apply_permissive_title_selection(titles)
         assert [t.is_selected for t in titles] == [False, True, False]
 
     def test_none_duration_treated_as_zero(self):
@@ -61,11 +57,11 @@ class TestApplyPermissiveTitleSelection:
             DiscTitle(job_id=1, title_index=0, duration_seconds=None),
             DiscTitle(job_id=1, title_index=1, duration_seconds=1500),
         ]
-        apply_permissive_title_selection(titles)
+        idc.apply_permissive_title_selection(titles)
         assert [t.is_selected for t in titles] == [False, True]
 
     def test_empty_list_is_noop(self):
-        apply_permissive_title_selection([])  # must not raise
+        idc.apply_permissive_title_selection([])  # must not raise
 
     def test_finalized_play_all_not_reselected(self):
         """Regression: a long COMPLETED+is_extra play-all must stay deselected
@@ -85,7 +81,7 @@ class TestApplyPermissiveTitleSelection:
         # Short PENDING title that falls below the 900-s floor.
         short = DiscTitle(job_id=1, title_index=3, duration_seconds=300, state=TitleState.PENDING)
 
-        apply_permissive_title_selection([play_all, ep1, ep2, short])
+        idc.apply_permissive_title_selection([play_all, ep1, ep2, short])
 
         # Finalized play-all: must remain deselected and COMPLETED.
         assert play_all.is_selected is False
@@ -106,7 +102,7 @@ class TestApplyPermissiveTitleSelection:
             is_extra=True,
             is_selected=False,
         )
-        apply_permissive_title_selection([play_all])
+        idc.apply_permissive_title_selection([play_all])
 
         # Nothing should be selected.
         assert play_all.is_selected is False
@@ -139,7 +135,7 @@ def _make_analysis(
 def _bare_coord(analysis, titles, label, *, seasons=None):
     """Bare coordinator (skip __init__ wiring) with everything identify_disc
     touches stubbed except the code under test."""
-    coord = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    coord = idc.IdentificationCoordinator.__new__(idc.IdentificationCoordinator)
     coord._extractor = SimpleNamespace(scan_disc=AsyncMock(return_value=(titles, label)))
     broadcaster = MagicMock()
     broadcaster.broadcast_job_state_changed = AsyncMock()

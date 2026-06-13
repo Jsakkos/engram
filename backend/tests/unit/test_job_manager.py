@@ -1140,7 +1140,7 @@ class TestDispatchTitleMatchTOCTOU:
         """When DiscDB assignment resolves the title (no match task spawned),
         the sentinel must be discarded so a subsequent dispatch is not blocked."""
         job, title = await _seed(content_type=ContentType.TV)
-        _discdb, _calls, _release = self._stub_matching(monkeypatch, discdb_applied=True)
+        self._stub_matching(monkeypatch, discdb_applied=True)
         completion = AsyncMock()
         monkeypatch.setattr(job_manager._finalization, "check_job_completion", completion)
 
