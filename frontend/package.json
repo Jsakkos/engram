@@ -93,7 +93,7 @@
         "postcss": "^8.5.15",
         "sharp": "^0.34.0",
         "tailwindcss": "4.2.4",
-        "typescript": "^5.2.2",
+        "typescript": "^5.9.3",
         "typescript-eslint": "^8.59.4",
         "vite": "^8.0.0",
         "vitest": "^4.0.18"
