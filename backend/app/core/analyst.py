@@ -157,6 +157,15 @@ def _abbreviation_matches(label: str, full_name: str) -> bool:
     return False
 
 
+def _uncorroborated_review_reason(detected_name: str | None, tmdb_signal) -> str:
+    """Build a candidate-confirming review reason for an uncorroborated TMDB name."""
+    tid = f" (TMDB #{tmdb_signal.tmdb_id})" if tmdb_signal.tmdb_id else ""
+    return (
+        f"Couldn't confirm disc '{detected_name}' is "
+        f"'{tmdb_signal.tmdb_name}'{tid}. Confirm or correct the title."
+    )
+
+
 @dataclass
 class TitleInfo:
     """Information about a single title on a disc."""
@@ -492,7 +501,7 @@ class DiscAnalyst:
             )
             # For TMDB-only TV classification, use fallback Play All detection
             tmdb_play_all = play_all if tmdb_signal.content_type == ContentType.TV else []
-            return DiscAnalysisResult(
+            tmdb_only = DiscAnalysisResult(
                 content_type=tmdb_signal.content_type,
                 titles=titles,
                 detected_name=effective_name,
@@ -503,6 +512,12 @@ class DiscAnalyst:
                 classification_source="tmdb",
                 play_all_title_indices=tmdb_play_all,
             )
+            if tmdb_signal.tmdb_name and not _names_are_similar(
+                effective_name or "", tmdb_signal.tmdb_name
+            ):
+                tmdb_only.needs_review = True
+                tmdb_only.review_reason = _uncorroborated_review_reason(effective_name, tmdb_signal)
+            return tmdb_only
 
         # Ambiguous - needs human review
         reason = self._get_ambiguity_reason(titles)
@@ -640,12 +655,18 @@ class DiscAnalyst:
             result.tmdb_name = None
             return result
 
-        # Use TMDB name if similar enough to the heuristic name (same guard as analyze())
+        # Use TMDB name if similar enough to the heuristic name (same guard as analyze()).
+        # Otherwise the identity is uncorroborated -> escalate to review (Fix 3).
         if tmdb_signal.tmdb_name:
             if result.detected_name is None or _names_are_similar(
                 result.detected_name, tmdb_signal.tmdb_name
             ):
                 result.detected_name = tmdb_signal.tmdb_name
+            elif not result.needs_review:
+                result.needs_review = True
+                result.review_reason = _uncorroborated_review_reason(
+                    result.detected_name, tmdb_signal
+                )
 
         return result
 

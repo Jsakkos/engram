@@ -137,6 +137,8 @@ def test_analyst_without_disc_title_keeps_garbled_label_name():
     # But detected_name comes from garbled volume label
     # Deferred case: collapsed "strangenewworlds" != "startrekstrangenewworlds"
     assert result.detected_name == "Strangenewworlds"
+    # Fix 3: the concatenated label does not corroborate, so the disc goes to review.
+    assert result.needs_review is True
 
 
 def test_analyst_with_disc_title_adopts_tmdb_name():
@@ -264,6 +266,8 @@ def test_analyst_keeps_base_name_when_tmdb_uncorroborated():
     # Neither "Breakingbad" nor "Breaking Bad" matches "Some Unrelated Show",
     # so the DINFO-preferred base name is kept rather than the TMDB name.
     assert result.detected_name == "Breaking Bad"
+    # Fix 3: an uncorroborated TMDB name now escalates to review.
+    assert result.needs_review is True
 
 
 # ---------------------------------------------------------------------------
@@ -637,3 +641,42 @@ def test_analyst_adopts_tmdb_name_for_abbreviated_label():
     assert result.detected_name == "Star Trek: Deep Space Nine"
     assert result.tmdb_id == 580
     assert result.content_type == ContentType.TV
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: uncorroborated identity escalates to review
+# ---------------------------------------------------------------------------
+
+
+def test_analyst_escalates_review_when_tmdb_uncorroborated():
+    """A TMDB name matching neither on-disc signal -> needs_review with a candidate."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=999,
+        tmdb_name="Some Unrelated Show",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(
+        _tv_titles(), "BREAKINGBADS2", tmdb_signal=tmdb, disc_title="Breaking Bad"
+    )
+
+    assert result.needs_review is True
+    assert result.review_reason is not None
+    assert "Some Unrelated Show" in result.review_reason
+    # The base name is kept as the suggestion; TMDB id still attached.
+    assert result.detected_name == "Breaking Bad"
+
+
+def test_analyst_no_review_when_corroborated():
+    """A corroborated name (DS9 via abbreviation) must NOT trigger review."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=580,
+        tmdb_name="Star Trek: Deep Space Nine",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(_tv_titles(), "DS9S1D1", tmdb_signal=tmdb, disc_title="DS9S1D1")
+
+    assert result.needs_review is False
