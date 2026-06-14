@@ -761,17 +761,56 @@ def _fetch_season_details_cached(show_id: str, season_number: int) -> int:
     return len(season_data.get("episodes", []))
 
 
-@retry_network_operation(max_retries=3, base_delay=1.0)
 def fetch_season_episode_runtimes(show_id: str, season_number: int) -> list[int]:
+    """Public entry; short-circuits without caching when API key absent.
+
+    The disc-identification classifier calls this once per TV disc, so a
+    multi-disc box-set rip of the same season re-requests identical runtime
+    data per disc. The @lru_cache lives on the inner
+    ``_fetch_season_episode_runtimes_cached`` (mirroring ``fetch_season_details``)
+    so (1) the no-key early-return isn't cached — otherwise a first-boot user
+    who later sets a key in ConfigWizard would keep getting the cached empty
+    list — and (2) a transient network failure propagates to
+    ``@retry_network_operation`` and is caught HERE, returning ``[]`` without
+    ``@lru_cache`` pinning an empty list on the show/season key for the rest of
+    the process.
+
+    Returns a fresh ``list`` copy on every call so a caller mutating the result
+    can't corrupt the shared cached list (the ints inside are immutable, so a
+    shallow copy suffices — no deepcopy needed).
     """
-    Fetch episode runtimes for a given show and season from the TMDB API.
+    from app.services.config_service import get_config_sync
 
-    Args:
-        show_id: The TMDB show ID.
-        season_number: The season number to fetch runtimes for.
+    if not get_config_sync().tmdb_api_key:
+        logger.warning("TMDB API key not configured")
+        return []
 
-    Returns:
-        list[int]: Episode runtimes in minutes, or empty list if the request failed.
+    try:
+        result = _fetch_season_episode_runtimes_cached(show_id, season_number)
+    # See fetch_show_id wrapper for why the catch widens to match the
+    # retry decorator's tuple (RequestException + builtin Connection/Timeout).
+    except (requests.exceptions.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(
+            f"Failed to fetch episode runtimes for show {show_id} Season {season_number}: {e}",
+            exc_info=True,
+        )
+        return []
+
+    return list(result)
+
+
+@lru_cache(maxsize=_TMDB_LRU_MAXSIZE)
+@retry_network_operation(max_retries=3, base_delay=1.0)
+def _fetch_season_episode_runtimes_cached(show_id: str, season_number: int) -> list[int]:
+    """Cached implementation. Caller (the public wrapper) guarantees the API
+    key is present and catches the post-retry exception.
+
+    Like ``_fetch_season_details_cached``, this does NOT route through
+    ``_tmdb_get_json`` — that helper swallows ``RequestException`` and returns
+    None, which would let ``@lru_cache`` pin an empty-list sentinel on the
+    show/season key after a transient failure. Letting ``raise_for_status()``
+    propagate keeps transient failures out of the cache (``lru_cache`` never
+    caches exceptions; only successful return values get stored).
     """
     logger.info(f"Fetching episode runtimes for show {show_id} Season {season_number}...")
     from app.services.config_service import get_config_sync
@@ -779,13 +818,18 @@ def fetch_season_episode_runtimes(show_id: str, season_number: int) -> list[int]
     config = get_config_sync()
     tmdb_api_key = config.tmdb_api_key
     if not tmdb_api_key:
-        logger.warning("TMDB API key not configured")
-        return []
+        raise RuntimeError(
+            "_fetch_season_episode_runtimes_cached called without a TMDB API key; "
+            "use the public fetch_season_episode_runtimes wrapper"
+        )
 
     url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
-    season_data = _tmdb_get_json(url, tmdb_api_key)
-    if season_data is None:
-        return []
+
+    headers, params = _tmdb_auth(tmdb_api_key)
+
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    season_data = response.json()
     episodes = season_data.get("episodes", [])
     runtimes = [ep.get("runtime", 0) or 0 for ep in episodes]
     logger.info(f"Got {len(runtimes)} episode runtimes for Season {season_number}: {runtimes}")
@@ -1039,4 +1083,5 @@ def clear_caches() -> None:
     _fetch_show_details_cached.cache_clear()
     _fetch_movie_details_cached.cache_clear()
     _fetch_season_details_cached.cache_clear()
+    _fetch_season_episode_runtimes_cached.cache_clear()
     tmdb_persistent_cache.clear()

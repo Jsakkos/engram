@@ -479,6 +479,50 @@ class TestFetchSeasonDetails:
 
 
 @pytest.mark.unit
+class TestFetchSeasonEpisodeRuntimes:
+    """``fetch_season_episode_runtimes`` feeds the disc-identification
+    classifier one runtime list per TV disc. A multi-disc box-set rip of the
+    same season would otherwise re-fetch identical runtime data once per disc;
+    the @lru_cache inner (mirroring fetch_season_details) collapses those
+    repeats to a single TMDB round-trip for the lifetime of the process."""
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_repeat_call_same_args_hits_network_once(self, mock_get):
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=lambda: {"episodes": [{"runtime": 42}, {"runtime": 41}]},
+            raise_for_status=Mock(),
+        )
+        with patch("app.services.config_service.get_config_sync") as cfg:
+            cfg.return_value.tmdb_api_key = "test_key"
+            first = tmdb_client.fetch_season_episode_runtimes("4589", 1)
+            second = tmdb_client.fetch_season_episode_runtimes("4589", 1)
+
+        assert first == [42, 41]
+        assert first == second
+        # The second call for the same (show_id, season_number) must be served
+        # from the process-lifetime LRU — only one TMDB round-trip total.
+        assert mock_get.call_count == 1
+
+    @patch("app.matcher.tmdb_client.requests.get")
+    def test_clear_caches_flushes_runtimes(self, mock_get):
+        """``clear_caches()`` must flush this LRU too, otherwise a TMDB key
+        rotation would leave runtimes fetched with the revoked key pinned for
+        the rest of the process."""
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=lambda: {"episodes": [{"runtime": 42}]},
+            raise_for_status=Mock(),
+        )
+        with patch("app.services.config_service.get_config_sync") as cfg:
+            cfg.return_value.tmdb_api_key = "test_key"
+            tmdb_client.fetch_season_episode_runtimes("4589", 1)
+            clear_caches()
+            tmdb_client.fetch_season_episode_runtimes("4589", 1)
+        assert mock_get.call_count == 2
+
+
+@pytest.mark.unit
 class TestVariationEdgeCases:
     """Tests for edge cases in variation generation."""
 
