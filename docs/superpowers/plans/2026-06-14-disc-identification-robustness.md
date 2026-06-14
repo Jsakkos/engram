@@ -6,7 +6,7 @@
 
 **Architecture:** Three changes in `backend/app/core/analyst.py` (a pure, synchronous analysis engine) plus a thin async caller change in `backend/app/services/identification_coordinator.py`. New data (expected episode runtimes) is *passed into* `analyze()` — the Analyst never does I/O. Review escalation reuses the existing `needs_review`/`review_reason` plumbing that already drives the review UI.
 
-**Tech Stack:** Python 3.11, pytest (`uv run pytest`), FastAPI/SQLModel backend. TMDB via `app/matcher/tmdb_client.py` (persistent-cached). Spec: `docs/superpowers/specs/2026-06-14-disc-identification-robustness-design.md`.
+**Tech Stack:** Python 3.11, pytest (`uv run pytest`), FastAPI/SQLModel backend. TMDB via `app/matcher/tmdb_client.py`. Spec: `docs/superpowers/specs/2026-06-14-disc-identification-robustness-design.md`.
 
 **One-time setup (run before Task 1):**
 
@@ -44,7 +44,7 @@ from app.core.analyst import _abbreviation_matches, _names_are_similar
     [
         ("DS9", "Star Trek: Deep Space Nine"),  # number-word Nine -> 9, drop "Star Trek:"
         ("Ds9", "Star Trek: Deep Space Nine"),  # case-insensitive
-        ("TNG", "Star Trek: The Next Generation"),  # stopword "The" dropped -> TNG
+        ("TNG", "Star Trek: The Next Generation"),  # "Star Trek:" prefix dropped via colon-split; The Next Generation -> TNG
     ],
 )
 def test_abbreviation_matches_positive(label, full_name):
@@ -98,7 +98,7 @@ _NUMBER_WORDS: dict[str, str] = {
     "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
     "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
 }
-_ACRONYM_STOPWORDS: frozenset[str] = frozenset({"the", "of", "and", "a", "an"})
+_ACRONYM_STOPWORDS: frozenset[str] = frozenset({"of", "and", "a", "an"})  # NOT "the": canonical initialisms like TNG keep it
 
 
 def _abbreviation_matches(label: str, full_name: str) -> bool:
@@ -550,7 +550,7 @@ git commit -m "feat(analyst): runtime-aware Play-All keeps double-length pilots"
 
 ### Task 4: Fix 2 (wiring) — Caller fetches expected runtimes
 
-Fetch the season's expected episode runtimes (cached) and pass them into `analyze()` from `_run_classification`.
+Fetch the season's expected episode runtimes (best-effort; see follow-up note below — this function is not memoized today) and pass them into `analyze()` from `_run_classification`.
 
 **Files:**
 - Modify: `backend/app/services/identification_coordinator.py` (`_run_classification`, the `analyze()` call at line ~1647)

@@ -139,8 +139,9 @@ resolves `(tmdb_id, season)` — `tmdb_id` from the TMDB signal, `season` from t
 volume-label parse / disc-name fallback (the static `_parse_volume_label`, or the
 already-computed `disc_name_season`) — and fetches
 runtimes via the existing `fetch_season_episode_runtimes()` (`tmdb_client.py:765`,
-persistent-cached). The sync TMDB call is invoked through the existing async-safe path
-(thread executor) so it never blocks the event loop. On any miss (no id/season, empty
+best-effort; note: this function is not memoized today, unlike its sibling
+`fetch_season_details` — a small follow-up). The sync TMDB call is invoked through the
+existing async-safe path (thread executor) so it never blocks the event loop. On any miss (no id/season, empty
 list, fetch error) the parameter is `None` and behavior falls back to today's heuristic.
 
 **Rule (explicit):** before appending a feature-length title `t` to `play_all` in either
@@ -229,8 +230,10 @@ already escalates but name ambiguity did not.
   review, not silent organize).
 - **TMDB runtime data quality** (missing/rounded/odd runtimes): tolerance window + `0`/empty
   → fall back to existing heuristic; never *more* aggressive than today.
-- **Added TMDB fetch in the identification path:** cached + executor-wrapped; failures are
-  non-fatal (degrade to current behavior).
+- **Added TMDB fetch in the identification path:** executor-wrapped, best-effort; failures are
+  non-fatal (degrade to current behavior). `fetch_season_episode_runtimes` is not memoized today
+  (unlike `fetch_season_details`) — a noted follow-up; repeated same-season lookups re-hit TMDB
+  but are network-safe.
 - **Behavior change for existing libraries:** these only affect *new* rips; no migration.
 
 ## Out of scope / follow-ups
