@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.analyst import DiscAnalyst, TitleInfo
+from app.core.analyst import DiscAnalyst, TitleInfo, _abbreviation_matches, _names_are_similar
 from app.core.extractor import MakeMKVExtractor
 from app.core.tmdb_classifier import TmdbSignal
 from app.models.disc_job import ContentType
@@ -587,3 +587,53 @@ async def test_run_classification_skips_redundant_reresolve_after_disc_name_fall
     # "Mad Men" must be queried exactly once (the fallback), not re-queried by the
     # cross-namespace re-resolve block.
     assert queried.count("Mad Men") == 1
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: abbreviation / initialism corroboration (DS9 ↔ Deep Space Nine)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label,full_name",
+    [
+        ("DS9", "Star Trek: Deep Space Nine"),  # number-word Nine -> 9, drop "Star Trek:"
+        ("Ds9", "Star Trek: Deep Space Nine"),  # case-insensitive
+        ("TNG", "Star Trek: The Next Generation"),  # stopword "The" dropped -> TNG
+    ],
+)
+def test_abbreviation_matches_positive(label, full_name):
+    assert _abbreviation_matches(label, full_name) is True
+
+
+@pytest.mark.parametrize(
+    "label,full_name",
+    [
+        ("DS9", "Star Trek: The Next Generation"),  # ds9 != tng / stng
+        ("HOUSE", "Star Trek: Deep Space Nine"),  # has vowels, no digit -> not abbrev-shaped
+        ("STRANGENEWWORLDS", "Star Trek: Strange New Worlds"),  # too long (>5) -> not abbrev
+        ("D", "Deep Space Nine"),  # single char -> rejected
+    ],
+)
+def test_abbreviation_matches_negative(label, full_name):
+    assert _abbreviation_matches(label, full_name) is False
+
+
+def test_names_are_similar_uses_abbreviation_path():
+    assert _names_are_similar("Ds9", "Star Trek: Deep Space Nine") is True
+
+
+def test_analyst_adopts_tmdb_name_for_abbreviated_label():
+    """DS9S1D1 -> 'Ds9' must corroborate and adopt TMDB 'Star Trek: Deep Space Nine'."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=580,
+        tmdb_name="Star Trek: Deep Space Nine",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(_tv_titles(), "DS9S1D1", tmdb_signal=tmdb, disc_title="DS9S1D1")
+
+    assert result.detected_name == "Star Trek: Deep Space Nine"
+    assert result.tmdb_id == 580
+    assert result.content_type == ContentType.TV

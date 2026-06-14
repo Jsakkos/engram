@@ -95,7 +95,63 @@ def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
     if len(a_tok & b_tok) / len(a_tok | b_tok) >= threshold:
         return True
     a_collapsed, b_collapsed = _collapsed(a), _collapsed(b)
-    return bool(a_collapsed) and a_collapsed == b_collapsed
+    if a_collapsed and a_collapsed == b_collapsed:
+        return True
+    # Abbreviation / initialism path (e.g. "DS9" <-> "Deep Space Nine").
+    return _abbreviation_matches(a, b) or _abbreviation_matches(b, a)
+
+
+_NUMBER_WORDS: dict[str, str] = {
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+}
+_ACRONYM_STOPWORDS: frozenset[str] = frozenset({"of", "and", "a", "an"})
+
+
+def _abbreviation_matches(label: str, full_name: str) -> bool:
+    """True if ``label`` is an initialism/abbreviation of ``full_name``.
+
+    Handles fan-style abbreviations like "DS9" for "Deep Space Nine" (the
+    number-word "Nine" maps to the digit "9"), including dropping a franchise
+    prefix before a colon ("Star Trek: Deep Space Nine" -> also tries
+    "Deep Space Nine").
+
+    Conservative guards prevent false positives: ``label`` must be
+    abbreviation-shaped (2-5 alphanumerics, and either contains a digit or has
+    no vowels), and the acronym must derive from >= 2 significant words.
+    """
+    cand = _collapsed(label)
+    if not (
+        1 < len(cand) <= 5
+        and (any(c.isdigit() for c in cand) or not any(v in cand for v in "aeiou"))
+    ):
+        return False
+
+    variants = [full_name]
+    if ":" in full_name:
+        variants.append(full_name.split(":", 1)[1])
+
+    for variant in variants:
+        words = [
+            w
+            for w in re.sub(r"[^\w\s]", " ", variant).lower().split()
+            if w and w not in _ACRONYM_STOPWORDS
+        ]
+        if len(words) < 2:
+            continue
+        letters = "".join(w[0] for w in words)
+        digits = "".join(_NUMBER_WORDS.get(w, w[0]) for w in words)
+        if cand in (letters, digits):
+            return True
+    return False
 
 
 @dataclass
