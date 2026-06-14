@@ -180,3 +180,39 @@ class TestDS9PilotNotPlayAll:
         # A runtime-confirmed pilot must keep the disc classified as TV, not flip
         # it to MOVIE (only the single long title would otherwise look movie-like).
         assert result.content_type == ContentType.TV
+
+
+@pytest.mark.pipeline
+class TestDS9Job153Reproduction:
+    """End-to-end analyst reproduction of the real DS9 S1D1 rip (Job 153)."""
+
+    def test_ds9_resolves_correctly(self):
+        config = _default_config()
+        analyst = DiscAnalyst(config=config)
+        titles = [
+            TitleInfo(index=0, duration_seconds=5429, size_bytes=int(2e9), chapter_count=18),
+            TitleInfo(index=1, duration_seconds=2718, size_bytes=int(1e9), chapter_count=8),
+            TitleInfo(index=2, duration_seconds=2715, size_bytes=int(1e9), chapter_count=8),
+        ]
+        signal = TmdbSignal(
+            content_type=ContentType.TV,
+            confidence=0.70,
+            tmdb_id=580,
+            tmdb_name="Star Trek: Deep Space Nine",
+        )
+        result = analyst.analyze(
+            titles,
+            "DS9S1D1",
+            tmdb_signal=signal,
+            disc_title="DS9S1D1",
+            expected_episode_runtimes=[90, 45, 45, 45, 45],
+        )
+
+        # Fix 1: abbreviation corroboration adopts the TMDB name
+        assert result.detected_name == "Star Trek: Deep Space Nine"
+        # Fix 2: the 90-min pilot is NOT dropped as a Play-All/extra
+        assert 0 not in result.play_all_title_indices
+        # Fix 2 corollary: disc stays TV (pilot is an episode, not a movie)
+        assert result.content_type == ContentType.TV
+        # Fix 3: identity is corroborated, so no spurious review
+        assert result.needs_review is False
