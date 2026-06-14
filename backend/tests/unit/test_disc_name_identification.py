@@ -139,6 +139,7 @@ def test_analyst_without_disc_title_keeps_garbled_label_name():
     assert result.detected_name == "Strangenewworlds"
     # Fix 3: the concatenated label does not corroborate, so the disc goes to review.
     assert result.needs_review is True
+    assert result.review_reason is not None
 
 
 def test_analyst_with_disc_title_adopts_tmdb_name():
@@ -268,6 +269,7 @@ def test_analyst_keeps_base_name_when_tmdb_uncorroborated():
     assert result.detected_name == "Breaking Bad"
     # Fix 3: an uncorroborated TMDB name now escalates to review.
     assert result.needs_review is True
+    assert result.review_reason is not None
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +666,8 @@ def test_analyst_escalates_review_when_tmdb_uncorroborated():
     assert result.needs_review is True
     assert result.review_reason is not None
     assert "Some Unrelated Show" in result.review_reason
+    assert "Breaking Bad" in result.review_reason
+    assert "999" in result.review_reason
     # The base name is kept as the suggestion; TMDB id still attached.
     assert result.detected_name == "Breaking Bad"
 

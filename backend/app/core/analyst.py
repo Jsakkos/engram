@@ -158,7 +158,7 @@ def _abbreviation_matches(label: str, full_name: str) -> bool:
 
 
 def _uncorroborated_review_reason(detected_name: str | None, tmdb_signal) -> str:
-    """Build a candidate-confirming review reason for an uncorroborated TMDB name."""
+    """Build a review reason for a TMDB identity that lacks on-disc corroboration."""
     tid = f" (TMDB #{tmdb_signal.tmdb_id})" if tmdb_signal.tmdb_id else ""
     return (
         f"Couldn't confirm disc '{detected_name}' is "
