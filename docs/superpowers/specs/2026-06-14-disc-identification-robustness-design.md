@@ -161,6 +161,13 @@ consecutive** expected runtimes within tolerance. (For DS9 id=580, Emissary is a
 ~90-min episode, so the primary single-runtime check suffices; the sum-of-two guard
 covers the general two-parter case.)
 
+**Classification corollary:** keeping the pilot out of the Play-All bucket is not
+sufficient on its own — with only two short episodes (below the 3-title TV cluster
+minimum), the lone feature-length title would make `_detect_movie` classify the disc as
+a MOVIE. So when a feature-length title matches an expected episode runtime on a
+TV-labeled disc, the Analyst suppresses the movie result and classifies as TV, with that
+title kept as a normal episode (this is what "treated as a real episode" requires).
+
 **Extras:** because Play-All indices become `is_extra` (`identification_coordinator.py:375`),
 this fix also stops legitimate long episodes from being mislabeled extras — no separate
 change needed.
