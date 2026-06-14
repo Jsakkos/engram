@@ -166,6 +166,30 @@ def _uncorroborated_review_reason(detected_name: str | None, tmdb_signal) -> str
     )
 
 
+def _matches_expected_runtime(duration_seconds: int, expected_runtimes_min: list[int]) -> bool:
+    """True if a title duration matches a legitimate expected episode runtime.
+
+    Matches a single expected runtime, or the sum of two consecutive expected
+    runtimes (a two-parter carried as one title), within ±max(5 min, 15%).
+    Zero / missing runtimes are ignored; an empty effective list returns False
+    so callers fall back to the duration-sum heuristic.
+    """
+    runtimes = [r for r in expected_runtimes_min if r and r > 0]
+    if not runtimes:
+        return False
+    actual_min = duration_seconds / 60.0
+
+    def _close(expected: float) -> bool:
+        return abs(actual_min - expected) <= max(5.0, 0.15 * expected)
+
+    if any(_close(r) for r in runtimes):
+        return True
+    for i in range(len(runtimes) - 1):
+        if _close(runtimes[i] + runtimes[i + 1]):
+            return True
+    return False
+
+
 @dataclass
 class TitleInfo:
     """Information about a single title on a disc."""
@@ -338,6 +362,7 @@ class DiscAnalyst:
         volume_label: str = "",
         tmdb_signal=None,
         disc_title: str | None = None,
+        expected_episode_runtimes: list[int] | None = None,
     ) -> DiscAnalysisResult:
         """Analyze a list of titles to determine content type.
 
@@ -348,6 +373,9 @@ class DiscAnalyst:
             disc_title: Parsed MakeMKV DINFO disc title, when available. Used as the
                 base display name (preferred over the volume-label parse) and as an
                 additional signal that corroborates the authoritative TMDB name.
+            expected_episode_runtimes: Optional list of expected episode runtimes in
+                minutes (from TMDB). When provided, titles whose duration matches a
+                legitimate episode runtime are excluded from Play-All detection.
 
         Returns:
             Analysis result with content type and confidence
@@ -413,6 +441,26 @@ class DiscAnalyst:
         movie_result = self._detect_movie(titles)
         logger.info(f"Movie detection result: {movie_result}")
 
+        # A feature-length title that matches an expected episode runtime on a
+        # TV-labeled disc (e.g. a 90-min double-length pilot) is a TV episode, not
+        # a movie feature — suppress the movie result so TV classification wins.
+        if (
+            movie_result
+            and not movie_result.get("ambiguous")
+            and is_likely_tv
+            and expected_episode_runtimes
+            and all(
+                _matches_expected_runtime(t.duration_seconds, expected_episode_runtimes)
+                for t in titles
+                if t.duration_seconds >= self._get_config().analyst_movie_min_duration
+            )
+        ):
+            logger.info(
+                "Feature-length title(s) match expected episode runtimes on a "
+                "TV-labeled disc — treating as TV episodes, not a movie."
+            )
+            movie_result = None
+
         # Check for TV show (cluster of similar-duration titles)
         tv_result = self._detect_tv_show(titles)
         if tv_result:
@@ -422,7 +470,7 @@ class DiscAnalyst:
             )
 
         # Detect Play All titles (run once, used by all TV return paths)
-        play_all = self._detect_play_all(titles, tv_result)
+        play_all = self._detect_play_all(titles, tv_result, expected_episode_runtimes)
 
         # CONFLICT RESOLUTION: If both are detected, decided which one to trust.
         if movie_result and not movie_result.get("ambiguous") and tv_result:
@@ -768,7 +816,12 @@ class DiscAnalyst:
 
         return None
 
-    def _detect_play_all(self, titles: list[TitleInfo], tv_result: dict | None) -> list[int]:
+    def _detect_play_all(
+        self,
+        titles: list[TitleInfo],
+        tv_result: dict | None,
+        expected_runtimes: list[int] | None = None,
+    ) -> list[int]:
         """Identify 'Play All' concatenation titles on TV discs.
 
         A Play All title has duration roughly equal to the sum of all episode-cluster
@@ -777,13 +830,15 @@ class DiscAnalyst:
         Args:
             titles: All titles on the disc
             tv_result: Result from _detect_tv_show (must contain 'episode_indices')
+            expected_runtimes: Optional list of expected episode runtimes in minutes.
+                Titles whose duration matches a legitimate episode runtime are skipped.
 
         Returns:
             List of title indices that are Play All concatenations
         """
         if not tv_result or "episode_indices" not in tv_result:
             # No episode cluster — try fallback using TV-range titles
-            return self._detect_play_all_fallback(titles)
+            return self._detect_play_all_fallback(titles, expected_runtimes)
 
         episode_indices = set(tv_result["episode_indices"])
         episode_total = sum(t.duration_seconds for t in titles if t.index in episode_indices)
@@ -800,6 +855,12 @@ class DiscAnalyst:
             # Must be feature-length
             if t.duration_seconds < min_duration:
                 continue
+            # A title matching a real expected episode runtime (e.g. a 90-min
+            # double-length pilot) is a legitimate episode, not a Play-All.
+            if expected_runtimes and _matches_expected_runtime(
+                t.duration_seconds, expected_runtimes
+            ):
+                continue
             # Check if duration is close to the episode total (within ±20%)
             ratio = t.duration_seconds / episode_total
             if 0.8 <= ratio <= 1.2:
@@ -811,7 +872,9 @@ class DiscAnalyst:
 
         return play_all
 
-    def _detect_play_all_fallback(self, titles: list[TitleInfo]) -> list[int]:
+    def _detect_play_all_fallback(
+        self, titles: list[TitleInfo], expected_runtimes: list[int] | None = None
+    ) -> list[int]:
         """Detect Play All when no episode cluster is available.
 
         Used for label-fallback and TMDB-only TV classification paths.
@@ -837,6 +900,10 @@ class DiscAnalyst:
             if t.index in tv_indices:
                 continue
             if t.duration_seconds < config.analyst_movie_min_duration:
+                continue
+            if expected_runtimes and _matches_expected_runtime(
+                t.duration_seconds, expected_runtimes
+            ):
                 continue
             ratio = t.duration_seconds / tv_total
             if 0.8 <= ratio <= 1.2:

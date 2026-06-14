@@ -6,7 +6,8 @@ They should be detected and deselected from ripping.
 
 import pytest
 
-from app.core.analyst import DiscAnalyst, TitleInfo
+from app.core.analyst import DiscAnalyst, TitleInfo, _matches_expected_runtime
+from app.core.tmdb_classifier import TmdbSignal
 from app.models.disc_job import ContentType
 from tests.pipeline.conftest import (
     _default_config,
@@ -122,3 +123,60 @@ class TestPlayAllEdgeCases:
         result = analyst.analyze(titles, "SHOW_S1D1")
         assert result.content_type == ContentType.TV
         assert result.play_all_title_indices == []
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: runtime-aware Play-All (double-length pilot is NOT a Play-All)
+# ---------------------------------------------------------------------------
+
+
+def test_matches_expected_runtime_single_and_two_parter():
+    # 90.5-min title matches a single 90-min expected episode (pilot)
+    assert _matches_expected_runtime(5429, [90, 45, 45]) is True
+    # Same title matches sum of two consecutive 45-min episodes (two-parter)
+    assert _matches_expected_runtime(5429, [45, 45, 45]) is True
+    # A real 157-min Play-All matches no single/two-parter runtime
+    assert _matches_expected_runtime(9416, [45, 45, 45]) is False
+    # Empty / zero runtimes -> no match (caller falls back to heuristic)
+    assert _matches_expected_runtime(5429, []) is False
+    assert _matches_expected_runtime(5429, [0, 0]) is False
+
+
+@pytest.mark.pipeline
+class TestDS9PilotNotPlayAll:
+    """DS9 S1D1: t0 is the 90-min 'Emissary' pilot, not a Play-All of t1+t2."""
+
+    def _titles(self):
+        return [
+            TitleInfo(index=0, duration_seconds=5429, size_bytes=2_000_000_000, chapter_count=18),
+            TitleInfo(index=1, duration_seconds=2718, size_bytes=1_000_000_000, chapter_count=8),
+            TitleInfo(index=2, duration_seconds=2715, size_bytes=1_000_000_000, chapter_count=8),
+        ]
+
+    def test_pilot_flagged_without_runtimes_regression(self):
+        """Without runtimes, the old behavior stands (t0 ~ sum -> flagged)."""
+        config = _default_config()
+        analyst = DiscAnalyst(config=config)
+        result = analyst.analyze(self._titles(), "DS9S1D1")
+        assert 0 in result.play_all_title_indices
+
+    def test_pilot_not_flagged_with_runtimes(self):
+        """With expected runtimes [90,45,45,...], t0 is recognized as a real episode."""
+        config = _default_config()
+        analyst = DiscAnalyst(config=config)
+        signal = TmdbSignal(
+            content_type=ContentType.TV,
+            confidence=0.70,
+            tmdb_id=580,
+            tmdb_name="Star Trek: Deep Space Nine",
+        )
+        result = analyst.analyze(
+            self._titles(),
+            "DS9S1D1",
+            tmdb_signal=signal,
+            expected_episode_runtimes=[90, 45, 45, 45, 45],
+        )
+        assert 0 not in result.play_all_title_indices
+        # A runtime-confirmed pilot must keep the disc classified as TV, not flip
+        # it to MOVIE (only the single long title would otherwise look movie-like).
+        assert result.content_type == ContentType.TV
