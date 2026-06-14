@@ -4,6 +4,12 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Abbreviated TV disc labels now resolve to the right show name** — a disc whose label is a fan-style abbreviation (e.g. `DS9` for *Star Trek: Deep Space Nine*) used to keep the raw label as the show name even when TMDB had identified the series correctly, filing episodes under a name like `DS9S1D1`. Engram now matches the abbreviation against the TMDB title — including number-words, so `DS9` corroborates "Deep Space **Nine**" — and adopts the proper show name.
+- **Feature-length episodes are no longer discarded as a "Play All" track** — a double-length episode such as a 90-minute pilot whose runtime happened to equal the combined length of the other episodes on the disc could be mistaken for a "Play All" concatenation and skipped. Engram now checks the expected episode runtimes from TMDB before flagging a long title, so a legitimate long episode is kept and filed (and the disc still classifies as TV rather than a movie).
+- **Discs whose identity can't be confirmed now go to review instead of completing under a guessed name** — when TMDB's show name can't be corroborated by anything on the disc, the job is sent to Needs Review with the suggested title to confirm or correct, rather than silently organizing files under the raw disc label.
+
 ## [0.21.0] - 2026-06-13
 
 _Highlights: the walk-away workflow — drop a disc and walk away. Ripping now starts immediately even when Engram has a question about the disc (an unreadable label, an unknown season, or two same-named shows): the question rides along on the job card as a button you can answer any time, or pools into a single Needs Review visit at the end, instead of stopping the disc before it rips. Re-matching is dramatically faster thanks to a persistent on-disk transcript cache and background pre-transcription while a disc waits in review — and, with the opt-in fingerprint network, a disc the community has already mapped is recognized instantly by its content hash, pre-assigning every episode and skipping audio matching entirely._
