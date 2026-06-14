@@ -173,6 +173,8 @@ def _matches_expected_runtime(duration_seconds: int, expected_runtimes_min: list
     runtimes (a two-parter carried as one title), within ±max(5 min, 15%).
     Zero / missing runtimes are ignored; an empty effective list returns False
     so callers fall back to the duration-sum heuristic.
+    Expected runtimes are assumed to be in TMDB episode order, so the two-parter
+    check only sums adjacent runtimes.
     """
     runtimes = [r for r in expected_runtimes_min if r and r > 0]
     if not runtimes:
@@ -444,15 +446,18 @@ class DiscAnalyst:
         # A feature-length title that matches an expected episode runtime on a
         # TV-labeled disc (e.g. a 90-min double-length pilot) is a TV episode, not
         # a movie feature — suppress the movie result so TV classification wins.
+        # is_likely_tv is label-derived (a SxDy season pattern), NOT a TMDB-only signal.
+        movie_min = self._get_config().analyst_movie_min_duration
+        feature_titles = [t for t in titles if t.duration_seconds >= movie_min]
         if (
             movie_result
             and not movie_result.get("ambiguous")
             and is_likely_tv
             and expected_episode_runtimes
+            and feature_titles
             and all(
                 _matches_expected_runtime(t.duration_seconds, expected_episode_runtimes)
-                for t in titles
-                if t.duration_seconds >= self._get_config().analyst_movie_min_duration
+                for t in feature_titles
             )
         ):
             logger.info(
