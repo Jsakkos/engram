@@ -599,7 +599,7 @@ async def test_run_classification_skips_redundant_reresolve_after_disc_name_fall
     [
         ("DS9", "Star Trek: Deep Space Nine"),  # number-word Nine -> 9, drop "Star Trek:"
         ("Ds9", "Star Trek: Deep Space Nine"),  # case-insensitive
-        ("TNG", "Star Trek: The Next Generation"),  # stopword "The" dropped -> TNG
+        ("TNG", "Star Trek: The Next Generation"),  # colon-split -> "The Next Generation" -> T-N-G
     ],
 )
 def test_abbreviation_matches_positive(label, full_name):

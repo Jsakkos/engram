@@ -80,10 +80,11 @@ def _is_generic_disc_name(name: str) -> bool:
 def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
     """Return True if two title strings refer to the same title.
 
-    Two acceptance paths:
+    Three acceptance paths:
       1. Word-token Jaccard >= threshold (handles punctuation / word-order noise).
       2. Whitespace/punctuation-insensitive equality (handles a separator-less
          volume label vs. a spaced title, e.g. "Breakingbad" == "Breaking Bad").
+      3. Initialism/abbreviation match (e.g. "DS9" for "Deep Space Nine"); see _abbreviation_matches.
 
     Path 2 is conservative: it only matches names that are identical once spacing
     and punctuation are removed, so it never makes unrelated titles match
@@ -101,7 +102,7 @@ def _names_are_similar(a: str, b: str, threshold: float = 0.5) -> bool:
     return _abbreviation_matches(a, b) or _abbreviation_matches(b, a)
 
 
-_NUMBER_WORDS: dict[str, str] = {
+_NUMBER_WORDS: dict[str, str] = {  # 1-10; sufficient for fan-style abbreviations
     "one": "1",
     "two": "2",
     "three": "3",
@@ -134,6 +135,8 @@ def _abbreviation_matches(label: str, full_name: str) -> bool:
         and (any(c.isdigit() for c in cand) or not any(v in cand for v in "aeiou"))
     ):
         return False
+    if not any(c.isalpha() for c in cand):
+        return False  # pure-digit labels are not initialisms
 
     variants = [full_name]
     if ":" in full_name:
@@ -147,9 +150,9 @@ def _abbreviation_matches(label: str, full_name: str) -> bool:
         ]
         if len(words) < 2:
             continue
-        letters = "".join(w[0] for w in words)
-        digits = "".join(_NUMBER_WORDS.get(w, w[0]) for w in words)
-        if cand in (letters, digits):
+        letter_acronym = "".join(w[0] for w in words)
+        digit_acronym = "".join(_NUMBER_WORDS.get(w, w[0]) for w in words)
+        if cand in (letter_acronym, digit_acronym):
             return True
     return False
 
