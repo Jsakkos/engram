@@ -340,6 +340,7 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         analysis = await coordinator._run_classification(
             mock_job,
@@ -414,6 +415,7 @@ async def test_run_classification_uses_disc_name_when_label_resolves(monkeypatch
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         analysis = await coordinator._run_classification(
             mock_job,
@@ -502,6 +504,7 @@ async def test_run_classification_reresolves_tv_when_label_matches_movie(monkeyp
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         analysis = await coordinator._run_classification(
             mock_job,
@@ -581,6 +584,7 @@ async def test_run_classification_skips_redundant_reresolve_after_disc_name_fall
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         await coordinator._run_classification(
             mock_job,
@@ -684,3 +688,85 @@ def test_analyst_no_review_when_corroborated():
     result = analyst.analyze(_tv_titles(), "DS9S1D1", tmdb_signal=tmdb, disc_title="DS9S1D1")
 
     assert result.needs_review is False
+
+
+@pytest.mark.asyncio
+async def test_run_classification_fetches_runtimes_and_keeps_pilot(monkeypatch):
+    """DS9 S1D1: caller fetches expected runtimes so the 90-min pilot is kept."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
+
+    coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    analyst = DiscAnalyst()
+    analyst.set_config(AppConfig())
+    coordinator._analyst = analyst
+    coordinator._get_discdb_mappings = MagicMock(return_value=[])
+    coordinator._set_discdb_mappings = MagicMock()
+
+    titles = [
+        TitleInfo(index=0, duration_seconds=5429, size_bytes=int(2e9), chapter_count=18),
+        TitleInfo(index=1, duration_seconds=2718, size_bytes=int(1e9), chapter_count=8),
+        TitleInfo(index=2, duration_seconds=2715, size_bytes=int(1e9), chapter_count=8),
+    ]
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "fake-key"
+    mock_config.ai_identification_enabled = False
+    mock_config.ai_api_key = None
+    mock_config.discdb_enabled = False
+    mock_config.analyst_movie_min_duration = 80 * 60
+    mock_config.analyst_tv_duration_variance = 2 * 60
+    mock_config.analyst_tv_min_cluster_size = 3
+    mock_config.analyst_tv_min_duration = 18 * 60
+    mock_config.analyst_tv_max_duration = 70 * 60
+    mock_config.analyst_movie_dominance_threshold = 0.6
+
+    ds9_signal = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=580,
+        tmdb_name="Star Trek: Deep Space Nine",
+    )
+
+    runtime_calls: list[tuple] = []
+
+    def fake_runtimes(show_id, season_number):
+        runtime_calls.append((show_id, season_number))
+        return [90, 45, 45, 45, 45]
+
+    mock_job = MagicMock()
+    mock_job.volume_label = "DS9S1D1"
+    mock_job.detected_season = None
+    mock_job.content_hash = None
+    mock_job.discdb_slug = None
+    mock_job.discdb_disc_slug = None
+    mock_job.discdb_mappings_json = None
+    mock_job.play_all_indices_json = None
+
+    mock_session = AsyncMock()
+
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch(
+            "app.core.tmdb_classifier.classify_from_tmdb",
+            side_effect=lambda name, api_key: ds9_signal,
+        ),
+        patch(
+            "app.matcher.tmdb_client.fetch_season_episode_runtimes",
+            side_effect=fake_runtimes,
+        ),
+    ):
+        analysis = await coordinator._run_classification(
+            mock_job,
+            job_id=1,
+            titles=titles,
+            session=mock_session,
+            disc_name="DS9S1D1",
+        )
+
+    assert ("580", 1) in runtime_calls
+    assert 0 not in analysis.play_all_title_indices
+    assert analysis.detected_name == "Star Trek: Deep Space Nine"

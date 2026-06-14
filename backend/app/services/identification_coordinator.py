@@ -1641,6 +1641,25 @@ class IdentificationCoordinator:
             except Exception as e:
                 logger.warning(f"Job {job_id}: AI identification failed: {e}", exc_info=True)
 
+        # Expected episode runtimes let the analyst keep a double-length pilot
+        # (e.g. DS9 "Emissary") instead of mistaking it for a Play-All concatenation.
+        expected_runtimes: list[int] | None = None
+        if tmdb_signal and tmdb_signal.tmdb_id and tmdb_signal.content_type == ContentType.TV:
+            season_for_runtimes = label_season or disc_name_season
+            if season_for_runtimes:
+                try:
+                    from app.matcher.tmdb_client import fetch_season_episode_runtimes
+
+                    expected_runtimes = await asyncio.to_thread(
+                        fetch_season_episode_runtimes,
+                        str(tmdb_signal.tmdb_id),
+                        season_for_runtimes,
+                    )
+                except Exception as e:  # network/runtime data is best-effort
+                    logger.warning(
+                        f"Job {job_id}: expected-runtime fetch failed: {e}", exc_info=True
+                    )
+
         # Analyze disc content — pass disc_name_title so the analyst uses the clean
         # DINFO title as the base name and as a corroboration signal for the
         # authoritative TMDB name (instead of the garbled volume-label parse).
@@ -1649,6 +1668,7 @@ class IdentificationCoordinator:
             job.volume_label,
             tmdb_signal=tmdb_signal,
             disc_title=disc_name_title,
+            expected_episode_runtimes=expected_runtimes,
         )
 
         # If the disc-name fallback found a season the volume label didn't have, propagate it
