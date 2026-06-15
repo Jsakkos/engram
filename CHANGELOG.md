@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-06-15
+
+_Highlights: subtitle-cache harvesting is now hardened against two real-world OpenSubtitles data quality problems that caused entire TV seasons to match at "no clear vote" confidence and route to Needs Review._
+
+### Fixed
+
+- **Subtitle providers that return one episode's dialogue under a different episode's code no longer corrupt the cache** — some providers re-time an episode's subtitle and save it under a different episode slot (e.g. DS9 S02E05 was a re-timed copy of S01E05 "Babel"). Two episodes then held byte-identical dialogue in the TF-IDF index, the matching scores scattered, and both episodes ended up in Needs Review. The harvester now hashes each downloaded subtitle's cleaned dialogue, detects cross-episode duplicates before they enter the cache, removes the contaminant file, and marks its slot as not-found so it can be re-fetched cleanly. On the affected DS9 Season 2, exactly the 12 contaminated episodes were flagged and cleared. (#407)
+- **OpenSubtitles results mislabeled to the wrong episode are now rejected before they reach the cache** — OpenSubtitles returns multiple candidates per episode number, and for some shows the metadata is wrong (e.g. DS9 Season 2 subtitles are tagged `season_number=1`, and within-season numbering is offset by the Emissary two-part pilot so "Episode 10 - Move Along Home" was returned for a request whose S01E10 is "The Nagus"). The harvester took the first candidate, saving the wrong episode's dialogue under the right code. Each candidate is now cross-checked against the requested episode's TMDB title (and episode numbers outside the season's real range are rejected outright); the harvester saves the first *valid* candidate per episode, falling through to the scraper sources when no valid OS result exists. On live DS9 data, the real Season 1 subtitles now harvest correctly — The Passenger at S01E08, Move Along Home at S01E09 — and that episode's audio now matches at 0.347 vs 0.058 runner-up where it previously scored ~0.067 scattered and went to review. (#407)
+
 ## [0.21.1] - 2026-06-15
 
 _Highlights: a fixes-focused release that sharpens TV disc identification — fan-style abbreviated labels (e.g. `DS9`) now resolve to the full show name, a legitimately feature-length episode is no longer mistaken for a "Play All" track and discarded, and a disc whose identity can't be corroborated goes to Needs Review instead of completing under a guessed name._
