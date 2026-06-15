@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.analyst import DiscAnalyst, TitleInfo
+from app.core.analyst import DiscAnalyst, TitleInfo, _abbreviation_matches, _names_are_similar
 from app.core.extractor import MakeMKVExtractor
 from app.core.tmdb_classifier import TmdbSignal
 from app.models.disc_job import ContentType
@@ -137,6 +137,9 @@ def test_analyst_without_disc_title_keeps_garbled_label_name():
     # But detected_name comes from garbled volume label
     # Deferred case: collapsed "strangenewworlds" != "startrekstrangenewworlds"
     assert result.detected_name == "Strangenewworlds"
+    # Fix 3: the concatenated label does not corroborate, so the disc goes to review.
+    assert result.needs_review is True
+    assert result.review_reason is not None
 
 
 def test_analyst_with_disc_title_adopts_tmdb_name():
@@ -264,6 +267,9 @@ def test_analyst_keeps_base_name_when_tmdb_uncorroborated():
     # Neither "Breakingbad" nor "Breaking Bad" matches "Some Unrelated Show",
     # so the DINFO-preferred base name is kept rather than the TMDB name.
     assert result.detected_name == "Breaking Bad"
+    # Fix 3: an uncorroborated TMDB name now escalates to review.
+    assert result.needs_review is True
+    assert result.review_reason is not None
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +340,7 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         analysis = await coordinator._run_classification(
             mock_job,
@@ -408,6 +415,7 @@ async def test_run_classification_uses_disc_name_when_label_resolves(monkeypatch
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         analysis = await coordinator._run_classification(
             mock_job,
@@ -496,6 +504,7 @@ async def test_run_classification_reresolves_tv_when_label_matches_movie(monkeyp
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         analysis = await coordinator._run_classification(
             mock_job,
@@ -575,6 +584,7 @@ async def test_run_classification_skips_redundant_reresolve_after_disc_name_fall
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
         patch("app.core.features.DISCDB_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
         await coordinator._run_classification(
             mock_job,
@@ -587,3 +597,176 @@ async def test_run_classification_skips_redundant_reresolve_after_disc_name_fall
     # "Mad Men" must be queried exactly once (the fallback), not re-queried by the
     # cross-namespace re-resolve block.
     assert queried.count("Mad Men") == 1
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: abbreviation / initialism corroboration (DS9 ↔ Deep Space Nine)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label,full_name",
+    [
+        ("DS9", "Star Trek: Deep Space Nine"),  # number-word Nine -> 9, drop "Star Trek:"
+        ("Ds9", "Star Trek: Deep Space Nine"),  # case-insensitive
+        ("TNG", "Star Trek: The Next Generation"),  # colon-split -> "The Next Generation" -> T-N-G
+    ],
+)
+def test_abbreviation_matches_positive(label, full_name):
+    assert _abbreviation_matches(label, full_name) is True
+
+
+@pytest.mark.parametrize(
+    "label,full_name",
+    [
+        ("DS9", "Star Trek: The Next Generation"),  # ds9 != tng / stng
+        ("HOUSE", "Star Trek: Deep Space Nine"),  # has vowels, no digit -> not abbrev-shaped
+        ("STRANGENEWWORLDS", "Star Trek: Strange New Worlds"),  # too long (>5) -> not abbrev
+        ("D", "Deep Space Nine"),  # single char -> rejected
+    ],
+)
+def test_abbreviation_matches_negative(label, full_name):
+    assert _abbreviation_matches(label, full_name) is False
+
+
+def test_names_are_similar_uses_abbreviation_path():
+    assert _names_are_similar("Ds9", "Star Trek: Deep Space Nine") is True
+
+
+def test_analyst_adopts_tmdb_name_for_abbreviated_label():
+    """DS9S1D1 -> 'Ds9' must corroborate and adopt TMDB 'Star Trek: Deep Space Nine'."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=580,
+        tmdb_name="Star Trek: Deep Space Nine",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(_tv_titles(), "DS9S1D1", tmdb_signal=tmdb, disc_title="DS9S1D1")
+
+    assert result.detected_name == "Star Trek: Deep Space Nine"
+    assert result.tmdb_id == 580
+    assert result.content_type == ContentType.TV
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: uncorroborated identity escalates to review
+# ---------------------------------------------------------------------------
+
+
+def test_analyst_escalates_review_when_tmdb_uncorroborated():
+    """A TMDB name matching neither on-disc signal -> needs_review with a candidate."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=999,
+        tmdb_name="Some Unrelated Show",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(
+        _tv_titles(), "BREAKINGBADS2", tmdb_signal=tmdb, disc_title="Breaking Bad"
+    )
+
+    assert result.needs_review is True
+    assert result.review_reason is not None
+    assert "Some Unrelated Show" in result.review_reason
+    assert "Breaking Bad" in result.review_reason
+    assert "999" in result.review_reason
+    # The base name is kept as the suggestion; TMDB id still attached.
+    assert result.detected_name == "Breaking Bad"
+
+
+def test_analyst_no_review_when_corroborated():
+    """A corroborated name (DS9 via abbreviation) must NOT trigger review."""
+    tmdb = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.70,
+        tmdb_id=580,
+        tmdb_name="Star Trek: Deep Space Nine",
+    )
+    analyst = DiscAnalyst()
+    result = analyst.analyze(_tv_titles(), "DS9S1D1", tmdb_signal=tmdb, disc_title="DS9S1D1")
+
+    assert result.needs_review is False
+
+
+@pytest.mark.asyncio
+async def test_run_classification_fetches_runtimes_and_keeps_pilot(monkeypatch):
+    """DS9 S1D1: caller fetches expected runtimes so the 90-min pilot is kept."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
+
+    coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    analyst = DiscAnalyst()
+    analyst.set_config(AppConfig())
+    coordinator._analyst = analyst
+    coordinator._get_discdb_mappings = MagicMock(return_value=[])
+    coordinator._set_discdb_mappings = MagicMock()
+
+    titles = [
+        TitleInfo(index=0, duration_seconds=5429, size_bytes=int(2e9), chapter_count=18),
+        TitleInfo(index=1, duration_seconds=2718, size_bytes=int(1e9), chapter_count=8),
+        TitleInfo(index=2, duration_seconds=2715, size_bytes=int(1e9), chapter_count=8),
+    ]
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "fake-key"
+    mock_config.ai_identification_enabled = False
+    mock_config.ai_api_key = None
+    mock_config.discdb_enabled = False
+    mock_config.analyst_movie_min_duration = 80 * 60
+    mock_config.analyst_tv_duration_variance = 2 * 60
+    mock_config.analyst_tv_min_cluster_size = 3
+    mock_config.analyst_tv_min_duration = 18 * 60
+    mock_config.analyst_tv_max_duration = 70 * 60
+    mock_config.analyst_movie_dominance_threshold = 0.6
+
+    ds9_signal = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=580,
+        tmdb_name="Star Trek: Deep Space Nine",
+    )
+
+    runtime_calls: list[tuple] = []
+
+    def fake_runtimes(show_id, season_number):
+        runtime_calls.append((show_id, season_number))
+        return [90, 45, 45, 45, 45]
+
+    mock_job = MagicMock()
+    mock_job.volume_label = "DS9S1D1"
+    mock_job.detected_season = None
+    mock_job.content_hash = None
+    mock_job.discdb_slug = None
+    mock_job.discdb_disc_slug = None
+    mock_job.discdb_mappings_json = None
+    mock_job.play_all_indices_json = None
+
+    mock_session = AsyncMock()
+
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch(
+            "app.core.tmdb_classifier.classify_from_tmdb",
+            side_effect=lambda name, api_key: ds9_signal,
+        ),
+        patch(
+            "app.matcher.tmdb_client.fetch_season_episode_runtimes",
+            side_effect=fake_runtimes,
+        ),
+    ):
+        analysis = await coordinator._run_classification(
+            mock_job,
+            job_id=1,
+            titles=titles,
+            session=mock_session,
+            disc_name="DS9S1D1",
+        )
+
+    assert ("580", 1) in runtime_calls
+    assert 0 not in analysis.play_all_title_indices
+    assert analysis.detected_name == "Star Trek: Deep Space Nine"

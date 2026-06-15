@@ -189,7 +189,7 @@ class TestRunClassification:
         _patch_config(monkeypatch, _config(tmdb_api_key="key"))
 
         tmdb_signal = SimpleNamespace(
-            content_type=ContentType.TV, confidence=0.8, tmdb_name="The Office"
+            content_type=ContentType.TV, confidence=0.8, tmdb_name="The Office", tmdb_id=None
         )
         monkeypatch.setattr(
             "app.core.tmdb_classifier.classify_from_tmdb", Mock(return_value=tmdb_signal)
@@ -211,7 +211,7 @@ class TestRunClassification:
         )
 
         ai_tmdb = SimpleNamespace(
-            content_type=ContentType.MOVIE, confidence=0.9, tmdb_name="Inception"
+            content_type=ContentType.MOVIE, confidence=0.9, tmdb_name="Inception", tmdb_id=None
         )
         # First TMDB lookup (from the label) fails; re-query with AI name succeeds.
         monkeypatch.setattr(
