@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-06-15
+
+_Highlights: a fixes-focused release that sharpens TV disc identification — fan-style abbreviated labels (e.g. `DS9`) now resolve to the full show name, a legitimately feature-length episode is no longer mistaken for a "Play All" track and discarded, and a disc whose identity can't be corroborated goes to Needs Review instead of completing under a guessed name._
+
+### Changed
+
+- **Multi-disc box sets identify a little faster** — ripping several discs of the same season no longer re-fetches identical episode-runtime data from TMDB once per disc; the runtime lookup is now cached for the life of the app, trimming redundant network calls during identification. (#404)
+
 ### Fixed
 
 - **Abbreviated TV disc labels now resolve to the right show name** — a disc whose label is a fan-style abbreviation (e.g. `DS9` for *Star Trek: Deep Space Nine*) used to keep the raw label as the show name even when TMDB had identified the series correctly, filing episodes under a name like `DS9S1D1`. Engram now matches the abbreviation against the TMDB title — including number-words, so `DS9` corroborates "Deep Space **Nine**" — and adopts the proper show name. (#403)
