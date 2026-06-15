@@ -161,7 +161,7 @@ def _uncorroborated_review_reason(detected_name: str | None, tmdb_signal) -> str
     """Build a review reason for a TMDB identity that lacks on-disc corroboration."""
     tid = f" (TMDB #{tmdb_signal.tmdb_id})" if tmdb_signal.tmdb_id else ""
     return (
-        f"Couldn't confirm disc '{detected_name}' is "
+        f"Couldn't confirm disc '{detected_name or 'the disc'}' is "
         f"'{tmdb_signal.tmdb_name}'{tid}. Confirm or correct the title."
     )
 
@@ -570,7 +570,8 @@ class DiscAnalyst:
             if (
                 tmdb_signal.content_type == ContentType.TV
                 and tmdb_signal.tmdb_name
-                and not _names_are_similar(effective_name or "", tmdb_signal.tmdb_name)
+                and effective_name
+                and not _names_are_similar(effective_name, tmdb_signal.tmdb_name)
             ):
                 tmdb_only.needs_review = True
                 tmdb_only.review_reason = _uncorroborated_review_reason(effective_name, tmdb_signal)

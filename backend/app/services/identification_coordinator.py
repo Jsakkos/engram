@@ -1647,9 +1647,9 @@ class IdentificationCoordinator:
         if tmdb_signal and tmdb_signal.tmdb_id and tmdb_signal.content_type == ContentType.TV:
             season_for_runtimes = label_season or disc_name_season
             if season_for_runtimes:
-                try:
-                    from app.matcher.tmdb_client import fetch_season_episode_runtimes
+                from app.matcher.tmdb_client import fetch_season_episode_runtimes
 
+                try:
                     expected_runtimes = await asyncio.to_thread(
                         fetch_season_episode_runtimes,
                         str(tmdb_signal.tmdb_id),
