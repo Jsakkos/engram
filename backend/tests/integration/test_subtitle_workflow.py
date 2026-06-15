@@ -243,9 +243,12 @@ class TestCacheBehavior:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
+            # Distinct content per episode — real episodes never share dialogue,
+            # and the cross-episode-duplicate guard would otherwise reject a
+            # second identical SRT as a mislabeled copy.
             save_path.write_text(
-                "1\n00:00:00,000 --> 00:00:02,000\nDownloaded subtitle content\n\n"
-                "2\n00:00:02,000 --> 00:00:04,000\nMore downloaded content\n"
+                f"1\n00:00:00,000 --> 00:00:02,000\nDownloaded content for {save_path.name}\n\n"
+                f"2\n00:00:02,000 --> 00:00:04,000\nMore content for {save_path.name}\n"
             )
             return save_path
 
@@ -264,8 +267,8 @@ class TestCacheBehavior:
 
         # Verify files exist
         assert "Cached episode 1" in (show_dir / "Test Show - S01E01.srt").read_text()
-        assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E02.srt").read_text()
-        assert "Downloaded subtitle content" in (show_dir / "Test Show - S01E03.srt").read_text()
+        assert "Downloaded content for" in (show_dir / "Test Show - S01E02.srt").read_text()
+        assert "Downloaded content for" in (show_dir / "Test Show - S01E03.srt").read_text()
 
     @patch("app.matcher.testing_service.TVSubtitlesClient")
     @patch("app.matcher.testing_service.Addic7edClient")
@@ -330,9 +333,12 @@ class TestCacheBehavior:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
+            # Distinct content per episode — real episodes never share dialogue,
+            # and the cross-episode-duplicate guard would otherwise reject a
+            # second identical SRT as a mislabeled copy.
             save_path.write_text(
-                "1\n00:00:00,000 --> 00:00:02,000\nDownloaded subtitle content\n\n"
-                "2\n00:00:02,000 --> 00:00:04,000\nMore downloaded content\n"
+                f"1\n00:00:00,000 --> 00:00:02,000\nDownloaded content for {save_path.name}\n\n"
+                f"2\n00:00:02,000 --> 00:00:04,000\nMore content for {save_path.name}\n"
             )
             return save_path
 

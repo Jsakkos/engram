@@ -22,7 +22,12 @@ from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
-from app.matcher.subtitle_utils import corpus_dir_name, is_valid_srt_file, sanitize_filename
+from app.matcher.subtitle_utils import (
+    corpus_dir_name,
+    find_duplicate_episode_srts,
+    is_valid_srt_file,
+    sanitize_filename,
+)
 from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
 from app.matcher.tvsubtitles_client import TVSubtitlesClient
 
@@ -410,6 +415,35 @@ def _heal_precomputed_gaps(
     return healed
 
 
+def _reject_content_duplicates(series_cache_dir: str | Path, episodes: list[dict]) -> list[dict]:
+    """Drop episodes whose subtitle dialogue is identical to a *different*
+    episode's already on disk (a provider mislabeled one episode's SRT as
+    another). The contaminant file is deleted and its result rewritten to
+    not_found so coverage tracking stays honest and the slot can be re-attempted.
+
+    The cache builder harvests seasons in ascending order, so the lexicographically
+    larger code (e.g. S02E05 when it duplicates S01E05) is the late-arriving
+    contaminant; ``find_duplicate_episode_srts`` keeps the smaller code and flags
+    the rest, which is what this season's ``episodes`` list contains.
+    """
+    dups = find_duplicate_episode_srts(series_cache_dir)
+    if not dups:
+        return episodes
+    for ep in episodes:
+        dup_path = dups.get(ep.get("code"))
+        if dup_path is None:
+            continue
+        Path(dup_path).unlink(missing_ok=True)
+        logger.warning(
+            f"Rejecting {ep['code']}: its subtitle dialogue is identical to another "
+            f"episode's (mislabeled cross-episode duplicate) — deleting and marking not_found"
+        )
+        ep["status"] = "not_found"
+        ep["path"] = None
+        ep["source"] = None
+    return episodes
+
+
 def download_subtitles(
     show_name: str, season: int, *, tmdb_id: int | None = None, use_precomputed: bool = True
 ) -> dict:
@@ -672,6 +706,10 @@ def download_subtitles(
                     },
                 )
             )
+
+    # Reject episodes whose subtitle content duplicates a different episode's
+    # (provider mislabel) before they reach the cache builder and corrupt matching.
+    episodes = _reject_content_duplicates(series_cache_dir, episodes)
 
     return {
         "show_name": canonical_show_name,

@@ -1,3 +1,4 @@
+import hashlib
 import re
 from pathlib import Path
 
@@ -137,6 +138,60 @@ def discover_season_srts(series_cache_dir: str | Path, season: int) -> list[tupl
         found.append((e, f"S{s:02d}E{e:02d}", srt))
     found.sort(key=lambda x: x[0])
     return [(code, path) for _e, code, path in found]
+
+
+def find_duplicate_episode_srts(series_cache_dir: str | Path) -> dict[str, Path]:
+    """Return ``{episode_code: path}`` for SRTs whose cleaned dialogue is identical
+    to a *different* episode's in the same directory.
+
+    A provider occasionally returns one episode's subtitle for a different
+    episode's request (e.g. S01E05's "Babel" dialogue saved as S02E05, re-timed),
+    so the two files carry identical dialogue with only different timestamps.
+    Because the cache builder vectorizes the cleaned dialogue text, two such files
+    collapse to identical reference vectors and wreck matching for both episodes.
+
+    Scans a show's subtitle dir, groups single-episode SRTs by the SHA-256 of
+    their cleaned dialogue (the exact text the builder vectorizes — timestamps and
+    indices excluded), and for each colliding group keeps the
+    lexicographically-smallest episode code, returning the rest as the mislabeled
+    duplicates the caller should reject. Multi-episode, unparseable, and
+    empty/unreadable SRTs are ignored.
+    """
+    d = Path(series_cache_dir)
+    if not d.is_dir():
+        return {}
+
+    # Lazy import: episode_identification imports this module, so a module-level
+    # import of the cleaner would be circular. get_full_text yields exactly the
+    # text the cache builder vectorizes, so identical cleaned text here means
+    # identical reference vectors downstream.
+    from app.matcher.episode_identification import SubtitleCache
+
+    cache = SubtitleCache()
+    by_hash: dict[str, list[tuple[str, Path]]] = {}
+    for srt in d.glob("*.srt"):
+        if MULTI_EP_RE.search(srt.name):
+            continue
+        m = SINGLE_EP_RE.search(srt.name)
+        if not m:
+            continue
+        code = f"S{int(m.group(1)):02d}E{int(m.group(2)):02d}"
+        text = cache.get_full_text(str(srt))
+        if not text:
+            continue
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        by_hash.setdefault(digest, []).append((code, srt))
+
+    duplicates: dict[str, Path] = {}
+    for group in by_hash.values():
+        if len(group) < 2:
+            continue
+        # Keep the lexicographically-smallest code (earliest season/episode);
+        # the rest are the mislabeled copies of the same dialogue.
+        group.sort(key=lambda ce: ce[0])
+        for code, path in group[1:]:
+            duplicates[code] = path
+    return duplicates
 
 
 def find_existing_subtitle(
