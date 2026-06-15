@@ -430,13 +430,16 @@ def _reject_content_duplicates(series_cache_dir: str | Path, episodes: list[dict
     if not dups:
         return episodes
     for ep in episodes:
-        dup_path = dups.get(ep.get("code"))
-        if dup_path is None:
+        # Every episode dict carries "code" by construction; index (not .get) so a
+        # broken invariant surfaces as a KeyError instead of looking like "no dup".
+        match = dups.get(ep["code"])
+        if match is None:
             continue
+        canonical_code, dup_path = match
         Path(dup_path).unlink(missing_ok=True)
         logger.warning(
-            f"Rejecting {ep['code']}: its subtitle dialogue is identical to another "
-            f"episode's (mislabeled cross-episode duplicate) — deleting and marking not_found"
+            f"Rejecting {ep['code']}: subtitle dialogue is identical to {canonical_code}'s "
+            f"(mislabeled cross-episode duplicate) — deleting {dup_path.name} and marking not_found"
         )
         ep["status"] = "not_found"
         ep["path"] = None

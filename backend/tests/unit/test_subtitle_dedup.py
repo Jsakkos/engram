@@ -70,7 +70,9 @@ def test_flags_cross_season_content_duplicate(tmp_path):
     dups = find_duplicate_episode_srts(tmp_path)
 
     assert set(dups) == {"S02E05"}
-    assert dups["S02E05"].name == "Star Trek - S02E05.srt"
+    canonical_code, dup_path = dups["S02E05"]
+    assert canonical_code == "S01E05"  # the kept, authentic copy
+    assert dup_path.name == "Star Trek - S02E05.srt"
 
 
 def test_distinct_episodes_are_not_flagged(tmp_path):

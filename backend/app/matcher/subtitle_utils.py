@@ -4,6 +4,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from app.matcher.srt_utils import SubtitleReader, clean_text
+
 
 def is_valid_srt_file(file_path: Path) -> bool:
     """Validate that ``file_path`` is a real SRT subtitle file, not HTML
@@ -140,9 +142,26 @@ def discover_season_srts(series_cache_dir: str | Path, season: int) -> list[tupl
     return [(code, path) for _e, code, path in found]
 
 
-def find_duplicate_episode_srts(series_cache_dir: str | Path) -> dict[str, Path]:
-    """Return ``{episode_code: path}`` for SRTs whose cleaned dialogue is identical
-    to a *different* episode's in the same directory.
+def _cleaned_dialogue(srt_path: Path) -> str:
+    """Return an SRT's dialogue text, normalized for content comparison —
+    timestamps and cue indices excluded, lowercased and whitespace-collapsed.
+
+    Sourced from ``srt_utils`` (a leaf module) rather than the matcher's
+    ``get_full_text`` so this utility stays out of the ``episode_identification``
+    import cycle. Any two SRTs with identical dialogue produce the same string,
+    which is all the duplicate check needs.
+    """
+    try:
+        content = SubtitleReader.read_srt_file(srt_path)
+    except (OSError, ValueError):
+        return ""
+    lines = SubtitleReader.extract_subtitle_chunk(content, 0, 999999)
+    return clean_text(" ".join(lines))
+
+
+def find_duplicate_episode_srts(series_cache_dir: str | Path) -> dict[str, tuple[str, Path]]:
+    """Return ``{contaminant_code: (canonical_code, path)}`` for SRTs whose cleaned
+    dialogue is identical to a *different* episode's in the same directory.
 
     A provider occasionally returns one episode's subtitle for a different
     episode's request (e.g. S01E05's "Babel" dialogue saved as S02E05, re-timed),
@@ -151,23 +170,15 @@ def find_duplicate_episode_srts(series_cache_dir: str | Path) -> dict[str, Path]
     collapse to identical reference vectors and wreck matching for both episodes.
 
     Scans a show's subtitle dir, groups single-episode SRTs by the SHA-256 of
-    their cleaned dialogue (the exact text the builder vectorizes — timestamps and
-    indices excluded), and for each colliding group keeps the
-    lexicographically-smallest episode code, returning the rest as the mislabeled
-    duplicates the caller should reject. Multi-episode, unparseable, and
-    empty/unreadable SRTs are ignored.
+    their cleaned dialogue (timestamps and cue indices excluded), and for each
+    colliding group keeps the lexicographically-smallest episode code as
+    canonical, returning the rest as ``contaminant_code -> (canonical_code, path)``.
+    Multi-episode, unparseable, and empty/unreadable SRTs are ignored.
     """
     d = Path(series_cache_dir)
     if not d.is_dir():
         return {}
 
-    # Lazy import: episode_identification imports this module, so a module-level
-    # import of the cleaner would be circular. get_full_text yields exactly the
-    # text the cache builder vectorizes, so identical cleaned text here means
-    # identical reference vectors downstream.
-    from app.matcher.episode_identification import SubtitleCache
-
-    cache = SubtitleCache()
     by_hash: dict[str, list[tuple[str, Path]]] = {}
     for srt in d.glob("*.srt"):
         if MULTI_EP_RE.search(srt.name):
@@ -176,21 +187,27 @@ def find_duplicate_episode_srts(series_cache_dir: str | Path) -> dict[str, Path]
         if not m:
             continue
         code = f"S{int(m.group(1)):02d}E{int(m.group(2)):02d}"
-        text = cache.get_full_text(str(srt))
+        text = _cleaned_dialogue(srt)
         if not text:
             continue
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
         by_hash.setdefault(digest, []).append((code, srt))
 
-    duplicates: dict[str, Path] = {}
+    duplicates: dict[str, tuple[str, Path]] = {}
     for group in by_hash.values():
         if len(group) < 2:
             continue
-        # Keep the lexicographically-smallest code (earliest season/episode);
-        # the rest are the mislabeled copies of the same dialogue.
+        # Keep the lexicographically-smallest code (earliest season/episode) as
+        # canonical. Assumption: seasons are harvested in ascending order, so the
+        # smaller code holds the authentic dialogue and the larger code is the
+        # late-arriving contaminant. This heuristic is wrong when contamination
+        # flows the other way (a higher episode's dialogue returned for a lower
+        # episode's request), but that case is indistinguishable from content
+        # alone — both files contain identical dialogue.
         group.sort(key=lambda ce: ce[0])
+        canonical_code = group[0][0]
         for code, path in group[1:]:
-            duplicates[code] = path
+            duplicates[code] = (canonical_code, path)
     return duplicates
 
 
