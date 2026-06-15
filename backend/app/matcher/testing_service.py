@@ -6,6 +6,7 @@ Provides three independent operations that can be called from CLI or API:
 3. match_episodes - Match MKV file(s) against cached subtitles
 """
 
+import re
 import tempfile
 import threading
 import time
@@ -28,7 +29,12 @@ from app.matcher.subtitle_utils import (
     is_valid_srt_file,
     sanitize_filename,
 )
-from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
+from app.matcher.tmdb_client import (
+    fetch_season_details,
+    fetch_season_episodes,
+    fetch_show_details,
+    fetch_show_id,
+)
 from app.matcher.tvsubtitles_client import TVSubtitlesClient
 
 # OpenSubtitles best-practices require the User-Agent be in the form
@@ -415,6 +421,51 @@ def _heal_precomputed_gaps(
     return healed
 
 
+def _release_matches_episode(release: str | None, expected_title: str, *, season: int) -> bool:
+    """Return False when an OpenSubtitles ``release`` clearly names a DIFFERENT
+    episode than the one requested; True when it's consistent or uninformative.
+
+    OpenSubtitles mislabels some shows' episodes — e.g. it returns DS9 Season 2
+    subtitles tagged ``season_number=1`` ("Episode 6 - Melora" for a request that
+    should be S01E06 "Q-Less"). The declared season/episode can't be trusted, but
+    the ``release`` string carries the true title, so we reject on positive
+    mismatch evidence only (never on mere absence of a title, to avoid rejecting
+    valid releases that are bare filenames/hashes):
+
+    1. An explicit ``SxxEyy`` whose season differs from ``season``.
+    2. An explicit title after an episode marker ("Episode N - Title", "SxxEyy: Title",
+       "NxNN - Title") that shares no word — and is no substring — with ``expected_title``.
+    """
+    if not release or not expected_title:
+        return True
+    sxx = re.search(r"s(\d{1,2})e\d{1,3}", release, re.IGNORECASE)
+    if sxx and int(sxx.group(1)) != season:
+        return False
+    marker = re.search(
+        r"(?:episode\s+\d+|s\d{1,2}e\d{1,3}|\d{1,2}x\d{1,3})\s*[-–:]\s*(.+)$",
+        release,
+        re.IGNORECASE,
+    )
+    if marker and _titles_conflict(marker.group(1), expected_title):
+        return False
+    return True
+
+
+def _titles_conflict(a: str, b: str) -> bool:
+    """True when two episode titles share no word and neither is a substring of
+    the other (after stripping punctuation) — i.e. they're clearly different."""
+    aw = re.findall(r"[a-z0-9]+", a.lower())
+    bw = re.findall(r"[a-z0-9]+", b.lower())
+    if not aw or not bw:
+        return False
+    if set(aw) & set(bw):
+        return False
+    aj, bj = "".join(aw), "".join(bw)
+    if aj in bj or bj in aj:
+        return False
+    return True
+
+
 def _reject_content_duplicates(series_cache_dir: str | Path, episodes: list[dict]) -> list[dict]:
     """Drop episodes whose subtitle dialogue is identical to a *different*
     episode's already on disk (a provider mislabeled one episode's SRT as
@@ -589,32 +640,65 @@ def download_subtitles(
                     max_attempts=4,
                     base_delay=1.0,
                 )
+                # TMDB episode titles for this season — the ground truth the OS
+                # metadata is validated against. Empty (e.g. no TMDB key / lookup
+                # failure) degrades validation to a no-op rather than rejecting
+                # everything.
+                episode_titles = {
+                    e["episode_number"]: e["name"]
+                    for e in fetch_season_episodes(show_id, season, config.tmdb_api_key)
+                    if e.get("episode_number") is not None
+                }
                 seen_api_eps: set[int] = set()
                 for subtitle in response.data or []:
                     ep_num = getattr(subtitle, "episode_number", None)
                     api_ep_season = getattr(subtitle, "season_number", None)
-                    if ep_num and api_ep_season == season and ep_num not in seen_api_eps:
-                        episode_code_api = f"S{season:02d}E{ep_num:02d}"
-                        srt_target = series_cache_dir / f"{safe_show_name} - {episode_code_api}.srt"
-                        if not srt_target.exists():
-                            # Shorter cadence on download than on search — a
-                            # 429 on download usually means the daily quota
-                            # is exhausted (not the per-minute limit), and
-                            # retrying same-day for 90s+ doesn't help; we'd
-                            # rather fall back to scrapers and move on.
-                            srt_file = os_api_call(
-                                _os_client.download_and_save,
-                                subtitle,
-                                max_attempts=2,
-                                base_delay=5.0,
-                            )
-                            if srt_file and is_valid_srt_file(Path(srt_file)):
-                                shutil.move(str(srt_file), srt_target)
-                                api_srt_map[ep_num] = srt_target
-                                seen_api_eps.add(ep_num)
-                        else:
+                    if not ep_num or api_ep_season != season or ep_num in seen_api_eps:
+                        continue
+                    # OpenSubtitles mislabels some shows (e.g. it returns DS9
+                    # Season 2 subtitles tagged season_number=1). Reject results
+                    # whose episode number is outside the season's real range, or
+                    # whose `release` title names a different episode, before they
+                    # get saved under the wrong code and poison the cache.
+                    if episode_titles and ep_num not in episode_titles:
+                        logger.warning(
+                            f"OpenSubtitles returned S{season:02d}E{ep_num:02d} for "
+                            f"{canonical_show_name}, which has no episode {ep_num} in "
+                            f"season {season} (mislabeled); skipping"
+                        )
+                        continue
+                    if not _release_matches_episode(
+                        getattr(subtitle, "release", None),
+                        episode_titles.get(ep_num, ""),
+                        season=season,
+                    ):
+                        logger.warning(
+                            f"OpenSubtitles S{season:02d}E{ep_num:02d} release "
+                            f"{getattr(subtitle, 'release', None)!r} doesn't match expected "
+                            f"episode '{episode_titles.get(ep_num, '')}' (mislabeled); skipping"
+                        )
+                        continue
+                    episode_code_api = f"S{season:02d}E{ep_num:02d}"
+                    srt_target = series_cache_dir / f"{safe_show_name} - {episode_code_api}.srt"
+                    if not srt_target.exists():
+                        # Shorter cadence on download than on search — a
+                        # 429 on download usually means the daily quota
+                        # is exhausted (not the per-minute limit), and
+                        # retrying same-day for 90s+ doesn't help; we'd
+                        # rather fall back to scrapers and move on.
+                        srt_file = os_api_call(
+                            _os_client.download_and_save,
+                            subtitle,
+                            max_attempts=2,
+                            base_delay=5.0,
+                        )
+                        if srt_file and is_valid_srt_file(Path(srt_file)):
+                            shutil.move(str(srt_file), srt_target)
                             api_srt_map[ep_num] = srt_target
                             seen_api_eps.add(ep_num)
+                    else:
+                        api_srt_map[ep_num] = srt_target
+                        seen_api_eps.add(ep_num)
                 logger.info(
                     f"OpenSubtitles API: {len(api_srt_map)}/{episode_count} subtitles "
                     f"for {canonical_show_name} S{season:02d}"
