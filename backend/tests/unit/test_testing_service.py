@@ -427,7 +427,12 @@ class TestDownloadSubtitles:
 
         def download_side_effect(subtitle, save_path):
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text("1\n00:00:00,000 --> 00:00:02,000\nDownloaded subtitle\n")
+            # Distinct content per episode — real episodes never share dialogue,
+            # and the cross-episode-duplicate guard would otherwise reject a
+            # second identical SRT as a mislabeled copy.
+            save_path.write_text(
+                f"1\n00:00:00,000 --> 00:00:02,000\nDownloaded subtitle for {save_path.name}\n"
+            )
             return save_path
 
         addic7ed_client.download_subtitle.side_effect = download_side_effect
