@@ -83,7 +83,6 @@ async def _seed(indices: list[int]) -> tuple[int, list[DiscTitle]]:
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 async def test_resolve_by_filename_index():
     job_id, titles = await _seed([0, 1, 2, 3])
     async with _unit_session_factory() as session:
@@ -93,7 +92,6 @@ async def test_resolve_by_filename_index():
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 async def test_resolve_foreign_filename_index_not_in_subset_returns_none():
     # Single-track re-rip: subset is only the re-ripped title (index 3). The
     # pre-existing B1_t00.mkv (title 0's file) must NOT resolve to it.
@@ -104,7 +102,6 @@ async def test_resolve_foreign_filename_index_not_in_subset_returns_none():
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 async def test_resolve_unparseable_filename_falls_back_positionally():
     # A disc whose output names carry no t<NN> index still resolves via the
     # sequential rip_index fallback (unchanged behavior).

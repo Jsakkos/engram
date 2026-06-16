@@ -95,7 +95,7 @@ def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[s
     falsy (None for a full ``rip all``, or an empty list) nothing is ignored —
     the dir is fresh.
     """
-    if not title_indices:
+    if not title_indices:  # None → full "rip all"; [] → same (no titles to re-rip)
         return set()
     ripping = set(title_indices)
     ignore: set[str] = set()

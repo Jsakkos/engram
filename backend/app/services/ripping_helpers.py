@@ -10,6 +10,7 @@ from collections import deque
 from pathlib import Path
 
 from app.core.extractor import title_index_from_filename
+from app.core.security import sanitize_log_value
 from app.models.disc_job import DiscJob, DiscTitle
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,9 @@ async def resolve_title_from_filename(
     2. Fallback: sequential rip_index mapped to sorted titles
     """
     title = None
+    # path.name derives from the disc volume label (user-controlled), so sanitize
+    # it before it reaches any log sink (py/log-injection).
+    safe_name = sanitize_log_value(path.name)
 
     # Try to extract the MakeMKV title index from the filename (e.g.
     # B1_t00.mkv -> 0). This is the authoritative mapping — MakeMKV's _tNN is
@@ -88,7 +92,7 @@ async def resolve_title_from_filename(
                 break
         if title:
             logger.debug(
-                f"Mapped {path.name} to title_index={title_index} "
+                f"Mapped {safe_name} to title_index={title_index} "
                 f"(Title DB id={title.id}, Job {job_id})"
             )
         else:
@@ -99,7 +103,7 @@ async def resolve_title_from_filename(
             # mis-attribute it onto the wrong (subset) title and stamp it with
             # the wrong filename. Treat it as unresolved.
             logger.debug(
-                f"Ripped file {path.name} has title_index={title_index} not in this "
+                f"Ripped file {safe_name} has title_index={title_index} not in this "
                 f"rip's title set — ignoring as foreign (Job {job_id})"
             )
             return None
@@ -115,7 +119,7 @@ async def resolve_title_from_filename(
         )
 
     if not title:
-        logger.warning(f"Could not map ripped file {path.name} to any title (Job {job_id})")
+        logger.warning(f"Could not map ripped file {safe_name} to any title (Job {job_id})")
 
     return title
 
