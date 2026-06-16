@@ -18,12 +18,14 @@ import pytest
 from app.core.extractor import (
     MakeMKVExtractor,
     _extract_created_mkv,
+    _files_to_ignore,
     _find_linux_mount_point,
     _is_stalled,
     _safe_callback,
     _save_makemkv_log,
     _to_drive_spec,
     compute_content_hash,
+    title_index_from_filename,
 )
 
 
@@ -59,6 +61,58 @@ class TestExtractCreatedMkv:
 
     def test_returns_none_when_no_quoted_name(self, tmp_path):
         assert _extract_created_mkv("created a .mkv but unquoted", tmp_path) is None
+
+
+@pytest.mark.unit
+class TestTitleIndexFromFilename:
+    @pytest.mark.parametrize(
+        "name, expected",
+        [
+            ("B1_t00.mkv", 0),
+            ("E1_t03.mkv", 3),
+            ("Show - Season 3_t12.mkv", 12),
+            ("title_07.mkv", 7),
+            ("title09.mkv", 9),
+            ("weird_name.mkv", None),
+            ("not_an_mkv_t01.txt", None),
+        ],
+    )
+    def test_parses_makemkv_title_index(self, name, expected):
+        assert title_index_from_filename(name) == expected
+
+
+@pytest.mark.unit
+class TestFilesToIgnore:
+    """A subset re-rip must ignore pre-existing files for OTHER titles."""
+
+    def _seed(self, tmp_path, *names):
+        for n in names:
+            (tmp_path / n).write_bytes(b"x")
+
+    def test_full_rip_ignores_nothing(self, tmp_path):
+        # title_indices=None → 'rip all' into a fresh dir; ignore nothing.
+        self._seed(tmp_path, "B1_t00.mkv")
+        assert _files_to_ignore(tmp_path, None) == set()
+
+    def test_single_track_rerip_ignores_other_titles_files(self, tmp_path):
+        # Re-ripping title 3 into a dir holding titles 0/1/2's finished files.
+        self._seed(tmp_path, "B1_t00.mkv", "C1_t01.mkv", "D1_t02.mkv")
+        assert _files_to_ignore(tmp_path, [3]) == {
+            "B1_t00.mkv",
+            "C1_t01.mkv",
+            "D1_t02.mkv",
+        }
+
+    def test_target_titles_own_leftover_is_not_ignored(self, tmp_path):
+        # A leftover partial of the title we ARE re-ripping must be re-detected
+        # (and cleaned) normally, not shielded.
+        self._seed(tmp_path, "B1_t00.mkv", "E1_t03.mkv")
+        assert _files_to_ignore(tmp_path, [3]) == {"B1_t00.mkv"}
+
+    def test_unparseable_preexisting_file_is_ignored(self, tmp_path):
+        # A foreign file we can't map to a title index still predates our rip.
+        self._seed(tmp_path, "stray.mkv")
+        assert _files_to_ignore(tmp_path, [3]) == {"stray.mkv"}
 
 
 @pytest.mark.unit
