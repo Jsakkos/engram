@@ -117,6 +117,15 @@ _NUMBER_WORDS: dict[str, str] = {  # 1-10; sufficient for fan-style abbreviation
 _ACRONYM_STOPWORDS: frozenset[str] = frozenset({"of", "and", "a", "an"})
 
 
+# Trailing annotation tokens users append to a finished rip's label
+# (e.g. "DS9S3D2 ok"). Stripped trailing-only in _parse_volume_label so the
+# show name still corroborates against TMDB; an unlisted token is caught by the
+# rip-first reidentify gate instead, so this list only needs the common ones.
+_LABEL_JUNK_TOKENS: frozenset[str] = frozenset(
+    {"OK", "DONE", "RIP", "RIPPED", "COPY", "BACKUP", "BAK", "FINAL"}
+)
+
+
 def _abbreviation_matches(label: str, full_name: str) -> bool:
     """True if ``label`` is an initialism/abbreviation of ``full_name``.
 
@@ -1016,6 +1025,14 @@ class DiscAnalyst:
         # Remove common disc indicators that aren't disc numbers
         label = re.sub(r"\b(DVD|BLURAY|BD)\s*\d*\b", "", label)
         label = label.strip()
+
+        # Drop trailing rip-annotation tokens (e.g. "DS9 OK" -> "DS9"). Trailing
+        # only, and never empties the name (the > 1 guard): an unstripped junk
+        # token still rips-first via the reidentify gate.
+        tokens = label.split()
+        while len(tokens) > 1 and tokens[-1] in _LABEL_JUNK_TOKENS:
+            tokens.pop()
+        label = " ".join(tokens)
 
         # Convert to title case
         name = label.title() if label else None

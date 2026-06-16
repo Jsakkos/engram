@@ -640,3 +640,26 @@ class TestNamesAreSimilar:
         # Jaccard is 0 here ("startrekpicard" is a single token with no overlap),
         # so this only passes via the whitespace-insensitive collapsed path.
         assert _names_are_similar("Startrekpicard", "Star Trek: Picard") is True
+
+
+class TestParseVolumeLabelJunkTokens:
+    """Trailing rip-annotation tokens (e.g. 'ok') are stripped from the name."""
+
+    def test_strips_trailing_ok(self):
+        assert DiscAnalyst._parse_volume_label("DS9S3D2 ok") == ("Ds9", 3, 2)
+
+    def test_clean_label_unchanged(self):
+        assert DiscAnalyst._parse_volume_label("DS9S2D4") == ("Ds9", 2, 4)
+
+    def test_strips_multiple_trailing_junk_tokens(self):
+        assert DiscAnalyst._parse_volume_label("DS9S3D2 ok done") == ("Ds9", 3, 2)
+
+    def test_preserves_non_trailing_junk_token(self):
+        # A leading 'OK' that is part of the real title must survive.
+        name, season, disc = DiscAnalyst._parse_volume_label("OK_KO_S1D1")
+        assert name == "Ok Ko"
+
+    def test_all_junk_label_not_emptied(self):
+        # A label that is only a junk token keeps it rather than becoming None.
+        name, season, disc = DiscAnalyst._parse_volume_label("OK_S1D1")
+        assert name == "Ok"
