@@ -558,14 +558,16 @@ class IdentificationCoordinator:
                         await self._run_ripping(job_id)
                         return
 
-                    # Gate C (walk-away B2): same-name collision (ambiguous
-                    # identity / no-year twin) — identity is uncertain but the
-                    # twins are persisted (candidates_json, set above) for the
-                    # ReIdentifyModal quick-pick, so rip first with a
-                    # reidentify prompt instead of parking. Prefetch was
-                    # already skipped for collisions (downloading by the
-                    # tentative name would fetch the wrong show's subtitles).
-                    if _collision:
+                    # Gate C (walk-away B2): identity is uncertain but we have a
+                    # best guess — rip first with a reidentify prompt instead of
+                    # parking. Two cases: a same-name collision (twins persisted
+                    # in candidates_json for the ReIdentifyModal quick-pick;
+                    # prefetch already skipped) OR an uncorroborated single TMDB
+                    # identity (analysis.identity_unconfirmed; tmdb_id is real, so
+                    # the prefetch above ran). The user confirms via the
+                    # "Confirm title" CTA any time, or it converges to the pooled
+                    # review at rip end (B4).
+                    if _collision or analysis.identity_unconfirmed:
                         await self._rip_first_with_prompt(
                             job,
                             session,

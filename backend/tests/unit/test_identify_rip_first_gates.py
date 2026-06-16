@@ -494,3 +494,36 @@ class TestUnreadableDiscWalkAwayChain:
         assert len(review) == 1
         assert review[0]["review_reason"] == UNREADABLE_REASON
         assert review[0]["identity_prompt_json"] == ""
+
+
+@pytest.mark.unit
+class TestGateCUncorroboratedIdentity:
+    async def test_uncorroborated_identity_rips_first_with_reidentify(self, gate_env):
+        """An uncorroborated-but-known TV identity rips first with a reidentify
+        prompt (walk-away) instead of parking — like a same-name collision."""
+        job_id = await _seed_identifying_job("DS9S3D2_OK")
+        reason = (
+            "Couldn't confirm disc 'Ds9 Ok' is 'Star Trek: Deep Space Nine' "
+            "(TMDB #580). Confirm or correct the title."
+        )
+        analysis = _make_analysis(
+            ContentType.TV,
+            "Ds9 Ok",
+            season=3,
+            tmdb_id=580,
+            needs_review=True,
+            review_reason=reason,
+        )
+        analysis.identity_unconfirmed = True
+        coord = _bare_coord(analysis, _GATE_TITLES, "DS9S3D2_OK")
+
+        await coord.identify_disc(job_id)
+
+        job = await _reload_job(job_id)
+        assert job.state == JobState.RIPPING
+        assert job.review_reason is None
+        prompt = json.loads(job.identity_prompt_json)
+        assert prompt == {"kind": "reidentify", "reason": reason}
+        coord._run_ripping.assert_awaited_once_with(job_id)
+        # Never parked.
+        assert not any(state == JobState.REVIEW_NEEDED.value for state, _ in gate_env)
