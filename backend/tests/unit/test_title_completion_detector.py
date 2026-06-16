@@ -103,6 +103,52 @@ class TestForceCompletion:
         assert d.completed_count == 2
 
 
+class TestIgnoresPreExistingFiles:
+    """A single-track re-rip writes into a staging dir that still holds the
+    disc's other, already-finished titles. A fresh detector has no memory of
+    them, so without an ignore-list it would (a) re-report each pre-existing
+    file as freshly "completed" — mis-attributing it to the title being
+    re-ripped — and (b) on a stall, delete it as "incomplete", wiping good
+    episodes. Files for a title we ARE (re-)ripping must NOT be ignored.
+    """
+
+    def test_ignored_file_never_reported_complete(self):
+        # B1_t00 (a prior title's finished file) sits in the dir as the re-rip
+        # of E1_t03 begins. Only the real re-ripped file may ever fire.
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED, ignore={"B1_t00.mkv"})
+
+        _drain(d, {"B1_t00.mkv": 1_000_000, "E1_t03.mkv": 10})  # baseline
+        _drain(d, {"B1_t00.mkv": 1_000_000, "E1_t03.mkv": 20})  # E1 grows
+
+        # B1_t00 is stable far beyond the threshold while E1_t03 is the active
+        # (growing) file — the exact shape that would falsely complete it.
+        for _ in range(STABLE_CHECKS_REQUIRED + 2):
+            assert _drain(d, {"B1_t00.mkv": 1_000_000, "E1_t03.mkv": 20}) == []
+
+        # Process exit force-finalizes the real re-ripped file only.
+        assert _drain(d, {"B1_t00.mkv": 1_000_000, "E1_t03.mkv": 20}, force=True) == ["E1_t03.mkv"]
+        assert not d.is_completed("B1_t00.mkv")
+
+    def test_should_preserve_shields_ignored_and_completed_files(self):
+        # The stall-cleanup loop deletes any *.mkv for which should_preserve is
+        # False. A pre-existing good title is shielded; a partial re-rip is not.
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED, ignore={"B1_t00.mkv"})
+        assert d.should_preserve("B1_t00.mkv") is True
+        assert d.should_preserve("E1_t03.mkv") is False
+
+        # Once the real re-ripped file completes, it too is preserved.
+        _drain(d, {"E1_t03.mkv": 100})
+        _drain(d, {"E1_t03.mkv": 200}, force=True)
+        assert d.should_preserve("E1_t03.mkv") is True
+
+    def test_ignored_file_does_not_inflate_completed_count(self):
+        # Ordinals/counts must reflect titles WE produced, not pre-existing ones.
+        d = TitleCompletionDetector(STABLE_CHECKS_REQUIRED, ignore={"B1_t00.mkv"})
+        _drain(d, {"B1_t00.mkv": 1_000, "E1_t03.mkv": 100})
+        d.poll({"B1_t00.mkv": 1_000, "E1_t03.mkv": 200}, force=True)
+        assert d.completed_count == 1
+
+
 class TestInvariants:
     """General invariants preserved from the original stable-size detector."""
 

@@ -5,11 +5,11 @@ SpeedCalculator, title resolution, and title list building.
 """
 
 import logging
-import re
 import time
 from collections import deque
 from pathlib import Path
 
+from app.core.extractor import title_index_from_filename
 from app.models.disc_job import DiscJob, DiscTitle
 
 logger = logging.getLogger(__name__)
@@ -76,14 +76,12 @@ async def resolve_title_from_filename(
     """
     title = None
 
-    # Try to extract title index from MakeMKV filename pattern
-    # Common patterns: B1_t00.mkv, title_00.mkv, title00.mkv
-    idx_match = re.search(r"t(\d+)\.mkv$", path.name, re.IGNORECASE)
-    if not idx_match:
-        idx_match = re.search(r"title[_]?(\d+)\.mkv$", path.name, re.IGNORECASE)
+    # Try to extract the MakeMKV title index from the filename (e.g.
+    # B1_t00.mkv -> 0). This is the authoritative mapping — MakeMKV's _tNN is
+    # the disc title index, which is also DiscTitle.title_index.
+    title_index = title_index_from_filename(path.name)
 
-    if idx_match:
-        title_index = int(idx_match.group(1))
+    if title_index is not None:
         for st in sorted_titles:
             if st.title_index == title_index:
                 title = await session.get(DiscTitle, st.id)
@@ -93,8 +91,21 @@ async def resolve_title_from_filename(
                 f"Mapped {path.name} to title_index={title_index} "
                 f"(Title DB id={title.id}, Job {job_id})"
             )
+        else:
+            # The filename names a real title index that isn't among the titles
+            # this rip produced — it's a foreign file (e.g. another title's
+            # already-finished output sitting in the staging dir during a
+            # single-title re-rip). Do NOT positionally fall back: that would
+            # mis-attribute it onto the wrong (subset) title and stamp it with
+            # the wrong filename. Treat it as unresolved.
+            logger.debug(
+                f"Ripped file {path.name} has title_index={title_index} not in this "
+                f"rip's title set — ignoring as foreign (Job {job_id})"
+            )
+            return None
 
-    # Fallback: map by sequential rip order
+    # Fallback: map by sequential rip order — only when the filename carried no
+    # parseable title index at all (an odd disc naming scheme).
     if not title and 0 <= (rip_index - 1) < len(sorted_titles):
         st = sorted_titles[rip_index - 1]
         title = await session.get(DiscTitle, st.id)

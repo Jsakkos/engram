@@ -64,6 +64,47 @@ def _extract_created_mkv(line: str, output_dir: Path) -> Path | None:
     return output_dir / Path(match.group(1)).name
 
 
+def title_index_from_filename(name: str) -> int | None:
+    """Parse the MakeMKV title index out of an output filename, or None.
+
+    MakeMKV names each output ``{label}_t{NN}.mkv`` (or ``title_NN.mkv``) where
+    ``NN`` is the disc title index — the same number stored as
+    ``DiscTitle.title_index`` and passed on the rip command line. This is the
+    single source of truth for the ``filename <-> title`` mapping; both the
+    completion detector's ignore-list and ``resolve_title_from_filename`` rely
+    on it so they cannot disagree.
+    """
+    m = re.search(r"t(\d+)\.mkv$", name, re.IGNORECASE)
+    if not m:
+        m = re.search(r"title[_]?(\d+)\.mkv$", name, re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
+
+def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[str]:
+    """``*.mkv`` files already in *output_dir* that this rip must not touch.
+
+    A single-title re-rip writes into a staging dir that still holds the disc's
+    other, already-finished titles. A fresh ``TitleCompletionDetector`` has no
+    memory of those files, so without this it would (a) re-report them as freshly
+    "completed" — mis-attributing them to the title being re-ripped — and (b) on
+    a stall, delete them as "incomplete", wiping good episodes. Return the
+    pre-existing files that belong to a title we are *not* (re-)ripping.
+
+    A leftover partial of a title we ARE ripping is deliberately excluded (it
+    will be overwritten and re-detected normally). For a full ``rip all``
+    (``title_indices`` is None) nothing is ignored — the dir is fresh.
+    """
+    if not title_indices:
+        return set()
+    ripping = set(title_indices)
+    ignore: set[str] = set()
+    for p in output_dir.glob("*.mkv"):
+        idx = title_index_from_filename(p.name)
+        if idx is None or idx not in ripping:
+            ignore.add(p.name)
+    return ignore
+
+
 def _safe_callback(cb: Callable, *args, label: str) -> None:
     """Invoke a user-supplied callback, logging (but not raising) any exception.
 
@@ -151,12 +192,20 @@ class TitleCompletionDetector:
     its filesystem lock around every ``poll``/``seed``).
     """
 
-    def __init__(self, stable_required: int = STABLE_CHECKS_REQUIRED) -> None:
+    def __init__(
+        self,
+        stable_required: int = STABLE_CHECKS_REQUIRED,
+        *,
+        ignore: set[str] | None = None,
+    ) -> None:
         self._stable_required = stable_required
         self._known: dict[str, int] = {}  # filename -> last polled size
         self._stable_counts: dict[str, int] = {}  # consecutive unchanged polls
         self._completed: set[str] = set()
         self._active: str | None = None  # most-recently-growing file
+        # Files that predate this rip (a subset re-rip into a populated staging
+        # dir). Never reported complete, never counted, never deleted on stall.
+        self._ignored: set[str] = set(ignore or ())
 
     def seed(self, fname: str) -> None:
         """Record a file MakeMKV announced as 'created' (no bytes written yet)."""
@@ -169,6 +218,15 @@ class TitleCompletionDetector:
     def is_completed(self, fname: str) -> bool:
         """Whether *fname* has already been reported complete."""
         return fname in self._completed
+
+    def should_preserve(self, fname: str) -> bool:
+        """Whether *fname* must NOT be deleted as 'incomplete' on a stall.
+
+        True for a title this rip completed *and* for a pre-existing (ignored)
+        file from a prior rip — the latter is another title's good episode that
+        a re-rip must never delete.
+        """
+        return fname in self._completed or fname in self._ignored
 
     @property
     def completed_count(self) -> int:
@@ -194,7 +252,7 @@ class TitleCompletionDetector:
         # (this is what supersedes the previous title). A growing/new file
         # resets its own stability counter.
         for fname, size in sizes.items():
-            if size <= 0 or fname in self._completed:
+            if size <= 0 or fname in self._completed or fname in self._ignored:
                 continue
             prev = self._known.get(fname)
             if prev is None or size > prev:
@@ -204,6 +262,8 @@ class TitleCompletionDetector:
         # Pass 2: decide completion, then record the new sizes.
         newly: list[tuple[str, int]] = []
         for fname, size in sizes.items():
+            if fname in self._ignored:
+                continue
             prev = self._known.get(fname)
             self._known[fname] = size
             if fname in self._completed or size <= 0 or prev is None:
@@ -562,7 +622,15 @@ class MakeMKVExtractor:
         # is growing, or the process exited via force) — a stable size alone is
         # a mid-rip write pause, not completion (issue #381). See
         # ``TitleCompletionDetector``.
-        completion = TitleCompletionDetector(STABLE_CHECKS_REQUIRED)
+        #
+        # A single-title re-rip writes into a staging dir that still holds the
+        # disc's other, already-finished titles. Ignore those pre-existing files
+        # so the detector neither re-reports them as fresh completions (which
+        # mis-attributes them to the title being re-ripped) nor deletes them on
+        # a stall.
+        completion = TitleCompletionDetector(
+            STABLE_CHECKS_REQUIRED, ignore=_files_to_ignore(output_dir, title_indices)
+        )
         _fs_lock = threading.Lock()
 
         def _fire_title_complete(fname: str, size: int, ordinal: int) -> None:
@@ -781,9 +849,12 @@ class MakeMKVExtractor:
                                 f"Command {current_title_idx}/{len(commands)} "
                                 f"terminated due to stall. Skipping to next title."
                             )
-                            # Delete incomplete .mkv files created by this command
+                            # Delete incomplete .mkv files created by this command.
+                            # should_preserve also shields pre-existing files from
+                            # a prior rip (another title's good episode in the
+                            # staging dir during a single-title re-rip).
                             for mkv in output_dir.glob("*.mkv"):
-                                if not completion.is_completed(mkv.name):
+                                if not completion.should_preserve(mkv.name):
                                     try:
                                         size_mb = mkv.stat().st_size / 1024 / 1024
                                         mkv.unlink()
