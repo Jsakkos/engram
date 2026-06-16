@@ -712,9 +712,9 @@ class MakeMKVExtractor:
                             try:
                                 sizes[mkv.name] = mkv.stat().st_size
                             except OSError:
-                                pass
+                                pass  # transient stat race — skip this file
                     except OSError:
-                        pass
+                        pass  # dir unreadable this tick — return what we have
                     return sizes
 
                 # Seed with the files already present so a re-rip's pre-existing
