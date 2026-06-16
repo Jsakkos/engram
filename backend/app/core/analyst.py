@@ -117,6 +117,16 @@ _NUMBER_WORDS: dict[str, str] = {  # 1-10; sufficient for fan-style abbreviation
 _ACRONYM_STOPWORDS: frozenset[str] = frozenset({"of", "and", "a", "an"})
 
 
+# Trailing annotation tokens users append to a finished rip's label
+# (e.g. "DS9S3D2 ok"). Stripped trailing-only in _parse_volume_label so the
+# show name still corroborates against TMDB; an unlisted token is caught by the
+# rip-first reidentify gate instead, so this list only needs the common ones.
+# Deliberately excludes dictionary words that are plausibly a real trailing
+# title token (e.g. "Final", "Copy") — those rely on the identity_unconfirmed
+# gate rather than risk mangling a legitimate name like "The Final".
+_LABEL_JUNK_TOKENS: frozenset[str] = frozenset({"OK", "DONE", "RIP", "RIPPED", "BACKUP", "BAK"})
+
+
 def _abbreviation_matches(label: str, full_name: str) -> bool:
     """True if ``label`` is an initialism/abbreviation of ``full_name``.
 
@@ -224,6 +234,11 @@ class DiscAnalysisResult:
     classification_source: str = "heuristic"
     play_all_title_indices: list[int] = field(default_factory=list)
     is_ambiguous_movie: bool = False
+    # TV identity found on TMDB but not corroborated by the on-disc label — a
+    # best-guess identity the user confirms later. Routes the job to the
+    # rip-first reidentify gate (walk-away) instead of a pre-rip park. Set only
+    # at the two _uncorroborated_review_reason sites below.
+    identity_unconfirmed: bool = False
 
 
 # Main-feature selection tuning. A movie disc only needs review when 2+ titles
@@ -575,6 +590,7 @@ class DiscAnalyst:
             ):
                 tmdb_only.needs_review = True
                 tmdb_only.review_reason = _uncorroborated_review_reason(effective_name, tmdb_signal)
+                tmdb_only.identity_unconfirmed = True
             return tmdb_only
 
         # Ambiguous - needs human review
@@ -726,6 +742,7 @@ class DiscAnalyst:
                 result.review_reason = _uncorroborated_review_reason(
                     result.detected_name, tmdb_signal
                 )
+                result.identity_unconfirmed = True
 
         return result
 
@@ -1016,6 +1033,14 @@ class DiscAnalyst:
         # Remove common disc indicators that aren't disc numbers
         label = re.sub(r"\b(DVD|BLURAY|BD)\s*\d*\b", "", label)
         label = label.strip()
+
+        # Drop trailing rip-annotation tokens (e.g. "DS9 OK" -> "DS9"). Trailing
+        # only, and never empties the name (the > 1 guard): an unstripped junk
+        # token still rips-first via the reidentify gate.
+        tokens = label.split()
+        while len(tokens) > 1 and tokens[-1] in _LABEL_JUNK_TOKENS:
+            tokens.pop()
+        label = " ".join(tokens)
 
         # Convert to title case
         name = label.title() if label else None

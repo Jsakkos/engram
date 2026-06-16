@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A disc Engram can't quite confirm now rips first instead of waiting on you** — when TMDB finds the show but nothing on the disc corroborates the name (for example a label like `DS9S3D2 ok`, where a stray annotation broke the match), the disc used to stop and ask you to confirm the title *before* ripping anything. It now rips immediately and carries a **Confirm title** prompt you can answer any time — or it pools into the single Needs Review visit at the end — restoring the walk-away workflow for this case. Engram also strips common trailing rip annotations (`ok`, `done`, `rip`, …) from disc labels so these discs usually identify cleanly with no prompt at all. (#414)
+
 ## [0.21.2] - 2026-06-15
 
 _Highlights: subtitle-cache harvesting is now hardened against two real-world OpenSubtitles data quality problems that caused entire TV seasons to match at "no clear vote" confidence and route to Needs Review._
