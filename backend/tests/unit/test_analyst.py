@@ -663,3 +663,43 @@ class TestParseVolumeLabelJunkTokens:
         # A label that is only a junk token keeps it rather than becoming None.
         name, season, disc = DiscAnalyst._parse_volume_label("OK_S1D1")
         assert name == "Ok"
+
+
+class TestUncorroboratedIdentityFlag:
+    """Uncorroborated TV identity sets identity_unconfirmed for the rip-first gate."""
+
+    def _ds9_signal(self):
+        return TmdbSignal(ContentType.TV, 0.7, tmdb_id=580, tmdb_name="Star Trek: Deep Space Nine")
+
+    def test_uncorroborated_tv_identity_sets_flag(self):
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([45, 45, 45, 45])
+        # 'ZZZJUNK' is neither similar to nor an initialism of the TMDB name,
+        # so corroboration fails and the identity is unconfirmed.
+        result = analyst.analyze(
+            titles,
+            volume_label="ZZZJUNK_S3D2",
+            tmdb_signal=self._ds9_signal(),
+            disc_title="ZZZJUNK",
+        )
+        assert result.content_type == ContentType.TV
+        assert result.needs_review is True
+        assert result.identity_unconfirmed is True
+
+    def test_corroborated_identity_not_flagged(self):
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([45, 45, 45, 45])
+        # 'DS9' is the digit-initialism of 'Deep Space Nine' -> corroborated.
+        result = analyst.analyze(
+            titles,
+            volume_label="DS9S2D4",
+            tmdb_signal=self._ds9_signal(),
+            disc_title="DS9S2D4",
+        )
+        assert result.needs_review is False
+        assert result.identity_unconfirmed is False
+
+    def test_default_result_flag_is_false(self):
+        from app.core.analyst import DiscAnalysisResult
+
+        assert DiscAnalysisResult(content_type=ContentType.TV).identity_unconfirmed is False

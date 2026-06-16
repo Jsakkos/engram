@@ -233,6 +233,11 @@ class DiscAnalysisResult:
     classification_source: str = "heuristic"
     play_all_title_indices: list[int] = field(default_factory=list)
     is_ambiguous_movie: bool = False
+    # TV identity found on TMDB but not corroborated by the on-disc label — a
+    # best-guess identity the user confirms later. Routes the job to the
+    # rip-first reidentify gate (walk-away) instead of a pre-rip park. Set only
+    # at the two _uncorroborated_review_reason sites below.
+    identity_unconfirmed: bool = False
 
 
 # Main-feature selection tuning. A movie disc only needs review when 2+ titles
@@ -584,6 +589,7 @@ class DiscAnalyst:
             ):
                 tmdb_only.needs_review = True
                 tmdb_only.review_reason = _uncorroborated_review_reason(effective_name, tmdb_signal)
+                tmdb_only.identity_unconfirmed = True
             return tmdb_only
 
         # Ambiguous - needs human review
@@ -735,6 +741,7 @@ class DiscAnalyst:
                 result.review_reason = _uncorroborated_review_reason(
                     result.detected_name, tmdb_signal
                 )
+                result.identity_unconfirmed = True
 
         return result
 
