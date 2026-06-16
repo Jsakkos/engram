@@ -527,3 +527,5 @@ class TestGateCUncorroboratedIdentity:
         coord._run_ripping.assert_awaited_once_with(job_id)
         # Never parked.
         assert not any(state == JobState.REVIEW_NEEDED.value for state, _ in gate_env)
+        # identity_unconfirmed is not a collision, so subtitle prefetch ran.
+        coord._start_subtitle_download.assert_called_once_with(job_id, "Ds9 Ok", 3, 580)

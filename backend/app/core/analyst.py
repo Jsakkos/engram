@@ -121,9 +121,10 @@ _ACRONYM_STOPWORDS: frozenset[str] = frozenset({"of", "and", "a", "an"})
 # (e.g. "DS9S3D2 ok"). Stripped trailing-only in _parse_volume_label so the
 # show name still corroborates against TMDB; an unlisted token is caught by the
 # rip-first reidentify gate instead, so this list only needs the common ones.
-_LABEL_JUNK_TOKENS: frozenset[str] = frozenset(
-    {"OK", "DONE", "RIP", "RIPPED", "COPY", "BACKUP", "BAK", "FINAL"}
-)
+# Deliberately excludes dictionary words that are plausibly a real trailing
+# title token (e.g. "Final", "Copy") — those rely on the identity_unconfirmed
+# gate rather than risk mangling a legitimate name like "The Final".
+_LABEL_JUNK_TOKENS: frozenset[str] = frozenset({"OK", "DONE", "RIP", "RIPPED", "BACKUP", "BAK"})
 
 
 def _abbreviation_matches(label: str, full_name: str) -> bool:
