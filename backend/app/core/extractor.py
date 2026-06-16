@@ -91,8 +91,9 @@ def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[s
     pre-existing files that belong to a title we are *not* (re-)ripping.
 
     A leftover partial of a title we ARE ripping is deliberately excluded (it
-    will be overwritten and re-detected normally). For a full ``rip all``
-    (``title_indices`` is None) nothing is ignored — the dir is fresh.
+    will be overwritten and re-detected normally). When ``title_indices`` is
+    falsy (None for a full ``rip all``, or an empty list) nothing is ignored —
+    the dir is fresh.
     """
     if not title_indices:
         return set()
@@ -703,7 +704,24 @@ class MakeMKVExtractor:
                 alone — avoids false positives on tiny tracks that finish writing in
                 one burst while MakeMKV is still emitting progress.
                 """
-                prev_sizes: dict[str, int] = {}
+
+                def _scan_sizes() -> dict[str, int]:
+                    sizes: dict[str, int] = {}
+                    try:
+                        for mkv in watch_dir.glob("*.mkv"):
+                            try:
+                                sizes[mkv.name] = mkv.stat().st_size
+                            except OSError:
+                                pass
+                    except OSError:
+                        pass
+                    return sizes
+
+                # Seed with the files already present so a re-rip's pre-existing
+                # titles (a subset re-rip writes into a populated staging dir)
+                # don't register as first-poll "growth" from 0 → real size, which
+                # would briefly reset the stall clock and delay detection.
+                prev_sizes: dict[str, int] = _scan_sizes()
 
                 while proc.poll() is None:
                     time.sleep(poll_interval)

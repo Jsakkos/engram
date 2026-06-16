@@ -82,6 +82,7 @@ async def _seed(indices: list[int]) -> tuple[int, list[DiscTitle]]:
         return job.id, titles
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_resolve_by_filename_index():
     job_id, titles = await _seed([0, 1, 2, 3])
@@ -91,6 +92,7 @@ async def test_resolve_by_filename_index():
     assert t.title_index == 3
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_resolve_foreign_filename_index_not_in_subset_returns_none():
     # Single-track re-rip: subset is only the re-ripped title (index 3). The
@@ -101,6 +103,7 @@ async def test_resolve_foreign_filename_index_not_in_subset_returns_none():
     assert t is None
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_resolve_unparseable_filename_falls_back_positionally():
     # A disc whose output names carry no t<NN> index still resolves via the
