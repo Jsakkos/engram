@@ -4,9 +4,13 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.4] - 2026-06-18
+
+_Highlights: disc titles that carry a season or box-set subtitle in their AI-guessed name now resolve on TMDB correctly instead of stalling on an identity prompt._
+
 ### Fixed
 
-- Disc titles that include a season/box-set subtitle (e.g. an AI-guessed "Avatar: The Last Airbender Book One: Water") now resolve their TMDB id by stripping the trailing Book/Volume/Part/Season subtitle. Previously the over-specified name matched nothing on TMDB, which left the job without a tmdb_id — forcing an identity prompt and failing subtitle download.
+- **Disc titles carrying a season or box-set subtitle now find their TMDB match** — when the AI resolved a title like "Avatar: The Last Airbender Book One: Water", the over-specified name matched nothing on TMDB, leaving the job without a `tmdb_id` and forcing an identity prompt while subtitle download failed. Engram now strips the trailing Book/Volume/Part/Season qualifier before the TMDB lookup, so the disc identifies cleanly and episode matching proceeds without interruption. (#420)
 
 ## [0.21.3] - 2026-06-16
 

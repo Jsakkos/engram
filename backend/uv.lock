@@ -496,7 +496,7 @@ wheels = [
 
 [[package]]
 name = "engram-backend"
-version = "0.21.3"
+version = "0.21.4"
 source = { virtual = "." }
 dependencies = [
     { name = "aiosqlite" },
