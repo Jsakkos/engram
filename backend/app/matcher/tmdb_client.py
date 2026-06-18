@@ -45,7 +45,8 @@ _TMDB_LRU_MAXSIZE = 4096
 _TRAILING_SET_SUBTITLE_RE = re.compile(
     r"\s+(?:Book|Volume|Vol\.?|Part|Pt\.?|Season|Series|Chapter)\s+"
     r"(?:\d+|(?-i:[IVXLCDM]+)|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|"
-    r"Eleven|Twelve)\b.*$",
+    r"Eleven|Twelve|Thirteen|Fourteen|Fifteen|Sixteen|Seventeen|Eighteen|"
+    r"Nineteen|Twenty)\b.*$",
     re.IGNORECASE,
 )
 
@@ -240,10 +241,16 @@ def generate_name_variations(name: str) -> list[str]:
         if before_dash and before_dash != current:
             variations.append(before_dash)
 
-    # Remove a trailing season/box-set subtitle (see _TRAILING_SET_SUBTITLE_RE).
-    set_subtitle_cleaned = _TRAILING_SET_SUBTITLE_RE.sub("", current).strip()
-    if set_subtitle_cleaned and set_subtitle_cleaned != current:
-        variations.append(set_subtitle_cleaned)
+    # Strip a trailing season/box-set subtitle (see _TRAILING_SET_SUBTITLE_RE).
+    # When the subtitle was joined with " - " or ": ", stripping it leaves a
+    # dangling separator ("Show - Part Two" -> "Show -"); trim it so the bare
+    # series name ("Show") is what we search. (The dash block above does not
+    # fold its result back into `current`.)
+    _set_subtitle_stripped = _TRAILING_SET_SUBTITLE_RE.sub("", current)
+    if _set_subtitle_stripped != current:
+        _set_subtitle_stripped = _set_subtitle_stripped.rstrip(" -:").strip()
+        if _set_subtitle_stripped and _set_subtitle_stripped != current:
+            variations.append(_set_subtitle_stripped)
 
     # Remove common suffixes
     suffixes_to_try = [

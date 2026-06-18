@@ -808,3 +808,20 @@ class TestSetSubtitleStripping:
         # Genuine uppercase roman-numeral season markers still strip.
         variations = generate_name_variations("Fargo Part II")
         assert "Fargo" in variations
+
+    def test_dash_joined_subtitle_yields_clean_name(self):
+        variations = generate_name_variations("Show - Part Two")
+        assert "Show" in variations
+        assert "Show -" not in variations
+
+    def test_strips_trailing_ordinal_above_twelve(self):
+        assert "Doctor Who" in generate_name_variations("Doctor Who Series Thirteen")
+
+    def test_strips_trailing_vol_dot(self):
+        assert "Trigun" in generate_name_variations("Trigun Vol. 2")
+
+    def test_strips_trailing_pt_dot(self):
+        assert "Naruto" in generate_name_variations("Naruto Pt. 1")
+
+    def test_strips_trailing_series_keyword(self):
+        assert "Downton Abbey" in generate_name_variations("Downton Abbey Series 5")

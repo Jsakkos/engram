@@ -262,8 +262,8 @@ def test_classify_recovers_show_via_set_subtitle_variation():
         "original_name": "Avatar: The Last Airbender",
     }
 
-    def fake_search(url, name, headers, base_params, timeout):
-        if url == tmdb_classifier.TMDB_SEARCH_TV_URL and name == "Avatar: The Last Airbender":
+    def fake_search(url, query, headers, base_params, timeout):
+        if url == tmdb_classifier.TMDB_SEARCH_TV_URL and query == "Avatar: The Last Airbender":
             return tv_hit, [tv_hit]
         return None, []
 
