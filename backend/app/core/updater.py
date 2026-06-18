@@ -576,8 +576,9 @@ class UpdateChecker:
         from app.models import DiscJob, JobState
 
         # REVIEW_NEEDED is excluded: disc is already out, job is parked awaiting user input.
-        # Cleared jobs (cleared_at IS NOT NULL) are excluded: user dismissed them from the
-        # dashboard — they should not ghost-block an update restart.
+        # The .where(cleared_at IS NULL) below limits the check to jobs still visible on the
+        # dashboard — dismissed jobs (cleared_at IS NOT NULL) are implicitly excluded and must
+        # not ghost-block an update restart.
         active_states = [
             JobState.IDENTIFYING,
             JobState.RIPPING,

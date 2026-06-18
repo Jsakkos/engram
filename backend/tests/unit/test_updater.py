@@ -13,8 +13,27 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel
 
 from app.core.updater import UpdateChecker, UpdateError, UpdateStatus
+
+
+@pytest.fixture
+async def in_memory_session_factory():
+    """Fresh in-memory SQLite async session factory with all tables created."""
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    yield sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    await engine.dispose()
+
 
 FAKE_RELEASE = {
     "tag_name": "v99.0.0",
@@ -204,40 +223,27 @@ class TestUpdateCheckerStates:
         with pytest.raises(ConfigurationError):
             await checker.apply_update()
 
-    async def test_apply_update_raises_with_active_jobs(self, monkeypatch):
+    async def test_apply_update_raises_with_active_jobs(
+        self, monkeypatch, in_memory_session_factory
+    ):
         """apply_update() must refuse when a job is actively ripping/matching."""
         import sys as _sys
 
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
-        from sqlalchemy.pool import StaticPool
-        from sqlmodel import SQLModel
-
-        updater_mod = _sys.modules["app.core.updater"]
         from app.models import DiscJob, JobState
 
-        engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-        test_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        updater_mod = _sys.modules["app.core.updater"]
+        monkeypatch.setattr(updater_mod, "async_session", in_memory_session_factory)
 
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-
-        # Insert a ripping job
-        async with test_session_factory() as session:
-            job = DiscJob(
-                drive_id="E:",
-                volume_label="TEST",
-                state=JobState.RIPPING,
-                content_type="unknown",
+        async with in_memory_session_factory() as session:
+            session.add(
+                DiscJob(
+                    drive_id="E:",
+                    volume_label="TEST",
+                    state=JobState.RIPPING,
+                    content_type="unknown",
+                )
             )
-            session.add(job)
             await session.commit()
-
-        monkeypatch.setattr(updater_mod, "async_session", test_session_factory)
 
         checker = UpdateChecker()
         checker._is_frozen = True
@@ -247,43 +253,31 @@ class TestUpdateCheckerStates:
         with pytest.raises(UpdateError, match="in progress"):
             await checker.apply_update()
 
-    async def test_apply_update_allows_review_needed_jobs(self, monkeypatch, tmp_path):
+    async def test_apply_update_allows_review_needed_jobs(
+        self, monkeypatch, tmp_path, in_memory_session_factory
+    ):
         """REVIEW_NEEDED jobs must NOT block an update restart.
 
         Disc is already out; the job is parked waiting for user input.
         """
         import sys as _sys
 
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
-        from sqlalchemy.pool import StaticPool
-        from sqlmodel import SQLModel
-
-        updater_mod = _sys.modules["app.core.updater"]
         from app.models import DiscJob, JobState
 
-        engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-        test_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-
-        async with test_session_factory() as session:
-            job = DiscJob(
-                drive_id="E:",
-                volume_label="TEST",
-                state=JobState.REVIEW_NEEDED,
-                content_type="unknown",
-            )
-            session.add(job)
-            await session.commit()
-
-        monkeypatch.setattr(updater_mod, "async_session", test_session_factory)
+        updater_mod = _sys.modules["app.core.updater"]
+        monkeypatch.setattr(updater_mod, "async_session", in_memory_session_factory)
         monkeypatch.setattr(_sys, "platform", "linux")
+
+        async with in_memory_session_factory() as session:
+            session.add(
+                DiscJob(
+                    drive_id="E:",
+                    volume_label="TEST",
+                    state=JobState.REVIEW_NEEDED,
+                    content_type="unknown",
+                )
+            )
+            await session.commit()
 
         staged = tmp_path / "staged"
         _make_build(staged, complete=True)
@@ -301,42 +295,30 @@ class TestUpdateCheckerStates:
         await checker.apply_update()
         assert called["restart"] is True
 
-    async def test_apply_update_allows_cleared_active_jobs(self, monkeypatch, tmp_path):
+    async def test_apply_update_allows_cleared_active_jobs(
+        self, monkeypatch, tmp_path, in_memory_session_factory
+    ):
         """Cleared jobs (dismissed from dashboard) must NOT block an update restart."""
         import sys as _sys
         from datetime import UTC, datetime
 
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
-        from sqlalchemy.pool import StaticPool
-        from sqlmodel import SQLModel
-
-        updater_mod = _sys.modules["app.core.updater"]
         from app.models import DiscJob, JobState
 
-        engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-        test_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-
-        async with test_session_factory() as session:
-            job = DiscJob(
-                drive_id="E:",
-                volume_label="TEST",
-                state=JobState.MATCHING,
-                content_type="unknown",
-                cleared_at=datetime.now(UTC),
-            )
-            session.add(job)
-            await session.commit()
-
-        monkeypatch.setattr(updater_mod, "async_session", test_session_factory)
+        updater_mod = _sys.modules["app.core.updater"]
+        monkeypatch.setattr(updater_mod, "async_session", in_memory_session_factory)
         monkeypatch.setattr(_sys, "platform", "linux")
+
+        async with in_memory_session_factory() as session:
+            session.add(
+                DiscJob(
+                    drive_id="E:",
+                    volume_label="TEST",
+                    state=JobState.MATCHING,
+                    content_type="unknown",
+                    cleared_at=datetime.now(UTC),
+                )
+            )
+            await session.commit()
 
         staged = tmp_path / "staged"
         _make_build(staged, complete=True)
@@ -535,22 +517,11 @@ class TestExtractionIntegrity:
         # No half-extracted build was promoted under the staging base.
         assert not any(p.name == "engram" for p in tmp_path.rglob("engram") if p.is_dir())
 
-    async def test_apply_update_reverifies_and_refuses_incomplete(self, monkeypatch, tmp_path):
+    async def test_apply_update_reverifies_and_refuses_incomplete(
+        self, monkeypatch, tmp_path, in_memory_session_factory
+    ):
         """apply_update re-checks the staged dir and refuses to swap an incomplete build."""
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
-        from sqlalchemy.pool import StaticPool
-        from sqlmodel import SQLModel
-
-        engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-        factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-        monkeypatch.setattr("app.core.updater.async_session", factory)
+        monkeypatch.setattr("app.core.updater.async_session", in_memory_session_factory)
         monkeypatch.setattr(sys, "platform", "linux")
 
         staged = tmp_path / "staged"
@@ -573,22 +544,11 @@ class TestExtractionIntegrity:
         assert checker.state == UpdateStatus.ERROR
         assert checker.staging_path is None
 
-    async def test_apply_update_complete_build_reaches_restart(self, monkeypatch, tmp_path):
+    async def test_apply_update_complete_build_reaches_restart(
+        self, monkeypatch, tmp_path, in_memory_session_factory
+    ):
         """A complete staged build passes re-verification and proceeds to restart."""
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
-        from sqlalchemy.pool import StaticPool
-        from sqlmodel import SQLModel
-
-        engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-        factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-        monkeypatch.setattr("app.core.updater.async_session", factory)
+        monkeypatch.setattr("app.core.updater.async_session", in_memory_session_factory)
         monkeypatch.setattr(sys, "platform", "linux")
 
         staged = tmp_path / "staged"
