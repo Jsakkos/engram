@@ -30,6 +30,19 @@ from app.matcher import tmdb_persistent_cache
 # is the canonical pattern).
 _TMDB_LRU_MAXSIZE = 4096
 
+# A box-set or AI-guessed title sometimes appends a season/set subtitle to the
+# series name (e.g. "Avatar: The Last Airbender Book One: Water", "Trigun
+# Volume 2", "Fargo Part Two"). TMDB indexes the series title alone, so the
+# over-specified string returns zero results. The marker MUST be followed by a
+# number / ordinal word / roman numeral, so a real title like "Part of Me" or
+# "Band of Brothers" is never truncated.
+_TRAILING_SET_SUBTITLE_RE = re.compile(
+    r"\s+(?:Book|Volume|Vol\.?|Part|Pt\.?|Season|Series|Chapter)\s+"
+    r"(?:\d+|[IVXLCDM]+|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|"
+    r"Eleven|Twelve)\b.*$",
+    re.IGNORECASE,
+)
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -220,6 +233,11 @@ def generate_name_variations(name: str) -> list[str]:
         before_dash = current.split(" - ")[0].strip()
         if before_dash and before_dash != current:
             variations.append(before_dash)
+
+    # Remove a trailing season/box-set subtitle (see _TRAILING_SET_SUBTITLE_RE).
+    set_subtitle_cleaned = _TRAILING_SET_SUBTITLE_RE.sub("", current).strip()
+    if set_subtitle_cleaned and set_subtitle_cleaned != current:
+        variations.append(set_subtitle_cleaned)
 
     # Remove common suffixes
     suffixes_to_try = [
