@@ -570,21 +570,27 @@ class UpdateChecker:
             self._restart_linux_macos()
 
     async def _check_no_active_jobs(self) -> None:
-        """Raise UpdateError if any job is currently ripping/matching/organizing."""
+        """Raise UpdateError if any uncleared job is actively doing disc I/O."""
         from sqlmodel import select
 
         from app.models import DiscJob, JobState
 
+        # REVIEW_NEEDED is excluded: disc is already out, job is parked awaiting user input.
+        # The .where(cleared_at IS NULL) below limits the check to jobs still visible on the
+        # dashboard — dismissed jobs (cleared_at IS NOT NULL) are implicitly excluded and must
+        # not ghost-block an update restart.
         active_states = [
             JobState.IDENTIFYING,
-            JobState.REVIEW_NEEDED,
             JobState.RIPPING,
             JobState.MATCHING,
             JobState.ORGANIZING,
         ]
         async with async_session() as session:
             result = await session.execute(
-                select(DiscJob).where(DiscJob.state.in_(active_states)).limit(1)
+                select(DiscJob)
+                .where(DiscJob.state.in_(active_states))
+                .where(DiscJob.cleared_at.is_(None))
+                .limit(1)
             )
             if result.scalar_one_or_none():
                 raise UpdateError(
