@@ -247,6 +247,113 @@ class TestUpdateCheckerStates:
         with pytest.raises(UpdateError, match="in progress"):
             await checker.apply_update()
 
+    async def test_apply_update_allows_review_needed_jobs(self, monkeypatch, tmp_path):
+        """REVIEW_NEEDED jobs must NOT block an update restart.
+
+        Disc is already out; the job is parked waiting for user input.
+        """
+        import sys as _sys
+
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from sqlmodel import SQLModel
+
+        updater_mod = _sys.modules["app.core.updater"]
+        from app.models import DiscJob, JobState
+
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        test_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with test_session_factory() as session:
+            job = DiscJob(
+                drive_id="E:",
+                volume_label="TEST",
+                state=JobState.REVIEW_NEEDED,
+                content_type="unknown",
+            )
+            session.add(job)
+            await session.commit()
+
+        monkeypatch.setattr(updater_mod, "async_session", test_session_factory)
+        monkeypatch.setattr(_sys, "platform", "linux")
+
+        staged = tmp_path / "staged"
+        _make_build(staged, complete=True)
+
+        checker = UpdateChecker()
+        checker._is_frozen = True
+        checker.state = UpdateStatus.READY
+        checker.staging_path = staged
+
+        called = {"restart": False}
+        monkeypatch.setattr(checker, "_restart_linux_macos", lambda: called.update(restart=True))
+        monkeypatch.setattr(checker, "_restart_windows", lambda: called.update(restart=True))
+
+        # Should not raise — REVIEW_NEEDED is no longer a blocking state
+        await checker.apply_update()
+        assert called["restart"] is True
+
+    async def test_apply_update_allows_cleared_active_jobs(self, monkeypatch, tmp_path):
+        """Cleared jobs (dismissed from dashboard) must NOT block an update restart."""
+        import sys as _sys
+        from datetime import UTC, datetime
+
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from sqlmodel import SQLModel
+
+        updater_mod = _sys.modules["app.core.updater"]
+        from app.models import DiscJob, JobState
+
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        test_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with test_session_factory() as session:
+            job = DiscJob(
+                drive_id="E:",
+                volume_label="TEST",
+                state=JobState.MATCHING,
+                content_type="unknown",
+                cleared_at=datetime.now(UTC),
+            )
+            session.add(job)
+            await session.commit()
+
+        monkeypatch.setattr(updater_mod, "async_session", test_session_factory)
+        monkeypatch.setattr(_sys, "platform", "linux")
+
+        staged = tmp_path / "staged"
+        _make_build(staged, complete=True)
+
+        checker = UpdateChecker()
+        checker._is_frozen = True
+        checker.state = UpdateStatus.READY
+        checker.staging_path = staged
+
+        called = {"restart": False}
+        monkeypatch.setattr(checker, "_restart_linux_macos", lambda: called.update(restart=True))
+        monkeypatch.setattr(checker, "_restart_windows", lambda: called.update(restart=True))
+
+        # Should not raise — dismissed jobs must not ghost-block the update
+        await checker.apply_update()
+        assert called["restart"] is True
+
     def test_get_status_serializable(self):
         """get_status() must return a plain dict with no non-serializable types."""
         import json
