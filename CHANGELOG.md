@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.5] - 2026-06-18
+
+_Highlights: the in-app update restart button no longer incorrectly blocks when a job is parked in Needs Review or when dismissed cards are still in the database._
+
+### Fixed
+
+- **Update restart no longer false-fires "disc operation in progress" for parked or dismissed jobs** — two bugs caused the restart button to refuse even when no disc I/O was happening: `REVIEW_NEEDED` was counted as a blocking state even though the disc is already out and the job is waiting for user input, and jobs dismissed from the dashboard (`cleared_at` set) were not excluded from the active-job check, so an invisible ghost card could permanently block the button. Both are now fixed. (#422)
+
 ## [0.21.4] - 2026-06-18
 
 _Highlights: disc titles that carry a season or box-set subtitle in their AI-guessed name now resolve on TMDB correctly instead of stalling on an identity prompt._
