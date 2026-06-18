@@ -61,6 +61,15 @@ def _make_mock_client(response_json: dict):
     return mock_client
 
 
+def test_prompt_instructs_series_title_only_for_tv():
+    from app.core.ai_identifier import IDENTIFICATION_PROMPT
+
+    text = IDENTIFICATION_PROMPT.lower()
+    # Must tell the model to exclude season/book/volume/part subtitles for TV.
+    assert "series title only" in text
+    assert "book" in text and "volume" in text and "part" in text
+
+
 class TestIdentifyFromLabel:
     @pytest.mark.asyncio
     async def test_anthropic_success(self):

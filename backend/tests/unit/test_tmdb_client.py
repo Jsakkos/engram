@@ -13,6 +13,7 @@ from app.matcher.tmdb_client import (
     fetch_season_details,
     fetch_show_details,
     fetch_show_id,
+    generate_name_variations,
 )
 from tests.fixtures.tmdb_responses import (
     TMDB_SEARCH_ARRESTED_DEVELOPMENT,
@@ -762,3 +763,65 @@ class TestFetchEpisodeGroup:
         # SSRF guard: a group id with path separators must never reach the URL.
         assert tmdb_client.fetch_episode_group("../../tv/popular", "test_key") is None
         assert mock_get.call_count == 0
+
+
+@pytest.mark.unit
+class TestSetSubtitleStripping:
+    """A box-set / AI-guessed title can append a season subtitle
+    ("Book One: Water", "Volume 2", "Part Two") to the series name. TMDB
+    indexes the series name only, so we must offer the stripped form as a
+    search variation. Regression for the Avatar: The Last Airbender disc
+    (label 'Avatar_Book_1_Disc_1') whose AI guess resolved no tmdb_id."""
+
+    def test_strips_trailing_book_subtitle(self):
+        variations = generate_name_variations("Avatar: The Last Airbender Book One: Water")
+        assert "Avatar: The Last Airbender" in variations
+
+    def test_strips_trailing_volume_number(self):
+        variations = generate_name_variations("Trigun Volume 2")
+        assert "Trigun" in variations
+
+    def test_strips_trailing_part_ordinal(self):
+        variations = generate_name_variations("Fargo Part Two")
+        assert "Fargo" in variations
+
+    def test_does_not_strip_marker_without_a_count(self):
+        # "of Me" is not a number/ordinal/roman numeral, so "Part of Me"
+        # must never be truncated to "Part".
+        variations = generate_name_variations("Part of Me")
+        assert "Part" not in variations
+
+    def test_clean_series_name_unaffected(self):
+        # No trailing set-subtitle: the stripped form equals the input and is
+        # not added as a redundant variation.
+        variations = generate_name_variations("The Wire")
+        assert "The Wire" not in variations  # original is excluded by dedup
+
+    def test_does_not_strip_lowercase_roman_letter_word(self):
+        # Under IGNORECASE the roman-numeral arm must NOT match a lowercase
+        # word built only from roman-numeral letters ("mix" = m,i,x). A title
+        # like "Doctor Who Part Mix" must not be truncated to "Doctor Who".
+        variations = generate_name_variations("Doctor Who Part Mix")
+        assert "Doctor Who" not in variations
+
+    def test_still_strips_uppercase_roman_numeral(self):
+        # Genuine uppercase roman-numeral season markers still strip.
+        variations = generate_name_variations("Fargo Part II")
+        assert "Fargo" in variations
+
+    def test_dash_joined_subtitle_yields_clean_name(self):
+        variations = generate_name_variations("Show - Part Two")
+        assert "Show" in variations
+        assert "Show -" not in variations
+
+    def test_strips_trailing_ordinal_above_twelve(self):
+        assert "Doctor Who" in generate_name_variations("Doctor Who Series Thirteen")
+
+    def test_strips_trailing_vol_dot(self):
+        assert "Trigun" in generate_name_variations("Trigun Vol. 2")
+
+    def test_strips_trailing_pt_dot(self):
+        assert "Naruto" in generate_name_variations("Naruto Pt. 1")
+
+    def test_strips_trailing_series_keyword(self):
+        assert "Downton Abbey" in generate_name_variations("Downton Abbey Series 5")

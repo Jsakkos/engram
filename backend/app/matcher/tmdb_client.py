@@ -30,6 +30,26 @@ from app.matcher import tmdb_persistent_cache
 # is the canonical pattern).
 _TMDB_LRU_MAXSIZE = 4096
 
+# A box-set or AI-guessed title sometimes appends a season/set subtitle to the
+# series name (e.g. "Avatar: The Last Airbender Book One: Water", "Trigun
+# Volume 2", "Fargo Part Two"). TMDB indexes the series title alone, so the
+# over-specified string returns zero results. The marker MUST be followed by a
+# number / ordinal word / roman numeral, so a real title like "Part of Me" or
+# "Band of Brothers" is never truncated.
+#
+# NOTE: The roman-numeral arm uses a scoped case-sensitive inline flag
+# (?-i:...) so that lowercase words built from roman-numeral letters (e.g.
+# "mix", "mild", "vivid", "civic", "dim") are NOT matched. Only uppercase
+# sequences like "II", "IV", "XII" are treated as roman numerals. Ordinal
+# words (One, Two, ...) and digits remain case-insensitive.
+_TRAILING_SET_SUBTITLE_RE = re.compile(
+    r"\s+(?:Book|Volume|Vol\.?|Part|Pt\.?|Season|Series|Chapter)\s+"
+    r"(?:\d+|(?-i:[IVXLCDM]+)|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|"
+    r"Eleven|Twelve|Thirteen|Fourteen|Fifteen|Sixteen|Seventeen|Eighteen|"
+    r"Nineteen|Twenty)\b.*$",
+    re.IGNORECASE,
+)
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -220,6 +240,17 @@ def generate_name_variations(name: str) -> list[str]:
         before_dash = current.split(" - ")[0].strip()
         if before_dash and before_dash != current:
             variations.append(before_dash)
+
+    # Strip a trailing season/box-set subtitle (see _TRAILING_SET_SUBTITLE_RE).
+    # When the subtitle was joined with " - " or ": ", stripping it leaves a
+    # dangling separator ("Show - Part Two" -> "Show -"); trim it so the bare
+    # series name ("Show") is what we search. (The dash block above does not
+    # fold its result back into `current`.)
+    _set_subtitle_stripped = _TRAILING_SET_SUBTITLE_RE.sub("", current)
+    if _set_subtitle_stripped != current:
+        _set_subtitle_stripped = _set_subtitle_stripped.rstrip(" -:").strip()
+        if _set_subtitle_stripped and _set_subtitle_stripped != current:
+            variations.append(_set_subtitle_stripped)
 
     # Remove common suffixes
     suffixes_to_try = [

@@ -20,6 +20,7 @@ Respond with ONLY a JSON object (no markdown, no explanation) in this exact form
 
 Rules:
 - "title" must be the official English title as it appears on TMDB/IMDb
+- For TV shows, "title" must be the SERIES title only — the official English series name as it appears on TMDB. Do NOT append a season, book, volume, part, or chapter subtitle (e.g. return "Avatar: The Last Airbender", NOT "Avatar: The Last Airbender Book One: Water"). The season is captured separately.
 - "year" is the original release year (integer)
 - "type" is either "movie" or "tv"
 - If you cannot identify the disc, respond with: {{"title": null, "year": null, "type": null}}

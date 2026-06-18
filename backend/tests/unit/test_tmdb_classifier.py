@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 import requests
 
 from app.core.tmdb_classifier import TmdbSignal, _name_similarity, classify_from_tmdb
@@ -244,3 +245,33 @@ class TestNameSimilarity:
         """Single-char words (len <= 1) are filtered out."""
         # "A" is filtered, so "A Walk" -> {"walk"} vs "Walk" -> {"walk"}
         assert _name_similarity("A Walk", "Walk") == 1.0
+
+
+@pytest.mark.unit
+def test_classify_recovers_show_via_set_subtitle_variation():
+    """The over-specified AI name returns nothing on TMDB, but the stripped
+    series-name variation resolves. Regression for Avatar: The Last Airbender
+    (job 206, label 'Avatar_Book_1_Disc_1')."""
+    from app.core import tmdb_classifier
+
+    tv_hit = {
+        "id": 246,
+        "name": "Avatar: The Last Airbender",
+        "first_air_date": "2005-02-21",
+        "popularity": 100.0,
+        "original_name": "Avatar: The Last Airbender",
+    }
+
+    def fake_search(url, query, headers, base_params, timeout):
+        if url == tmdb_classifier.TMDB_SEARCH_TV_URL and query == "Avatar: The Last Airbender":
+            return tv_hit, [tv_hit]
+        return None, []
+
+    with patch.object(tmdb_classifier, "_search_tmdb", side_effect=fake_search):
+        signal = tmdb_classifier.classify_from_tmdb(
+            "Avatar: The Last Airbender Book One: Water", "test_key"
+        )
+
+    assert signal is not None
+    assert signal.tmdb_id == 246
+    assert signal.content_type == ContentType.TV
