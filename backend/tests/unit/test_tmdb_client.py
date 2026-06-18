@@ -796,3 +796,15 @@ class TestSetSubtitleStripping:
         # not added as a redundant variation.
         variations = generate_name_variations("The Wire")
         assert "The Wire" not in variations  # original is excluded by dedup
+
+    def test_does_not_strip_lowercase_roman_letter_word(self):
+        # Under IGNORECASE the roman-numeral arm must NOT match a lowercase
+        # word built only from roman-numeral letters ("mix" = m,i,x). A title
+        # like "Doctor Who Part Mix" must not be truncated to "Doctor Who".
+        variations = generate_name_variations("Doctor Who Part Mix")
+        assert "Doctor Who" not in variations
+
+    def test_still_strips_uppercase_roman_numeral(self):
+        # Genuine uppercase roman-numeral season markers still strip.
+        variations = generate_name_variations("Fargo Part II")
+        assert "Fargo" in variations

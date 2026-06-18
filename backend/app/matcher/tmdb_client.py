@@ -36,9 +36,15 @@ _TMDB_LRU_MAXSIZE = 4096
 # over-specified string returns zero results. The marker MUST be followed by a
 # number / ordinal word / roman numeral, so a real title like "Part of Me" or
 # "Band of Brothers" is never truncated.
+#
+# NOTE: The roman-numeral arm uses a scoped case-sensitive inline flag
+# (?-i:...) so that lowercase words built from roman-numeral letters (e.g.
+# "mix", "mild", "vivid", "civic", "dim") are NOT matched. Only uppercase
+# sequences like "II", "IV", "XII" are treated as roman numerals. Ordinal
+# words (One, Two, ...) and digits remain case-insensitive.
 _TRAILING_SET_SUBTITLE_RE = re.compile(
     r"\s+(?:Book|Volume|Vol\.?|Part|Pt\.?|Season|Series|Chapter)\s+"
-    r"(?:\d+|[IVXLCDM]+|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|"
+    r"(?:\d+|(?-i:[IVXLCDM]+)|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|"
     r"Eleven|Twelve)\b.*$",
     re.IGNORECASE,
 )
