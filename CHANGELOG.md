@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Disc titles that include a season/box-set subtitle (e.g. an AI-guessed "Avatar: The Last Airbender Book One: Water") now resolve their TMDB id by stripping the trailing Book/Volume/Part/Season subtitle. Previously the over-specified name matched nothing on TMDB, which left the job without a tmdb_id — forcing an identity prompt and failing subtitle download.
+
 ## [0.21.3] - 2026-06-16
 
 _Highlights: two disc-handling fixes — a disc whose label Engram can't quite confirm now rips immediately instead of blocking, and re-ripping a stalled track no longer misattributes a finished track as a duplicate._
