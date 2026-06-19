@@ -773,9 +773,16 @@ class IdentificationCoordinator:
             job.tmdb_degraded_reason = TMDB_DEGRADED_NOT_CONFIGURED
             return None
 
+        # A TV job re-resolving its (possibly over-specified) title pins the lookup
+        # to the TV namespace, so a box-set title doesn't resolve to a fuzzy movie
+        # whose id is then dropped as cross-namespace noise (Avatar box-set).
+        prefer = ContentType.TV if job.content_type == ContentType.TV else None
         try:
             signal = await asyncio.to_thread(
-                classify_from_tmdb, job.detected_title, config.tmdb_api_key
+                classify_from_tmdb,
+                job.detected_title,
+                config.tmdb_api_key,
+                prefer_content_type=prefer,
             )
         except TmdbAuthError as e:
             # Surfaced on the job so the matcher's degraded results name the
@@ -1429,11 +1436,16 @@ class IdentificationCoordinator:
             None if config.tmdb_api_key else TMDB_DEGRADED_NOT_CONFIGURED
         )
 
-        async def _try_tmdb(name: str, context: str):
+        async def _try_tmdb(
+            name: str, context: str, prefer_content_type: ContentType | None = None
+        ):
             """Run a TMDB lookup, swallowing and logging failures.
 
             ``context`` distinguishes the warning message between call sites.
-            Returns the TMDB signal, or None on failure / no API key.
+            ``prefer_content_type`` is forwarded to ``classify_from_tmdb`` so a
+            namespace-known caller (e.g. the TV re-resolve below) can pin the
+            result to that namespace. Returns the TMDB signal, or None on failure
+            / no API key.
 
             ``classify_from_tmdb`` makes blocking ``requests.get`` calls, so it is
             offloaded to a thread to avoid stalling the event loop (mirrors
@@ -1444,8 +1456,17 @@ class IdentificationCoordinator:
             nonlocal tmdb_degraded_reason
             if not config.tmdb_api_key:
                 return None
+            # Only forward prefer_content_type when set so the default call stays
+            # a two-positional-arg invocation (keeps existing call mocks simple).
+            extra = (
+                {"prefer_content_type": prefer_content_type}
+                if prefer_content_type is not None
+                else {}
+            )
             try:
-                return await asyncio.to_thread(classify_from_tmdb, name, config.tmdb_api_key)
+                return await asyncio.to_thread(
+                    classify_from_tmdb, name, config.tmdb_api_key, **extra
+                )
             except TmdbAuthError as e:
                 # Bad/expired key — not a transient lookup failure. Remember the
                 # cause so it can be surfaced on the job instead of letting the
@@ -1592,7 +1613,16 @@ class IdentificationCoordinator:
             and not disc_name_queried
             and config.tmdb_api_key
         ):
-            tv_retry = await _try_tmdb(disc_name_title, "TMDB TV re-resolve from disc name failed")
+            # The disc is known-TV, so pin the re-resolve to the TV namespace: a
+            # box-set title ("Avatar: The Last Airbender Book One: Water") whose
+            # stripped variation also matches a fuzzy, sometimes more-popular movie
+            # ("Avatar Aang: The Last Airbender") would otherwise come back a movie
+            # again and the recovery would fail. (Avatar box-set regression.)
+            tv_retry = await _try_tmdb(
+                disc_name_title,
+                "TMDB TV re-resolve from disc name failed",
+                prefer_content_type=ContentType.TV,
+            )
             if tv_retry and tv_retry.content_type == ContentType.TV:
                 logger.info(
                     f"Job {job_id}: volume-label match '{tmdb_signal.tmdb_name}' was a movie "

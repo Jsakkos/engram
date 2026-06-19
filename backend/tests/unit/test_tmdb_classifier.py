@@ -247,6 +247,156 @@ class TestNameSimilarity:
         assert _name_similarity("A Walk", "Walk") == 1.0
 
 
+class TestBoxSetTvResolution:
+    """A box-set / over-specified TV disc title (e.g. an AI-guessed "Avatar: The
+    Last Airbender Book One: Water") resolves on TMDB only via the subtitle-
+    stripped variation. That variation often matches BOTH the canonical TV series
+    AND a fuzzy, sometimes more-popular, movie in the other namespace. A label-TV
+    disc must resolve to the TV series, not the movie. Two mechanisms:
+
+      (a) name similarity is scored against the matched *variation*, not the
+          over-specified original (so the clean TV match isn't under-credited);
+      (b) ``prefer_content_type`` lets a known-TV caller pick the TV namespace
+          outright, even on a popularity tie.
+
+    Regression for the Avatar disc (label 'Avatar_Book_1_Disc_1', TMDB TV id 246).
+    """
+
+    def test_prefer_tv_resolves_box_set_to_canonical_series(self):
+        """Avatar: stripped variation matches TV id 246 and a MORE-popular fuzzy
+        movie. A label-TV disc (prefer_content_type=TV) must pick the TV series."""
+        from app.core import tmdb_classifier
+
+        tv_hit = {"id": 246, "name": "Avatar: The Last Airbender", "popularity": 55.0}
+        movie_hit = {
+            "id": 980431,
+            "title": "Avatar Aang: The Last Airbender",
+            "popularity": 90.0,
+        }
+
+        def fake_search(url, query, headers, base_params, timeout):
+            if query == "Avatar: The Last Airbender":
+                if url == tmdb_classifier.TMDB_SEARCH_TV_URL:
+                    return tv_hit, [tv_hit]
+                return movie_hit, [movie_hit]
+            return None, []
+
+        with patch.object(tmdb_classifier, "_search_tmdb", side_effect=fake_search):
+            signal = tmdb_classifier.classify_from_tmdb(
+                "Avatar: The Last Airbender Book One: Water",
+                "fake_api_key_that_is_long_enough_for_v4_auth",
+                prefer_content_type=ContentType.TV,
+            )
+
+        assert signal is not None
+        assert signal.content_type == ContentType.TV
+        assert signal.tmdb_id == 246
+
+    def test_prefer_tv_wins_popularity_tie_for_same_named_movie(self):
+        """'Fargo Part Two' -> variation 'Fargo' matches the TV series (id 60622)
+        and the same-named, more-popular 1996 film. Without a namespace
+        preference the movie wins on popularity; a label-TV disc resolves to TV."""
+        from app.core import tmdb_classifier
+
+        tv_hit = {"id": 60622, "name": "Fargo", "popularity": 40.0}
+        movie_hit = {"id": 275, "title": "Fargo", "popularity": 95.0}
+
+        def fake_search(url, query, headers, base_params, timeout):
+            if query == "Fargo":
+                if url == tmdb_classifier.TMDB_SEARCH_TV_URL:
+                    return tv_hit, [tv_hit]
+                return movie_hit, [movie_hit]
+            return None, []
+
+        with patch.object(tmdb_classifier, "_search_tmdb", side_effect=fake_search):
+            signal = tmdb_classifier.classify_from_tmdb(
+                "Fargo Part Two",
+                "fake_api_key_that_is_long_enough_for_v4_auth",
+                prefer_content_type=ContentType.TV,
+            )
+
+        assert signal is not None
+        assert signal.content_type == ContentType.TV
+        assert signal.tmdb_id == 60622
+
+    def test_prefer_tv_resolves_trigun_volume_box_set(self):
+        """'Trigun Volume 2' -> variation 'Trigun' matches the TV series (id 6217)
+        and a more-popular feature film. A label-TV disc resolves to TV."""
+        from app.core import tmdb_classifier
+
+        tv_hit = {"id": 6217, "name": "Trigun", "popularity": 30.0}
+        movie_hit = {"id": 67462, "title": "Trigun: Badlands Rumble", "popularity": 50.0}
+
+        def fake_search(url, query, headers, base_params, timeout):
+            if query == "Trigun":
+                if url == tmdb_classifier.TMDB_SEARCH_TV_URL:
+                    return tv_hit, [tv_hit]
+                return movie_hit, [movie_hit]
+            return None, []
+
+        with patch.object(tmdb_classifier, "_search_tmdb", side_effect=fake_search):
+            signal = tmdb_classifier.classify_from_tmdb(
+                "Trigun Volume 2",
+                "fake_api_key_that_is_long_enough_for_v4_auth",
+                prefer_content_type=ContentType.TV,
+            )
+
+        assert signal is not None
+        assert signal.content_type == ContentType.TV
+        assert signal.tmdb_id == 6217
+
+    def test_variation_similarity_scored_against_matched_variation(self):
+        """Even WITHOUT a namespace preference, similarity must be scored against
+        the matched variation ('Avatar: The Last Airbender'), not the over-
+        specified original. The exact TV match then out-scores the fuzzy movie
+        'The Last Airbender' despite the movie's higher popularity — so the clean
+        series wins on name match alone (fix (a) in isolation)."""
+        from app.core import tmdb_classifier
+
+        tv_hit = {"id": 246, "name": "Avatar: The Last Airbender", "popularity": 50.0}
+        movie_hit = {"id": 10196, "title": "The Last Airbender", "popularity": 70.0}
+
+        def fake_search(url, query, headers, base_params, timeout):
+            if query == "Avatar: The Last Airbender":
+                if url == tmdb_classifier.TMDB_SEARCH_TV_URL:
+                    return tv_hit, [tv_hit]
+                return movie_hit, [movie_hit]
+            return None, []
+
+        with patch.object(tmdb_classifier, "_search_tmdb", side_effect=fake_search):
+            signal = tmdb_classifier.classify_from_tmdb(
+                "Avatar: The Last Airbender Book One: Water",
+                "fake_api_key_that_is_long_enough_for_v4_auth",
+            )
+
+        assert signal is not None
+        assert signal.content_type == ContentType.TV
+        assert signal.tmdb_id == 246
+
+    def test_prefer_tv_returns_movie_when_no_tv_result(self):
+        """prefer_content_type=TV must not fabricate a TV signal: a genuine
+        movie-only disc (no TV match at all) still returns the movie."""
+        from app.core import tmdb_classifier
+
+        movie_hit = {"id": 27205, "title": "Inception", "popularity": 95.0}
+
+        def fake_search(url, query, headers, base_params, timeout):
+            if url == tmdb_classifier.TMDB_SEARCH_MOVIE_URL and query == "Inception":
+                return movie_hit, [movie_hit]
+            return None, []
+
+        with patch.object(tmdb_classifier, "_search_tmdb", side_effect=fake_search):
+            signal = tmdb_classifier.classify_from_tmdb(
+                "Inception",
+                "fake_api_key_that_is_long_enough_for_v4_auth",
+                prefer_content_type=ContentType.TV,
+            )
+
+        assert signal is not None
+        assert signal.content_type == ContentType.MOVIE
+        assert signal.tmdb_id == 27205
+
+
 @pytest.mark.unit
 def test_classify_recovers_show_via_set_subtitle_variation():
     """The over-specified AI name returns nothing on TMDB, but the stripped

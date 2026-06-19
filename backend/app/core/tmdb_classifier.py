@@ -294,6 +294,7 @@ def classify_from_tmdb(
     name: str,
     api_key: str,
     timeout: float = 5.0,
+    prefer_content_type: ContentType | None = None,
 ) -> TmdbSignal | None:
     """Query TMDB for both TV and movie matches, return strongest signal.
 
@@ -301,6 +302,12 @@ def classify_from_tmdb(
         name: Parsed show/movie name from volume label
         api_key: TMDB API key (v3 or v4 token)
         timeout: Network timeout in seconds per request
+        prefer_content_type: When the caller already knows the disc's namespace
+            (e.g. a season-bearing, label-TV box set), the matching result in that
+            namespace wins outright. A fuzzy cross-namespace hit — a same-named
+            movie for a TV box set ("Fargo" the film vs. the series), or a movie
+            that the popularity tiebreak would otherwise pick — must not outrank
+            the correct namespace. ``None`` keeps the prior name/popularity logic.
 
     Returns:
         TmdbSignal if a match is found, None if lookup fails or no results
@@ -309,6 +316,14 @@ def classify_from_tmdb(
         return None
 
     headers, base_params = _build_auth(api_key)
+
+    # The query that actually produced results: the original name, or the
+    # variation that matched after the original returned nothing. Similarity is
+    # scored against THIS, not the over-specified original — otherwise a box-set
+    # title ("Avatar: The Last Airbender Book One: Water") under-credits the clean
+    # series match ("Avatar: The Last Airbender") versus a fuzzy movie, because
+    # the dropped subtitle tokens dilute both names equally.
+    matched_query = name
 
     # Search both TV and movie endpoints
     tv_result, tv_results = _search_tmdb(TMDB_SEARCH_TV_URL, name, headers, base_params, timeout)
@@ -327,6 +342,7 @@ def classify_from_tmdb(
                 TMDB_SEARCH_MOVIE_URL, variation, headers, base_params, timeout
             )
             if tv_result or movie_result:
+                matched_query = variation
                 logger.info(f"TMDB matched via variation '{variation}' (original: '{name}')")
                 break
 
@@ -339,17 +355,35 @@ def classify_from_tmdb(
     movie_pop = movie_result.get("popularity", 0) if movie_result else 0
 
     if tv_result and movie_result:
-        # Check name similarity to the original query
+        # A caller that knows the namespace settles the TV-vs-movie contest before
+        # similarity/popularity ever run: the preferred namespace's match wins as
+        # long as it exists (both do here). Cross-namespace noise can't displace it.
+        if prefer_content_type == ContentType.TV:
+            logger.info(
+                f"TMDB: preferring TV namespace for '{matched_query}' "
+                f"(label-known TV; movie match suppressed)"
+            )
+            return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), matched_query, tv_results)
+        if prefer_content_type == ContentType.MOVIE:
+            logger.info(
+                f"TMDB: preferring movie namespace for '{matched_query}' "
+                f"(label-known movie; TV match suppressed)"
+            )
+            return _make_movie_signal(movie_result)
+
+        # Check name similarity to the matched query
         tv_name = tv_result.get("name", tv_result.get("original_name", ""))
         movie_name = movie_result.get("title", movie_result.get("original_title", ""))
-        tv_sim = _name_similarity(name, tv_name)
-        movie_sim = _name_similarity(name, movie_name)
+        tv_sim = _name_similarity(matched_query, tv_name)
+        movie_sim = _name_similarity(matched_query, movie_name)
 
         # If one is a much closer name match, prefer it regardless of popularity
         sim_diff = abs(tv_sim - movie_sim)
         if sim_diff >= 0.2:
             if tv_sim > movie_sim:
-                return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), name, tv_results)
+                return _maybe_flag_tv_ambiguity(
+                    _make_tv_signal(tv_result), matched_query, tv_results
+                )
             else:
                 return _make_movie_signal(movie_result)
 
@@ -360,18 +394,18 @@ def classify_from_tmdb(
                 # Close popularity — ambiguous, use the higher one but lower confidence
                 if tv_pop >= movie_pop:
                     return _maybe_flag_tv_ambiguity(
-                        _make_tv_signal(tv_result, ambiguous=True), name, tv_results
+                        _make_tv_signal(tv_result, ambiguous=True), matched_query, tv_results
                     )
                 else:
                     return _make_movie_signal(movie_result, ambiguous=True)
 
         if tv_pop >= movie_pop:
-            return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), name, tv_results)
+            return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), matched_query, tv_results)
         else:
             return _make_movie_signal(movie_result)
 
     if tv_result:
-        return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), name, tv_results)
+        return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), matched_query, tv_results)
 
     return _make_movie_signal(movie_result)
 

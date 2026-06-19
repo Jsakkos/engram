@@ -80,6 +80,63 @@ class TestTVDetection:
         assert result.detected_season == 1
 
 
+class TestBoxSetTvSignal:
+    """End-state guards for box-set / over-specified TV disc titles.
+
+    The TV id is resolved upstream (``classify_from_tmdb`` prefers the TV
+    namespace for a label-TV disc, see test_tmdb_classifier.py), so the analyst
+    receives a TV signal and adopts it. The cross-namespace guard must still drop
+    a genuine MOVIE signal on a TV-labeled disc (Mad Men "Two Madmen" regression),
+    so a box-set fix never re-opens that hole.
+    """
+
+    def test_adopts_tv_signal_for_box_set_disc(self):
+        """A TV-labeled box-set disc with a corroborating TV signal (Avatar: The
+        Last Airbender, id 246) adopts the id and series name, no review."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([47, 47, 47, 47, 47, 47])
+        tmdb = TmdbSignal(
+            content_type=ContentType.TV,
+            confidence=0.85,
+            tmdb_id=246,
+            tmdb_name="Avatar: The Last Airbender",
+        )
+        result = analyst.analyze(
+            titles,
+            volume_label="AVATAR_BOOK_1_DISC_1",
+            tmdb_signal=tmdb,
+            disc_title="Avatar: The Last Airbender Book One: Water",
+        )
+
+        assert result.content_type == ContentType.TV
+        assert result.tmdb_id == 246
+        assert result.detected_name == "Avatar: The Last Airbender"
+        assert result.needs_review is False
+
+    def test_box_set_movie_signal_still_dropped_on_tv_disc(self):
+        """A MOVIE signal on a TV-labeled box-set disc is still discarded (its id
+        would dereference to an unrelated show in the TV namespace). The disc
+        keeps its on-disc name and carries no movie id — the Mad Men guard."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([47, 47, 47, 47, 47, 47])
+        tmdb = TmdbSignal(
+            content_type=ContentType.MOVIE,
+            confidence=0.70,
+            tmdb_id=980431,
+            tmdb_name="Avatar Aang: The Last Airbender",
+        )
+        result = analyst.analyze(
+            titles,
+            volume_label="AVATAR_BOOK_1_DISC_1",
+            tmdb_signal=tmdb,
+            disc_title="Avatar: The Last Airbender Book One: Water",
+        )
+
+        assert result.content_type == ContentType.TV
+        assert result.tmdb_id is None
+        assert result.detected_name == "Avatar: The Last Airbender Book One: Water"
+
+
 class TestMovieDetection:
     """Test movie classification."""
 
