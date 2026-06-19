@@ -38,6 +38,9 @@ export default function NamePromptModal({
     // fall back to the generic unreadable-label line when neither is present
     // (e.g. a genuinely blank/garbled label). This stops the modal from telling
     // the user the label "cannot be read" when it read fine and TMDB just missed.
+    // Must stay `||`, not `??`: parseIdentityPrompt coerces a missing/non-string
+    // reason to '' (not null/undefined), and '' must defer to review_reason — a
+    // `??` refactor would keep the empty string and render a blank warning.
     const identifyReason = parseIdentityPrompt(job)?.reason || job.review_reason || '';
 
     useEffect(() => {
