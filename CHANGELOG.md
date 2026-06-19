@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The "Identify Disc" prompt no longer pops a blocking modal over a disc that is already ripping** — when a disc rips first with an open identity question (an unreadable label, or a title TMDB couldn't match), the prompt used to auto-open as a full-screen modal whose "Start Ripping →" button and "Awaiting Input" status made it look like the rip was blocked — so it was easy to hit **Cancel Job** and kill a healthy rip. The rip now stays visible with a **Name this disc** button on the card instead; the prompt only auto-opens once the rip finishes and the job is waiting for you. When the prompt is opened, its wording now reflects reality — it saves the title rather than "starting" a rip that's already underway, shows the actual reason TMDB couldn't match (instead of always claiming the label is unreadable), and reads "Ripping" while the disc is still ripping. (#424)
+
 ## [0.21.5] - 2026-06-18
 
 _Highlights: the in-app update restart button no longer incorrectly blocks when a job is parked in Needs Review or when dismissed cards are still in the database._

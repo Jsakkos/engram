@@ -98,8 +98,27 @@ const TERMINAL_STATES: ReadonlySet<JobState> = new Set<JobState>(['completed', '
  * and the prompt is waiting. Stale completed/failed cards don't count as
  * active, so they never suppress that waiting prompt. When other jobs are
  * busy, the prompt waits behind the card CTA instead.
+ *
+ * CTA-only mid-rip: a job that is itself RIPPING carries an open identity
+ * question while the rip-first walk-away rip streams in the background (Gate
+ * B/C). Auto-opening a blocking modal over a *running* rip reproduces the old
+ * pre-rip gate — its "Start Ripping →" / "Awaiting Input" framing reads as
+ * "the rip is blocked, fill this in," inviting an accidental Cancel that kills
+ * a healthy rip. So a ripping prompt job never auto-opens; it surfaces the
+ * on-card CTA only. The genuine "waiting for you" moment is the rip-end
+ * convergence (B4), where the unanswered prompt parks as REVIEW_NEEDED — and a
+ * parked job IS eligible to auto-open below.
+ *
+ * SAFETY INVARIANT: this relies on `ripping → review_needed` being one-way — a
+ * ripping job with an open prompt always eventually parks (or completes), so
+ * the suppression is temporary and the prompt auto-opens at rip-end. If a
+ * future Gate B/C rip-first branch could leave a job in `ripping` indefinitely
+ * while still carrying a prompt, this guard would permanently hide the modal
+ * (the on-card CTA would be the only affordance). Revisit this guard if that
+ * invariant ever changes.
  */
 export function shouldAutoOpenPrompt(promptJob: Job, jobs: Job[]): boolean {
+    if (promptJob.state === 'ripping') return false;
     const othersActive = jobs.some(
         (j) => j.id !== promptJob.id && !TERMINAL_STATES.has(j.state),
     );

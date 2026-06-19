@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { IcoDisc, IcoMovie, IcoTv, IcoError } from '../app/components/icons';
 import type { Job } from '../types';
 import { SvPanel, SvLabel, sv } from '../app/components/synapse';
+import { parseIdentityPrompt } from '../app/promptSelection';
 
 interface NamePromptModalProps {
     job: Job;
@@ -27,6 +28,20 @@ export default function NamePromptModal({
     );
     const [season, setSeason] = useState<string>(String(job.detected_season ?? 1));
     const titleInputRef = useRef<HTMLInputElement>(null);
+
+    // The walk-away rip starts BEFORE this modal can open (Gate B/C rip-first),
+    // so the modal never gates the rip — it records the title. `isRipping`
+    // distinguishes a still-running rip (CTA-opened) from a job already parked
+    // for review at rip-end, so the copy never claims the rip is blocked.
+    const isRipping = job.state === 'ripping';
+    // Prefer the live identity-prompt reason, then the parked review_reason; only
+    // fall back to the generic unreadable-label line when neither is present
+    // (e.g. a genuinely blank/garbled label). This stops the modal from telling
+    // the user the label "cannot be read" when it read fine and TMDB just missed.
+    // Must stay `||`, not `??`: parseIdentityPrompt coerces a missing/non-string
+    // reason to '' (not null/undefined), and '' must defer to review_reason — a
+    // `??` refactor would keep the empty string and render a blank warning.
+    const identifyReason = parseIdentityPrompt(job)?.reason || job.review_reason || '';
 
     useEffect(() => {
         titleInputRef.current?.focus();
@@ -169,13 +184,17 @@ export default function NamePromptModal({
                                     style={{
                                         fontFamily: sv.mono,
                                         fontSize: 11,
+                                        lineHeight: 1.5,
                                         color: `${sv.yellow}cc`,
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.14em',
+                                        // A specific reason is a full sentence, so it reads as
+                                        // sentence text; the generic fallback keeps the terse
+                                        // uppercase telemetry look of the brand warning labels.
+                                        textTransform: identifyReason ? 'none' : 'uppercase',
+                                        letterSpacing: identifyReason ? '0.02em' : '0.14em',
                                         margin: 0,
                                     }}
                                 >
-                                    Disc label cannot be read automatically
+                                    {identifyReason || 'Disc label cannot be read automatically'}
                                 </p>
                                 <code
                                     title={job.volume_label}
@@ -364,7 +383,7 @@ export default function NamePromptModal({
                                     opacity: title.trim() ? 1 : 0.3,
                                 }}
                             >
-                                Start Ripping →
+                                Save title
                             </motion.button>
                         </div>
                     </div>
@@ -399,7 +418,7 @@ export default function NamePromptModal({
                                 color: sv.inkFaint,
                             }}
                         >
-                            Drive {job.drive_id} · Awaiting Input
+                            Drive {job.drive_id} · {isRipping ? 'Ripping' : 'Awaiting Input'}
                         </span>
                     </div>
                 </SvPanel>
