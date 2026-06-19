@@ -33,7 +33,7 @@ test.describe('Realistic Disc Flows', () => {
         await expect(page.locator('button:has-text("Movie")')).toBeVisible();
 
         // Submit the form
-        await page.locator('button:has-text("Start Ripping")').click();
+        await page.locator('button:has-text("Save title")').click();
 
         // Modal should close
         await expect(page.getByText('Identify Disc')).not.toBeVisible({ timeout: 5000 });
@@ -91,7 +91,7 @@ test.describe('Realistic Disc Flows', () => {
         // Resolve the name prompt modal so we can see both cards
         const titleInput = page.getByPlaceholder('e.g. The Italian Job');
         await titleInput.fill('The Italian Job');
-        await page.locator('button:has-text("Start Ripping")').click();
+        await page.locator('button:has-text("Save title")').click();
 
         // Modal should close
         await expect(page.getByText('Identify Disc')).not.toBeVisible({ timeout: 5000 });
