@@ -317,7 +317,7 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
 
     call_count = {"n": 0}
 
-    def fake_classify_from_tmdb(name: str, api_key: str):
+    def fake_classify_from_tmdb(name: str, api_key: str, prefer_content_type=None):
         call_count["n"] += 1
         if name == "Strangenewworlds":
             return None  # label-derived name fails
@@ -394,7 +394,7 @@ async def test_run_classification_uses_disc_name_when_label_resolves(monkeypatch
 
     call_count = {"n": 0}
 
-    def fake_classify_from_tmdb(name: str, api_key: str):
+    def fake_classify_from_tmdb(name: str, api_key: str, prefer_content_type=None):
         call_count["n"] += 1
         if name == "Breakingbad":
             return bb_signal  # label-derived name resolves (via TMDB variation)
@@ -601,15 +601,16 @@ async def test_run_classification_skips_redundant_reresolve_after_disc_name_fall
 
 @pytest.mark.asyncio
 async def test_run_classification_reresolves_box_set_with_tv_preference(monkeypatch):
-    """A box-set TV disc whose over-specified name matches a fuzzy MOVIE in both
-    namespaces is re-resolved from the disc name with a TV namespace preference,
-    so the canonical series wins instead of the more-popular movie.
-
-    Avatar box-set regression: label 'AVATAR_BOOK_1_DISC_1' parses a season (TV),
-    but 'Avatar: The Last Airbender Book One: Water' resolves to a fuzzy movie
-    unless the re-resolve asks TMDB for the TV namespace explicitly (TMDB TV
-    id 246). Without the preference the movie id is dropped as cross-namespace
-    noise, leaving the disc with no id and forcing an Identify prompt."""
+    """Cross-namespace re-resolve path: the volume-label query ITSELF returns a
+    MOVIE (here every name resolves to a fuzzy movie, modelling the live Avatar
+    label parse 'Avatar Book' matching a movie like 'Green Book'). Because the
+    label gave a signal, the disc-name fallback is skipped, so the cross-namespace
+    re-resolve fires and must pin the disc-name lookup to the TV namespace to land
+    TMDB TV id 246. Without the preference the movie id is dropped as
+    cross-namespace noise, leaving the disc with no id and forcing an Identify
+    prompt. (The label-misses-then-fallback path is covered by
+    test_run_classification_disc_name_fallback_prefers_tv_for_box_set; the
+    resume/import path by test_resolve_missing_tmdb_id_prefers_tv_for_box_set.)"""
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.models.app_config import AppConfig
@@ -690,6 +691,96 @@ async def test_run_classification_reresolves_box_set_with_tv_preference(monkeypa
     assert analysis.needs_review is False
     # The re-resolve must have queried with a TV namespace preference.
     assert any(prefer == ContentType.TV for (_name, prefer) in calls)
+
+
+@pytest.mark.asyncio
+async def test_run_classification_disc_name_fallback_prefers_tv_for_box_set(monkeypatch):
+    """Disc-name fallback path (the realistic Avatar flow): the bare label parse
+    'Avatar' returns no TMDB hit, so the DINFO disc-name fallback fires — and for a
+    known-TV disc it must pin that fallback lookup to the TV namespace so the
+    box-set disc name resolves to the series (TMDB TV id 246) rather than a fuzzy
+    movie. Without the preference the fallback returns a movie, the
+    `disc_name_queried` guard blocks the later cross-namespace re-resolve, and the
+    disc lands with no id -> Identify prompt."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.app_config import AppConfig
+    from app.services.identification_coordinator import IdentificationCoordinator
+
+    coordinator = IdentificationCoordinator.__new__(IdentificationCoordinator)
+    analyst = DiscAnalyst()
+    analyst.set_config(AppConfig())
+    coordinator._analyst = analyst
+    coordinator._get_discdb_mappings = MagicMock(return_value=[])
+    coordinator._set_discdb_mappings = MagicMock()
+
+    titles = _tv_titles()
+
+    mock_config = MagicMock()
+    mock_config.tmdb_api_key = "fake-key"
+    mock_config.ai_identification_enabled = False
+    mock_config.ai_api_key = None
+    mock_config.discdb_enabled = False
+    mock_config.analyst_movie_min_duration = 80 * 60
+    mock_config.analyst_tv_duration_variance = 2 * 60
+    mock_config.analyst_tv_min_cluster_size = 3
+    mock_config.analyst_tv_min_duration = 18 * 60
+    mock_config.analyst_tv_max_duration = 70 * 60
+    mock_config.analyst_movie_dominance_threshold = 0.6
+
+    avatar_movie = TmdbSignal(
+        content_type=ContentType.MOVIE,
+        confidence=0.70,
+        tmdb_id=980431,
+        tmdb_name="Avatar Aang: The Last Airbender",
+    )
+    avatar_tv = TmdbSignal(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=246,
+        tmdb_name="Avatar: The Last Airbender",
+    )
+
+    calls: list[tuple[str, object]] = []
+
+    def fake_classify_from_tmdb(name, api_key, prefer_content_type=None):
+        calls.append((name, prefer_content_type))
+        if name == "Avatar":
+            return None  # bare label name misses on TMDB
+        # The disc name resolves to a fuzzy movie unless TV is requested.
+        if prefer_content_type == ContentType.TV:
+            return avatar_tv
+        return avatar_movie
+
+    mock_job = MagicMock()
+    mock_job.volume_label = "AVATAR_S1"  # name "Avatar" (misses), season 1 -> label-TV
+    mock_job.detected_season = None
+    mock_job.content_hash = None
+    mock_job.discdb_slug = None
+    mock_job.discdb_disc_slug = None
+    mock_job.discdb_mappings_json = None
+    mock_job.play_all_indices_json = None
+
+    mock_session = AsyncMock()
+
+    with (
+        patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
+        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
+        patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
+    ):
+        analysis = await coordinator._run_classification(
+            mock_job,
+            job_id=1,
+            titles=titles,
+            session=mock_session,
+            disc_name="Avatar: The Last Airbender Book One: Water- Disc 1",
+        )
+
+    assert analysis.content_type == ContentType.TV
+    assert analysis.tmdb_id == 246
+    # The disc-name fallback queried with a TV namespace preference.
+    assert ("Avatar: The Last Airbender Book One: Water", ContentType.TV) in calls
 
 
 # ---------------------------------------------------------------------------
@@ -845,7 +936,7 @@ async def test_run_classification_fetches_runtimes_and_keeps_pilot(monkeypatch):
         patch("app.core.features.DISCDB_ENABLED", False),
         patch(
             "app.core.tmdb_classifier.classify_from_tmdb",
-            side_effect=lambda name, api_key: ds9_signal,
+            side_effect=lambda name, api_key, prefer_content_type=None: ds9_signal,
         ),
         patch(
             "app.matcher.tmdb_client.fetch_season_episode_runtimes",

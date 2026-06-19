@@ -302,12 +302,12 @@ def classify_from_tmdb(
         name: Parsed show/movie name from volume label
         api_key: TMDB API key (v3 or v4 token)
         timeout: Network timeout in seconds per request
-        prefer_content_type: When the caller already knows the disc's namespace
-            (e.g. a season-bearing, label-TV box set), the matching result in that
-            namespace wins outright. A fuzzy cross-namespace hit — a same-named
-            movie for a TV box set ("Fargo" the film vs. the series), or a movie
-            that the popularity tiebreak would otherwise pick — must not outrank
-            the correct namespace. ``None`` keeps the prior name/popularity logic.
+        prefer_content_type: When the caller already knows the disc is TV (a
+            season-bearing, label-TV box set), pass ``ContentType.TV`` to make the
+            TV match win outright. A fuzzy cross-namespace hit — a same-named movie
+            for a TV box set ("Fargo" the film vs. the series), or a movie the
+            popularity tiebreak would otherwise pick — must not outrank the series.
+            ``None`` (and any non-TV value) keeps the prior name/popularity logic.
 
     Returns:
         TmdbSignal if a match is found, None if lookup fails or no results
@@ -355,21 +355,15 @@ def classify_from_tmdb(
     movie_pop = movie_result.get("popularity", 0) if movie_result else 0
 
     if tv_result and movie_result:
-        # A caller that knows the namespace settles the TV-vs-movie contest before
-        # similarity/popularity ever run: the preferred namespace's match wins as
-        # long as it exists (both do here). Cross-namespace noise can't displace it.
+        # A label-known-TV caller settles the TV-vs-movie contest before
+        # similarity/popularity ever run: the TV match wins as long as it exists
+        # (both do here), so cross-namespace movie noise can't displace it.
         if prefer_content_type == ContentType.TV:
             logger.info(
                 f"TMDB: preferring TV namespace for '{matched_query}' "
                 f"(label-known TV; movie match suppressed)"
             )
             return _maybe_flag_tv_ambiguity(_make_tv_signal(tv_result), matched_query, tv_results)
-        if prefer_content_type == ContentType.MOVIE:
-            logger.info(
-                f"TMDB: preferring movie namespace for '{matched_query}' "
-                f"(label-known movie; TV match suppressed)"
-            )
-            return _make_movie_signal(movie_result)
 
         # Check name similarity to the matched query
         tv_name = tv_result.get("name", tv_result.get("original_name", ""))

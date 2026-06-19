@@ -1456,16 +1456,12 @@ class IdentificationCoordinator:
             nonlocal tmdb_degraded_reason
             if not config.tmdb_api_key:
                 return None
-            # Only forward prefer_content_type when set so the default call stays
-            # a two-positional-arg invocation (keeps existing call mocks simple).
-            extra = (
-                {"prefer_content_type": prefer_content_type}
-                if prefer_content_type is not None
-                else {}
-            )
             try:
                 return await asyncio.to_thread(
-                    classify_from_tmdb, name, config.tmdb_api_key, **extra
+                    classify_from_tmdb,
+                    name,
+                    config.tmdb_api_key,
+                    prefer_content_type=prefer_content_type,
                 )
             except TmdbAuthError as e:
                 # Bad/expired key — not a transient lookup failure. Remember the
@@ -1583,12 +1579,24 @@ class IdentificationCoordinator:
                 disc_name_title = parsed_title
                 disc_name_season = parsed_season
 
+        # A season parsed from the label OR the disc name means the disc is TV.
+        # Computed here so the disc-name fallback below can pin its lookup to the
+        # TV namespace (a box-set title resolves to a fuzzy movie otherwise).
+        disc_says_tv = label_season is not None or disc_name_season is not None
+
         # DINFO disc-name TMDB fallback — when the volume label gave no TMDB signal,
-        # resolve identity from the disc name instead.
+        # resolve identity from the disc name instead. For a known-TV disc, pin the
+        # lookup to the TV namespace so a box-set title ("Avatar: The Last Airbender
+        # Book One: Water") resolves to the series rather than a fuzzy movie that
+        # the downstream cross-namespace guard would then discard (Avatar box-set).
         disc_name_queried = False
         if not tmdb_signal and disc_name_title and config.tmdb_api_key:
             disc_name_queried = True
-            disc_tmdb_signal = await _try_tmdb(disc_name_title, "TMDB disc-name fallback failed")
+            disc_tmdb_signal = await _try_tmdb(
+                disc_name_title,
+                "TMDB disc-name fallback failed",
+                prefer_content_type=ContentType.TV if disc_says_tv else None,
+            )
             if disc_tmdb_signal:
                 tmdb_signal = disc_tmdb_signal
                 logger.info(
@@ -1604,7 +1612,6 @@ class IdentificationCoordinator:
         # prefer a TV hit (e.g. "Madmen"->movie "Two Madmen" -> disc name
         # "Mad Men Season 3" -> the real TV show). Skip if the disc-name fallback
         # already queried this exact title — it would return the same movie result.
-        disc_says_tv = label_season is not None or disc_name_season is not None
         if (
             tmdb_signal
             and tmdb_signal.content_type == ContentType.MOVIE

@@ -227,3 +227,71 @@ async def test_import_tmdb_resolution_failure_proceeds_with_null_id(tmp_path, mo
         job = await session.get(DiscJob, job_id)
         assert job.tmdb_id is None  # resolution swallowed the error
         assert job.state == JobState.MATCHING  # import still proceeded, not FAILED
+
+
+@pytest.mark.asyncio
+async def test_resolve_missing_tmdb_id_prefers_tv_for_box_set(monkeypatch):
+    """The resume/import rescue path pins a TV job's lookup to the TV namespace.
+
+    An over-specified TV title ("Avatar: The Last Airbender Book One: Water")
+    resolves on TMDB to BOTH the canonical series and a fuzzy movie. Without a
+    namespace preference _resolve_missing_tmdb_id would adopt the movie id
+    (980431) — it doesn't check that the signal's content type matches the job's.
+    For a TV job it now requests the TV namespace and lands TMDB TV id 246.
+    (Avatar box-set regression.)"""
+    coordinator = idc_mod.IdentificationCoordinator.__new__(idc_mod.IdentificationCoordinator)
+
+    tv_signal = SimpleNamespace(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=246,
+        tmdb_name="Avatar: The Last Airbender",
+        ambiguous_identity=False,
+        candidates=[],
+        all_candidates=[
+            {
+                "tmdb_id": 246,
+                "name": "Avatar: The Last Airbender",
+                "year": "2005",
+                "popularity": 80.0,
+            }
+        ],
+    )
+    movie_signal = SimpleNamespace(
+        content_type=ContentType.MOVIE,
+        confidence=0.70,
+        tmdb_id=980431,
+        tmdb_name="Avatar Aang: The Last Airbender",
+        ambiguous_identity=False,
+        candidates=[],
+        all_candidates=None,
+    )
+
+    seen_prefers = []
+
+    def fake_classify(name, api_key, prefer_content_type=None):
+        seen_prefers.append(prefer_content_type)
+        return tv_signal if prefer_content_type == ContentType.TV else movie_signal
+
+    monkeypatch.setattr(idc_mod, "classify_from_tmdb", fake_classify, raising=False)
+    monkeypatch.setattr(
+        "app.services.config_service.get_config",
+        AsyncMock(return_value=SimpleNamespace(tmdb_api_key="testkey")),
+    )
+
+    job = SimpleNamespace(
+        id=1,
+        tmdb_id=None,
+        detected_title="Avatar: The Last Airbender Book One: Water",
+        content_type=ContentType.TV,
+        volume_label="AVATAR_BOOK_1_DISC_1",
+        tmdb_name=None,
+        tmdb_year=None,
+        candidates_json=None,
+        tmdb_degraded_reason=None,
+    )
+
+    await coordinator._resolve_missing_tmdb_id(job)
+
+    assert job.tmdb_id == 246  # the series, not the fuzzy movie (980431)
+    assert ContentType.TV in seen_prefers
