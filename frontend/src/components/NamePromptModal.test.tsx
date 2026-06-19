@@ -55,7 +55,48 @@ describe('NamePromptModal dismissal vs cancellation', () => {
     it('submits trimmed title with content type and season', () => {
         const { onSubmit } = renderModal();
         fireEvent.change(screen.getByRole('textbox'), { target: { value: '  Firefly  ' } });
-        fireEvent.click(screen.getByRole('button', { name: /start ripping/i }));
+        fireEvent.click(screen.getByRole('button', { name: /save title/i }));
         expect(onSubmit).toHaveBeenCalledWith('Firefly', 'tv', 1);
+    });
+});
+
+describe('NamePromptModal honest rip-first framing', () => {
+    // The rip already started (walk-away rip-first) by the time this modal can
+    // open, so the action saves the title — it does not "start" the rip.
+    it('labels the primary action "Save title", never "Start Ripping"', () => {
+        renderModal();
+        expect(screen.getByRole('button', { name: /save title/i })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /start ripping/i })).not.toBeInTheDocument();
+    });
+
+    it('footer reads "Ripping" while the disc is still ripping (not "Awaiting Input")', () => {
+        renderModal({ job: { ...job, state: 'ripping' } });
+        expect(screen.getByText(/ripping/i)).toBeInTheDocument();
+        expect(screen.queryByText(/awaiting input/i)).not.toBeInTheDocument();
+    });
+
+    it('footer reads "Awaiting Input" once the job is parked for review', () => {
+        renderModal({ job: { ...job, state: 'review_needed' } });
+        expect(screen.getByText(/awaiting input/i)).toBeInTheDocument();
+    });
+
+    it('surfaces the real identify reason instead of falsely claiming the label is unreadable', () => {
+        const reason =
+            'Could not find "Avatar: The Last Airbender Book One: Water" on TMDB. ' +
+            'Please enter the correct show title.';
+        renderModal({
+            job: {
+                ...job,
+                volume_label: 'Avatar_Book_1_Disc_1',
+                review_reason: reason,
+            } as Job,
+        });
+        expect(screen.getByText(/could not find .* on tmdb/i)).toBeInTheDocument();
+        expect(screen.queryByText(/cannot be read automatically/i)).not.toBeInTheDocument();
+    });
+
+    it('falls back to the unreadable-label message when no specific reason is given', () => {
+        renderModal({ job: { ...job, review_reason: undefined } as Job });
+        expect(screen.getByText(/cannot be read automatically/i)).toBeInTheDocument();
     });
 });

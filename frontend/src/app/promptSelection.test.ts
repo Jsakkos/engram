@@ -270,17 +270,19 @@ describe('shouldAutoOpenPrompt', () => {
         expect(shouldAutoOpenPrompt(promptJob, [otherReview, promptJob])).toBe(false);
     });
 
-    it('auto-opens when the prompt-bearing RIPPING job is itself the only active job', () => {
-        // Walk-away Phase B: the disc rips while the question is open. The job
-        // being active itself must not suppress its own prompt — only OTHER
-        // active jobs do.
+    it('does NOT auto-open while the prompt-bearing job is itself ripping (CTA only mid-rip)', () => {
+        // A disc rips with an open identity question (walk-away Phase B). The
+        // rip is already running, so a blocking modal that looks like the old
+        // pre-rip gate ("Start Ripping →" / "Awaiting Input") misrepresents the
+        // state and invites an accidental Cancel. Surface the on-card CTA
+        // instead; the modal auto-opens once the job parks for review at rip-end.
         const rippingPrompt = makeJob({
             id: 8,
             state: 'ripping',
             identity_prompt_json: JSON.stringify({ kind: 'name', reason: 'unreadable' }),
         });
         const done = makeJob({ id: 1, state: 'completed' });
-        expect(shouldAutoOpenPrompt(rippingPrompt, [done, rippingPrompt])).toBe(true);
+        expect(shouldAutoOpenPrompt(rippingPrompt, [done, rippingPrompt])).toBe(false);
     });
 
     it('does NOT auto-open a ripping prompt while another disc is active', () => {
@@ -291,6 +293,19 @@ describe('shouldAutoOpenPrompt', () => {
         });
         const otherRipping = makeJob({ id: 9, state: 'ripping' });
         expect(shouldAutoOpenPrompt(rippingPrompt, [otherRipping, rippingPrompt])).toBe(false);
+    });
+
+    it('auto-opens a review-parked prompt job that carries a live prompt when alone', () => {
+        // The rip-end convergence (B4) parks an unanswered prompt as a
+        // REVIEW_NEEDED job still carrying identity_prompt_json. THAT is the
+        // genuine "waiting for you" moment, so it auto-opens when it is the
+        // only active job — preserving the single-disc walk-away guarantee.
+        const parkedPrompt = makeJob({
+            id: 8,
+            state: 'review_needed',
+            identity_prompt_json: JSON.stringify({ kind: 'name', reason: 'unreadable' }),
+        });
+        expect(shouldAutoOpenPrompt(parkedPrompt, [parkedPrompt])).toBe(true);
     });
 });
 

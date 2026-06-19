@@ -177,20 +177,37 @@ describe('App — walk-away Phase B identity prompts on RIPPING jobs', () => {
         reason: 'Multiple shows share this name.',
     });
 
-    it('auto-opens the name modal when the prompt-bearing ripping job is the only active job', async () => {
+    it('does NOT auto-open a modal mid-rip; shows the card CTA instead (CTA only mid-rip)', async () => {
+        // A lone disc ripping with an open name question must not pop a blocking
+        // modal over the running rip (it reads as "rip blocked, fill this in"
+        // and invites an accidental Cancel). The on-card CTA carries it; the
+        // modal auto-opens only once the job parks for review at rip-end.
         mockJobs([makeJob({ id: 2, state: 'ripping', identity_prompt_json: namePrompt })]);
         renderApp();
 
-        const dialog = await screen.findByRole('dialog');
-        expect(dialog).toBeInTheDocument();
+        const cta = await screen.findByTestId('disccard-identify-cta');
+        expect(cta).toHaveTextContent(/name this disc/i);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('opens the Identify Disc modal on demand from the ripping card CTA', async () => {
+        mockJobs([makeJob({ id: 2, state: 'ripping', identity_prompt_json: namePrompt })]);
+        renderApp();
+
+        fireEvent.click(await screen.findByTestId('disccard-identify-cta'));
+
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
         expect(screen.getByText(/identify disc/i)).toBeInTheDocument();
     });
 
-    it('routes a reidentify prompt to the Re-Identify modal', async () => {
+    it('routes a parked reidentify prompt to the Re-Identify modal', async () => {
+        // A reidentify prompt parks as REVIEW_NEEDED at rip-end (B4) still
+        // carrying its identity_prompt_json — that parked job auto-opens and
+        // must route to the Re-Identify modal, not the name modal.
         mockJobs([
             makeJob({
                 id: 2,
-                state: 'ripping',
+                state: 'review_needed',
                 detected_title: 'Frasier',
                 identity_prompt_json: reidentifyPrompt,
             }),
@@ -238,17 +255,19 @@ describe('App — walk-away Phase B identity prompts on RIPPING jobs', () => {
 });
 
 describe('App — B7 modal re-open race suppression', () => {
-    // The backend clears identity_prompt_json after answering, but a WS progress
-    // tick can arrive before that clearing broadcast, still carrying the old prompt.
-    // Submit should add the job id to the dismissed set so the stale tick can't
-    // re-open the modal the user just answered.
+    // The backend clears identity_prompt_json after answering, but a stale WS
+    // re-broadcast can arrive before that clearing broadcast, still carrying the
+    // old prompt. Submit should add the job id to the dismissed set so the stale
+    // tick can't re-open the modal the user just answered. Driven through a
+    // REVIEW_NEEDED job carrying a live prompt (the rip-end parking case, B4) —
+    // the path that still auto-opens now that ripping jobs are CTA-only.
 
     const namePrompt = JSON.stringify({ kind: 'name', reason: 'Disc label unreadable.' });
     const reidentifyPrompt = JSON.stringify({ kind: 'reidentify', reason: 'Ambiguous title.' });
 
     it('name submit + stale tick: modal stays closed', async () => {
         // detected_title pre-fills the input so the submit button is enabled.
-        const job = makeJob({ id: 3, state: 'ripping', identity_prompt_json: namePrompt, detected_title: 'Seinfeld' });
+        const job = makeJob({ id: 3, state: 'review_needed', identity_prompt_json: namePrompt, detected_title: 'Seinfeld' });
         mockJobs([job]);
         const { rerender } = renderApp();
 
@@ -280,7 +299,7 @@ describe('App — B7 modal re-open race suppression', () => {
         // detected_title initialises the title input so submit is enabled.
         const job = makeJob({
             id: 4,
-            state: 'ripping',
+            state: 'review_needed',
             detected_title: 'Frasier',
             identity_prompt_json: reidentifyPrompt,
         });
@@ -311,10 +330,11 @@ describe('App — auto-opened modal survives a new active job', () => {
     it('an auto-opened reidentify modal STAYS open when a second job becomes active', async () => {
         // The only-active-job rule (P13) gates auto-OPENING; it deliberately
         // never auto-CLOSES. Yanking an open modal away mid-typing because an
-        // unrelated disc started ripping would lose the user's input.
+        // unrelated disc started ripping would lose the user's input. The parked
+        // (REVIEW_NEEDED) job is what auto-opens now; a ripping job is CTA-only.
         const job = makeJob({
             id: 6,
-            state: 'ripping',
+            state: 'review_needed',
             detected_title: 'Frasier',
             identity_prompt_json: reidentifyPrompt,
         });
@@ -343,7 +363,7 @@ describe('App — B7 content-change re-arm', () => {
     const reidentifyPrompt = JSON.stringify({ kind: 'reidentify', reason: 'Ambiguous title.' });
 
     it('different prompt on same job re-opens modal after prior dismissal', async () => {
-        const job = makeJob({ id: 5, state: 'ripping', identity_prompt_json: namePrompt, detected_title: 'Frasier' });
+        const job = makeJob({ id: 5, state: 'review_needed', identity_prompt_json: namePrompt, detected_title: 'Frasier' });
         mockJobs([job]);
         const { rerender } = renderApp();
 
