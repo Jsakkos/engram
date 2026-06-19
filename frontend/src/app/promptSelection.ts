@@ -108,6 +108,14 @@ const TERMINAL_STATES: ReadonlySet<JobState> = new Set<JobState>(['completed', '
  * on-card CTA only. The genuine "waiting for you" moment is the rip-end
  * convergence (B4), where the unanswered prompt parks as REVIEW_NEEDED — and a
  * parked job IS eligible to auto-open below.
+ *
+ * SAFETY INVARIANT: this relies on `ripping → review_needed` being one-way — a
+ * ripping job with an open prompt always eventually parks (or completes), so
+ * the suppression is temporary and the prompt auto-opens at rip-end. If a
+ * future Gate B/C rip-first branch could leave a job in `ripping` indefinitely
+ * while still carrying a prompt, this guard would permanently hide the modal
+ * (the on-card CTA would be the only affordance). Revisit this guard if that
+ * invariant ever changes.
  */
 export function shouldAutoOpenPrompt(promptJob: Job, jobs: Job[]): boolean {
     if (promptJob.state === 'ripping') return false;
