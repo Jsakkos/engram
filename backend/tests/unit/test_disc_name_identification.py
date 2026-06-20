@@ -338,7 +338,7 @@ async def test_run_classification_uses_disc_name_when_label_fails(monkeypatch):
 
     with (
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
-        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.features.DISCDB_LOOKUP_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
         patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
@@ -413,7 +413,7 @@ async def test_run_classification_uses_disc_name_when_label_resolves(monkeypatch
 
     with (
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
-        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.features.DISCDB_LOOKUP_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
         patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
@@ -502,7 +502,7 @@ async def test_run_classification_reresolves_tv_when_label_matches_movie(monkeyp
 
     with (
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
-        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.features.DISCDB_LOOKUP_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
         patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
@@ -582,7 +582,7 @@ async def test_run_classification_skips_redundant_reresolve_after_disc_name_fall
 
     with (
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
-        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.features.DISCDB_LOOKUP_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
         patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
@@ -673,7 +673,7 @@ async def test_run_classification_reresolves_box_set_with_tv_preference(monkeypa
 
     with (
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
-        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.features.DISCDB_LOOKUP_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
         patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
@@ -765,7 +765,7 @@ async def test_run_classification_disc_name_fallback_prefers_tv_for_box_set(monk
 
     with (
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
-        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.features.DISCDB_LOOKUP_ENABLED", False),
         patch("app.core.tmdb_classifier.classify_from_tmdb", side_effect=fake_classify_from_tmdb),
         patch("app.matcher.tmdb_client.fetch_season_episode_runtimes", return_value=[]),
     ):
@@ -933,7 +933,7 @@ async def test_run_classification_fetches_runtimes_and_keeps_pilot(monkeypatch):
 
     with (
         patch("app.services.config_service.get_config", new=AsyncMock(return_value=mock_config)),
-        patch("app.core.features.DISCDB_ENABLED", False),
+        patch("app.core.features.DISCDB_LOOKUP_ENABLED", False),
         patch(
             "app.core.tmdb_classifier.classify_from_tmdb",
             side_effect=lambda name, api_key, prefer_content_type=None: ds9_signal,
