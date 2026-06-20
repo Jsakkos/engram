@@ -3198,6 +3198,7 @@ async def skip_contribution(
     session: AsyncSession = Depends(get_session),
 ):
     """Mark a job as skipped for contribution."""
+    _require_discdb_contributions()
     from app.core.discdb_exporter import mark_skipped
 
     await mark_skipped(job.id, session)
@@ -3256,6 +3257,7 @@ async def fetch_cover(
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
+    _require_discdb_contributions()
     # Lazy import (matches get_db_config below). Keep it inline: the fetch-cover
     # test patches app.core.discdb_exporter.get_export_directory — the binding
     # this resolves at call time — so hoisting it to module scope would bypass
@@ -3337,6 +3339,7 @@ async def enhance_contribution(
     session: AsyncSession = Depends(get_session),
 ):
     """Add tier-3 data (UPC) and re-export."""
+    _require_discdb_contributions()
     from app.core.discdb_exporter import generate_export, mark_exported
     from app.services.config_service import get_config as get_db_config
 
@@ -3789,6 +3792,7 @@ async def create_release_group(
     session: AsyncSession = Depends(get_session),
 ):
     """Create a release group linking multiple disc jobs."""
+    _require_discdb_contributions()
     import uuid
 
     unique_ids = list(dict.fromkeys(request.job_ids))  # deduplicate, preserve order
@@ -3820,6 +3824,7 @@ async def assign_release_group(
     session: AsyncSession = Depends(get_session),
 ):
     """Assign or remove a job from a release group."""
+    _require_discdb_contributions()
     if request.release_group_id:
         # Verify the release group exists (at least one other job has it)
         result = await session.execute(
