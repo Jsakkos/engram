@@ -208,7 +208,6 @@ class IdentificationCoordinator:
         self._start_subtitle_download: callable = None
         self._start_subtitle_download_all_seasons: callable = None
         self._restart_subtitle_download: callable = None
-        self._try_discdb_assignment: callable = None
         self._match_single_file: callable = None
         self._on_match_task_done: callable = None
         self._check_job_completion: callable = None
@@ -222,7 +221,6 @@ class IdentificationCoordinator:
         set_discdb_mappings,
         start_subtitle_download,
         restart_subtitle_download,
-        try_discdb_assignment,
         start_subtitle_download_all_seasons=None,
         match_single_file,
         on_match_task_done,
@@ -236,7 +234,6 @@ class IdentificationCoordinator:
         self._start_subtitle_download = start_subtitle_download
         self._start_subtitle_download_all_seasons = start_subtitle_download_all_seasons
         self._restart_subtitle_download = restart_subtitle_download
-        self._try_discdb_assignment = try_discdb_assignment
         self._match_single_file = match_single_file
         self._on_match_task_done = on_match_task_done
         self._check_job_completion = check_job_completion
