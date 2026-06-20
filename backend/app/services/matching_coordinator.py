@@ -1203,18 +1203,17 @@ class MatchingCoordinator:
                     # mapping when one exists, instead of going to review. DiscDB
                     # numbers by disc order (not aired order), so it is trusted only
                     # when ASR could not produce a usable match.
-                    if (
-                        not advisory
-                        and result.confidence < DISCDB_FALLBACK_ASR_FLOOR
-                        and await self.try_discdb_assignment(job_id, title, session)
-                    ):
-                        logger.info(
-                            f"[MATCH] Title {title_id} (Job {job_id}): ASR confidence "
-                            f"{result.confidence:.2f} < {DISCDB_FALLBACK_ASR_FLOOR}; "
-                            f"assigned episode from DiscDB mapping (disc-order fallback)."
-                        )
-                        await self._check_job_completion(session, job_id)
-                        return
+                    if not advisory and result.confidence < DISCDB_FALLBACK_ASR_FLOOR:
+                        # DiscDB numbers by disc order (not aired order), so it is
+                        # trusted only when ASR could not produce a usable match.
+                        if await self.try_discdb_assignment(job_id, title, session):
+                            logger.info(
+                                f"[MATCH] Title {title_id} (Job {job_id}): ASR confidence "
+                                f"{result.confidence:.2f} < {DISCDB_FALLBACK_ASR_FLOOR}; "
+                                f"assigned episode from DiscDB mapping (disc-order fallback)."
+                            )
+                            await self._check_job_completion(session, job_id)
+                            return
 
                     # A low-confidence result always goes to REVIEW — even when the
                     # matcher emits a best-guess episode code. Auto-organizing a

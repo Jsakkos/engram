@@ -1110,8 +1110,12 @@ class TestDispatchTitleMatchTOCTOU:
     two concurrent ``_dispatch_title_match`` calls for the same title cannot both
     slip through the membership check and spawn duplicate match tasks (TOCTOU).
 
-    The discdb-applied early-return path must also discard the sentinel so a
-    future legitimate dispatch is not permanently blocked."""
+    The match task is always dispatched — there is no DiscDB early-return in
+    ``_dispatch_title_match``.  The sentinel is claimed atomically before the
+    dispatch ``await``, held for the lifetime of the spawned task, and released
+    by ``_on_match_dispatch_done`` when the task completes.  Any early-return
+    path that does NOT dispatch a task must discard the sentinel so a future
+    legitimate dispatch is not permanently blocked."""
 
     def _stub_matching(self, monkeypatch, discdb_applied=False):
         discdb = AsyncMock(return_value=discdb_applied)
