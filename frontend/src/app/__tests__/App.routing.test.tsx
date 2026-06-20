@@ -63,7 +63,7 @@ afterEach(() => {
 describe("App routing — every page mounts (no blank/black screen)", () => {
   // Each route must render the SvAtmosphere wrapper. A route that renders null
   // (the /review black-screen bug) would leave the container empty and this
-  // would throw. /contribute is gated behind FEATURES.DISCDB (off by default),
+  // would throw. /contribute is gated behind FEATURES.DISCDB_CONTRIBUTE (off by default),
   // so it's only covered when that flag is enabled.
   const routeCases: Array<[string, string]> = [
     ["/", "dashboard"],
@@ -71,7 +71,7 @@ describe("App routing — every page mounts (no blank/black screen)", () => {
     ["/review/7", "review detail"],
     ["/review", "bare review → redirects to dashboard"],
   ];
-  if (FEATURES.DISCDB) routeCases.push(["/contribute", "contribute"]);
+  if (FEATURES.DISCDB_CONTRIBUTE) routeCases.push(["/contribute", "contribute"]);
 
   it.each(routeCases)("renders content at %s (%s)", async (path) => {
     renderAt(path);

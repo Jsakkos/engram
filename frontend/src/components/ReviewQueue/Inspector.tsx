@@ -400,7 +400,7 @@ export function Inspector({
                             <IcoRetry size={11} className={isMatching ? 'animate-spin' : ''} />
                             {isMatching ? 'Re-matching…' : 'Re-match'}
                         </SvActionButton>
-                        {FEATURES.DISCDB && title.discdb_match_details && title.match_details && (
+                        {FEATURES.DISCDB_LOOKUP && title.discdb_match_details && title.match_details && (
                             <SvActionButton
                                 tone="magenta"
                                 size="sm"

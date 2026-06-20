@@ -26,7 +26,7 @@ export const ROUTES = {
 
 /**
  * Every *mounted* route pattern. Drives `routeExists()` validation. The
- * `/contribute` route is mounted only when `FEATURES.DISCDB` is on, so it is
+ * `/contribute` route is mounted only when `FEATURES.DISCDB_CONTRIBUTE` is on, so it is
  * included conditionally — mirroring the gate on its `<Route>` in App.tsx —
  * to keep `routeExists()` honest about what actually resolves.
  */
@@ -36,7 +36,7 @@ export const ROUTE_PATTERNS: readonly string[] = [
   ROUTES.HISTORY_DETAIL,
   ROUTES.REVIEW,
   ROUTES.REVIEW_DETAIL,
-  ...(FEATURES.DISCDB ? [ROUTES.CONTRIBUTE] : []),
+  ...(FEATURES.DISCDB_CONTRIBUTE ? [ROUTES.CONTRIBUTE] : []),
 ];
 
 /** Concrete path to a job's review page — derived from the route pattern. */
