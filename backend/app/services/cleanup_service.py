@@ -33,9 +33,13 @@ class CleanupService:
             await self.delete_staging(job_id)
 
         # Auto-export for TheDiscDB contributions
-        from app.core.features import DISCDB_ENABLED
+        from app.core.features import DISCDB_CONTRIBUTIONS_ENABLED
 
-        if DISCDB_ENABLED and state == JobState.COMPLETED and config.discdb_contributions_enabled:
+        if (
+            DISCDB_CONTRIBUTIONS_ENABLED
+            and state == JobState.COMPLETED
+            and config.discdb_contributions_enabled
+        ):
             await self.auto_export_for_discdb(job_id, config)
 
     async def delete_staging(self, job_id: int) -> None:

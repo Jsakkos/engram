@@ -1513,10 +1513,10 @@ class IdentificationCoordinator:
                     )
 
         # Attempt TheDiscDB lookup
-        from app.core.features import DISCDB_ENABLED
+        from app.core.features import DISCDB_LOOKUP_ENABLED
 
         discdb_signal = None
-        if DISCDB_ENABLED and config.discdb_enabled:
+        if DISCDB_LOOKUP_ENABLED and config.discdb_enabled:
             try:
                 from app.core.discdb_classifier import classify_from_discdb
 
