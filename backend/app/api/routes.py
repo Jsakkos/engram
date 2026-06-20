@@ -3146,12 +3146,25 @@ async def contribution_stats(session: AsyncSession = Depends(get_session)):
     )
 
 
+def _require_discdb_contributions() -> None:
+    """Reject contribution endpoints unless the contribution feature is enabled.
+
+    Lookup may be on while contribution stays gated; without this guard the
+    submit/export endpoints would remain reachable directly.
+    """
+    from app.core.features import DISCDB_CONTRIBUTIONS_ENABLED
+
+    if not DISCDB_CONTRIBUTIONS_ENABLED:
+        raise HTTPException(status_code=404, detail="TheDiscDB contributions are disabled")
+
+
 @router.post("/contributions/{job_id}/export", dependencies=[Depends(require_localhost)])
 async def export_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Manually trigger export for a specific job."""
+    _require_discdb_contributions()
     from app.core.discdb_exporter import generate_export, mark_exported
     from app.core.discdb_submitter import ensure_release_group_id
     from app.services.config_service import get_config as get_db_config
@@ -3731,6 +3744,7 @@ async def submit_contribution(
     session: AsyncSession = Depends(get_session),
 ):
     """Submit a job's disc data to TheDiscDB API."""
+    _require_discdb_contributions()
     from app.core.discdb_submitter import ensure_release_group_id, submit_job
     from app.services.config_service import get_config as get_db_config
 
@@ -3833,6 +3847,7 @@ async def submit_release_group_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Batch-submit all completed jobs in a release group to TheDiscDB."""
+    _require_discdb_contributions()
     from app.core.discdb_submitter import submit_release_group
     from app.services.config_service import get_config as get_db_config
 
