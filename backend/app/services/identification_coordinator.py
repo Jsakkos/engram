@@ -1056,18 +1056,18 @@ class IdentificationCoordinator:
                         for dt in db_titles:
                             if dt.output_filename:
                                 file_path = Path(dt.output_filename)
-                                discdb_applied = await self._try_discdb_assignment(
-                                    job_id, dt, session
+                                # ASR-preferred precedence: always run audio matching.
+                                # A DiscDB episode mapping (disc order, not aired order)
+                                # is applied only as a low-confidence fallback inside
+                                # _match_single_file_inner.
+                                task = asyncio.create_task(
+                                    self._match_single_file(job_id, dt.id, file_path)
                                 )
-                                if not discdb_applied:
-                                    task = asyncio.create_task(
-                                        self._match_single_file(job_id, dt.id, file_path)
+                                task.add_done_callback(
+                                    lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
+                                        t, jid, tid
                                     )
-                                    task.add_done_callback(
-                                        lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
-                                            t, jid, tid
-                                        )
-                                    )
+                                )
                 else:
                     # Movie: skip matching, go straight to organization. Route
                     # through the state machine (now a legal IDENTIFYING ->

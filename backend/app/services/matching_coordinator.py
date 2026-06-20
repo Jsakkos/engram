@@ -65,6 +65,12 @@ def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int])
     )
 
 
+# ASR-preferred episode precedence: ASR always runs and is authoritative at or
+# above this confidence. Only below it do we defer to a DiscDB episode mapping —
+# DiscDB numbers episodes by physical disc order, not aired order, so it is a
+# last-resort fallback, never a competitor to a usable ASR match.
+DISCDB_FALLBACK_ASR_FLOOR = 0.5
+
 # Season component of a matched_episode code ("S03E07" → 3). Used via
 # ``.match`` — PREFIX-anchored only: non-episode values like "extra"/None don't
 # parse and are ignored by the season-pin convergence rule, but a string that
@@ -1192,6 +1198,24 @@ class MatchingCoordinator:
                 title.match_confidence = result.confidence
 
                 if result.needs_review or advisory:
+                    # ASR-preferred precedence: a very low-confidence ASR result
+                    # (not a deliberate manual re-match) defers to a DiscDB episode
+                    # mapping when one exists, instead of going to review. DiscDB
+                    # numbers by disc order (not aired order), so it is trusted only
+                    # when ASR could not produce a usable match.
+                    if (
+                        not advisory
+                        and result.confidence < DISCDB_FALLBACK_ASR_FLOOR
+                        and await self.try_discdb_assignment(job_id, title, session)
+                    ):
+                        logger.info(
+                            f"[MATCH] Title {title_id} (Job {job_id}): ASR confidence "
+                            f"{result.confidence:.2f} < {DISCDB_FALLBACK_ASR_FLOOR}; "
+                            f"assigned episode from DiscDB mapping (disc-order fallback)."
+                        )
+                        await self._check_job_completion(session, job_id)
+                        return
+
                     # A low-confidence result always goes to REVIEW — even when the
                     # matcher emits a best-guess episode code. Auto-organizing a
                     # borderline guess silently mis-files content (e.g. a bonus

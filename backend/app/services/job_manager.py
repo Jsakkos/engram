@@ -2862,7 +2862,6 @@ class JobManager:
         # that don't reach create_task must discard the sentinel.
         self._inflight_match_dispatch.add(title_id)
 
-        applied = False
         try:
             async with async_session() as session:
                 title = await session.get(DiscTitle, title_id)
@@ -2873,18 +2872,13 @@ class JobManager:
                     )
                     self._inflight_match_dispatch.discard(title_id)
                     return False
-                applied = await self._matching.try_discdb_assignment(job_id, title, session)
-                if applied:
-                    await self._finalization.check_job_completion(session, job_id)
         except Exception:
             self._inflight_match_dispatch.discard(title_id)
             raise
-        if applied:
-            # DiscDB path resolved the title — no match task needed; release
-            # the sentinel so a future re-dispatch (e.g. after a re-rip) works.
-            self._inflight_match_dispatch.discard(title_id)
-            return True
 
+        # ASR-preferred precedence: always run audio matching. A DiscDB episode
+        # mapping (disc order, not aired order) is applied only as a low-confidence
+        # fallback inside _match_single_file_inner.
         # match_single_file self-tags the job log context.
         task = asyncio.create_task(self._matching.match_single_file(job_id, title_id, file_path))
         task.add_done_callback(
