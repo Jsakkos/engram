@@ -1195,7 +1195,13 @@ class MatchingCoordinator:
                         await self._check_job_completion(session, job_id)
                         return
 
-                # Update title with match result
+                # Update title with match result. These in-memory writes are
+                # provisional: on the DiscDB-fallback path below, try_discdb_assignment
+                # overwrites both fields with the DiscDB episode (conf 0.99) and commits
+                # before returning, so no stale ASR value reaches the DB. The ordering
+                # matters — keep DiscDB's pre-commit work (dict lookups + formatting,
+                # which can't raise the caught exception types) failure-free so the outer
+                # error handler can never persist this stale ASR code to REVIEW.
                 title.matched_episode = result.episode_code
                 title.match_confidence = result.confidence
 
@@ -1205,6 +1211,10 @@ class MatchingCoordinator:
                     # mapping when one exists, instead of going to review. DiscDB
                     # numbers by disc order (not aired order), so it is trusted only
                     # when ASR could not produce a usable match.
+                    # Invariant: the curator always sets needs_review=True for a
+                    # low-confidence result, so a confidence below the floor implies
+                    # we are inside this branch. The fallback can therefore only
+                    # auto-organize via a DiscDB mapping, never by confidence alone.
                     if not advisory and result.confidence < DISCDB_FALLBACK_ASR_FLOOR:
                         if await self.try_discdb_assignment(job_id, title, session):
                             logger.info(
