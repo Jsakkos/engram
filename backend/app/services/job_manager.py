@@ -2835,15 +2835,17 @@ class JobManager:
         """Run the standard per-title match dispatch for a ripped file.
 
         Shared by ``_on_title_ripped``, ``reconcile_stuck_titles``, and
-        ``dispatch_pending_matches`` so the sites can't diverge: TheDiscDB
-        assignment first (then a completion check, since no match task will
-        run), otherwise a ``match_single_file`` task with the standard done
-        callback. Owns its session — match tasks must own their own sessions.
+        ``dispatch_pending_matches`` so the sites can't diverge: dispatches a
+        ``match_single_file`` task with the standard done callback. (DiscDB
+        episode assignment is no longer a pre-dispatch step; under ASR-preferred
+        precedence it runs only as a low-confidence fallback inside
+        ``_match_single_file_inner``.) Owns its session — match tasks must own
+        their own sessions.
 
         Skips a title that already has a live match task (see
         ``_inflight_match_dispatch``), making repeat dispatch safe. Returns
-        True when work was dispatched (DiscDB assignment or match task), False
-        when skipped (in-flight, or title vanished).
+        True when a match task was dispatched, False when skipped (in-flight,
+        or title vanished).
 
         TOCTOU note: the membership check and ``add`` are separated by NO
         awaits — both run in a single event-loop turn, so they are effectively
