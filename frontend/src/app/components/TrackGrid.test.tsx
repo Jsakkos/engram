@@ -70,7 +70,7 @@ describe("TrackGrid — provenance rendering", () => {
         ]}
       />,
     );
-    expect(screen.getByText("DISCDB")).toBeInTheDocument();
+    expect(screen.getByTestId("source-badge-discdb")).toBeInTheDocument();
     expect(screen.getByText("99%")).toBeInTheDocument();
     expect(screen.queryByText("FULL-FILE")).not.toBeInTheDocument();
   });
