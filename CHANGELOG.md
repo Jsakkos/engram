@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.7] - 2026-06-21
+
+_Highlights: TheDiscDB lookup is now on by default — Engram checks the community disc database during identification and uses its episode mappings as a low-confidence fallback, while audio matching (ASR) remains the primary and preferred signal._
+
+### Added
+
+- **TheDiscDB lookup is now enabled by default** — when a disc's content hash matches an entry in TheDiscDB, Engram now uses the community-contributed title-to-episode mapping as a fallback when audio-recognition confidence is low (below 0.5). ASR always runs first and wins when confident; a DiscDB mapping steps in only when the audio match is weak. Previously, a DiscDB hit would short-circuit ASR entirely and stamp 0.99 confidence using disc-order numbering — which frequently disagreed with aired order and produced worse results than the audio match. Contribution of new disc layouts remains gated off by default. (#430)
+
 ## [0.21.6] - 2026-06-19
 
 _Highlights: two disc-handling fixes — the Identify prompt no longer pops a blocking modal over a disc that is already ripping, and box-set TV discs now pin their TMDB lookup to the TV namespace instead of picking a fuzzy movie match._
