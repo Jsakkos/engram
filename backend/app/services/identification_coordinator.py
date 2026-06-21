@@ -1722,7 +1722,8 @@ class IdentificationCoordinator:
         # a failed lookup still applies the override). For the top tier
         # (canonical) we additionally pre-assign episodes via the EXISTING DiscDB
         # mapping machinery (verified ±2s/±1% against scanned titles), letting
-        # try_discdb_assignment skip ASR at rip time. "confirmed" is identity
+        # stored DiscDB mappings may later be applied as a low-confidence fallback
+        # during matching (post-ASR, not in place of it). "confirmed" is identity
         # only — episodes are still verified by chromaprint/ASR. This runs BEFORE
         # the TheDiscDB block and wins over it (network_confident guards that
         # block) so the network result is never clobbered downstream.

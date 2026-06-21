@@ -321,9 +321,11 @@ class MatchingCoordinator:
         self.start_subtitle_download(job_id, show_name, season, tmdb_id)
 
     async def try_discdb_assignment(self, job_id: int, title: "DiscTitle", session) -> bool:
-        """Try to assign episode info from TheDiscDB mappings, skipping fingerprinting.
+        """Apply a DiscDB disc-order episode mapping as a post-ASR low-confidence fallback.
 
-        Returns True if assignment was made, False to fall back to audio matching.
+        Called only after ASR has already run and returned a confidence below
+        DISCDB_FALLBACK_ASR_FLOOR. Returns True if a mapping was applied, False if
+        no usable mapping exists (and the caller should proceed to REVIEW).
         """
         mappings = self._discdb_mappings.get(job_id)
         if not mappings:
@@ -348,8 +350,8 @@ class MatchingCoordinator:
         origin = "disc network" if source == "network_disc" else "TheDiscDB"
         episode_code = f"S{mapping.season:02d}E{mapping.episode:02d}"
         logger.info(
-            f"Job {job_id}: {origin} pre-assigned title {title.title_index} "
-            f"→ {episode_code} ({mapping.episode_title!r}) — skipping audio matching"
+            f"Job {job_id}: {origin} applying disc-order fallback mapping for title "
+            f"{title.title_index}: {episode_code} ({mapping.episode_title!r})"
         )
 
         title.matched_episode = episode_code
@@ -1204,8 +1206,6 @@ class MatchingCoordinator:
                     # numbers by disc order (not aired order), so it is trusted only
                     # when ASR could not produce a usable match.
                     if not advisory and result.confidence < DISCDB_FALLBACK_ASR_FLOOR:
-                        # DiscDB numbers by disc order (not aired order), so it is
-                        # trusted only when ASR could not produce a usable match.
                         if await self.try_discdb_assignment(job_id, title, session):
                             logger.info(
                                 f"[MATCH] Title {title_id} (Job {job_id}): ASR confidence "

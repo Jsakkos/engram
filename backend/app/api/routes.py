@@ -3231,6 +3231,7 @@ async def upc_lookup(
     job: DiscJob = Depends(get_job_or_404),
 ):
     """Look up product info by UPC barcode."""
+    _require_discdb_contributions()
     from app.core.upc_lookup import compute_match_confidence, lookup_upc
 
     result = await lookup_upc(request.upc_code)

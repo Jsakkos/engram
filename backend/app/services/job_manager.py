@@ -1157,7 +1157,7 @@ class JobManager:
         """Resolve selected titles orphaned in PENDING/RIPPING after a rip finishes.
 
         A title whose staging file exists is routed into the normal completion path
-        (TV → DiscDB assignment or matching; movie → MATCHED); one with no file is
+        (TV → matching; movie → MATCHED); one with no file is
         marked FAILED. Guarantees no selected title is stranded in RIPPING once the
         MakeMKV subprocess has exited (the orphaned-last-title bug). Recovers work
         rather than discarding it.
