@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "motion/react";
 import { IcoRipping, IcoMatching, IcoComplete, IcoError } from "./icons";
+import { IcoDisc } from "./icons/media";
 import type { Track, TrackState } from "./DiscCard";
 import { sv, SvBadge, SvBar, SvLabel, MarkMono } from "./synapse";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -49,6 +50,7 @@ type SourceDesc = {
   tone: string;
   tooltip: string;
   node?: boolean;
+  Icon?: React.ComponentType<{ size?: number; color?: string }>;
 };
 
 // Engram-engine sources render the brand mark (icon-only, label on hover);
@@ -57,7 +59,7 @@ type SourceDesc = {
 const SOURCE_DESC: Record<string, SourceDesc> = {
   engram:             { kind: "icon", label: "ENGRAM", tone: sv.cyan,    tooltip: "Matched by Engram (ASR)" },
   engram_chromaprint: { kind: "icon", label: "ENGRAM", tone: sv.magenta, tooltip: "Matched by Engram (audio fingerprint)", node: true },
-  discdb:             { kind: "text", label: "DISCDB", tone: "#60a5fa",  tooltip: "Matched from TheDiscDB" },
+  discdb:             { kind: "icon", label: "DISCDB", tone: sv.blue,    tooltip: "Matched from TheDiscDB", Icon: IcoDisc },
   ai_llm:             { kind: "text", label: "AI",     tone: sv.purple,  tooltip: "Identified by AI" },
   user:               { kind: "text", label: "MANUAL", tone: sv.green,   tooltip: "Assigned manually" },
 };
@@ -98,7 +100,11 @@ function SourceChip({ source }: { source: string }) {
             background: `${desc.tone}10`,
           }}
         >
-          <MarkMono size={12} color={desc.tone} node={desc.node} />
+          {desc.Icon ? (
+            <desc.Icon size={12} color={desc.tone} />
+          ) : (
+            <MarkMono size={12} color={desc.tone} node={desc.node} />
+          )}
         </span>
       </TooltipTrigger>
       <TooltipContent>{desc.tooltip}</TooltipContent>

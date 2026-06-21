@@ -103,7 +103,7 @@ function MainDashboard() {
       // redaction sentinel (#243).
       setTmdbConfigured(data.tmdb_configured ?? !!data.tmdb_api_key);
       // Fetch contribution stats for nav badge
-      if (FEATURES.DISCDB && data.discdb_contributions_enabled) {
+      if (FEATURES.DISCDB_CONTRIBUTE && data.discdb_contributions_enabled) {
         try {
           const statsRes = await fetch('/api/contributions/stats');
           if (statsRes.ok) {
@@ -942,7 +942,7 @@ function App() {
       <Route path={ROUTES.HOME} element={<MainDashboard />} />
       <Route path={ROUTES.HISTORY} element={<HistoryPage />} />
       <Route path={ROUTES.HISTORY_DETAIL} element={<HistoryPage />} />
-      {FEATURES.DISCDB && <Route path={ROUTES.CONTRIBUTE} element={<ContributePage />} />}
+      {FEATURES.DISCDB_CONTRIBUTE && <Route path={ROUTES.CONTRIBUTE} element={<ContributePage />} />}
       <Route path="/library" element={<Navigate to={ROUTES.HISTORY} replace />} />
       <Route path={ROUTES.REVIEW} element={<Navigate to={ROUTES.HOME} replace />} />
       <Route path={ROUTES.REVIEW_DETAIL} element={<ReviewQueue />} />

@@ -61,7 +61,7 @@ export function buildNavItems({
       label: "CONTRIBUTE",
       to: ROUTES.CONTRIBUTE,
       badge: contributionPending,
-      show: FEATURES.DISCDB,
+      show: FEATURES.DISCDB_CONTRIBUTE,
     },
   ];
 }

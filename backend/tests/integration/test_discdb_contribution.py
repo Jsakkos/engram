@@ -12,6 +12,16 @@ from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, Title
 
 
 @pytest.fixture(autouse=True)
+def enable_discdb_contributions(monkeypatch):
+    """The contribution write endpoints are gated behind DISCDB_CONTRIBUTIONS_ENABLED
+    (default False). This suite exercises the real contribution pipeline, so enable
+    the flag. The guard reads it via a lazy import at call time, so patching the
+    source attribute takes effect. Read-only endpoints (list/stats) are ungated and
+    unaffected either way."""
+    monkeypatch.setattr("app.core.features.DISCDB_CONTRIBUTIONS_ENABLED", True)
+
+
+@pytest.fixture(autouse=True)
 async def setup_db():
     """Initialize test database and clean data between tests."""
     await init_db()

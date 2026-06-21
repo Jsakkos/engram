@@ -16,6 +16,18 @@ from app.models.disc_job import ContentType, DiscJob, JobState
 from tests.unit.conftest import _unit_session_factory
 
 
+@pytest.fixture(autouse=True)
+def enable_discdb_contributions(monkeypatch):
+    """Enable the contributions feature gate so fetch-cover tests reach the real endpoint logic.
+
+    The _require_discdb_contributions() guard does a lazy import of
+    app.core.features.DISCDB_CONTRIBUTIONS_ENABLED at call time, so patching
+    the module attribute is sufficient to bypass the gate for the duration of
+    each test.
+    """
+    monkeypatch.setattr("app.core.features.DISCDB_CONTRIBUTIONS_ENABLED", True)
+
+
 @pytest.fixture
 async def client():
     """Provide an async HTTP client with the patched DB session."""

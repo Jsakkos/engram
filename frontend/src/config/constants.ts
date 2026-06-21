@@ -8,8 +8,10 @@
  * Flip to true to expose a feature that's been merged but isn't user-ready.
  */
 export const FEATURES = {
-  /** TheDiscDB integration — contribute page, match-source badges, settings toggle. */
-  DISCDB: false,
+  /** TheDiscDB lookups: match-source badges, history metadata, lookup settings toggle. */
+  DISCDB_LOOKUP: true,
+  /** TheDiscDB contributions: contribute page, nav item, stats badge, submit controls. */
+  DISCDB_CONTRIBUTE: false,
 } as const;
 
 /**

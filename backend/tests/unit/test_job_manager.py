@@ -90,9 +90,6 @@ class TestOnTitleRipped:
 
     async def test_tv_title_dispatches_match_when_no_discdb(self, tmp_path, monkeypatch):
         job, title = await _seed(content_type=ContentType.TV)
-        monkeypatch.setattr(
-            job_manager._matching, "try_discdb_assignment", AsyncMock(return_value=False)
-        )
         dispatch = AsyncMock()
         monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
         monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
@@ -108,22 +105,27 @@ class TestOnTitleRipped:
         assert t.state == TitleState.QUEUED
         dispatch.assert_awaited_once()
 
-    async def test_tv_title_with_discdb_checks_completion(self, tmp_path, monkeypatch):
+    async def test_tv_title_always_dispatches_match_regardless_of_discdb(
+        self, tmp_path, monkeypatch
+    ):
+        """ASR-preferred precedence: match_single_file is always dispatched for TV titles.
+        DiscDB assignment (if any) is now applied as a fallback inside _match_single_file_inner,
+        not as a pre-dispatch short-circuit in _dispatch_title_match."""
         job, title = await _seed(content_type=ContentType.TV)
-        monkeypatch.setattr(
-            job_manager._matching, "try_discdb_assignment", AsyncMock(return_value=True)
-        )
         dispatch = AsyncMock()
         monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
-        completion = AsyncMock()
-        monkeypatch.setattr(job_manager._finalization, "check_job_completion", completion)
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
         path = tmp_path / "show_t00.mkv"
         path.write_text("")
 
         await job_manager._on_title_ripped(job.id, 1, path, [title])
+        await asyncio.sleep(0)  # let the dispatched task run
 
-        completion.assert_awaited_once()
-        dispatch.assert_not_called()
+        t = await _get_title(title.id)
+        # Always dispatched — QUEUED (match_single_file is mocked, so the
+        # post-semaphore QUEUED→MATCHING flip never runs here).
+        assert t.state == TitleState.QUEUED
+        dispatch.assert_awaited_once()
 
     async def test_unresolvable_file_is_noop(self, tmp_path):
         job, title = await _seed(content_type=ContentType.TV)
@@ -148,16 +150,14 @@ class TestOnTitleRippedIdentityGate:
     releases them once the prompt is answered."""
 
     def _stub_dispatch(self, monkeypatch):
-        discdb = AsyncMock(return_value=False)
         dispatch = AsyncMock()
-        monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
         monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
         monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
-        return discdb, dispatch
+        return dispatch
 
     async def test_tv_with_prompt_parks_queued_without_dispatch(self, tmp_path, monkeypatch):
         job, title = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
-        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        dispatch = self._stub_dispatch(monkeypatch)
         path = tmp_path / "show_t00.mkv"
         path.write_text("")
 
@@ -167,7 +167,6 @@ class TestOnTitleRippedIdentityGate:
         t = await _get_title(title.id)
         assert t.state == TitleState.QUEUED
         assert t.output_filename == str(path)
-        discdb.assert_not_called()
         dispatch.assert_not_called()
 
     @pytest.mark.parametrize("content_type", [ContentType.UNKNOWN, ContentType.MOVIE])
@@ -177,7 +176,7 @@ class TestOnTitleRippedIdentityGate:
         """An identity-pending job must NOT fall into the non-TV → MATCHED branch:
         that would mark titles matched with no identity."""
         job, title = await _seed(content_type=content_type, identity_prompt_json=_PROMPT)
-        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        dispatch = self._stub_dispatch(monkeypatch)
         path = tmp_path / "disc_t00.mkv"
         path.write_text("")
 
@@ -186,7 +185,6 @@ class TestOnTitleRippedIdentityGate:
 
         t = await _get_title(title.id)
         assert t.state == TitleState.QUEUED
-        discdb.assert_not_called()
         dispatch.assert_not_called()
 
     async def test_reidentify_prompt_also_parks(self, tmp_path, monkeypatch):
@@ -195,7 +193,7 @@ class TestOnTitleRippedIdentityGate:
             content_type=ContentType.TV,
             identity_prompt_json=json.dumps({"kind": "reidentify", "reason": "twins"}),
         )
-        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        dispatch = self._stub_dispatch(monkeypatch)
         path = tmp_path / "show_t00.mkv"
         path.write_text("")
 
@@ -203,7 +201,6 @@ class TestOnTitleRippedIdentityGate:
         await asyncio.sleep(0)
 
         assert (await _get_title(title.id)).state == TitleState.QUEUED
-        discdb.assert_not_called()
         dispatch.assert_not_called()
 
     async def test_season_prompt_dispatches_normally(self, tmp_path, monkeypatch):
@@ -213,7 +210,7 @@ class TestOnTitleRippedIdentityGate:
         and _has_pending_match_work refreshes the watchdog clock with nothing
         ever dispatching."""
         job, title = await _seed(content_type=ContentType.TV, identity_prompt_json=_SEASON_PROMPT)
-        discdb, dispatch = self._stub_dispatch(monkeypatch)
+        dispatch = self._stub_dispatch(monkeypatch)
         path = tmp_path / "show_t00.mkv"
         path.write_text("")
 
@@ -222,7 +219,8 @@ class TestOnTitleRippedIdentityGate:
 
         t = await _get_title(title.id)
         assert t.state == TitleState.QUEUED  # flip to MATCHING is post-semaphore
-        discdb.assert_awaited_once()
+        # ASR-preferred precedence: match_single_file is always dispatched.
+        # try_discdb_assignment is applied as a fallback inside _match_single_file_inner.
         dispatch.assert_awaited_once()
 
 
@@ -231,13 +229,11 @@ class TestDispatchPendingMatches:
     """dispatch_pending_matches releases identity-gated QUEUED titles: dispatch
     exactly the QUEUED titles whose ripped file exists, idempotently."""
 
-    def _stub_dispatch(self, monkeypatch, discdb_applied=False):
-        discdb = AsyncMock(return_value=discdb_applied)
+    def _stub_dispatch(self, monkeypatch):
         dispatch = AsyncMock()
-        monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
         monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
         monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
-        return discdb, dispatch
+        return dispatch
 
     async def _add_title(self, job_id, index, state, output=None):
         async with _unit_session_factory() as session:
@@ -263,7 +259,7 @@ class TestDispatchPendingMatches:
         g = tmp_path / "show_t04.mkv"
         g.write_text("")
         await self._add_title(job.id, 4, TitleState.MATCHED, output=str(g))
-        _discdb, dispatch = self._stub_dispatch(monkeypatch)
+        dispatch = self._stub_dispatch(monkeypatch)
 
         count = await job_manager.dispatch_pending_matches(job.id)
         await asyncio.sleep(0)
@@ -273,20 +269,21 @@ class TestDispatchPendingMatches:
         # The RIPPING seed title is untouched.
         assert (await _get_title(ripping.id)).state == TitleState.RIPPING
 
-    async def test_discdb_assignment_path_checks_completion(self, tmp_path, monkeypatch):
+    async def test_discdb_assignment_path_dispatches_match(self, tmp_path, monkeypatch):
+        """ASR-preferred precedence: match_single_file is always dispatched.
+        DiscDB assignment is now applied as a fallback inside _match_single_file_inner,
+        not as a pre-dispatch short-circuit in _dispatch_title_match."""
         job, _ = await _seed(content_type=ContentType.TV)
         f = tmp_path / "show_t01.mkv"
         f.write_text("")
-        await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
-        _discdb, dispatch = self._stub_dispatch(monkeypatch, discdb_applied=True)
-        completion = AsyncMock()
-        monkeypatch.setattr(job_manager._finalization, "check_job_completion", completion)
+        queued = await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
+        dispatch = self._stub_dispatch(monkeypatch)
 
         count = await job_manager.dispatch_pending_matches(job.id)
+        await asyncio.sleep(0)
 
         assert count == 1
-        completion.assert_awaited_once()
-        dispatch.assert_not_called()
+        dispatch.assert_awaited_once_with(job.id, queued.id, f)
 
     async def test_double_dispatch_does_not_double_match(self, tmp_path, monkeypatch):
         """The in-flight guard makes repeat dispatch safe: the QUEUED→MATCHING
@@ -298,9 +295,6 @@ class TestDispatchPendingMatches:
         f.write_text("")
         title = await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
 
-        monkeypatch.setattr(
-            job_manager._matching, "try_discdb_assignment", AsyncMock(return_value=False)
-        )
         release = asyncio.Event()
         calls = []
 
@@ -331,7 +325,7 @@ class TestDispatchPendingMatches:
 
     async def test_no_queued_titles_is_noop(self, tmp_path, monkeypatch):
         job, _ = await _seed(content_type=ContentType.TV)
-        _discdb, dispatch = self._stub_dispatch(monkeypatch)
+        dispatch = self._stub_dispatch(monkeypatch)
 
         assert await job_manager.dispatch_pending_matches(job.id) == 0
         dispatch.assert_not_called()
@@ -343,7 +337,7 @@ class TestDispatchPendingMatches:
         f = tmp_path / "movie_t01.mkv"
         f.write_text("")
         await self._add_title(job.id, 1, TitleState.QUEUED, output=str(f))
-        _discdb, dispatch = self._stub_dispatch(monkeypatch)
+        dispatch = self._stub_dispatch(monkeypatch)
 
         assert await job_manager.dispatch_pending_matches(job.id) == 0
         dispatch.assert_not_called()
@@ -1102,11 +1096,14 @@ class TestDispatchTitleMatchTOCTOU:
     two concurrent ``_dispatch_title_match`` calls for the same title cannot both
     slip through the membership check and spawn duplicate match tasks (TOCTOU).
 
-    The discdb-applied early-return path must also discard the sentinel so a
-    future legitimate dispatch is not permanently blocked."""
+    The match task is always dispatched — there is no DiscDB early-return in
+    ``_dispatch_title_match``.  The sentinel is claimed atomically before the
+    dispatch ``await``, held for the lifetime of the spawned task, and released
+    by ``_on_match_dispatch_done`` when the task completes.  Any early-return
+    path that does NOT dispatch a task must discard the sentinel so a future
+    legitimate dispatch is not permanently blocked."""
 
-    def _stub_matching(self, monkeypatch, discdb_applied=False):
-        discdb = AsyncMock(return_value=discdb_applied)
+    def _stub_matching(self, monkeypatch):
         release = asyncio.Event()
         calls = []
 
@@ -1114,17 +1111,16 @@ class TestDispatchTitleMatchTOCTOU:
             calls.append((jid, tid))
             await release.wait()
 
-        monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
         monkeypatch.setattr(job_manager._matching, "match_single_file", slow_match)
         monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
-        return discdb, calls, release
+        return calls, release
 
     async def test_concurrent_calls_spawn_exactly_one_task(self, tmp_path, monkeypatch):
         """Two concurrent _dispatch_title_match for the same title must not
         double-spawn: the sentinel is claimed before any await so both coroutines
         can't both pass the membership check."""
         job, title = await _seed(content_type=ContentType.TV)
-        _discdb, calls, release = self._stub_matching(monkeypatch)
+        calls, release = self._stub_matching(monkeypatch)
 
         f = tmp_path / "show_t00.mkv"
         f.write_text("")
@@ -1148,25 +1144,31 @@ class TestDispatchTitleMatchTOCTOU:
         await asyncio.sleep(0.05)
         assert title.id not in job_manager._inflight_match_dispatch
 
-    async def test_discdb_applied_path_releases_sentinel(self, tmp_path, monkeypatch):
-        """When DiscDB assignment resolves the title (no match task spawned),
-        the sentinel must be discarded so a subsequent dispatch is not blocked."""
+    async def test_match_task_releases_sentinel_on_completion(self, tmp_path, monkeypatch):
+        """The in-flight sentinel is released by _on_match_dispatch_done once the
+        match task finishes. ASR-preferred precedence: _dispatch_title_match always
+        spawns a match task (no DiscDB pre-dispatch short-circuit)."""
         job, title = await _seed(content_type=ContentType.TV)
-        self._stub_matching(monkeypatch, discdb_applied=True)
-        completion = AsyncMock()
-        monkeypatch.setattr(job_manager._finalization, "check_job_completion", completion)
+        calls, release = self._stub_matching(monkeypatch)
 
         f = tmp_path / "show_t00.mkv"
         f.write_text("")
 
         result = await job_manager._dispatch_title_match(job.id, title.id, f)
         assert result is True
-        # Sentinel must be released — no match task was spawned.
+        # Sentinel is held while the task is running.
+        assert title.id in job_manager._inflight_match_dispatch
+
+        # Let the task finish; sentinel is released by _on_match_dispatch_done.
+        release.set()
+        await asyncio.sleep(0.05)
         assert title.id not in job_manager._inflight_match_dispatch
 
         # A follow-up dispatch (e.g. after a re-rip) must not be blocked.
         result2 = await job_manager._dispatch_title_match(job.id, title.id, f)
         assert result2 is True
+        release.set()
+        await asyncio.sleep(0.05)
 
 
 @pytest.mark.unit

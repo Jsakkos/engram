@@ -3146,12 +3146,25 @@ async def contribution_stats(session: AsyncSession = Depends(get_session)):
     )
 
 
+def _require_discdb_contributions() -> None:
+    """Reject contribution endpoints unless the contribution feature is enabled.
+
+    Lookup may be on while contribution stays gated; without this guard the
+    submit/export endpoints would remain reachable directly.
+    """
+    from app.core.features import DISCDB_CONTRIBUTIONS_ENABLED
+
+    if not DISCDB_CONTRIBUTIONS_ENABLED:
+        raise HTTPException(status_code=404, detail="TheDiscDB contributions are disabled")
+
+
 @router.post("/contributions/{job_id}/export", dependencies=[Depends(require_localhost)])
 async def export_contribution(
     job: DiscJob = Depends(get_job_or_404),
     session: AsyncSession = Depends(get_session),
 ):
     """Manually trigger export for a specific job."""
+    _require_discdb_contributions()
     from app.core.discdb_exporter import generate_export, mark_exported
     from app.core.discdb_submitter import ensure_release_group_id
     from app.services.config_service import get_config as get_db_config
@@ -3185,6 +3198,7 @@ async def skip_contribution(
     session: AsyncSession = Depends(get_session),
 ):
     """Mark a job as skipped for contribution."""
+    _require_discdb_contributions()
     from app.core.discdb_exporter import mark_skipped
 
     await mark_skipped(job.id, session)
@@ -3217,6 +3231,7 @@ async def upc_lookup(
     job: DiscJob = Depends(get_job_or_404),
 ):
     """Look up product info by UPC barcode."""
+    _require_discdb_contributions()
     from app.core.upc_lookup import compute_match_confidence, lookup_upc
 
     result = await lookup_upc(request.upc_code)
@@ -3243,6 +3258,7 @@ async def fetch_cover(
     session: AsyncSession = Depends(get_session),
 ):
     """Download a cover image and save it to the export directory."""
+    _require_discdb_contributions()
     # Lazy import (matches get_db_config below). Keep it inline: the fetch-cover
     # test patches app.core.discdb_exporter.get_export_directory — the binding
     # this resolves at call time — so hoisting it to module scope would bypass
@@ -3324,6 +3340,7 @@ async def enhance_contribution(
     session: AsyncSession = Depends(get_session),
 ):
     """Add tier-3 data (UPC) and re-export."""
+    _require_discdb_contributions()
     from app.core.discdb_exporter import generate_export, mark_exported
     from app.services.config_service import get_config as get_db_config
 
@@ -3731,6 +3748,7 @@ async def submit_contribution(
     session: AsyncSession = Depends(get_session),
 ):
     """Submit a job's disc data to TheDiscDB API."""
+    _require_discdb_contributions()
     from app.core.discdb_submitter import ensure_release_group_id, submit_job
     from app.services.config_service import get_config as get_db_config
 
@@ -3775,6 +3793,7 @@ async def create_release_group(
     session: AsyncSession = Depends(get_session),
 ):
     """Create a release group linking multiple disc jobs."""
+    _require_discdb_contributions()
     import uuid
 
     unique_ids = list(dict.fromkeys(request.job_ids))  # deduplicate, preserve order
@@ -3806,6 +3825,7 @@ async def assign_release_group(
     session: AsyncSession = Depends(get_session),
 ):
     """Assign or remove a job from a release group."""
+    _require_discdb_contributions()
     if request.release_group_id:
         # Verify the release group exists (at least one other job has it)
         result = await session.execute(
@@ -3833,6 +3853,7 @@ async def submit_release_group_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Batch-submit all completed jobs in a release group to TheDiscDB."""
+    _require_discdb_contributions()
     from app.core.discdb_submitter import submit_release_group
     from app.services.config_service import get_config as get_db_config
 

@@ -601,7 +601,7 @@ function JobDetailPanel({
           </div>
 
           {/* TheDiscDB */}
-          {FEATURES.DISCDB && (
+          {FEATURES.DISCDB_LOOKUP && (
             <div>
               <SvLabel>
                 <Database size={11} style={{ marginRight: 4 }} />

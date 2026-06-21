@@ -124,7 +124,7 @@ class TestRunClassification:
         analyst.analyze.return_value = _analysis(detected_name=None)
         coord = _make_coord(analyst)
         _patch_config(monkeypatch, _config(discdb_enabled=True))
-        monkeypatch.setattr("app.core.features.DISCDB_ENABLED", True)
+        monkeypatch.setattr("app.core.features.DISCDB_LOOKUP_ENABLED", True)
 
         @dataclass
         class _Mapping:
@@ -160,7 +160,7 @@ class TestRunClassification:
         analyst.analyze.return_value = _analysis(detected_name=None)
         coord = _make_coord(analyst)
         _patch_config(monkeypatch, _config(discdb_enabled=True))
-        monkeypatch.setattr("app.core.features.DISCDB_ENABLED", True)
+        monkeypatch.setattr("app.core.features.DISCDB_LOOKUP_ENABLED", True)
 
         signal = SimpleNamespace(
             content_type=ContentType.TV,

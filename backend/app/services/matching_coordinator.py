@@ -65,6 +65,12 @@ def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int])
     )
 
 
+# ASR-preferred episode precedence: ASR always runs and is authoritative at or
+# above this confidence. Only below it do we defer to a DiscDB episode mapping —
+# DiscDB numbers episodes by physical disc order, not aired order, so it is a
+# last-resort fallback, never a competitor to a usable ASR match.
+DISCDB_FALLBACK_ASR_FLOOR = 0.5
+
 # Season component of a matched_episode code ("S03E07" → 3). Used via
 # ``.match`` — PREFIX-anchored only: non-episode values like "extra"/None don't
 # parse and are ignored by the season-pin convergence rule, but a string that
@@ -315,9 +321,11 @@ class MatchingCoordinator:
         self.start_subtitle_download(job_id, show_name, season, tmdb_id)
 
     async def try_discdb_assignment(self, job_id: int, title: "DiscTitle", session) -> bool:
-        """Try to assign episode info from TheDiscDB mappings, skipping fingerprinting.
+        """Apply a DiscDB disc-order episode mapping as a post-ASR low-confidence fallback.
 
-        Returns True if assignment was made, False to fall back to audio matching.
+        Called only after ASR has already run and returned a confidence below
+        DISCDB_FALLBACK_ASR_FLOOR. Returns True if a mapping was applied, False if
+        no usable mapping exists (and the caller should proceed to REVIEW).
         """
         mappings = self._discdb_mappings.get(job_id)
         if not mappings:
@@ -342,8 +350,8 @@ class MatchingCoordinator:
         origin = "disc network" if source == "network_disc" else "TheDiscDB"
         episode_code = f"S{mapping.season:02d}E{mapping.episode:02d}"
         logger.info(
-            f"Job {job_id}: {origin} pre-assigned title {title.title_index} "
-            f"→ {episode_code} ({mapping.episode_title!r}) — skipping audio matching"
+            f"Job {job_id}: {origin} applying disc-order fallback mapping for title "
+            f"{title.title_index}: {episode_code} ({mapping.episode_title!r})"
         )
 
         title.matched_episode = episode_code
@@ -1187,11 +1195,36 @@ class MatchingCoordinator:
                         await self._check_job_completion(session, job_id)
                         return
 
-                # Update title with match result
+                # Update title with match result. These in-memory writes are
+                # provisional: on the DiscDB-fallback path below, try_discdb_assignment
+                # overwrites both fields with the DiscDB episode (conf 0.99) and commits
+                # before returning, so no stale ASR value reaches the DB. The ordering
+                # matters — keep DiscDB's pre-commit work (dict lookups + formatting,
+                # which can't raise the caught exception types) failure-free so the outer
+                # error handler can never persist this stale ASR code to REVIEW.
                 title.matched_episode = result.episode_code
                 title.match_confidence = result.confidence
 
                 if result.needs_review or advisory:
+                    # ASR-preferred precedence: a very low-confidence ASR result
+                    # (not a deliberate manual re-match) defers to a DiscDB episode
+                    # mapping when one exists, instead of going to review. DiscDB
+                    # numbers by disc order (not aired order), so it is trusted only
+                    # when ASR could not produce a usable match.
+                    # Invariant: the curator always sets needs_review=True for a
+                    # low-confidence result, so a confidence below the floor implies
+                    # we are inside this branch. The fallback can therefore only
+                    # auto-organize via a DiscDB mapping, never by confidence alone.
+                    if not advisory and result.confidence < DISCDB_FALLBACK_ASR_FLOOR:
+                        if await self.try_discdb_assignment(job_id, title, session):
+                            logger.info(
+                                f"[MATCH] Title {title_id} (Job {job_id}): ASR confidence "
+                                f"{result.confidence:.2f} < {DISCDB_FALLBACK_ASR_FLOOR}; "
+                                f"assigned episode from DiscDB mapping (disc-order fallback)."
+                            )
+                            await self._check_job_completion(session, job_id)
+                            return
+
                     # A low-confidence result always goes to REVIEW — even when the
                     # matcher emits a best-guess episode code. Auto-organizing a
                     # borderline guess silently mis-files content (e.g. a bonus

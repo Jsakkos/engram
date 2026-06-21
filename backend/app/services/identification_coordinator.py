@@ -208,7 +208,6 @@ class IdentificationCoordinator:
         self._start_subtitle_download: callable = None
         self._start_subtitle_download_all_seasons: callable = None
         self._restart_subtitle_download: callable = None
-        self._try_discdb_assignment: callable = None
         self._match_single_file: callable = None
         self._on_match_task_done: callable = None
         self._check_job_completion: callable = None
@@ -222,7 +221,6 @@ class IdentificationCoordinator:
         set_discdb_mappings,
         start_subtitle_download,
         restart_subtitle_download,
-        try_discdb_assignment,
         start_subtitle_download_all_seasons=None,
         match_single_file,
         on_match_task_done,
@@ -236,7 +234,6 @@ class IdentificationCoordinator:
         self._start_subtitle_download = start_subtitle_download
         self._start_subtitle_download_all_seasons = start_subtitle_download_all_seasons
         self._restart_subtitle_download = restart_subtitle_download
-        self._try_discdb_assignment = try_discdb_assignment
         self._match_single_file = match_single_file
         self._on_match_task_done = on_match_task_done
         self._check_job_completion = check_job_completion
@@ -1056,18 +1053,18 @@ class IdentificationCoordinator:
                         for dt in db_titles:
                             if dt.output_filename:
                                 file_path = Path(dt.output_filename)
-                                discdb_applied = await self._try_discdb_assignment(
-                                    job_id, dt, session
+                                # ASR-preferred precedence: always run audio matching.
+                                # A DiscDB episode mapping (disc order, not aired order)
+                                # is applied only as a low-confidence fallback inside
+                                # _match_single_file_inner.
+                                task = asyncio.create_task(
+                                    self._match_single_file(job_id, dt.id, file_path)
                                 )
-                                if not discdb_applied:
-                                    task = asyncio.create_task(
-                                        self._match_single_file(job_id, dt.id, file_path)
+                                task.add_done_callback(
+                                    lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
+                                        t, jid, tid
                                     )
-                                    task.add_done_callback(
-                                        lambda t, jid=job_id, tid=dt.id: self._on_match_task_done(
-                                            t, jid, tid
-                                        )
-                                    )
+                                )
                 else:
                     # Movie: skip matching, go straight to organization. Route
                     # through the state machine (now a legal IDENTIFYING ->
@@ -1513,10 +1510,10 @@ class IdentificationCoordinator:
                     )
 
         # Attempt TheDiscDB lookup
-        from app.core.features import DISCDB_ENABLED
+        from app.core.features import DISCDB_LOOKUP_ENABLED
 
         discdb_signal = None
-        if DISCDB_ENABLED and config.discdb_enabled:
+        if DISCDB_LOOKUP_ENABLED and config.discdb_enabled:
             try:
                 from app.core.discdb_classifier import classify_from_discdb
 
@@ -1725,7 +1722,8 @@ class IdentificationCoordinator:
         # a failed lookup still applies the override). For the top tier
         # (canonical) we additionally pre-assign episodes via the EXISTING DiscDB
         # mapping machinery (verified ±2s/±1% against scanned titles), letting
-        # try_discdb_assignment skip ASR at rip time. "confirmed" is identity
+        # stored DiscDB mappings may later be applied as a low-confidence fallback
+        # during matching (post-ASR, not in place of it). "confirmed" is identity
         # only — episodes are still verified by chromaprint/ASR. This runs BEFORE
         # the TheDiscDB block and wins over it (network_confident guards that
         # block) so the network result is never clobbered downstream.

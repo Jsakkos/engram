@@ -45,7 +45,7 @@ test.beforeEach(async ({ page }) => {
     await expect(page.locator(SELECTORS.connectionStatus.connected)).toBeVisible({ timeout: 10000 });
 });
 
-// Match-source badges + source toggle are gated behind FEATURES.DISCDB
+// Match-source badges + source toggle are gated behind FEATURES.DISCDB_LOOKUP
 // (frontend/src/config/constants.ts). These tests exercise UI that's hidden
 // while the flag is false. Re-enable along with the feature.
 test.describe.fixme('Match Source Badges', () => {

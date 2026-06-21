@@ -38,6 +38,7 @@ export const sv = {
   greenDim: "#4ade80",
   red: "#ff5555",
   purple: "#a78bfa",
+  blue: "#60a5fa",
 
   // Lines
   line: "rgba(94, 234, 212, 0.14)",

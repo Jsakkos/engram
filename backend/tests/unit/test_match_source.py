@@ -231,6 +231,125 @@ async def test_match_respects_force_advance_race(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_high_confidence_asr_wins_over_discdb_mapping(monkeypatch):
+    """ASR is the preferred signal: a confident ASR match wins even when a
+    DiscDB mapping disagrees (DiscDB numbers by disc order, not aired order)."""
+    from app.core.discdb_classifier import DiscDbTitleMapping
+
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+    job, title = await _seed_job_and_title()
+
+    mock_result = MagicMock()
+    mock_result.episode_code = "S01E03"  # ASR says E03
+    mock_result.confidence = 0.85
+    mock_result.needs_review = False
+    mock_result.match_details = {"score": 0.85}
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    mapping = DiscDbTitleMapping(
+        index=0,
+        title_type="Episode",
+        episode_title="Pilot",
+        season=1,
+        episode=1,
+        duration_seconds=2400,
+        size_bytes=1024**3,
+    )  # DiscDB says E01
+    coordinator = _make_coordinator(monkeypatch, discdb_mappings={job.id: [mapping]})
+
+    await coordinator._match_single_file_inner(
+        job.id, title.id, Path("/tmp/staging/test/title_t00.mkv")
+    )
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        assert title.state == TitleState.MATCHED
+        assert title.matched_episode == "S01E03"  # ASR won
+        assert title.match_source == "engram"
+
+
+@pytest.mark.asyncio
+async def test_very_low_asr_falls_back_to_discdb_autoorganize(monkeypatch):
+    """When ASR confidence is very low (< 0.5) and a DiscDB mapping exists, the
+    DiscDB episode is assigned and auto-organized instead of going to review."""
+    from app.core.discdb_classifier import DiscDbTitleMapping
+
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+    job, title = await _seed_job_and_title()
+
+    mock_result = MagicMock()
+    mock_result.episode_code = "S01E07"  # weak ASR guess
+    mock_result.confidence = 0.41
+    mock_result.needs_review = True
+    mock_result.match_details = {"score": 0.41}
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    mapping = DiscDbTitleMapping(
+        index=0,
+        title_type="Episode",
+        episode_title="Pilot",
+        season=1,
+        episode=1,
+        duration_seconds=2400,
+        size_bytes=1024**3,
+    )
+    coordinator = _make_coordinator(monkeypatch, discdb_mappings={job.id: [mapping]})
+
+    await coordinator._match_single_file_inner(
+        job.id, title.id, Path("/tmp/staging/test/title_t00.mkv")
+    )
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        assert title.state == TitleState.MATCHED  # auto-organized, not review
+        assert title.matched_episode == "S01E01"  # DiscDB mapping
+        assert title.match_source == "discdb"
+
+
+@pytest.mark.asyncio
+async def test_mid_confidence_asr_goes_to_review_not_discdb(monkeypatch):
+    """Mid-confidence ASR (0.5 <= conf < 0.7) routes to review as the ASR guess;
+    DiscDB is NOT used because ASR is preferred above the 0.5 floor."""
+    from app.core.discdb_classifier import DiscDbTitleMapping
+
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+    job, title = await _seed_job_and_title()
+
+    mock_result = MagicMock()
+    mock_result.episode_code = "S01E07"
+    mock_result.confidence = 0.60
+    mock_result.needs_review = True
+    mock_result.match_details = {"score": 0.60}
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    mapping = DiscDbTitleMapping(
+        index=0,
+        title_type="Episode",
+        episode_title="Pilot",
+        season=1,
+        episode=1,
+        duration_seconds=2400,
+        size_bytes=1024**3,
+    )
+    coordinator = _make_coordinator(monkeypatch, discdb_mappings={job.id: [mapping]})
+
+    await coordinator._match_single_file_inner(
+        job.id, title.id, Path("/tmp/staging/test/title_t00.mkv")
+    )
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        assert title.state == TitleState.REVIEW  # ASR guess held for review
+        assert title.match_source is None  # DiscDB not applied
+
+
+@pytest.mark.asyncio
 async def test_discdb_match_details_stored_separately(monkeypatch):
     """discdb_match_details should be a copy of match_details at assignment time."""
     from app.core.discdb_classifier import DiscDbTitleMapping
@@ -264,3 +383,33 @@ async def test_discdb_match_details_stored_separately(monkeypatch):
         assert title.discdb_match_details == title.match_details
         # Both should contain "discdb" source indicator
         assert "discdb" in title.discdb_match_details
+
+
+@pytest.mark.asyncio
+async def test_very_low_asr_no_discdb_mapping_goes_to_review(monkeypatch):
+    """4th band: ASR < 0.5 with NO DiscDB mapping routes to REVIEW. The fallback's
+    try_discdb_assignment returns False (no mapping), so the title falls through to
+    the normal low-confidence review path, keeping the ASR best-guess as a suggestion."""
+    mc_mod = importlib.import_module("app.services.matching_coordinator")
+    job, title = await _seed_job_and_title()
+
+    mock_result = MagicMock()
+    mock_result.episode_code = "S01E07"
+    mock_result.confidence = 0.35
+    mock_result.needs_review = True
+    mock_result.match_details = {"score": 0.35}
+    mock_curator = MagicMock()
+    mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(mc_mod, "episode_curator", mock_curator)
+
+    coordinator = _make_coordinator(monkeypatch, discdb_mappings={})  # no mappings
+
+    await coordinator._match_single_file_inner(
+        job.id, title.id, Path("/tmp/staging/test/title_t00.mkv")
+    )
+
+    async with _unit_session_factory() as session:
+        title = await session.get(DiscTitle, title.id)
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S01E07"  # ASR guess kept as suggestion
+        assert title.match_source is None  # DiscDB never applied
