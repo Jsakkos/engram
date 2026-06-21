@@ -1217,12 +1217,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         </details>
 
                         {/* ── TheDiscDB (feature-flagged) ──────────────────────── */}
-                        {FEATURES.DISCDB && (
+                        {(FEATURES.DISCDB_LOOKUP || FEATURES.DISCDB_CONTRIBUTE) && (
                             <details className="wizard-group">
                                 <summary>
                                     <span className="wizard-group-chevron">▸</span>TheDiscDB
                                 </summary>
                                 <div className="wizard-group-body">
+                                {FEATURES.DISCDB_LOOKUP && (
                                 <div className="form-group checkbox-group">
                                     <label className="checkbox-label">
                                         <input
@@ -1233,11 +1234,14 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         <span className="checkbox-text">
                                             <strong>Enable TheDiscDB Lookup</strong>
                                             <span className="checkbox-hint">
-                                                Query TheDiscDB for known disc layouts. When matched, skips audio fingerprinting and instantly maps episodes. No API key required.
+                                                Query TheDiscDB to help identify a disc. Episode matching still runs locally (audio); DiscDB episode order is used only as a fallback when audio matching is uncertain. No API key required.
                                             </span>
                                         </span>
                                     </label>
                                 </div>
+                                )}
+                                {FEATURES.DISCDB_CONTRIBUTE && (
+                                <>
                                 <div className="form-group checkbox-group">
                                     <label className="checkbox-label">
                                         <input
@@ -1293,6 +1297,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                             <small>Leave empty for the default location</small>
                                         </div>
                                     </>
+                                )}
+                                </>
                                 )}
                                 </div>
                             </details>
