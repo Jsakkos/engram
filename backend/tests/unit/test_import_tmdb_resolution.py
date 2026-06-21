@@ -115,7 +115,6 @@ def _build_coordinator(analysis, monkeypatch, *, signal):
     )
 
     coordinator._run_classification = AsyncMock(return_value=analysis)
-    coordinator._try_discdb_assignment = AsyncMock(return_value=False)
     coordinator._match_single_file = AsyncMock(return_value=None)
     coordinator._on_match_task_done = Mock()
     coordinator._finalize_disc_job = AsyncMock(return_value=None)

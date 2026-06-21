@@ -118,13 +118,9 @@ async def test_reconcile_stuck_tv_with_file_queues_match(tmp_path, monkeypatch):
 
     called = {}
 
-    async def fake_discdb(jid, title, session):
-        return False
-
     async def fake_match(jid, title_id, path):
         called["match"] = (jid, title_id, str(path))
 
-    monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", fake_discdb)
     monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
     monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
 
@@ -159,9 +155,7 @@ async def test_reconcile_stuck_identity_pending_parks_queued(tmp_path, monkeypat
 
     from unittest.mock import AsyncMock
 
-    discdb = AsyncMock(return_value=False)
     dispatch = AsyncMock()
-    monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
     monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
     monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
 
@@ -169,7 +163,6 @@ async def test_reconcile_stuck_identity_pending_parks_queued(tmp_path, monkeypat
     await asyncio.sleep(0.05)
 
     assert (await _title(tid)).state == TitleState.QUEUED
-    discdb.assert_not_called()
     dispatch.assert_not_called()
 
 
@@ -191,9 +184,7 @@ async def test_reconcile_stuck_season_prompt_dispatches_normally(tmp_path, monke
 
     from unittest.mock import AsyncMock
 
-    discdb = AsyncMock(return_value=False)
     dispatch = AsyncMock()
-    monkeypatch.setattr(job_manager._matching, "try_discdb_assignment", discdb)
     monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
     monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
 

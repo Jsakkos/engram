@@ -77,7 +77,6 @@ def _build_coordinator(content_type: ContentType, monkeypatch):
     # Stub the IO-heavy collaborators so the test stays a pure unit test.
     coordinator._probe_duration = AsyncMock(return_value=1200.0)
     coordinator._run_classification = AsyncMock(return_value=_fake_analysis(content_type))
-    coordinator._try_discdb_assignment = AsyncMock(return_value=False)
     coordinator._match_single_file = AsyncMock(return_value=None)
     coordinator._on_match_task_done = Mock()
     coordinator._finalize_disc_job = AsyncMock(return_value=None)

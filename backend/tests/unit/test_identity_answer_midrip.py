@@ -326,9 +326,6 @@ class TestApplyIdentityResumeAction:
 
     def _stub_matching(self, monkeypatch):
         dispatch = AsyncMock()
-        monkeypatch.setattr(
-            job_manager._matching, "try_discdb_assignment", AsyncMock(return_value=False)
-        )
         monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
         monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
         return dispatch
