@@ -38,3 +38,46 @@ async def test_amend_rejects_non_completed_job(client):
         json={"target": {"kind": "extra"}},
     )
     assert resp.status_code == 409
+
+
+async def test_amend_episode_without_code_returns_400(client):
+    async with async_session() as session:
+        job = DiscJob(
+            volume_label="X",
+            content_type=ContentType.TV,
+            state=JobState.COMPLETED,
+            drive_id="E:",
+        )
+        session.add(job)
+        await session.commit()
+        title = DiscTitle(
+            job_id=job.id, title_index=0, duration_seconds=1, state=TitleState.COMPLETED
+        )
+        session.add(title)
+        await session.commit()
+        job_id, title_id = job.id, title.id
+
+    resp = await client.post(
+        f"/api/jobs/{job_id}/titles/{title_id}/amend",
+        json={"target": {"kind": "episode"}},  # no episode_code
+    )
+    assert resp.status_code == 400
+
+
+async def test_amend_unknown_title_returns_404(client):
+    async with async_session() as session:
+        job = DiscJob(
+            volume_label="X",
+            content_type=ContentType.TV,
+            state=JobState.COMPLETED,
+            drive_id="E:",
+        )
+        session.add(job)
+        await session.commit()
+        job_id = job.id
+
+    resp = await client.post(
+        f"/api/jobs/{job_id}/titles/99999/amend",
+        json={"target": {"kind": "extra"}},
+    )
+    assert resp.status_code == 404
