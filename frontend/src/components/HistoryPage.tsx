@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
-import { apiFetch } from "../api/client";
+import { apiFetch, amendTitle } from "../api/client";
+import { AmendTitleModal } from "./HistoryPage/AmendTitleModal";
 import {
   CheckCircle2,
   XCircle,
@@ -370,13 +371,16 @@ function JobDetailPanel({
   loading,
   onClose,
   onReportBug,
+  onRefreshDetail,
 }: {
   detail: JobDetail | null;
   loading: boolean;
   onClose: () => void;
   onReportBug: (jobId: number) => void;
+  onRefreshDetail: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [amendTarget, setAmendTarget] = useState<{ titleId: number; titleIndex: number; matchedEpisode: string | null } | null>(null);
 
   // Close on click outside or Escape key
   useEffect(() => {
@@ -695,7 +699,41 @@ function JobDetailPanel({
                           <SvBadge size="sm" tone={sv.purple}>{t.video_resolution}</SvBadge>
                         )}
                       </div>
-                      <TitleStateBadge state={t.state} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <TitleStateBadge state={t.state} />
+                        {detail.state === "completed" && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAmendTarget({
+                                titleId: t.id,
+                                titleIndex: t.title_index,
+                                matchedEpisode: t.matched_episode,
+                              })
+                            }
+                            aria-label={`Reassign track t${String(t.title_index).padStart(2, "0")}`}
+                            style={{
+                              padding: "2px 7px",
+                              fontFamily: sv.mono,
+                              fontSize: 9,
+                              fontWeight: 700,
+                              letterSpacing: "0.14em",
+                              textTransform: "uppercase",
+                              color: sv.inkDim,
+                              border: `1px solid ${sv.lineMid}`,
+                              background: "transparent",
+                              cursor: "pointer",
+                              transition: "color 120ms, border-color 120ms",
+                            }}
+                            {...hoverProps(
+                              { color: sv.cyan, borderColor: sv.cyan },
+                              { color: sv.inkDim, borderColor: sv.lineMid },
+                            )}
+                          >
+                            Reassign
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {(t.matched_episode || t.edition || t.is_extra) && (
                       <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -794,6 +832,40 @@ function JobDetailPanel({
           </div>
         </div>
       ) : null}
+
+      {/* Amend/Reassign modal — rendered inside the slide panel so it stacks above the backdrop */}
+      {detail && amendTarget && (
+        <AmendTitleModal
+          open={amendTarget !== null}
+          title={{
+            id: amendTarget.titleId,
+            matchedEpisode: amendTarget.matchedEpisode,
+            titleIndex: amendTarget.titleIndex,
+          }}
+          seasonEpisodes={(() => {
+            // Build episode list from sibling matched_episode codes on the same season,
+            // or fall back to a 1..26 range when that's not available.
+            const season = amendTarget.matchedEpisode?.match(/^S(\d{2})E/)?.[1];
+            if (season) {
+              const eps = detail.titles
+                .filter((t) => t.matched_episode?.startsWith(`S${season}E`))
+                .map((t) => {
+                  const m = t.matched_episode?.match(/E(\d{2,})$/);
+                  return m ? parseInt(m[1], 10) : null;
+                })
+                .filter((n): n is number => n !== null);
+              const unique = Array.from(new Set(eps)).sort((a, b) => a - b);
+              if (unique.length > 0) return unique;
+            }
+            return Array.from({ length: 26 }, (_, i) => i + 1);
+          })()}
+          onSubmit={async (target) => {
+            await amendTitle(detail.id, amendTarget.titleId, target);
+            onRefreshDetail();
+          }}
+          onClose={() => setAmendTarget(null)}
+        />
+      )}
     </motion.div>
   );
 }
@@ -980,6 +1052,7 @@ export default function HistoryPage() {
   );
   const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const perPage = 20;
 
   useEffect(() => {
@@ -1014,7 +1087,7 @@ export default function HistoryPage() {
     fetchHistory();
   }, [fetchHistory]);
 
-  // Fetch job detail when a job is selected
+  // Fetch job detail when a job is selected (or when detailRefreshKey increments after an amend)
   useEffect(() => {
     if (!selectedJobId) {
       setJobDetail(null);
@@ -1033,7 +1106,7 @@ export default function HistoryPage() {
       .finally(() => {
         setDetailLoading(false);
       });
-  }, [selectedJobId]);
+  }, [selectedJobId, detailRefreshKey]);
 
   const handleRowClick = (jobId: number) => {
     if (jobId === selectedJobId) {
@@ -1309,6 +1382,7 @@ export default function HistoryPage() {
               loading={detailLoading}
               onClose={handleCloseDetail}
               onReportBug={openBugReport}
+              onRefreshDetail={() => setDetailRefreshKey((k) => k + 1)}
             />
           </>
         )}

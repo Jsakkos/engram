@@ -191,3 +191,26 @@ export async function submitReviewBatch(
 export async function reripTitle(jobId: number, titleId: number): Promise<void> {
   return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/rerip`, { method: 'POST' });
 }
+
+/** The target kind for a post-completion track amendment. */
+export type AmendKind = "episode" | "extra" | "discard";
+
+/**
+ * Amend a completed title's assignment: reassign to a different episode, mark
+ * as an extra, or discard it. Only available after the job has completed.
+ *
+ * @param jobId   - The parent job id.
+ * @param titleId - The title/track id to amend.
+ * @param target  - The new assignment (kind + optional episode_code for "episode").
+ */
+export async function amendTitle(
+  jobId: number,
+  titleId: number,
+  target: { kind: AmendKind; episode_code?: string },
+): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/amend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target }),
+  });
+}
