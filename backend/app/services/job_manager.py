@@ -1557,6 +1557,113 @@ class JobManager:
             f"Job {safe_job}: title {safe_title} reassigned to {safe_episode} (source={safe_source})"
         )
 
+    async def amend_title_assignment(self, job_id: int, title_id: int, target) -> None:
+        """Correct a track on a COMPLETED job in place (reassign / extra / discard).
+
+        Moves the organized library file to its new home, updates the DiscTitle, and
+        reconciles the fingerprint network (retract old, re-contribute new). The job
+        stays COMPLETED — we never re-enter the state machine.
+
+        ``target`` is a contribution_correction.NewTarget.
+        """
+        import re as _re
+
+        from app.core.organizer import organize_tv_episode, organize_tv_extras
+        from app.services.config_service import get_config
+        from app.services.contribution_correction import ContributionCorrectionService
+
+        cfg = await get_config()
+        library_tv_path = Path(cfg.library_tv_path) if cfg.library_tv_path else None
+
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                raise ValueError(f"Title {title_id} not found for job {job_id}")
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+            if not title.organized_to:
+                raise ValueError("Title has no organized file to amend")
+
+            current = Path(title.organized_to)
+            if not current.exists():
+                raise ValueError(f"Organized file is missing: {current}")
+
+            show = job.tmdb_name or job.detected_title or job.volume_label
+            tmdb_id = str(job.tmdb_id) if job.tmdb_id else None
+
+            if target.kind == "episode":
+                if not target.episode_code:
+                    raise ValueError("episode_code required for episode reassignment")
+                result = organize_tv_episode(
+                    current,
+                    show,
+                    target.episode_code,
+                    library_path=library_tv_path,
+                    conflict_resolution="ask",
+                    year=job.tmdb_year,
+                    tmdb_id=tmdb_id,
+                    ordering=title.episode_ordering or "aired",
+                    episode_group_id=title.episode_group_id,
+                )
+                if not result.get("success"):
+                    raise ValueError(result.get("error") or "Organize failed")
+                title.matched_episode = target.episode_code
+                title.is_extra = False
+                title.organized_to = str(result["final_path"])
+            else:  # extra or discard — both land in Extras
+                season = job.detected_season
+                if season is None and title.matched_episode:
+                    m = _re.match(r"S(\d{1,2})E", title.matched_episode)
+                    season = int(m.group(1)) if m else 1
+                result = organize_tv_extras(
+                    current,
+                    show,
+                    season or 1,
+                    library_path=library_tv_path,
+                    disc_number=job.disc_number or 1,
+                    title_index=title.title_index,
+                    year=job.tmdb_year,
+                    tmdb_id=tmdb_id,
+                )
+                if not result.get("success"):
+                    raise ValueError(result.get("error") or "Organize failed")
+                title.matched_episode = None
+                title.is_extra = True
+                title.organized_to = str(result["final_path"])
+
+            title.match_source = "user"
+            title.match_confidence = 1.0
+            title.match_details = _strip_review_flags(title.match_details)
+            title.organized_from = current.name
+
+            await ContributionCorrectionService().correct_title_contribution(
+                session,
+                title,
+                target,
+                job=job,
+                enable_contributions=cfg.enable_fingerprint_contributions,
+                pseudonym=cfg.contribution_pseudonym,
+            )
+
+            session.add(title)
+            await session.commit()
+
+            await ws_manager.broadcast_title_update(
+                job_id,
+                title.id,
+                title.state.value,
+                matched_episode=title.matched_episode,
+                match_confidence=1.0,
+                match_source="user",
+            )
+            await ws_manager.broadcast_job_update(job_id, job.state.value)
+
+        logger.info(
+            f"Job {sanitize_log_value(job_id)}: amended title "
+            f"{sanitize_log_value(title_id)} -> {sanitize_log_value(target.kind)}"
+        )
+
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
         # A full re-match starts conflict escalation over from the first tier.
