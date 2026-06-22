@@ -11,6 +11,9 @@ _Highlights: Engram now ships a native ARM64 build for NVIDIA Jetson and other a
 ### Added
 
 - **ARM64 (Linux aarch64) build for NVIDIA Jetson and other aarch64 Linux devices** — releases now include `engram-linux-arm64.tar.gz`, built natively on a GitHub-hosted arm64 runner and validated by the same smoke test, TLS self-test, and bundled-`fpcalc` checks as the x86_64 build. ASR runs on the CPU out of the box (the PyPI `ctranslate2` aarch64 wheel has no CUDA build); GPU-accelerated transcription on a Jetson is an opt-in on-device step that compiles CTranslate2 against the device's JetPack CUDA toolkit (`backend/scripts/jetson_gpu_setup.sh`, documented in `docs/development/jetson.md`). The auto-updater now distinguishes x86_64 from aarch64 so each host downloads the matching bundle. (#433)
+### Added
+
+- **Reassign a track on a completed job from the History detail panel.** Open any completed job in History and reassign a misfiled track to a different episode, mark it as an extra, or discard it. Engram moves the organized library file to its new home (extras and discards both land in the show's `Extras/` folder) and, when the track's audio fingerprint was already contributed to the shared network, retracts that erroneous fingerprint and re-submits the corrected one as a user-verified match. The fingerprint network heals by re-deriving the episode's consensus from the remaining contributions. Previously a completed job's assignments were locked, so a single mismatched track could block a later disc with a duplicate-file conflict, and there was no way to correct a contributed fingerprint after the fact.
 
 ## [0.21.7] - 2026-06-21
 
