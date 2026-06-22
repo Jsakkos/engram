@@ -32,27 +32,59 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-CHROMAPRINT_VERSION = "1.5.1"
-_BASE = f"https://github.com/acoustid/chromaprint/releases/download/v{CHROMAPRINT_VERSION}"
+_RELEASES = "https://github.com/acoustid/chromaprint/releases/download"
 
-# Per-platform release asset + its SHA256. Hashes were computed from the
-# official v1.5.1 GitHub release assets. Bump all three together on a version
-# change. macOS uses the native arm64 build, matching the arm64-only release
-# matrix in .github/workflows/release.yml.
-_ASSETS: dict[str, tuple[str, str]] = {
+# Per-platform release asset (version, file name, SHA256). Hashes were computed
+# from the official GitHub release assets. macOS uses the native arm64 build,
+# matching the arm64-only macOS release matrix in .github/workflows/release.yml.
+#
+# Most platforms pin Chromaprint 1.5.1. Linux aarch64 pins 1.6.0 because 1.5.1
+# never shipped an arm64 fpcalc — the 1.6.0 release is the first with one
+# (`chromaprint-fpcalc-1.6.0-linux-arm64.tar.gz`). Each entry therefore carries
+# its own version so platforms can be bumped independently.
+_ASSETS: dict[str, tuple[str, str, str]] = {
     "windows": (
-        f"chromaprint-fpcalc-{CHROMAPRINT_VERSION}-windows-x86_64.zip",
+        "1.5.1",
+        "chromaprint-fpcalc-1.5.1-windows-x86_64.zip",
         "36b478e16aa69f757f376645db0d436073a42c0097b6bb2677109e7835b59bbc",
     ),
-    "linux": (
-        f"chromaprint-fpcalc-{CHROMAPRINT_VERSION}-linux-x86_64.tar.gz",
+    "linux_x86_64": (
+        "1.5.1",
+        "chromaprint-fpcalc-1.5.1-linux-x86_64.tar.gz",
         "4d7433a7f778e5946d7225230681cbcd634e153316ecac87c538c33ac32387a5",
     ),
+    "linux_aarch64": (
+        "1.6.0",
+        "chromaprint-fpcalc-1.6.0-linux-arm64.tar.gz",
+        "c8667f556f77d8ebbe08b75a968c0592bd2a67aaa696eff91715feb5083b1cd4",
+    ),
     "darwin": (
-        f"chromaprint-fpcalc-{CHROMAPRINT_VERSION}-macos-arm64.tar.gz",
+        "1.5.1",
+        "chromaprint-fpcalc-1.5.1-macos-arm64.tar.gz",
         "9c5d9565d2396dbcf0e1d797e1ffdf1e19242f3bed88ac3200e144286b57ede6",
     ),
 }
+
+
+def _platform_key() -> str | None:
+    """Map the running platform to an ``_ASSETS`` key (or ``None`` if unsupported).
+
+    Windows and macOS are single-arch in our release matrix (x86_64 and arm64
+    respectively); Linux distinguishes x86_64 from aarch64 so a Jetson / arm64
+    host gets the matching fpcalc rather than the x86_64 one.
+    """
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if system == "windows":
+        return "windows"
+    if system == "darwin":
+        return "darwin"
+    if system == "linux":
+        if machine in ("x86_64", "amd64"):
+            return "linux_x86_64"
+        if machine in ("aarch64", "arm64"):
+            return "linux_aarch64"
+    return None
 
 
 def _target_path() -> Path:
@@ -104,17 +136,20 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    system = platform.system().lower()
-    if system not in _ASSETS:
-        raise SystemExit(f"error: no pinned fpcalc asset for platform {system!r}")
+    key = _platform_key()
+    if key is None:
+        raise SystemExit(
+            f"error: no pinned fpcalc asset for platform "
+            f"{platform.system()!r}/{platform.machine()!r}"
+        )
 
     dest = _target_path()
     if dest.is_file() and not args.force:
         print(f"fpcalc already present at {dest} (use --force to re-download)")
         return 0
 
-    asset, expected_sha = _ASSETS[system]
-    url = f"{_BASE}/{asset}"
+    version, asset, expected_sha = _ASSETS[key]
+    url = f"{_RELEASES}/v{version}/{asset}"
     print(f"downloading {url}")
     try:
         with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310 - pinned https URL

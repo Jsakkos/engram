@@ -13,6 +13,7 @@ Platform restart strategies:
 
 import hashlib
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -350,16 +351,26 @@ class UpdateChecker:
             await self._broadcast()
 
     def _select_asset(self, assets: list[dict]) -> dict | None:
-        """Return the platform-appropriate release asset, or None if not found."""
-        platform = sys.platform
+        """Return the platform-appropriate release asset, or None if not found.
+
+        On Linux the architecture matters: we ship both an x86_64 bundle
+        (``engram-linux-x64.tar.gz``) and an aarch64 bundle
+        (``engram-linux-arm64.tar.gz``), so an arm64 host (e.g. a Jetson) must
+        not pick up the x86_64 tarball and vice versa.
+        """
+        system = sys.platform
+        is_arm = platform.machine().lower() in ("aarch64", "arm64")
         for asset in assets:
             name = asset.get("name", "").lower()
-            if platform == "win32" and name.endswith(".zip") and "windows" in name:
+            if system == "win32" and name.endswith(".zip") and "windows" in name:
                 return asset
-            if platform == "linux" and name.endswith(".tar.gz") and "linux" in name:
-                return asset
+            if system == "linux" and name.endswith(".tar.gz") and "linux" in name:
+                name_is_arm = "arm64" in name or "aarch64" in name
+                if name_is_arm == is_arm:
+                    return asset
+                continue
             if (
-                platform == "darwin"
+                system == "darwin"
                 and name.endswith(".tar.gz")
                 and ("macos" in name or "darwin" in name)
             ):

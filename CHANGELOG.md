@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **ARM64 (Linux aarch64) build for NVIDIA Jetson and other aarch64 Linux devices** — releases now include `engram-linux-arm64.tar.gz`, built natively on a GitHub-hosted arm64 runner and validated by the same smoke test, TLS self-test, and bundled-`fpcalc` checks as the x86_64 build. ASR runs on the CPU out of the box (the PyPI `ctranslate2` aarch64 wheel has no CUDA build); GPU-accelerated transcription on a Jetson is an opt-in on-device step that compiles CTranslate2 against the device's JetPack CUDA toolkit (`backend/scripts/jetson_gpu_setup.sh`, documented in `docs/development/jetson.md`). The auto-updater now distinguishes x86_64 from aarch64 so each host downloads the matching bundle.
+
 ## [0.21.7] - 2026-06-21
 
 _Highlights: TheDiscDB lookup is now on by default — Engram checks the community disc database during identification and uses its episode mappings as a low-confidence fallback, while audio matching (ASR) remains the primary and preferred signal._
