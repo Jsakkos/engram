@@ -836,7 +836,6 @@ function JobDetailPanel({
       {/* Amend/Reassign modal — rendered inside the slide panel so it stacks above the backdrop */}
       {detail && amendTarget && (
         <AmendTitleModal
-          open={amendTarget !== null}
           title={{
             id: amendTarget.titleId,
             matchedEpisode: amendTarget.matchedEpisode,

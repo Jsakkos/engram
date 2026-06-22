@@ -4,7 +4,6 @@ import { SvPanel, SvLabel, sv } from "../../app/components/synapse";
 import type { AmendKind } from "../../api/client";
 
 export interface AmendTitleModalProps {
-  open: boolean;
   title: { id: number; matchedEpisode: string | null; titleIndex: number };
   seasonEpisodes: number[];
   hasUploadedFingerprint?: boolean;
@@ -13,43 +12,31 @@ export interface AmendTitleModalProps {
 }
 
 export function AmendTitleModal({
-  open,
   title,
   seasonEpisodes,
   hasUploadedFingerprint,
   onSubmit,
   onClose,
 }: AmendTitleModalProps) {
+  // The modal mounts fresh each time it's opened (the parent renders it only when
+  // a track is selected), so state starts at these defaults — no reset effect needed.
   const [kind, setKind] = useState<AmendKind>("episode");
   const [episode, setEpisode] = useState<number | null>(seasonEpisodes[0] ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset state when modal opens
-  useEffect(() => {
-    if (open) {
-      setKind("episode");
-      setEpisode(seasonEpisodes[0] ?? null);
-      setBusy(false);
-      setError(null);
-    }
-  }, [open, seasonEpisodes]);
-
   const handleClose = useCallback(() => {
     if (!busy) onClose();
   }, [busy, onClose]);
 
-  // Escape key handler
+  // Escape key handler (active for the modal's whole mounted lifetime)
   useEffect(() => {
-    if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") handleClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, handleClose]);
-
-  if (!open) return null;
+  }, [handleClose]);
 
   const season = title.matchedEpisode?.match(/^S(\d{2})E/)?.[1] ?? "01";
 
@@ -93,10 +80,8 @@ export function AmendTitleModal({
   const trackLabel = `t${String(title.titleIndex).padStart(2, "0")}`;
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -333,7 +318,5 @@ export function AmendTitleModal({
             </SvPanel>
           </motion.div>
         </motion.div>
-      )}
-    </AnimatePresence>
   );
 }

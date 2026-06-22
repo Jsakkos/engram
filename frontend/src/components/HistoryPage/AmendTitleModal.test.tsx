@@ -7,7 +7,6 @@ describe("AmendTitleModal", () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <AmendTitleModal
-        open
         title={{ id: 2265, matchedEpisode: "S03E10", titleIndex: 24 }}
         seasonEpisodes={[10, 11, 12, 13]}
         onSubmit={onSubmit}
