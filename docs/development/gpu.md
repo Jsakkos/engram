@@ -12,9 +12,15 @@ on the CPU with `int8`.
 |----|-----|--------|
 | Windows | NVIDIA (CC ≥ 7.0) | ✅ CUDA `float16` |
 | Windows | NVIDIA (Pascal, CC 6.x) | ✅ CUDA `int8_float16`/`float32` (auto-selected) |
-| Linux | NVIDIA | ✅ CUDA |
+| Linux (x86_64) | NVIDIA | ✅ CUDA |
+| Linux (aarch64 / Jetson) | NVIDIA | ⚙️ CUDA after an on-device build — see [jetson.md](./jetson.md) |
 | Windows/Linux | AMD / Intel / none | CPU `int8` |
 | macOS | Apple / AMD | CPU `int8` (no GPU path in the engine) |
+
+> **aarch64 caveat:** the PyPI `ctranslate2` wheel for aarch64 is **CPU-only** (no
+> CUDA build exists), so the shipped `engram-linux-arm64.tar.gz` runs ASR on the
+> CPU. GPU on Jetson requires compiling CTranslate2 against JetPack — see
+> [jetson.md](./jetson.md).
 
 ## Why the libraries aren't bundled
 

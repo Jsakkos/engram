@@ -309,6 +309,150 @@ jobs:
             engram-linux-x64.tar.gz
             engram-linux-x64.manifest.sha256
 
+  build-linux-arm64:
+    name: Build Linux Executable (arm64)
+    # GitHub-hosted aarch64 runner (free for public repos). Produces the native
+    # Linux arm64 bundle for NVIDIA Jetson and other aarch64 Linux devices. ASR
+    # is CPU-only here: the ctranslate2 aarch64 wheel on PyPI has no CUDA build,
+    # so GPU on Jetson is an opt-in on-device step (see docs/development/jetson.md).
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      # Build frontend
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      # Copy frontend build into backend for bundling
+      - name: Bundle frontend
+        run: cp -r frontend/dist backend/app/static
+
+      # Build backend executable
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsndfile1 ffmpeg
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --no-install-project
+          # Pin the build toolchain so release artifacts are reproducible and a
+          # PyInstaller / hooks-contrib release can't silently change what gets
+          # bundled (a hooks-contrib change is what dropped certifi from 0.14.0).
+          uv pip install "pyinstaller==6.20.0" "pyinstaller-hooks-contrib==2026.5"
+      - name: Fetch fpcalc (bundled audio fingerprinter)
+        working-directory: backend
+        run: uv run python scripts/fetch_fpcalc.py
+
+      - name: Build executable
+        working-directory: backend
+        run: uv run pyinstaller engram.spec
+
+      - name: Verify binary architecture
+        run: |
+          file backend/dist/engram/engram
+          file backend/dist/engram/engram | grep -q 'aarch64' \
+            || { echo "binary is not aarch64 as expected"; exit 1; }
+
+      - name: Smoke test built executable
+        env:
+          PORT: "8765"
+          HOST: "127.0.0.1"
+        run: |
+          ./backend/dist/engram/engram > smoke-stdout.log 2> smoke-stderr.log &
+          BACKEND_PID=$!
+          trap "kill $BACKEND_PID 2>/dev/null || true" EXIT
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8765/api/jobs > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            echo "===== stdout ====="
+            cat smoke-stdout.log || true
+            echo "===== stderr ====="
+            cat smoke-stderr.log || true
+            echo "executable never became ready"
+            exit 1
+          fi
+          # Fork-bomb regression guard: a healthy onedir server is ~1 process;
+          # a spawn fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
+          count=$(pgrep -f 'dist/engram/engram' | wc -l | tr -d ' ')
+          echo "engram process count: $count"
+          if [ "$count" -gt 2 ]; then
+            echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
+            exit 1
+          fi
+          # fpcalc must be bundled and detected — the whole point of shipping it.
+          # Retry with a generous per-attempt timeout: the endpoint shells out to
+          # ffmpeg/fpcalc subprocesses and the first call can be slow on a cold
+          # runner; a retry after warmup returns fast. The gate stays strict — it
+          # still requires found=True, it just tolerates transient first-run latency.
+          fpcalc_found=""
+          for i in $(seq 1 4); do
+            fpcalc_found=$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/detect-tools \
+              | python3 -c "import sys, json; print(json.load(sys.stdin)['fpcalc']['found'])" 2>/dev/null) || true
+            if [ "$fpcalc_found" = "True" ]; then break; fi
+            if [ "$i" -lt 4 ]; then
+              echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', retrying in 2s"
+              sleep 2
+            else
+              echo "detect-tools attempt $i: fpcalc_found='$fpcalc_found', no more retries"
+            fi
+          done
+          echo "fpcalc detected: $fpcalc_found"
+          if [ "$fpcalc_found" != "True" ]; then
+            echo "bundled fpcalc was not detected"
+            exit 1
+          fi
+          echo "smoke test passed"
+
+      - name: Verify CA bundle + bundled fpcalc + TLS self-test
+        run: |
+          ca="backend/dist/engram/_internal/certifi/cacert.pem"
+          test -f "$ca" || { echo "certifi CA bundle missing from build ($ca)"; exit 1; }
+          size=$(stat -c%s "$ca")
+          [ "$size" -ge 50000 ] || { echo "certifi CA bundle suspiciously small ($size)"; exit 1; }
+          echo "certifi CA bundle present: $size bytes"
+          # Deterministic guard for the bundled fpcalc (_internal/bin/, the path
+          # detect_fpcalc() resolves via _MEIPASS) — independent of server timing.
+          fpc="backend/dist/engram/_internal/bin/fpcalc"
+          test -f "$fpc" || { echo "bundled fpcalc missing from build ($fpc)"; exit 1; }
+          echo "bundled fpcalc present: $fpc"
+          ./backend/dist/engram/engram --selftest || { echo "TLS self-test failed"; exit 1; }
+
+      - name: Generate file manifest
+        run: |
+          # sha256sum-style manifest, paths relative to the engram/ dir (no leading
+          # ./). The updater verifies every listed path exists after extraction.
+          ( cd backend/dist/engram && find . -type f -printf '%P\0' | sort -z | xargs -0 sha256sum ) \
+            > engram-linux-arm64.manifest.sha256
+          echo "manifest entries: $(wc -l < engram-linux-arm64.manifest.sha256)"
+
+      - name: Package
+        run: tar -czf engram-linux-arm64.tar.gz -C backend/dist engram
+      - uses: actions/upload-artifact@v7
+        with:
+          name: engram-linux-arm64
+          path: |
+            engram-linux-arm64.tar.gz
+            engram-linux-arm64.manifest.sha256
+
   build-macos:
     name: Build macOS Executable (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -456,7 +600,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-windows, build-linux, build-linux-arm64, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -472,10 +616,13 @@ jobs:
           name: engram-linux-x64
       - uses: actions/download-artifact@v8
         with:
+          name: engram-linux-arm64
+      - uses: actions/download-artifact@v8
+        with:
           name: engram-macos-arm64
       - name: Generate SHA256 checksums
         run: |
-          sha256sum engram-windows-x64.zip engram-linux-x64.tar.gz engram-macos-arm64.tar.gz > sha256sums.txt
+          sha256sum engram-windows-x64.zip engram-linux-x64.tar.gz engram-linux-arm64.tar.gz engram-macos-arm64.tar.gz > sha256sums.txt
           cat sha256sums.txt
       - name: Generate release notes from CHANGELOG
         env:
@@ -522,6 +669,8 @@ jobs:
             engram-windows-x64.manifest.sha256
             engram-linux-x64.tar.gz
             engram-linux-x64.manifest.sha256
+            engram-linux-arm64.tar.gz
+            engram-linux-arm64.manifest.sha256
             engram-macos-arm64.tar.gz
             engram-macos-arm64.manifest.sha256
             sha256sums.txt

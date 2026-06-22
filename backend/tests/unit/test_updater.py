@@ -370,6 +370,37 @@ class TestUpdateCheckerStates:
         assert asset["name"].endswith(".zip")
         assert "windows" in asset["name"]
 
+    # Linux ships both x86_64 and aarch64 bundles; the host arch must pick the
+    # right one (a Jetson must not download the x86_64 tarball, and vice versa).
+    _MULTIARCH_ASSETS = [
+        {"name": "engram-linux-x64.tar.gz", "browser_download_url": "https://e/x64"},
+        {"name": "engram-linux-arm64.tar.gz", "browser_download_url": "https://e/arm64"},
+        {"name": "engram-windows-x64.zip", "browser_download_url": "https://e/win"},
+        {"name": "sha256sums.txt", "browser_download_url": "https://e/sums"},
+    ]
+
+    def test_select_asset_linux_x86_64(self, monkeypatch):
+        """An x86_64 Linux host picks the x64 tarball, not arm64."""
+        import sys as _sys
+
+        monkeypatch.setattr(_sys, "platform", "linux")
+        monkeypatch.setattr("app.core.updater.platform.machine", lambda: "x86_64")
+        checker = UpdateChecker()
+        asset = checker._select_asset(self._MULTIARCH_ASSETS)
+        assert asset is not None
+        assert asset["name"] == "engram-linux-x64.tar.gz"
+
+    def test_select_asset_linux_aarch64(self, monkeypatch):
+        """An aarch64 Linux host (e.g. Jetson) picks the arm64 tarball, not x64."""
+        import sys as _sys
+
+        monkeypatch.setattr(_sys, "platform", "linux")
+        monkeypatch.setattr("app.core.updater.platform.machine", lambda: "aarch64")
+        checker = UpdateChecker()
+        asset = checker._select_asset(self._MULTIARCH_ASSETS)
+        assert asset is not None
+        assert asset["name"] == "engram-linux-arm64.tar.gz"
+
 
 def _make_build(root: Path, *, complete: bool = True) -> Path:
     """Create a fake extracted onedir build at root/engram. Returns the engram dir.
