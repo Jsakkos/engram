@@ -136,7 +136,7 @@ class ContributionUploader:
 
     async def _sweep_queue(
         self,
-        model: type[FingerprintContribution] | type[DiscContribution],
+        model: type[FingerprintContribution] | type[DiscContribution] | type[FingerprintRetraction],
         upload_row: Callable[[int, httpx.AsyncClient, str, asyncio.Semaphore], Awaitable[bool]],
         client: httpx.AsyncClient,
         semaphore: asyncio.Semaphore,
