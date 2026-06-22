@@ -4,9 +4,13 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.9] - 2026-06-22
+
+_Highlights: completed jobs are no longer locked — you can now reassign a misfiled track to the correct episode, mark it as an extra, or discard it directly from the History detail panel, and the fingerprint network self-corrects when a contributed fingerprint is retracted and re-submitted._
+
 ### Added
 
-- **Reassign a track on a completed job from the History detail panel.** Open any completed job in History and reassign a misfiled track to a different episode, mark it as an extra, or discard it. Engram moves the organized library file to its new home (extras and discards both land in the show's `Extras/` folder) and, when the track's audio fingerprint was already contributed to the shared network, retracts that erroneous fingerprint and re-submits the corrected one as a user-verified match. The fingerprint network heals by re-deriving the episode's consensus from the remaining contributions. Previously a completed job's assignments were locked, so a single mismatched track could block a later disc with a duplicate-file conflict, and there was no way to correct a contributed fingerprint after the fact.
+- **Reassign a track on a completed job from the History detail panel.** Open any completed job in History and reassign a misfiled track to a different episode, mark it as an extra, or discard it. Engram moves the organized library file to its new home (extras and discards both land in the show's `Extras/` folder) and, when the track's audio fingerprint was already contributed to the shared network, retracts that erroneous fingerprint and re-submits the corrected one as a user-verified match. The fingerprint network heals by re-deriving the episode's consensus from the remaining contributions. Previously a completed job's assignments were locked, so a single mismatched track could block a later disc with a duplicate-file conflict, and there was no way to correct a contributed fingerprint after the fact. (#435)
 
 ## [0.21.8] - 2026-06-21
 
