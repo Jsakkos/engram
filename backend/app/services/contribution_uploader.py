@@ -21,7 +21,7 @@ from sqlmodel import select
 from app import __version__
 from app.database import async_session
 from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
-from app.models.fingerprint import DiscContribution, FingerprintContribution
+from app.models.fingerprint import DiscContribution, FingerprintContribution, FingerprintRetraction
 from app.services.config_service import get_config
 from app.services.zstd_varint_codec import encode_zstd_varint, fingerprint_sha256
 
@@ -122,10 +122,15 @@ class ContributionUploader:
             )
             drained += ep_drained
             if not stop:
-                disc_drained, _ = await self._sweep_queue(
+                disc_drained, disc_stop = await self._sweep_queue(
                     DiscContribution, self._upload_disc_row, client, semaphore
                 )
                 drained += disc_drained
+                if not disc_stop:
+                    retract_drained, _ = await self._sweep_queue(
+                        FingerprintRetraction, self._upload_retraction_row, client, semaphore
+                    )
+                    drained += retract_drained
 
         return drained
 
@@ -277,6 +282,24 @@ class ContributionUploader:
                 if row is None:
                     return False  # deleted between the ID query and now
                 await self._upload_one_disc(row, session, client=client, server_url=server_url)
+                return row.upload_status == "success"
+
+    async def _upload_retraction_row(
+        self,
+        row_id: int,
+        client: httpx.AsyncClient,
+        server_url: str,
+        semaphore: asyncio.Semaphore,
+    ) -> bool:
+        """Upload one queued retraction under the concurrency semaphore."""
+        async with semaphore:
+            async with async_session() as session:
+                row = await session.get(FingerprintRetraction, row_id)
+                if row is None:
+                    return False  # deleted between the ID query and now
+                await self._upload_one_retraction(
+                    row, session, client=client, server_url=server_url
+                )
                 return row.upload_status == "success"
 
     async def _notify_disclosure_required(
@@ -527,6 +550,80 @@ class ContributionUploader:
         logger.warning(
             f"Disc contrib {contrib.id}: transient errors persisted this drain ("
             f"{contrib.upload_attempts} total attempts); left pending for retry"
+        )
+
+    async def _upload_one_retraction(
+        self,
+        row: FingerprintRetraction,
+        session,
+        client: httpx.AsyncClient,
+        server_url: str,
+    ) -> None:
+        """POST one retraction to /v1/retract.
+
+        Same per-drain retry budget + transient/permanent classification as
+        ``_upload_one``: 4xx -> permanent "failed"; 5xx/429/network -> leave pending
+        for a later drain. A 200 with deleted:0 is still success (idempotent).
+        """
+        payload = {
+            "wire_format_version": 1,
+            "pseudonym": row.pseudonym,
+            "tmdb_id": row.tmdb_id,
+            "season": row.season,
+            "episode": row.episode,
+            "fingerprint_sha256_b64": base64.b64encode(row.fingerprint_sha256).decode("ascii"),
+        }
+
+        for attempt in range(_MAX_ATTEMPTS):
+            backoff: float = 2**attempt
+            try:
+                resp = await client.post(f"{server_url.rstrip('/')}/v1/retract", json=payload)
+                resp.raise_for_status()
+                row.upload_status = "success"
+                row.uploaded_at = datetime.now(UTC)
+                row.upload_error_msg = None
+                await session.commit()
+                logger.info(
+                    f"Retracted fingerprint (tmdb={row.tmdb_id} s{row.season}e{row.episode})"
+                )
+                return
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                if status == 429:
+                    retry_after = _retry_after_seconds(e.response.headers.get("Retry-After"))
+                    if retry_after is not None:
+                        backoff = min(retry_after, _MAX_RETRY_AFTER)
+                    row.upload_attempts += 1
+                    await session.commit()
+                elif 400 <= status < 500:
+                    row.upload_status = "failed"
+                    row.upload_error_msg = f"HTTP {status} (permanent)"
+                    row.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(f"Retraction {row.id}: permanent HTTP {status}; marking failed")
+                    return
+                else:
+                    row.upload_attempts += 1
+                    await session.commit()
+                    logger.warning(
+                        f"Retraction {row.id}: transient HTTP {status}, attempt {attempt + 1}"
+                    )
+
+            except httpx.HTTPError as e:
+                row.upload_attempts += 1
+                await session.commit()
+                logger.warning(f"Retraction {row.id}: network error, attempt {attempt + 1}: {e}")
+
+            if attempt < _MAX_ATTEMPTS - 1:
+                await asyncio.sleep(backoff)
+
+        row.upload_error_msg = (
+            f"Transient errors after {row.upload_attempts} attempt(s); will retry on a later drain"
+        )
+        await session.commit()
+        logger.warning(
+            f"Retraction {row.id}: transient errors persisted this drain ("
+            f"{row.upload_attempts} total attempts); left pending for retry"
         )
 
     @staticmethod
