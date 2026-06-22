@@ -1,7 +1,6 @@
 rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 1,1399,Game of Thrones,2011,US,HBO,33
 2,66732,Stranger Things,2016,US,Netflix,4
-3,71446,Money Heist,2017,ES,Netflix; Antena 3,0
 4,1402,The Walking Dead,2010,US,AMC,54
 5,1396,Breaking Bad,2008,US,AMC,0
 7,63174,Lucifer,2016,US,FOX; Netflix,0
@@ -22,15 +21,11 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 23,18165,The Vampire Diaries,2009,US,The CW,0
 25,1668,Friends,1994,US,NBC,25
 26,88396,The Falcon and the Winter Soldier,2021,US,Disney+,0
-27,31910,Naruto Shippūden,2007,JP,TV Tokyo,0
 28,48866,The 100,2014,US,The CW,0
 29,1622,Supernatural,2005,US,The WB; The CW,58
 30,87108,Chernobyl,2019,US,HBO,0
 32,44217,Vikings,2013,CA,Prime Video; History,27
 33,1408,House,2004,US,FOX,0
-34,70523,Dark,2017,DE,Netflix,0
-35,1429,Attack on Titan,2013,JP,MBS; NHK G; Tokyo MX,0
-36,85937,Demon Slayer: Kimetsu no Yaiba,2019,JP,Fuji TV; Gunma TV; Tokyo MX; BS11; Tokai Television Broadcasting; Kansai TV; Tochigi TV; Fukui TV; Hokkaido Cultural Broadcasting; Iwate Menkoi Television; TOS; Sendai Television; SAGA TV; Ishikawa TV; TNC; OHK; Kochi Sun Sun Broadcasting; Television Shin Hiroshima System; TV Shizuoka; UMK TV Miyazaki; NST; NBS; Sakuranbo TV; TSK; Ehime Broadcasting; KTS; Fukushima TV; NIB; KKT; AKT; Toyama Television; TV Kumamoto; Okinawa Television Broadcasting,0
 37,100088,The Last of Us,2023,US,HBO,7
 40,60059,Better Call Saul,2015,US,AMC,0
 41,19885,Sherlock,2010,GB,BBC One,4
@@ -38,7 +33,6 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 43,42009,Black Mirror,2011,GB,Channel 4; Netflix,0
 44,63247,Westworld,2016,US,HBO,9
 45,1413,American Horror Story,2011,US,FX,0
-46,46260,Naruto,2002,JP,TV Tokyo,0
 47,94997,House of the Dragon,2022,US,HBO,12
 48,2288,Prison Break,2005,US,FOX,0
 49,94605,Arcane,2021,US,Netflix,4
@@ -47,26 +41,18 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 52,1100,How I Met Your Mother,2005,US,CBS,0
 53,1405,Dexter,2006,US,Showtime,24
 55,62560,Mr. Robot,2015,US,USA Network,0
-56,37854,One Piece,1999,JP,Fuji TV; Tokai Television Broadcasting,0
-57,65930,My Hero Academia,2016,JP,Nippon TV; MBS; TBS; CBC; YTV; Tulip Television; SBC; FBS; BSN; tys; NBC; Chukyo TV; RNB; HTV; FCT; HBC; STV; RKK; KNB; i-Television; SBS; IBC; BSS; MRO; OBS; TUF; RSK; TUY; tbc; RKB; YBS; KTK; KUTV; NKT; RAB; TVI; MMT; ABS; JRT; TOS; RBC; YBC; UTY; RCC; MRT; ATV; MBC; TSB; TeNY; RNC; NIB; KKT; Daiichi-TV; FBC; RKC; KYT; KRY,0
-58,62715,Dragon Ball Super,2015,JP,Fuji TV,0
-59,12637,Rebelde,2004,MX,Univision; Las Estrellas,0
 60,2316,The Office,2005,US,NBC,72
 62,62286,Fear the Walking Dead,2015,US,AMC,0
-64,62104,The Seven Deadly Sins,2014,JP,tv asahi; MBS; TV Tokyo; TBS; CBC; TV Aichi; TVQ; TV Osaka; Tulip Television; TVh; SBC; TSC; BSN; tys; NBC; HBC; RKK; i-Television; SBS; IBC; BSS; MRO; OBS; TUF; RSK; TUY; tbc; RKB; KUTV; RBC; UTY; RCC; MRT; ATV; MBC,0
 65,4607,Lost,2004,US,ABC,0
 66,2190,South Park,1997,US,Comedy Central,93
 67,1434,Family Guy,1999,US,FOX,0
 68,70785,Anne with an E,2017,CA,CBC Television,0
-69,13916,Death Note,2006,JP,Nippon TV,0
 70,12971,Dragon Ball Z,1989,JP,Fuji TV,37
 71,246,Avatar: The Last Airbender,2005,US,Nickelodeon,19
 72,2004,Malcolm in the Middle,2000,US,FOX,0
 73,34524,Teen Wolf,2011,US,MTV,0
 74,91363,What If...?,2021,US,Disney+,0
-75,65334,Miraculous: Tales of Ladybug & Cat Noir,2015,FR,TF1,0
 77,4604,Smallville,2001,US,The WB; The CW,42
-78,95479,JUJUTSU KAISEN,2020,JP,MBS; TBS; CBC; Tulip Television; SBC; BSN; tys; NBC; HBC; RKK; i-Television; SBS; IBC; BSS; MRO; OBS; TUF; RSK; TUY; tbc; RKB; KUTV; RBC; UTY; RCC; MRT; ATV; MBC,0
 79,62688,Supergirl,2015,US,CBS; The CW,0
 81,5920,The Mentalist,2008,US,CBS,0
 83,2734,Law & Order: Special Victims Unit,1999,US,NBC,0
@@ -74,7 +60,6 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 85,4613,Band of Brothers,2001,US,HBO,6
 86,60797,Scorpion,2014,US,CBS,0
 87,46648,True Detective,2014,US,HBO,0
-88,63926,One-Punch Man,2015,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
 89,4057,Criminal Minds,2005,US,CBS; Paramount+,0
 91,48891,Brooklyn Nine-Nine,2013,US,NBC; FOX,17
 92,78191,You,2018,US,Lifetime; Netflix,0
@@ -82,14 +67,12 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 94,1403,Marvel's Agents of S.H.I.E.L.D.,2013,US,ABC,0
 96,615,Futurama,1999,US,FOX; Comedy Central; Hulu,0
 97,88329,Hawkeye,2021,US,Disney+,0
-99,43348,Pablo Escobar: The Drug Lord,2012,CO,Caracol TV,0
 100,60708,Gotham,2014,US,FOX,18
 101,2691,Two and a Half Men,2003,US,CBS,0
 102,46896,The Originals,2013,US,The CW,0
 103,46952,The Blacklist,2013,US,NBC,0
 104,4087,The X-Files,1993,US,FOX,60
 105,74577,The End of the F***ing World,2017,GB,Channel 4,0
-106,16286,"Yo soy Betty, la fea",1999,CO,RCN,0
 107,39351,Grimm,2011,US,NBC,0
 108,1911,Bones,2005,US,FOX,0
 109,92749,Moon Knight,2022,US,Disney+,2
@@ -98,7 +81,6 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 112,44953,El Señor de los Cielos,2013,US,Telemundo,0
 113,71886,Siren,2018,US,Freeform,0
 114,80213,The Purge,2018,US,USA Network,0
-115,12609,Dragon Ball,1986,JP,Fuji TV,0
 116,110492,Peacemaker,2022,US,HBO Max; HBO Max,0
 117,57243,Doctor Who,2005,GB,BBC One,59
 118,1421,Modern Family,2009,US,ABC,0
@@ -112,11 +94,8 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 128,387,SpongeBob SquarePants,1999,US,Nickelodeon,8
 129,1425,House of Cards,2013,US,Netflix,0
 130,52814,Halo,2022,US,Paramount+,0
-131,80020,Super Dragon Ball Heroes,2018,JP,Fuji TV,0
-132,104877,Love Is in the Air,2020,TR,FOX,0
 133,73586,Yellowstone,2018,US,Paramount Network,26
 134,15260,Adventure Time,2010,US,Cartoon Network,0
-136,67915,Guardian: The Lonely and Great God,2016,KR,tvN,0
 137,79460,Legacies,2018,US,The CW,0
 138,71728,Young Sheldon,2017,US,CBS,0
 139,115036,The Book of Boba Fett,2021,US,Disney+,0
@@ -133,26 +112,20 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 154,31917,Pretty Little Liars,2010,US,ABC Family; Freeform,0
 155,1705,Fringe,2008,US,FOX,0
 156,75219,9-1-1,2018,US,ABC; FOX,0
-159,110316,Alice in Borderland,2020,JP,Netflix,0
 160,95057,Superman & Lois,2021,US,The CW,0
 162,1438,The Wire,2002,US,HBO,0
-163,112888,True Beauty,2020,KR,tvN,0
 164,95396,Severance,2022,US,Apple TV,3
 168,58841,Chicago P.D.,2014,US,NBC,0
 170,1407,Homeland,2011,US,Showtime,0
 171,1920,Twin Peaks,1990,US,ABC; Showtime,21
 172,1639,Heroes,2006,US,NBC,0
 173,62710,Blindspot,2015,US,NBC,0
-174,61374,Tokyo Ghoul,2014,JP,Tokyo MX,0
 175,16997,The Pacific,2010,US,HBO,0
-176,62455,Locked Up,2015,ES,FOX España; Antena 3,0
 177,1981,Charmed,1998,US,The WB,0
 178,4614,NCIS,2003,US,CBS,0
-180,70881,Boruto: Naruto Next Generations,2017,JP,TV Tokyo,0
 181,39272,Once Upon a Time,2011,US,ABC,0
 182,1892,The Fresh Prince of Bel-Air,1990,US,NBC,0
 183,62643,DC's Legends of Tomorrow,2016,US,The CW,0
-184,31911,Fullmetal Alchemist: Brotherhood,2009,JP,MBS; TBS; CBC; Tulip Television; SBC; BSN; tys; NBC; HBC; RKK; i-Television; SBS; IBC; BSS; MRO; OBS; TUF; RSK; TUY; tbc; RKB; KUTV; RBC; UTY; RCC; MRT; ATV; MBC,0
 186,44006,Chicago Fire,2012,US,NBC,0
 187,1437,Firefly,2002,US,FOX,0
 188,1433,American Dad!,2005,US,FOX; TBS,0
@@ -163,28 +136,15 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 194,33880,The Legend of Korra,2012,US,Nickelodeon,8
 196,1395,Gossip Girl,2007,US,The CW,0
 197,27240,Seven Deadly Sins,2008,US,History,0
-199,120089,SPY x FAMILY,2022,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
 200,31132,Regular Show,2010,US,Cartoon Network,0
 201,92830,Obi-Wan Kenobi,2022,US,Disney+,2
-203,60572,Pokémon,1997,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
 205,105,Sex and the City,1998,US,HBO,0
-207,114410,Chainsaw Man,2022,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
-208,30984,Bleach,2004,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC; BS TV Tokyo,0
 209,11250,Pasión de Gavilanes,2003,US,Telemundo,0
-210,73223,Black Clover,2017,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
-211,46298,Hunter x Hunter,2011,JP,Nippon TV,0
-212,45782,Sword Art Online,2012,JP,Gunma TV; Tokyo MX; tvk; BS11; Tochigi TV,0
 213,1419,Castle,2009,US,ABC,0
-214,35610,InuYasha,2000,JP,ANIMAX; Nippon TV; YTV,0
-215,890,Neon Genesis Evangelion,1995,JP,TV Tokyo,0
 216,693,Desperate Housewives,2004,US,ABC,0
 217,18347,Community,2009,US,NBC; Yahoo! Screen,12
-218,12697,Dragon Ball GT,1996,JP,Fuji TV; Tokai Television Broadcasting; Kansai TV; Fukui TV; Hokkaido Cultural Broadcasting; Iwate Menkoi Television; Sendai Television; SAGA TV; Ishikawa TV; TNC; OHK; Television Shin Hiroshima System; TV Shizuoka; UMK TV Miyazaki; NST; NBS; TSK; Ehime Broadcasting; KTS; Fukushima TV; NIB; AKT; Toyama Television; TV Kumamoto; Okinawa Television Broadcasting,0
 219,10545,True Blood,2008,US,HBO,0
 222,1411,Person of Interest,2011,US,CBS,0
-224,45950,High School DxD,2012,JP,AT-X,0
-225,47,El Chavo del Ocho,1973,MX,Las Estrellas,0
-226,45871,Locked Up: The Oasis,2020,ES,FOX España,0
 227,83867,Andor,2022,US,Disney+,3
 228,67198,Star Trek: Discovery,2017,US,CBS All Access; Paramount+,0
 230,95,Buffy the Vampire Slayer,1997,US,The WB; UPN,0
@@ -194,28 +154,21 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 235,66573,The Good Place,2016,US,NBC,9
 236,31586,La Reina del Sur,2011,US,Telemundo,0
 237,2038,Drake & Josh,2004,US,Nickelodeon,0
-238,30991,Cowboy Bebop,1998,JP,TV Tokyo; WOWOW Prime,0
 239,60573,Silicon Valley,2014,US,HBO,0
-242,76121,DARLING in the FRANXX,2018,JP,Tokyo MX,0
 243,85949,Star Trek: Picard,2020,US,CBS All Access; Paramount+,0
 244,68507,His Dark Materials,2019,GB,BBC One,2
-246,114868,Record of Ragnarok,2021,JP,Netflix,0
 247,1606,Ghost Whisperer,2005,US,CBS,0
 248,32798,Hawaii Five-0,2010,US,CBS,0
 249,63401,We Bare Bears,2015,US,Cartoon Network,0
 252,1415,Elementary,2012,US,CBS,0
-253,16420,Boys Over Flowers,2009,KR,KBS2,0
 254,2098,Batman: The Animated Series,1992,US,FOX; Fox Kids,0
 255,67070,Fleabag,2016,GB,BBC Three; BBC One,0
 256,4629,Stargate SG-1,1997,CA/US,Showtime; Syfy,0
-257,12926,Teresa,2010,MX,Univision; Las Estrellas,0
 258,62046,Scream Queens,2015,US,FOX,0
 259,8592,Parks and Recreation,2009,US,NBC,20
-260,74428,Rosario Tijeras (Mexico),2016,MX,Netflix; Azteca Trece; Azteca 7,0
 262,92685,The Owl House,2020,US,Disney Channel,0
 263,4686,Ben 10,2005,US,Cartoon Network,0
 264,79696,Manifest,2018,US,NBC; Netflix,0
-265,105248,Cyberpunk: Edgerunners,2022,JP,Netflix,0
 268,46639,American Gods,2017,US,STARZ,0
 269,1973,24,2001,US,FOX,0
 270,61056,How to Get Away with Murder,2014,US,ABC,0
@@ -228,16 +181,13 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 279,64464,11.22.63,2016,US,Hulu,0
 280,37606,The Amazing World of Gumball,2011,IE/DE/US/GB,Cartoon Network,0
 281,31251,Victorious,2010,US,Nickelodeon,0
-282,127532,Solo Leveling,2024,JP,Gunma TV; Tokyo MX; BS11; Tochigi TV,0
 283,39340,2 Broke Girls,2011,US,CBS,0
 285,1620,CSI: Miami,2002,US,CBS,0
 288,64432,The Magicians,2015,US,Syfy,0
-290,42035,The Boat,2011,ES,Antena 3,0
 291,31356,Big Time Rush,2009,US,Nickelodeon,0
 292,66292,Big Little Lies,2017,US,HBO,0
 293,86430,Your Honor,2020,US,Showtime,0
 294,58474,Cosmos,2014,US,FOX; National Geographic,0
-295,86031,Dr. STONE,2019,JP,Tokyo MX; KBS Kyoto,0
 296,84661,The Outsider,2020,US,HBO,0
 297,8358,Lie to Me,2009,US,FOX,0
 298,115004,Mare of Easttown,2021,US,HBO,0
@@ -249,113 +199,79 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 306,67136,This Is Us,2016,US,NBC,0
 307,76331,Succession,2018,US,HBO,12
 308,60743,Constantine,2014,US,NBC,0
-309,79699,La hija del Mariachi,2006,CO,RCN; Telemundo,0
 310,2490,The IT Crowd,2006,GB,Channel 4,5
 311,79788,Watchmen,2019,US,HBO,0
-313,45790,JoJo's Bizarre Adventure,2012,JP,Netflix; Tokyo MX; BS11,0
 314,128839,La Brea,2021,US,NBC,0
 316,52,That '70s Show,1998,US,FOX,0
 317,89247,Batwoman,2019,US,The CW,5
 318,131927,Dexter: New Blood,2021,US,Showtime,4
 319,69629,The Gifted,2017,US,FOX,0
-320,72305,Kakegurui,2017,JP,MBS; Tokyo MX,0
 321,71790,S.W.A.T.,2017,US,CBS,0
 322,89456,Primal,2019,US,Adult Swim,0
-323,80240,The Queen of Flow,2018,CO,Caracol TV,0
 324,4327,Mr. Bean,1990,GB,ITV1,0
-328,100049,TONIKAWA: Over the Moon for You,2020,JP,Tokyo MX,0
-331,83095,The Rising of the Shield Hero,2019,JP,AT-X,0
 332,76773,Station 19,2018,US,ABC,0
 333,21510,White Collar,2009,US,USA Network,0
 336,5371,iCarly,2007,US,Nickelodeon,0
 338,67195,Legion,2017,US,FX,0
-339,72637,Once,2017,AR,Disney XD,0
-341,57706,Ranma ½,1989,JP,Fuji TV,0
 343,54671,Penny Dreadful,2014,US,Showtime,0
 344,1104,Mad Men,2007,US,AMC,0
-345,60863,Haikyu!!,2014,JP,MBS; TBS; CBC; BSN; tys,0
 348,61923,Star vs. the Forces of Evil,2015,US,Disney XD; Disney Channel,0
 349,72750,Killing Eve,2018,US,BBC America,0
 350,1891,Rome,2005,US,HBO,0
 351,253,Star Trek,1966,US,NBC,0
-352,92396,"Lady, la vendedora de rosas",2015,CO,RCN,0
 353,79525,The Last Dance,2020,US,ESPN,3
 354,62017,The Man in the High Castle,2015,US,Prime Video,0
-355,96462,It's Okay to Not Be Okay,2020,KR,tvN,0
-356,94664,Mushoku Tensei: Jobless Reincarnation,2021,JP,Tokyo MX; BS11; KBS Kyoto,0
 357,65708,Taboo,2017,GB,BBC One,0
 359,47665,Black Sails,2014,US,STARZ,12
 360,79501,Doom Patrol,2019,US,DC Universe; HBO Max; Max,0
 361,200875,IT: Welcome to Derry,2025,US,HBO,3
 363,42671,Elfen Lied,2004,JP,AT-X,2
 364,92782,Ms. Marvel,2022,US,Disney+,0
-365,65844,KONOSUBA - God's blessing on this wonderful world!,2016,JP,Tokyo MX,0
 367,56296,Orphan Black,2013,US/CA,Space; BBC America,0
 368,10283,Archer,2009,US,FX; FXX,0
 370,2384,Knight Rider,1982,US,NBC,16
-371,42444,Saint Seiya,1986,JP,tv asahi,0
 372,111803,The White Lotus,2021,US,HBO,3
 373,79680,Snowpiercer,2020,US,TNT; AMC,0
 374,90461,Monsters at Work,2021,US,Disney XD; Disney Channel; Disney+,0
-375,61459,Parasyte -the maxim-,2014,JP,Nippon TV,0
 376,4616,Xena: Warrior Princess,1995,US,Syndication,0
 378,900,Skins,2007,GB,E4,0
 380,71738,The Orville,2017,US,FOX; Hulu,0
 382,1431,CSI: Crime Scene Investigation,2000,US,CBS,0
 383,41727,Banshee,2013,US,Cinemax,0
-384,80623,BAKI,2018,JP,Netflix,0
-387,58450,What Life Took From Me,2013,MX,Las Estrellas,0
-388,5451,Without Breasts There Is No Paradise,2008,CO,Telemundo; RTI Televisión,0
 389,4574,X-Men,1992,US,FOX; YTV; Syndication; Fox Kids,0
 391,4336,Drawn Together,2004,US,Comedy Central,0
 392,89905,Normal People,2020,GB,BBC Three,0
 393,61175,Steven Universe,2013,US,Cartoon Network,0
 394,2710,It's Always Sunny in Philadelphia,2005,US,FX; FXX,0
 396,194764,The Penguin,2024,US,HBO,0
-397,105009,Tokyo Revengers,2021,JP,MBS,0
 398,34967,Falling Skies,2011,US,TNT,0
 400,604,Teen Titans,2003,US,The WB; Cartoon Network,0
 401,74016,The Resident,2018,US,FOX,0
-402,83100,Dororo,2019,JP,TV Tokyo,0
 404,1215,Californication,2007,US,Showtime,0
-405,45815,Brazil Avenue,2012,BR,TV Globo,0
-406,82739,Rascal Does Not Dream of Bunny Girl Senpai,2018,JP,Gunma TV; Tokyo MX; BS11; ABC TV; Tochigi TV,0
 407,66276,The Night Of,2016,US,HBO,0
-409,67075,Mob Psycho 100,2016,JP,Tokyo MX,0
 410,61859,The Night Manager,2016,GB,BBC One,0
 411,64230,Preacher,2016,US,AMC,0
-412,90937,BEASTARS,2019,JP,Fuji TV; Netflix,0
 413,54650,Power,2014,US,STARZ,0
 414,2352,The Nanny,1993,US,CBS,0
-416,83097,The Promised Neverland,2019,JP,Fuji TV,0
 418,1621,Boardwalk Empire,2010,US,HBO,23
-419,31268,El Capo,2009,CO,RCN,0
 420,62650,Chicago Med,2015,US,NBC,0
-422,65249,ERASED,2016,JP,Fuji TV; Iwate Menkoi Television; Sakuranbo TV,0
 423,4586,Gilmore Girls,2000,US,The WB; The CW,0
 424,1695,Monk,2002,US,USA Network,32
 425,1044,Planet Earth,2006,GB,BBC One,0
 426,17610,NCIS: Los Angeles,2009,US,CBS,0
 427,39852,The Sinner,2017,US,USA Network,0
-429,62110,Assassination Classroom,2015,JP,Fuji TV; Iwate Menkoi Television,0
 430,605,"Sabrina, the Teenage Witch",1996,US,ABC; The WB,24
 432,89393,9-1-1: Lone Star,2020,US,FOX,0
 433,33217,Young Justice,2010,US,Cartoon Network; DC Universe; HBO Max,0
 434,4658,ALF,1986,US,NBC,0
-436,63407,Mi corazón es tuyo,2014,MX,Las Estrellas,0
 437,63210,Shadowhunters,2016,US,Freeform,0
 439,94305,The Walking Dead: World Beyond,2020,US,AMC,0
 440,114461,Ahsoka,2023,US,Disney+,0
-441,61223,Akame ga Kill!,2014,JP,Tokyo MX,0
 442,54344,The Leftovers,2014,US,HBO,0
 444,1404,Chuck,2007,US,NBC,0
 445,1426,Luther,2010,GB,BBC One,0
 446,33907,Downton Abbey,2010,GB,ITV1,0
 447,4239,Married... with Children,1987,US,FOX,0
-448,42705,Fighting Spirit,2000,JP,Nippon TV,0
-451,70828,Surviving Escobar - Alias JJ,2017,CO,Caracol TV,0
-452,5178,Stairway to Heaven,2003,KR,SBS,0
-454,62914,Merlí,2015,ES,TV3; TV3,0
 455,6040,Ben 10: Alien Force,2008,US,Cartoon Network,0
 456,3498,Wizards of Waverly Place,2007,US,Disney Channel,0
 457,7842,The Tom and Jerry Show,1975,US,ABC,0
@@ -366,71 +282,49 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 463,80986,DC's Stargirl,2020,US,The CW; DC Universe,0
 466,74440,Harley Quinn,2019,US,DC Universe; HBO Max; Max,0
 467,61852,Henry Danger,2014,US,Nickelodeon,0
-470,61663,Your Lie in April,2014,JP,Fuji TV,0
 471,73107,Barry,2018,US,HBO,0
 473,888,Spider-Man,1994,US,FOX; Fox Kids,0
-474,13027,Amor Real,2003,MX,Las Estrellas,0
 475,7225,Merlin,2008,GB,BBC One,0
 476,4313,Full House,1987,US,ABC,0
 477,80307,Bodyguard,2018,GB,BBC One,0
 479,67026,Designated Survivor,2016,US,ABC; Netflix,0
-480,63109,Moses and the Ten Commandments,2015,BR,Record,0
-481,81146,Rosario Tijeras,2010,CO,RCN,0
 482,79649,Project Blue Book,2019,US,History,0
-483,110070,Horimiya,2021,JP,Gunma TV; Tokyo MX; BS11; Tochigi TV,0
 484,2317,My Name Is Earl,2005,US,NBC,0
 485,18123,Scooby-Doo! Mystery Incorporated,2010,US,Cartoon Network,0
 486,222766,The Day of the Jackal,2024,GB,Sky Atlantic; Sky Showcase,0
 487,50825,Sleepy Hollow,2013,US,FOX,0
 488,1274,Six Feet Under,2001,US,HBO,0
 489,252,Everybody Hates Chris,2005,US,UPN; The CW,0
-490,66203,Soy Luna,2016,AR,Disney Channel; Disney+,0
 492,4630,The Fairly OddParents,2001,CA/US,Nickelodeon; Nicktoons,0
-493,73481,Ecomoda,2001,CO,RCN,0
 494,1855,Star Trek: Voyager,1995,US,UPN,0
-496,64196,Overlord,2015,JP,AT-X,0
-497,18011,Vecinos,2005,MX,Distrito Comedia; Blim; Las Estrellas,0
 498,1988,ThunderCats,1985,US,Syndication,0
 499,4500,The Wonder Years,1988,US,ABC,0
 500,80350,New Amsterdam,2018,US,NBC,0
 501,32726,Bob's Burgers,2011,US,FOX,0
 502,3763,Dinosaurs,1991,US,ABC; Syndication,0
-503,31072,La familia P. Luche,2002,MX,Las Estrellas,0
-505,117376,Vincenzo,2021,KR,tvN,0
 506,1778,Zoey 101,2005,US,Nickelodeon,0
-507,42589,Another,2012,JP,KNB,0
 508,70453,Sharp Objects,2018,US,HBO,0
 509,1516,The A-Team,1983,US,NBC,0
 511,46533,The Americans,2013,US,FX,0
 512,79240,Swamp Thing,2019,US,DC Universe,0
 513,64513,American Crime Story,2016,US,FX,0
-514,92967,Mucize Doktor,2019,TR,FOX,0
 516,102966,100 días para enamorarnos,2020,US,Telemundo,0
-517,90660,KENGAN ASHURA,2019,JP,Netflix,0
 518,34391,Marvel's Ultimate Spider-Man,2012,US,Disney XD,0
-519,37863,Fullmetal Alchemist,2003,JP,TBS,0
-521,46261,Fairy Tail,2009,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
 522,64122,The Shannara Chronicles,2016,US,MTV; Spike,0
 523,6357,The Twilight Zone,1959,US,CBS,24
 524,62852,Billions,2016,US,Showtime,0
-525,902,Yu-Gi-Oh! Duel Monsters,2000,JP,TV Tokyo; TV Osaka; TVh; TSC,0
-526,99071,Redo of Healer,2021,JP,AT-X,0
 528,86848,Evil,2019,US,CBS; Paramount+,0
-529,3570,Sailor Moon,1992,JP,tv asahi,0
 530,60802,The Last Ship,2014,US,TNT,0
 532,31295,Misfits,2009,GB,E4,0
 533,897,The Grim Adventures of Billy and Mandy,2001,US,Cartoon Network,0
 534,1877,Phineas and Ferb,2007,US,Disney XD; Disney Channel,0
-535,66084,Acapulco Shore,2014,MX,MTV Latin America,0
 536,157239,Alien: Earth,2025,US,FX; Hulu,0
-537,62741,Kamisama Kiss,2012,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
 538,1600,Ned's Declassified School Survival Guide,2004,US,Nickelodeon,0
 540,32692,Blue Bloods,2010,US,CBS,0
 541,2426,Angel,1999,US,The WB,0
 542,607,The Powerpuff Girls,1998,US,Cartoon Network,0
 545,60554,Star Wars Rebels,2014,US,Disney XD,0
 547,83631,What We Do in the Shadows,2019,US,FX,0
-548,98986,Uzaki-chan Wants to Hang Out!,2020,JP,AT-X,0
 549,1781,Little House on the Prairie,1974,US,NBC,0
 550,186,Weeds,2005,US,Showtime,0
 551,433,Terminator: The Sarah Connor Chronicles,2008,US,FOX,0
@@ -441,73 +335,50 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 557,1447,Psych,2006,US,USA Network,0
 558,537,Hey Arnold!,1996,US,Nickelodeon,0
 560,2391,Tales from the Crypt,1989,US,HBO,0
-561,56998,High School of the Dead,2010,JP,AT-X,0
-562,63767,She Was Pretty,2015,KR,MBC,0
 564,49010,The Fall,2013,IE,RTÉ One,0
 565,67133,MacGyver,2016,US,CBS,0
-566,66330,W: Two Worlds Apart,2016,KR,MBC,0
-567,42573,Slam Dunk,1993,JP,tv asahi,0
 569,71365,Battlestar Galactica,2003,CA,Syfy,0
 570,96580,Resident Alien,2021,US,USA Network; Syfy,0
-571,96316,Rent-a-Girlfriend,2020,JP,MBS; TBS; CBC; Tulip Television; SBC; BSN; tys; NBC; HBC; RKK; i-Television; SBS; IBC; BSS; MRO; OBS; TUF; RSK; TUY; tbc; RKB; KUTV; RBC; UTY; RCC; MRT; ATV; MBC,0
 572,61888,The Last Man on Earth,2015,US,FOX,0
 575,74387,Final Space,2018,US/CA,Adult Swim; TBS,0
-577,68349,Weightlifting Fairy Kim Bok-joo,2016,KR,MBC,0
 578,43899,The Bible,2013,US,History,0
 579,580,Star Trek: Deep Space Nine,1993,US,Syndication,0
 580,117488,Yellowjackets,2021,US,Showtime; Paramount+ with Showtime,0
-581,75214,Violet Evergarden,2018,JP,Tokyo MX,0
 582,2996,The Office,2001,GB,BBC Two,0
 584,71663,Black Lightning,2018,US,The CW,0
-585,83639,Girl from Nowhere,2018,TH,Netflix; GMM 25,0
 586,61345,Z Nation,2014,US,Syfy,0
 587,1406,Deadwood,2004,US,HBO,0
-588,42509,Steins;Gate,2011,JP,Teletama; Sun TV,0
 589,314,Star Trek: Enterprise,2001,US,UPN,0
 590,1417,Glee,2009,US,FOX,0
 591,62687,Limitless,2015,US,CBS,0
-592,88803,Vinland Saga,2019,JP,YouTube; NHK G; Tokyo MX; BS11; GBS,0
 593,43020,Continuum,2012,CA,Showcase,0
 594,2673,The O.C.,2003,US,FOX,0
-598,197067,Extraordinary Attorney Woo,2022,KR,ENA,0
 599,118357,1883,2021,US,Paramount+,3
 601,68595,Planet Earth II,2016,GB,BBC One,0
 602,12313,Shadow Hunter,2005,CA,Space,0
 603,65820,Van Helsing,2016,US,Syfy,0
 605,4588,ER,1994,US,NBC,0
 607,14814,Keeping Up with the Kardashians,2007,US,E!,0
-608,94796,Crash Landing on You,2019,KR,tvN,0
 609,2875,MacGyver,1985,US,ABC,0
-610,80564,Banana Fish,2018,JP,Fuji TV; Iwate Menkoi Television; Sakuranbo TV,0
 611,4546,Curb Your Enthusiasm,2000,US,HBO,24
-613,31654,Digimon: Digital Monsters,1999,JP,Fuji TV,0
-616,86374,War of the Worlds,2019,FR,Canal+,0
-617,18350,Atrévete a Soñar,2009,MX,Las Estrellas,0
 618,80748,FBI,2018,US,CBS,0
 619,3854,The Spectacular Spider-Man,2008,US,Disney XD; The CW,0
 620,72002,Dynasty,2017,US,The CW,0
-621,93846,The King: Eternal Monarch,2020,KR,SBS,0
 622,61418,Jane the Virgin,2014,US,The CW,0
 623,67773,Dirk Gently's Holistic Detective Agency,2016,US,BBC America,0
 624,53425,Wayward Pines,2015,US,FOX,0
-627,123249,My Dress-Up Darling,2022,JP,Gunma TV; Tokyo MX; BS11; Tochigi TV,0
-629,82684,That Time I Got Reincarnated as a Slime,2018,JP,Nippon TV; YTV; Tokyo MX; BS11; FBS; Chukyo TV; RNB; HTV; FCT; STV; KNB; YBS; KTK; NKT; RAB; TVI; MMT; ABS; JRT; TOS; YBC; TSB; TeNY; RNC; NIB; KKT; Daiichi-TV; FBC; RKC; KYT; KRY,0
 631,46994,Slugterra,2012,CA,Disney XD; Family Chrgd,0
-632,110642,RESIDENT EVIL: Infinite Darkness,2021,JP,Netflix,0
 633,2723,Samurai Jack,2001,US,Cartoon Network; Adult Swim,5
 634,4229,Dexter's Laboratory,1996,US,Cartoon Network,0
 636,2382,Freaks and Geeks,1999,US,NBC; Fox Family,0
 638,31109,Ben 10: Ultimate Alien,2010,US,Cartoon Network,0
-640,31724,Code Geass: Lelouch of the Rebellion,2006,JP,MBS,0
 641,48865,Reign,2013,US,The CW,0
 642,3452,Frasier,1993,US,NBC,0
 643,32754,Terra Nova,2011,US,FOX,0
-644,69291,Miss Kobayashi's Dragon Maid,2017,JP,Tokyo MX,0
 645,240,Jackie Chan Adventures,2000,US,The WB,0
 647,224372,A Knight of the Seven Kingdoms,2026,US,HBO,0
 648,84200,Justice League Unlimited,2004,US,Cartoon Network,0
 649,34415,The Killing,2011,US,AMC; Netflix,0
-650,97617,The Misfit of Demon King Academy,2020,JP,AT-X; Gunma TV; Tokyo MX; BS11; Tochigi TV,0
 651,45,Top Gear,2002,GB,BBC One; BBC Two,0
 652,110290,Mums Make Porn,2019,GB,Channel 4,0
 653,98387,Rubi,2020,US,Univision,0
@@ -526,75 +397,53 @@ rank,tmdb_id,name,year,origin_country,networks,discdb_discs
 667,65495,Atlanta,2016,US,FX,0
 668,39358,Revenge,2011,US,ABC,0
 669,2328,Power Rangers,1993,US,ABC; Nickelodeon; ABC Family; Toon Disney; Netflix; Fox Kids,0
-670,240411,Dan Da Dan,2024,JP,MBS; TBS; CBC; Tulip Television; SBC; BSN; tys; NBC; HBC; RKK; i-Television; SBS; IBC; BSS; MRO; OBS; TUF; RSK; TUY; tbc; RKB; KUTV; RBC; UTY; RCC; MRT; ATV; MBC,0
-671,95601,Merlí. Sapere Aude,2019,ES,TV3; Movistar Plus+,0
 672,3322,Oz,1997,US,HBO,0
 673,9687,The Odyssey,1997,ZA/TR/DE/IT/US/GB,CTV; NBC,0
-674,83121,Kaguya-sama: Love Is War,2019,JP,Gunma TV; Tokyo MX; BS11; Tochigi TV,0
 676,1423,Ray Donovan,2013,US,Showtime,0
 677,160,Teenage Mutant Ninja Turtles,1987,US,CBS; USA Network; Syndication,0
-678,209867,Frieren: Beyond Journey's End,2023,JP,Nippon TV; YTV; FBS; Chukyo TV; RNB; HTV; FCT; STV; KNB; YBS; KTK; NKT; RAB; TVI; MMT; ABS; JRT; YBC; UMK TV Miyazaki; TSB; TeNY; RNC; NIB; KKT; Daiichi-TV; FBC; RKC; KYT; KRY,0
-679,25707,Captain Tsubasa,1983,JP,TV Tokyo,0
 680,2942,The Tudors,2007,US,Showtime,0
 681,873,Columbo,1971,US,ABC; NBC,0
 682,76231,Mayans M.C.,2018,US,FX,0
-683,74682,I Am Not a Robot,2017,KR,MBC,0
 684,47450,Into the Badlands,2015,US,AMC,0
 685,86850,Dracula,2020,GB,BBC One,0
 687,68315,The Mist,2017,US,Spike,0
-688,62273,Food Wars! Shokugeki no Soma,2015,JP,TBS; Tokyo MX; BS11,0
 689,926,"Scooby-Doo, Where Are You!",1969,US,ABC; CBS,0
 691,1660,I Dream of Jeannie,1965,US,NBC,0
-692,60957,My Love from the Star,2013,KR,SBS,0
 693,2025,"Beverly Hills, 90210",1990,US,FOX,0
-694,78722,Una familia de diez,2007,MX,Las Estrellas,0
 696,57532,PAW Patrol,2013,US,Nickelodeon,0
-697,105556,"DON'T TOY WITH ME, MISS NAGATORO",2021,JP,Tokyo MX; BS11,0
-698,61709,Dragon Ball Z Kai,2009,JP,Fuji TV,0
-699,65143,Descendants of the Sun,2016,KR,KBS2,0
 700,62649,Superstore,2015,US,NBC,0
-701,28136,Rurouni Kenshin,1996,JP,Fuji TV,0
 702,2207,Fawlty Towers,1975,GB,BBC Two,0
 703,62704,Ballers,2015,US,HBO,2
 704,65988,Wynonna Earp,2016,CA/US,Syfy; Space; CTV Sci-Fi Channel,0
-705,72517,Classroom of the Elite,2017,JP,AT-X,0
 709,60694,Last Week Tonight with John Oliver,2014,US,HBO,0
 710,606,"Ed, Edd n Eddy",1999,US/CA,Cartoon Network,0
 711,21494,V,2009,CA/US,ABC,0
-712,34899,The Magnificent Century,2011,TR,Show TV,0
-714,36250,xxxHOLiC,2006,JP,TBS,0
 717,4608,30 Rock,2006,US,NBC,20
 718,67116,Lethal Weapon,2016,US,FOX,0
-719,35790,Cardcaptor Sakura,1998,JP,SBS; NHK BS2; NHK BS Premium; Tooniverse,0
-720,88040,given,2019,JP,Fuji TV,0
 722,66786,Timeless,2016,US,NBC,0
 723,100,I Am Not an Animal,2004,GB,BBC Two,0
 724,51817,Teenage Mutant Ninja Turtles,2012,US,Nickelodeon; Nicktoons,0
 726,5148,Stargate Universe,2009,US,Syfy,0
-727,93149,Plunderer,2020,JP,Tokyo MX; KBS Kyoto,0
-728,35935,Berserk,1997,JP,Nippon TV,0
 729,2660,Codename: Kids Next Door,2002,US,Cartoon Network,0
-730,95269,Toilet-Bound Hanako-kun,2020,JP,TBS,0
-733,135157,Alchemy of Souls,2022,KR,tvN,0
 734,38693,Ninjago: Masters of Spinjitzu,2012,US,YTV; Cartoon Network; Teletoon,0
 735,4018,Quantum Leap,1989,US,NBC,0
 736,33623,The Avengers: Earth's Mightiest Heroes,2010,US,Disney XD,0
-737,30981,Monster,2004,JP,Nippon TV,0
-738,12782,Marimar,1994,MX,Las Estrellas,0
-739,1063,Samurai Champloo,2004,JP,Fuji TV,0
 740,82,Animaniacs,1993,US,The WB; Fox Kids,0
-741,62428,Saint Seiya: Soul of Gold,2015,JP,Bandai Channel,0
 744,82816,Lovecraft Country,2020,US,HBO,0
 745,94280,Steven Universe Future,2019,US,Cartoon Network,0
 748,68716,Marvel's Inhumans,2017,US,ABC,0
 749,61733,Empire,2015,US,FOX,0
 751,71694,Snowfall,2017,US,FX,0
-752,13023,El Chapulín Colorado,1973,MX,Las Estrellas,0
 753,44305,DreamWorks Dragons,2012,US,Cartoon Network,0
 754,157744,1923,2022,US,Paramount+,3
 755,68734,El Chema,2016,US,Telemundo,0
 756,2458,CSI: NY,2004,US,CBS,0
-757,66398,"Diomedes, el Cacique de La Junta",2015,CO,RCN,0
-758,207468,Kaiju No. 8,2024,JP,TV Tokyo; TV Aichi; TVQ; TV Osaka; TVh; TSC,0
-759,30983,Detective Conan,1996,JP,YTV,0
 760,15819,Warehouse 13,2009,US,Syfy,0
+761,4556,Scrubs,2001,US,ABC; NBC,0
+762,688,The West Wing,1999,US,NBC,0
+763,2046,Alias,2001,US,ABC,0
+764,2919,Burn Notice,2007,US,USA Network,0
+765,4598,Boston Legal,2004,US,ABC,0
+766,903,Black Books,2000,GB,Channel 4,0
+767,4271,Farscape,1999,AU/US,Syfy,0
+768,3137,Babylon 5,1994,US,TNT; Syndication,0
