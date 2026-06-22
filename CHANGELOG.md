@@ -4,9 +4,13 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.8] - 2026-06-21
+
+_Highlights: Engram now ships a native ARM64 build for NVIDIA Jetson and other aarch64 Linux devices, with the auto-updater delivering the correct binary per architecture._
+
 ### Added
 
-- **ARM64 (Linux aarch64) build for NVIDIA Jetson and other aarch64 Linux devices** — releases now include `engram-linux-arm64.tar.gz`, built natively on a GitHub-hosted arm64 runner and validated by the same smoke test, TLS self-test, and bundled-`fpcalc` checks as the x86_64 build. ASR runs on the CPU out of the box (the PyPI `ctranslate2` aarch64 wheel has no CUDA build); GPU-accelerated transcription on a Jetson is an opt-in on-device step that compiles CTranslate2 against the device's JetPack CUDA toolkit (`backend/scripts/jetson_gpu_setup.sh`, documented in `docs/development/jetson.md`). The auto-updater now distinguishes x86_64 from aarch64 so each host downloads the matching bundle.
+- **ARM64 (Linux aarch64) build for NVIDIA Jetson and other aarch64 Linux devices** — releases now include `engram-linux-arm64.tar.gz`, built natively on a GitHub-hosted arm64 runner and validated by the same smoke test, TLS self-test, and bundled-`fpcalc` checks as the x86_64 build. ASR runs on the CPU out of the box (the PyPI `ctranslate2` aarch64 wheel has no CUDA build); GPU-accelerated transcription on a Jetson is an opt-in on-device step that compiles CTranslate2 against the device's JetPack CUDA toolkit (`backend/scripts/jetson_gpu_setup.sh`, documented in `docs/development/jetson.md`). The auto-updater now distinguishes x86_64 from aarch64 so each host downloads the matching bundle. (#433)
 
 ## [0.21.7] - 2026-06-21
 
