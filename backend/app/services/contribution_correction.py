@@ -79,9 +79,13 @@ class ContributionCorrectionService:
                             )
                         )
                     except Exception:
-                        logger.warning(
+                        # Should be unreachable: a "success" row had its blob
+                        # deserialized at upload time (uploader marks malformed blobs
+                        # "failed", never "success"). If it DOES fire we orphan a live
+                        # fingerprint on the network — surface it in the error tail.
+                        logger.error(
                             f"Could not derive sha256 for contrib {row.id}; "
-                            "deleting local row without queuing retraction",
+                            "deleting local row WITHOUT queuing retraction (orphaned on network)",
                             exc_info=True,
                         )
                 await session.delete(row)
@@ -97,7 +101,7 @@ class ContributionCorrectionService:
                     pseudonym=pseudonym,
                 )
         except Exception:
-            logger.warning(f"Contribution correction failed for title {title.id}", exc_info=True)
+            logger.error(f"Contribution correction failed for title {title.id}", exc_info=True)
 
     async def _recontribute(
         self,
@@ -110,6 +114,11 @@ class ContributionCorrectionService:
         pseudonym: str | None,
     ) -> None:
         if not (title.chromaprint_blob and pseudonym and job.tmdb_id):
+            logger.debug(
+                f"Skipping re-contribution for title {title.id}: "
+                f"blob={bool(title.chromaprint_blob)} pseudonym={bool(pseudonym)} "
+                f"tmdb_id={bool(job.tmdb_id)}"
+            )
             return
         m = re.match(r"S(\d{1,2})E(\d{1,3})", episode_code)
         if not m:

@@ -22,6 +22,8 @@ async def _db():
 
         await session.execute(_t("DELETE FROM fingerprint_contributions"))
         await session.execute(_t("DELETE FROM fingerprint_retractions"))
+        await session.execute(_t("DELETE FROM disc_titles"))
+        await session.execute(_t("DELETE FROM disc_jobs"))
         await session.commit()
 
 
@@ -115,3 +117,54 @@ async def test_episode_target_recontributes_as_user_review():
         assert contribs[0].episode == 11
         assert contribs[0].match_source == "user_review"
         assert contribs[0].match_confidence == 1.0
+
+
+async def test_discard_target_retracts_without_recontribution():
+    async with async_session() as session:
+        job, title = await _make_title(session, uploaded=True)
+        await ContributionCorrectionService().correct_title_contribution(
+            session,
+            title,
+            NewTarget(kind="discard"),
+            job=job,
+            enable_contributions=True,
+            pseudonym="00000000-0000-4000-8000-000000000000",
+        )
+        await session.commit()
+        contribs = (await session.execute(select(FingerprintContribution))).scalars().all()
+        retractions = (await session.execute(select(FingerprintRetraction))).scalars().all()
+        assert contribs == []  # nothing re-contributed
+        assert len(retractions) == 1  # old fingerprint retracted
+
+
+async def test_multiple_contribution_rows_all_handled():
+    async with async_session() as session:
+        job, title = await _make_title(session, uploaded=True)
+        # A second contribution row for the same title that never uploaded (pending).
+        session.add(
+            FingerprintContribution(
+                title_id=title.id,
+                chromaprint_blob=_blob(),
+                tmdb_id=1396,
+                season=3,
+                episode=10,
+                match_confidence=0.5,
+                match_source="engram_asr",
+                pseudonym="00000000-0000-4000-8000-000000000000",
+                upload_status=None,
+            )
+        )
+        await session.commit()
+        await ContributionCorrectionService().correct_title_contribution(
+            session,
+            title,
+            NewTarget(kind="extra"),
+            job=job,
+            enable_contributions=True,
+            pseudonym="00000000-0000-4000-8000-000000000000",
+        )
+        await session.commit()
+        contribs = (await session.execute(select(FingerprintContribution))).scalars().all()
+        retractions = (await session.execute(select(FingerprintRetraction))).scalars().all()
+        assert contribs == []  # BOTH rows deleted
+        assert len(retractions) == 1  # only the uploaded one was retracted
