@@ -106,3 +106,35 @@ class DiscContribution(SQLModel, table=True):
     upload_attempts: int = Field(default=0)
     upload_status: str | None = Field(default=None)  # None=pending; "success"; "failed"
     upload_error_msg: str | None = Field(default=None)
+
+
+class FingerprintRetraction(SQLModel, table=True):
+    """Local-only queue row requesting deletion of one already-uploaded fingerprint.
+
+    Created when a user reassigns a track whose fingerprint was already uploaded.
+    The ContributionUploader drains this table by POSTing /v1/retract, mirroring
+    the two-phase contribution pattern. The original FingerprintContribution row is
+    deleted at correction time; this row carries only what the server needs to find
+    and delete the contribution: pseudonym + identity + fingerprint_sha256.
+    """
+
+    __tablename__ = "fingerprint_retractions"
+
+    id: int | None = Field(default=None, primary_key=True)
+    queued_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column_kwargs={"server_default": text("(datetime('now'))")},
+    )
+
+    pseudonym: str
+    tmdb_id: int
+    season: int | None = None
+    episode: int | None = None
+    # SHA256 of the decompressed varint stream — the server's per-fingerprint dedup key.
+    fingerprint_sha256: bytes
+
+    # Uploader state (mirrors FingerprintContribution; same transient/permanent semantics).
+    uploaded_at: datetime | None = None
+    upload_attempts: int = Field(default=0)
+    upload_status: str | None = Field(default=None)  # None=pending; "success"; "failed"
+    upload_error_msg: str | None = Field(default=None)
