@@ -14,6 +14,10 @@ import logging
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.services.contribution_correction import NewTarget
 
 from sqlmodel import select
 
@@ -1557,7 +1561,7 @@ class JobManager:
             f"Job {safe_job}: title {safe_title} reassigned to {safe_episode} (source={safe_source})"
         )
 
-    async def amend_title_assignment(self, job_id: int, title_id: int, target) -> None:
+    async def amend_title_assignment(self, job_id: int, title_id: int, target: "NewTarget") -> None:
         """Correct a track on a COMPLETED job in place (reassign / extra / discard).
 
         Moves the organized library file to its new home, updates the DiscTitle, and

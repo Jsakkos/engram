@@ -151,3 +151,48 @@ async def test_amend_to_episode_moves_file_and_updates_episode(tmp_path, monkeyp
         assert not (
             lib / "Breaking Bad (2008) [tmdbid-1396]" / "Season 03" / "Breaking Bad - S03E10.mkv"
         ).exists()
+
+
+async def test_amend_to_occupied_episode_aborts_and_keeps_source(tmp_path, monkeypatch):
+    job_id, title_id, lib = await _seed_completed_tv(tmp_path)
+
+    from app.models.app_config import AppConfig
+    from app.services import config_service
+
+    fake_cfg = AppConfig(
+        library_tv_path=str(lib),
+        library_movies_path=str(tmp_path / "movies"),
+        enable_fingerprint_contributions=False,
+        contribution_pseudonym=None,
+    )
+
+    monkeypatch.setattr(config_service, "get_config", AsyncMock(return_value=fake_cfg))
+    monkeypatch.setattr(config_service, "get_config_sync", lambda: fake_cfg)
+
+    from app.services import contribution_correction
+
+    monkeypatch.setattr(
+        contribution_correction.ContributionCorrectionService,
+        "correct_title_contribution",
+        AsyncMock(return_value=None),
+    )
+
+    # Pre-create the destination file that organize_tv_episode would compute.
+    # Default naming_tv_show_format="{show}" → folder "Breaking Bad".
+    # Default naming_season_format="Season {season:02d}" → "Season 03".
+    # Default naming_episode_format="{show} - S{season:02d}E{episode:02d}" → "Breaking Bad - S03E11.mkv".
+    occupied_dir = lib / "Breaking Bad" / "Season 03"
+    occupied_dir.mkdir(parents=True)
+    occupied = occupied_dir / "Breaking Bad - S03E11.mkv"
+    occupied.write_text("already here")
+
+    source = lib / "Breaking Bad (2008) [tmdbid-1396]" / "Season 03" / "Breaking Bad - S03E10.mkv"
+
+    with pytest.raises(ValueError):
+        await job_manager.amend_title_assignment(
+            job_id, title_id, NewTarget(kind="episode", episode_code="S03E11")
+        )
+
+    # The source was NOT moved and the occupied destination is intact.
+    assert source.exists()
+    assert occupied.read_text() == "already here"
