@@ -23,9 +23,13 @@ config = context.config
 _sync_url = settings.database_url.replace("+aiosqlite", "")
 config.set_main_option("sqlalchemy.url", _sync_url)
 
-# Set up loggers from config file
+# Set up loggers from config file. disable_existing_loggers=False so a
+# programmatic upgrade (init_db() runs Alembic on startup and in tests) doesn't
+# tear down the app's already-configured loggers — fileConfig defaults to
+# disabling them, which silently broke loguru->caplog propagation for any test
+# running after an init_db() call.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Use SQLModel's metadata for autogenerate support
 target_metadata = SQLModel.metadata
