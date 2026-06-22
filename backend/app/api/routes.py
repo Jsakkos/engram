@@ -3512,6 +3512,60 @@ async def reassign_episode(
     return {"status": "reassigned", "title_id": title_id}
 
 
+class AmendTarget(BaseModel):
+    """Where a completed-job track is being reassigned."""
+
+    kind: Literal["episode", "extra", "discard"]
+    episode_code: str | None = None
+
+
+class AmendRequest(BaseModel):
+    target: AmendTarget
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/amend")
+async def amend_title(
+    title_id: int,
+    request: AmendRequest,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+):
+    """Reassign a track on a COMPLETED job (episode / extra / discard).
+
+    Moves the organized library file, updates the title, and reconciles the
+    fingerprint network. Only valid for completed jobs — jobs still in review use
+    the existing review/reassign flow.
+    """
+    if job.state != JobState.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Amend is only available for completed jobs (state: {job.state.value})",
+        )
+
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job.id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    if request.target.kind == "episode" and not request.target.episode_code:
+        raise HTTPException(
+            status_code=400, detail="episode_code required for episode reassignment"
+        )
+
+    from app.services.contribution_correction import NewTarget
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.amend_title_assignment(
+            job.id,
+            title_id,
+            NewTarget(kind=request.target.kind, episode_code=request.target.episode_code),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return {"status": "amended", "title_id": title_id, "kind": request.target.kind}
+
+
 class ShowOrderingRequest(BaseModel):
     """Set a show's output ordering preference (#200)."""
 
