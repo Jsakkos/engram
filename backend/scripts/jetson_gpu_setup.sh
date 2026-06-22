@@ -107,7 +107,14 @@ cmake --install build
 # links the CUDA library. We target the bundle's interpreter (cp311) via a
 # disposable venv to avoid touching system Python.
 info "Building Python bindings..."
-python3 -m venv "$WORK/venv"
+# Must match the bundle's cp311 ABI — a cp310 _ext.so (JetPack 6 ships Python
+# 3.10 as `python3`) won't import in the frozen 3.11 runtime. Fail loudly here
+# rather than producing an ImportError after the swap.
+PY311="${PYTHON:-python3.11}"
+command -v "$PY311" >/dev/null || err "python3.11 is required to match the bundle's cp311 ABI \
+(got $("$PY311" --version 2>&1 || echo none)). Install it (e.g. sudo apt-get install python3.11 \
+python3.11-venv) or set PYTHON."
+"$PY311" -m venv "$WORK/venv"
 # shellcheck disable=SC1091
 source "$WORK/venv/bin/activate"
 pip install --upgrade pip wheel setuptools pybind11
@@ -126,15 +133,21 @@ cp -a "$CT2_PKG_DIR" "$CT2_PKG_DIR.cpu-backup"
 
 UNPACK="$WORK/unpack"
 mkdir -p "$UNPACK"
-( cd "$UNPACK" && unzip -q "$WORK"/wheel/ctranslate2-*.whl )
+# A wheel is a zip; extract with the stdlib so we don't depend on `unzip` being
+# installed (a fresh L4T image doesn't ship it).
+WHEEL="$(echo "$WORK"/wheel/ctranslate2-*.whl)"
+( cd "$UNPACK" && "$PY311" -m zipfile -e "$WHEEL" . )
 
 info "Installing CUDA ctranslate2 into the bundle..."
 # Python package files (incl. the compiled _ext*.so).
 cp -a "$UNPACK"/ctranslate2/. "$CT2_PKG_DIR"/
-# The shared library: prefer the one the wheel bundles; fall back to the install tree.
-SO="$(find "$UNPACK" "$WORK/ct2-install" -name 'libctranslate2.so*' | head -n1)"
-[ -n "$SO" ] || err "could not locate built libctranslate2.so"
-cp -a "$SO"* "$BUNDLE_DIR/_internal/" 2>/dev/null || cp -a "$SO" "$BUNDLE_DIR/_internal/"
+# The shared library: prefer the one the wheel bundles; fall back to the install
+# tree. Copy the whole soname set from its directory (real file + version
+# symlinks, e.g. libctranslate2.so.4 -> libctranslate2.so.4.6.3) preserving
+# links — _ext links against the SONAME, so dropping the symlink breaks dlopen.
+SO_DIR="$(dirname "$(find "$UNPACK" "$WORK/ct2-install" -name 'libctranslate2.so*' | head -n1)")"
+[ -d "$SO_DIR" ] || err "could not locate built libctranslate2.so"
+cp -a "$SO_DIR"/libctranslate2.so* "$BUNDLE_DIR/_internal/"
 
 cat <<EOF
 
