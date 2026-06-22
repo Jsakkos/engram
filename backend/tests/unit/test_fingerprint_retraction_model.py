@@ -8,6 +8,13 @@ from app.models.fingerprint import FingerprintRetraction
 @pytest.fixture(autouse=True)
 async def _db():
     await init_db()
+    # Tests share the app DB; clear the queue so leftover rows from other tests
+    # (e.g. an uploaded retraction marked "success") don't inflate the count.
+    async with async_session() as session:
+        from sqlalchemy import text as _t
+
+        await session.execute(_t("DELETE FROM fingerprint_retractions"))
+        await session.commit()
 
 
 async def test_retraction_row_roundtrips():
