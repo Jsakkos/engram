@@ -627,6 +627,18 @@ class FinalizationCoordinator:
         if not job:
             return
 
+        # Guard: never re-enter finalization logic on a terminal job. A concurrent
+        # watchdog call or a late-completing match task can race the normal path
+        # and call check_job_completion after the job is already COMPLETED/FAILED.
+        # Without this guard, finalize_disc_job runs on a dead job, organizes
+        # files, and then produces an "Invalid state transition: failed→completed"
+        # warning when Phase 3 can't move the terminal state forward.
+        if job.state in (JobState.COMPLETED, JobState.FAILED):
+            logger.debug(
+                f"Job {job_id}: already terminal ({job.state.value}), skipping completion check"
+            )
+            return
+
         statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
         result = await session.execute(statement)
         titles = result.scalars().all()
@@ -979,10 +991,18 @@ class FinalizationCoordinator:
             # and the watchdog clock is reset off this transition. Same-state (the
             # movie staging-import path is already ORGANIZING) re-broadcasts
             # harmlessly. The transition's commit also flushes the conflict-loop
-            # reassignments. If somehow rejected, log and organize anyway — staged
-            # files must still be moved.
+            # reassignments. If the transition is rejected because the job is
+            # already terminal (COMPLETED/FAILED), abort — organizing files for a
+            # dead job produces the "failed→completed" invalid-transition warning
+            # and moves files without updating the DB correctly.
             organizing_ok = await self._state_machine.transition_to_organizing(job, session)
             if not organizing_ok:
+                if job.state in (JobState.COMPLETED, JobState.FAILED):
+                    logger.warning(
+                        f"Job {job_id}: job is already {job.state.value}; "
+                        "aborting finalization to avoid organizing a terminal job"
+                    )
+                    return
                 logger.warning(
                     f"Job {job_id}: could not enter ORGANIZING from {job.state.value}; "
                     "organizing anyway"
