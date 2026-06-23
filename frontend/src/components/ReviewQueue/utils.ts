@@ -4,6 +4,7 @@
 
 import { DiscTitle } from '../../types';
 import { MatchDetails } from './types';
+import { normalizeEpisodeCode } from './coverage';
 import { MATCHING_CONFIG } from '../../config/constants';
 import { formatSizeGB, formatDurationLong } from '../../utils/formatting';
 import { sv } from '../../app/components/synapse';
@@ -84,4 +85,32 @@ export function generateEpisodeOptions(season: number, maxEpisodes: number): str
         options.push(`S${season.toString().padStart(2, '0')}E${i.toString().padStart(2, '0')}`);
     }
     return options;
+}
+
+/** A staged review decision for a single title. */
+export type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
+
+/**
+ * Build the initial staged selections/actions from persisted match results.
+ *
+ * An auto-deferred extra (matched_episode === "extra") pre-fills as the "extra"
+ * action so the review UI shows it selected as an extra and a no-op save re-files
+ * it as one. Any other matched_episode pre-fills as a (canonicalized) episode pick.
+ */
+export function buildInitialSelections(titles: DiscTitle[]): {
+    episodes: Record<number, string>;
+    actions: Record<number, TitleAction>;
+} {
+    const episodes: Record<number, string> = {};
+    const actions: Record<number, TitleAction> = {};
+    for (const title of titles) {
+        if (title.matched_episode === 'extra') {
+            episodes[title.id] = 'extra';
+            actions[title.id] = 'extra';
+        } else if (title.matched_episode) {
+            episodes[title.id] = normalizeEpisodeCode(title.matched_episode);
+            actions[title.id] = 'episode';
+        }
+    }
+    return { episodes, actions };
 }
