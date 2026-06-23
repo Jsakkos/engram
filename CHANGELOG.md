@@ -4,9 +4,17 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.11] - 2026-06-23
+
+_Highlights: disc-hash fingerprint identification is now on by default for all installs, and the Reassign Track dropdown correctly shows the disc's actual season._
+
+### Added
+
+- **Disc-hash fingerprint identification is now enabled by default** — the fingerprint network's disc-hash identification path (`GET /v1/identify-disc`) now runs automatically for every install, including existing ones (migrated via Alembic). A `canonical` or `confirmed` match pre-assigns episodes with high confidence; `candidate`-tier hits are not applied as an override. Previously this path was gated off while the shared catalog was being seeded. The catalog is now large enough to be useful. (#445)
+
 ### Fixed
 
-- **Reassign Track episode dropdown now uses the disc's actual season.** When reassigning a track on a completed multi-season disc from the History detail panel, the episode picker was pinned to Season 1 (`S01E01`, `S01E02`, …) because it derived the season from the track's current match instead of the job's identified season. It now uses the job's detected season, so a Season 2+ disc correctly offers `S02E…` episodes.
+- **Reassign Track episode dropdown now uses the disc's actual season.** When reassigning a track on a completed multi-season disc from the History detail panel, the episode picker was pinned to Season 1 (`S01E01`, `S01E02`, …) because it derived the season from the track's current match instead of the job's identified season. It now uses the job's detected season, so a Season 2+ disc correctly offers `S02E…` episodes. (#447)
 
 ## [0.21.10] - 2026-06-22
 
