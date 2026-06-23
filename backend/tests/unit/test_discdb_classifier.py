@@ -1,9 +1,11 @@
 """Tests for TheDiscDB classifier module."""
 
+import re
 from unittest.mock import patch
 
 from app.core.analyst import TitleInfo
 from app.core.discdb_classifier import (
+    HASH_LOOKUP_QUERY,
     DiscDbSignal,
     DiscDbTitleMapping,
     _find_best_disc_by_durations,
@@ -13,6 +15,24 @@ from app.core.discdb_classifier import (
     classify_from_discdb,
 )
 from app.models.disc_job import ContentType
+
+
+class TestHashLookupQuery:
+    """Guard the ContentHash filter path against TheDiscDB schema drift.
+
+    TheDiscDB introduced a ``ReleaseDisc`` junction between ``Release`` and
+    ``Disc`` (many-to-many). The junction exposes its own ``contentHash`` in the
+    filter input, but filtering on it throws a server-side "Unexpected Execution
+    Error" (it is unmapped and untranslatable to SQL). The real, queryable column
+    lives on the nested ``disc``, so the filter must traverse
+    ``discs { some { disc { contentHash } } }``. The other tests mock
+    ``_graphql_request`` and so cannot catch a regression in the query string —
+    this one inspects it directly.
+    """
+
+    def test_filters_through_disc_junction(self):
+        normalized = re.sub(r"\s+", " ", HASH_LOOKUP_QUERY)
+        assert "discs: { some: { disc: { contentHash: { eq: $hash } } } }" in normalized
 
 
 class TestParseDuration:
