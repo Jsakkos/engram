@@ -1,9 +1,11 @@
 """Tests for TheDiscDB classifier module."""
 
+import re
 from unittest.mock import patch
 
 from app.core.analyst import TitleInfo
 from app.core.discdb_classifier import (
+    HASH_LOOKUP_QUERY,
     DiscDbSignal,
     DiscDbTitleMapping,
     _find_best_disc_by_durations,
@@ -13,6 +15,19 @@ from app.core.discdb_classifier import (
     classify_from_discdb,
 )
 from app.models.disc_job import ContentType
+
+
+class TestHashLookupQuery:
+    """Guard against TheDiscDB schema drift: the hash filter must traverse the
+    Release→Disc junction via ``disc.contentHash`` (the junction's own is unmapped
+    and throws server-side). The mocked classify tests can't catch query drift."""
+
+    def test_filters_through_disc_junction(self):
+        normalized = re.sub(r"\s+", " ", HASH_LOOKUP_QUERY)
+        assert (
+            "releases: { some: { discs: { some: { disc: { contentHash: { eq: $hash } } } } } }"
+            in normalized
+        )
 
 
 class TestParseDuration:
