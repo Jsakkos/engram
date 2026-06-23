@@ -1375,6 +1375,11 @@ class FinalizationCoordinator:
             title.matched_episode = episode_code
             if episode_code == "extra":
                 title.is_extra = True
+            elif episode_code != "skip":
+                # Reassigning a (possibly auto-detected) extra to a real episode
+                # must clear the extra flag so finalize files it as an episode,
+                # not back into Extras/.
+                title.is_extra = False
 
         if edition:
             title.edition = edition

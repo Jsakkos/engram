@@ -1170,3 +1170,17 @@ class TestEpisodeOrderingProjection:
         assert t.episode_ordering is None
         # aired is the identity path — the projection is never invoked.
         assert proj.call_count == 0
+
+
+@pytest.mark.unit
+class TestApplyDecisionFields:
+    def test_clears_is_extra_on_real_episode(self):
+        t = DiscTitle(job_id=1, title_index=0, is_extra=True, matched_episode="extra")
+        FinalizationCoordinator._apply_decision_fields(t, "S01E03", None)
+        assert t.matched_episode == "S01E03"
+        assert t.is_extra is False
+
+    def test_keeps_is_extra_for_extra_code(self):
+        t = DiscTitle(job_id=1, title_index=0, matched_episode=None)
+        FinalizationCoordinator._apply_decision_fields(t, "extra", None)
+        assert t.is_extra is True
