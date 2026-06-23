@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reassign Track episode dropdown now uses the disc's actual season.** When reassigning a track on a completed multi-season disc from the History detail panel, the episode picker was pinned to Season 1 (`S01E01`, `S01E02`, …) because it derived the season from the track's current match instead of the job's identified season. It now uses the job's detected season, so a Season 2+ disc correctly offers `S02E…` episodes.
+
 ## [0.21.10] - 2026-06-22
 
 _Highlights: TheDiscDB ContentHash lookups are fixed after a server-side schema change that was silently causing every hash query to fail, plus dependency maintenance and subtitle-cache refresh._

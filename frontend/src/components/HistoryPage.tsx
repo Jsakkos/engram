@@ -400,6 +400,12 @@ function JobDetailPanel({
     };
   }, [onClose]);
 
+  // Season for the reassign modal: the disc's detected season is authoritative;
+  // fall back to the matched episode's season, then 1, only when it's unknown.
+  const matchedSeason = amendTarget?.matchedEpisode?.match(/^S(\d{2})E/);
+  const effectiveAmendSeason =
+    detail?.detected_season ?? (matchedSeason ? parseInt(matchedSeason[1], 10) : 1);
+
   return (
     <motion.div
       ref={panelRef}
@@ -841,21 +847,20 @@ function JobDetailPanel({
             matchedEpisode: amendTarget.matchedEpisode,
             titleIndex: amendTarget.titleIndex,
           }}
+          season={effectiveAmendSeason}
           seasonEpisodes={(() => {
-            // Build episode list from sibling matched_episode codes on the same season,
-            // or fall back to a 1..26 range when that's not available.
-            const season = amendTarget.matchedEpisode?.match(/^S(\d{2})E/)?.[1];
-            if (season) {
-              const eps = detail.titles
-                .filter((t) => t.matched_episode?.startsWith(`S${season}E`))
-                .map((t) => {
-                  const m = t.matched_episode?.match(/E(\d{2,})$/);
-                  return m ? parseInt(m[1], 10) : null;
-                })
-                .filter((n): n is number => n !== null);
-              const unique = Array.from(new Set(eps)).sort((a, b) => a - b);
-              if (unique.length > 0) return unique;
-            }
+            // Build episode list from sibling matched_episode codes on the disc's
+            // season, or fall back to a 1..26 range when that's not available.
+            const seasonCode = String(effectiveAmendSeason).padStart(2, "0");
+            const eps = detail.titles
+              .filter((t) => t.matched_episode?.startsWith(`S${seasonCode}E`))
+              .map((t) => {
+                const m = t.matched_episode?.match(/E(\d{2,})$/);
+                return m ? parseInt(m[1], 10) : null;
+              })
+              .filter((n): n is number => n !== null);
+            const unique = Array.from(new Set(eps)).sort((a, b) => a - b);
+            if (unique.length > 0) return unique;
             return Array.from({ length: 26 }, (_, i) => i + 1);
           })()}
           onSubmit={async (target) => {
