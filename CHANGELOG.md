@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.10] - 2026-06-22
+
+_Highlights: dependency maintenance and subtitle-cache refresh._
+
+### Changed
+
+- **Subtitle seed list pruned and refreshed** — removed 159 non-English and zero-disc shows that were consuming harvest quota with no benefit to English-language matching, and added 8 US/UK classics. (#437)
+- **Frontend dependency updates** — react-hook-form 7.55→7.80, react-router-dom 7.17→7.18, @radix-ui/react-checkbox 1.1→1.3, @radix-ui/react-select 2.1→2.3, @radix-ui/react-switch 1.1→1.3. (#439, #440, #441, #442, #443)
+
 ## [0.21.9] - 2026-06-22
 
 _Highlights: completed jobs are no longer locked — you can now reassign a misfiled track to the correct episode, mark it as an extra, or discard it directly from the History detail panel, and the fingerprint network self-corrects when a contributed fingerprint is retracted and re-submitted._
