@@ -512,6 +512,29 @@ class TestCheckJobCompletion:
         assert job.state == JobState.REVIEW_NEEDED
         coord.finalize_disc_job.assert_not_called()
 
+    async def test_deferred_extra_held_when_other_title_needs_review(self, tmp_path):
+        """A deferred extra (MATCHED + "extra") must not finalize while another
+        title still needs review -- the whole disc holds in staging unorganized."""
+        job_id = await _seed_job(
+            [
+                (0, "extra", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, titles = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert titles[0].state == TitleState.MATCHED
+        assert titles[0].matched_episode == "extra"
+        assert titles[0].organized_to is None
+        coord.finalize_disc_job.assert_not_called()
+
     async def test_all_matched_invokes_finalize(self, tmp_path):
         job_id = await _seed_job([(0, "S01E01", None, TitleState.MATCHED)], staging=str(tmp_path))
         coord = _make_coord()
