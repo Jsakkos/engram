@@ -22,12 +22,14 @@ logger = logging.getLogger(__name__)
 
 DISCDB_GRAPHQL_URL = "https://thediscdb.com/graphql/"
 
-# GraphQL query for ContentHash lookup — returns the matching disc's titles
+# GraphQL query for ContentHash lookup — returns the matching disc's titles.
+# Filter via `disc.contentHash`, NOT the junction's own (unmapped in filter inputs,
+# throws "Unexpected Execution Error" server-side; valid only in the output set).
 HASH_LOOKUP_QUERY = """
 query LookupByHash($hash: String!) {
   mediaItems(
     where: {
-      releases: { some: { discs: { some: { contentHash: { eq: $hash } } } } }
+      releases: { some: { discs: { some: { disc: { contentHash: { eq: $hash } } } } } }
     }
   ) {
     nodes {
