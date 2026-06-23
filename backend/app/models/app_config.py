@@ -210,7 +210,9 @@ class AppConfig(SQLModel, table=True):
     )
     fingerprint_disclosure_accepted_at: datetime | None = Field(default=None)
 
-    # Phase 3: chromaprint identification (default OFF until the catalog is seeded).
+    # Phase 3: chromaprint / disc-hash identification. Default ON: the catalog is
+    # seeded and disc-hash matches fall back safely to TMDB/AI/heuristics on a miss.
+    # Retained as a DB-level kill switch / test override (no user-facing toggle).
     enable_fingerprint_identification: bool = Field(
-        default=False, sa_column_kwargs={"server_default": text("0")}
+        default=True, sa_column_kwargs={"server_default": text("1")}
     )
