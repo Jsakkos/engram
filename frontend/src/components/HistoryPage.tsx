@@ -402,11 +402,9 @@ function JobDetailPanel({
 
   // Season for the reassign modal: the disc's detected season is authoritative;
   // fall back to the matched episode's season, then 1, only when it's unknown.
+  const matchedSeason = amendTarget?.matchedEpisode?.match(/^S(\d{2})E/);
   const effectiveAmendSeason =
-    detail?.detected_season ??
-    (amendTarget?.matchedEpisode?.match(/^S(\d{2})E/)?.[1]
-      ? parseInt(amendTarget.matchedEpisode.match(/^S(\d{2})E/)![1], 10)
-      : 1);
+    detail?.detected_season ?? (matchedSeason ? parseInt(matchedSeason[1], 10) : 1);
 
   return (
     <motion.div
