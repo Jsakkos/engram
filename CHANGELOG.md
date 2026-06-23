@@ -6,7 +6,11 @@ All notable changes to Engram will be documented in this file.
 
 ## [0.21.10] - 2026-06-22
 
-_Highlights: dependency maintenance and subtitle-cache refresh._
+_Highlights: TheDiscDB ContentHash lookups are fixed after a server-side schema change that was silently causing every hash query to fail, plus dependency maintenance and subtitle-cache refresh._
+
+### Fixed
+
+- **TheDiscDB ContentHash lookups no longer fail with "Unexpected Execution Error"** — TheDiscDB restructured their GraphQL schema to insert a `ReleaseDisc` junction between `Release` and `Disc`. Our filter walked `releases.some.discs.some.contentHash`, which still passed schema validation but threw an execution error because the junction's `contentHash` property is not mapped to a SQL column. The filter now traverses the junction correctly (`disc { contentHash }`). In production this caused every hash-based lookup to fall through to name/TMDB matching, which could misfire badly (an Avatar: The Last Airbender disc matched Green Book, for example). (#444)
 
 ### Changed
 
