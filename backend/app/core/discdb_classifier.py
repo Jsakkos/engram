@@ -23,9 +23,8 @@ logger = logging.getLogger(__name__)
 DISCDB_GRAPHQL_URL = "https://thediscdb.com/graphql/"
 
 # GraphQL query for ContentHash lookup — returns the matching disc's titles.
-# The filter must traverse the Release→Disc junction (`discs.some.disc.contentHash`),
-# NOT the junction's own `contentHash`: TheDiscDB exposes the latter in the filter
-# input but it is unmapped and throws "Unexpected Execution Error" server-side.
+# Filter via `disc.contentHash`, NOT the junction's own (unmapped in filter inputs,
+# throws "Unexpected Execution Error" server-side; valid only in the output set).
 HASH_LOOKUP_QUERY = """
 query LookupByHash($hash: String!) {
   mediaItems(
