@@ -5,6 +5,8 @@ import type { AmendKind } from "../../api/client";
 
 export interface AmendTitleModalProps {
   title: { id: number; matchedEpisode: string | null; titleIndex: number };
+  /** The disc/job's season — drives the episode codes, NOT the (possibly wrong) matched episode. */
+  season: number;
   seasonEpisodes: number[];
   hasUploadedFingerprint?: boolean;
   onSubmit: (target: { kind: AmendKind; episode_code?: string }) => Promise<void>;
@@ -13,6 +15,7 @@ export interface AmendTitleModalProps {
 
 export function AmendTitleModal({
   title,
+  season,
   seasonEpisodes,
   hasUploadedFingerprint,
   onSubmit,
@@ -38,7 +41,7 @@ export function AmendTitleModal({
     return () => document.removeEventListener("keydown", handler);
   }, [handleClose]);
 
-  const season = title.matchedEpisode?.match(/^S(\d{2})E/)?.[1] ?? "01";
+  const seasonCode = String(season).padStart(2, "0");
 
   async function apply() {
     setBusy(true);
@@ -48,7 +51,7 @@ export function AmendTitleModal({
         if (episode == null) throw new Error("Pick an episode");
         await onSubmit({
           kind: "episode",
-          episode_code: `S${season}E${String(episode).padStart(2, "0")}`,
+          episode_code: `S${seasonCode}E${String(episode).padStart(2, "0")}`,
         });
       } else {
         await onSubmit({ kind });
@@ -222,7 +225,7 @@ export function AmendTitleModal({
                         >
                           {seasonEpisodes.map((ep) => (
                             <option key={ep} value={ep}>
-                              S{season}E{String(ep).padStart(2, "0")} — Episode {ep}
+                              S{seasonCode}E{String(ep).padStart(2, "0")} — Episode {ep}
                             </option>
                           ))}
                         </select>
