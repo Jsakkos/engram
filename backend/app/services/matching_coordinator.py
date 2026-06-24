@@ -1557,6 +1557,10 @@ class MatchingCoordinator:
         title.state = TitleState.MATCHED
         title.is_extra = True
         title.matched_episode = "extra"
+        # Deliberate classification, not a low-confidence ASR guess. A high
+        # confidence keeps the review page's first-unresolved-title focus from
+        # landing on an already-decided extra instead of a real REVIEW title.
+        title.match_confidence = 1.0
         title.match_details = json.dumps(
             {
                 "auto_sorted": "extras",
@@ -1571,6 +1575,7 @@ class MatchingCoordinator:
             title.id,
             title.state.value,
             matched_episode=title.matched_episode,
+            match_confidence=title.match_confidence,
             is_extra=title.is_extra,
             match_details=title.match_details,
         )

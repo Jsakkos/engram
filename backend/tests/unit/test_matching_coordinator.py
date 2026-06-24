@@ -127,6 +127,7 @@ class TestHandleExtras:
             assert title.is_extra is True
             assert title.matched_episode == "extra"
             assert title.organized_to is None
+            assert title.match_confidence == 1.0
             assert json.loads(title.match_details)["action"] == "deferred"
         org_spy.assert_not_called()
         coord._check_job_completion.assert_awaited_once()

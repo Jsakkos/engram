@@ -535,6 +535,31 @@ class TestCheckJobCompletion:
         assert titles[0].organized_to is None
         coord.finalize_disc_job.assert_not_called()
 
+    async def test_multiple_deferred_extras_do_not_trigger_conflict_escalation(self, tmp_path):
+        """Two+ deferred extras share the synthetic "extra" code but must NOT be
+        treated as an episode conflict. Otherwise conflict escalation burns ASR
+        re-match passes on every bonus track before the ladder exhausts. The disc
+        should finalize directly."""
+        job_id = await _seed_job(
+            [
+                (0, "extra", None, TitleState.MATCHED),
+                (1, "extra", None, TitleState.MATCHED),
+                (2, "S01E01", None, TitleState.MATCHED),
+            ],
+            staging=str(tmp_path),
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        # Non-None so _maybe_escalate_conflicts actually inspects conflicts (the
+        # bug path); a fake "extra" collision would dispatch through this mock.
+        coord._rematch_conflict = AsyncMock(return_value={"dispatched": [1], "skipped": []})
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        coord.finalize_disc_job.assert_awaited_once_with(job_id)
+        coord._rematch_conflict.assert_not_awaited()
+
     async def test_all_matched_invokes_finalize(self, tmp_path):
         job_id = await _seed_job([(0, "S01E01", None, TitleState.MATCHED)], staging=str(tmp_path))
         coord = _make_coord()

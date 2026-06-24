@@ -168,6 +168,12 @@ def _detect_conflicts(titles) -> dict[str, list]:
     for t in titles:
         if not t.matched_episode:
             continue
+        # Deferred extras all carry the synthetic "extra" code and never collide
+        # (multiple bonus tracks coexist on one disc). Without this guard two+
+        # extras group as a fake "EXTRA" conflict and burn ASR re-match passes
+        # before the ladder exhausts. Mirrors finalize_disc_job's own guard.
+        if t.matched_episode == "extra":
+            continue
         if t.state == TitleState.MATCHED:
             by_ep.setdefault(_normalize_episode_code(t.matched_episode), []).append(t)
         elif t.state == TitleState.REVIEW and _is_rematchable_review(t):
