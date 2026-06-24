@@ -4,9 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.12] - 2026-06-23
+
+_Highlights: two small fixes — auto-detected extras stay visible in review so you can reassign them before they are filed, and the settings button now uses the universally-recognized gear icon instead of a sun/starburst._
+
 ### Fixed
 
-- Auto-detected extras are no longer filed away mid-rip and frozen in the review panel. They now stay with the rest of the disc's tracks and are organized at the end, so when a disc goes to review you can reassign a misdetected extra (e.g. a dual-episode track) to an episode before it is filed.
+- **Auto-detected extras are no longer filed away mid-rip and frozen in the review panel.** They now stay with the rest of the disc's tracks and are organized at the end, so when a disc goes to review you can reassign a misdetected extra (e.g. a dual-episode track) to an episode before it is filed. (#449)
+- **Settings button now shows a gear icon instead of a sun/starburst.** The previous `IcoSettings` icon drew evenly-spaced radial spokes — the universal symbol for brightness controls. It has been replaced with the standard Lucide gear (rounded 8-tab outer shell with a center bore), which is universally recognized as a settings trigger. (#451)
 
 ## [0.21.11] - 2026-06-23
 
