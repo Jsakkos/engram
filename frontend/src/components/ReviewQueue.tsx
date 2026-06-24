@@ -5,7 +5,7 @@ import { Save, Package } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, type TitleAction } from './ReviewQueue/utils';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -157,8 +157,6 @@ function HeaderButton({
     );
 }
 
-type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
-
 function ReviewQueue() {
     const { jobId } = useParams<{ jobId: string }>();
     const navigate = useNavigate();
@@ -277,17 +275,10 @@ function ReviewQueue() {
                 const titlesData = await titlesResponse.json();
                 setTitles(titlesData);
 
-                // Pre-fill selections from existing match results
-                const episodes: Record<number, string> = {};
-                const actions: Record<number, TitleAction> = {};
-                titlesData.forEach((title: DiscTitle) => {
-                    if (title.matched_episode) {
-                        // Canonicalize so unpadded matcher output (e.g. "S1E14")
-                        // dedupes/collides against padded codes and the roster.
-                        episodes[title.id] = normalizeEpisodeCode(title.matched_episode);
-                        actions[title.id] = 'episode';
-                    }
-                });
+                // Pre-fill selections from existing match results. A deferred
+                // extra (matched_episode === "extra") pre-fills as the "extra"
+                // action so it shows selected as an extra and is reassignable.
+                const { episodes, actions } = buildInitialSelections(titlesData);
                 setSelectedEpisodes(episodes);
                 setTitleActions(actions);
             }

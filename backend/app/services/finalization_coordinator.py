@@ -168,6 +168,12 @@ def _detect_conflicts(titles) -> dict[str, list]:
     for t in titles:
         if not t.matched_episode:
             continue
+        # Deferred extras all carry the synthetic "extra" code and never collide
+        # (multiple bonus tracks coexist on one disc). Without this guard two+
+        # extras group as a fake "EXTRA" conflict and burn ASR re-match passes
+        # before the ladder exhausts. Mirrors finalize_disc_job's own guard.
+        if t.matched_episode == "extra":
+            continue
         if t.state == TitleState.MATCHED:
             by_ep.setdefault(_normalize_episode_code(t.matched_episode), []).append(t)
         elif t.state == TitleState.REVIEW and _is_rematchable_review(t):
@@ -627,6 +633,18 @@ class FinalizationCoordinator:
         if not job:
             return
 
+        # Guard: never re-enter finalization logic on a terminal job. A concurrent
+        # watchdog call or a late-completing match task can race the normal path
+        # and call check_job_completion after the job is already COMPLETED/FAILED.
+        # Without this guard, finalize_disc_job runs on a dead job, organizes
+        # files, and then produces an "Invalid state transition: failed→completed"
+        # warning when Phase 3 can't move the terminal state forward.
+        if job.state in (JobState.COMPLETED, JobState.FAILED):
+            logger.debug(
+                f"Job {job_id}: already terminal ({job.state.value}), skipping completion check"
+            )
+            return
+
         statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
         result = await session.execute(statement)
         titles = result.scalars().all()
@@ -979,10 +997,21 @@ class FinalizationCoordinator:
             # and the watchdog clock is reset off this transition. Same-state (the
             # movie staging-import path is already ORGANIZING) re-broadcasts
             # harmlessly. The transition's commit also flushes the conflict-loop
-            # reassignments. If somehow rejected, log and organize anyway — staged
-            # files must still be moved.
+            # reassignments. If the transition is rejected because the job is
+            # already terminal (COMPLETED/FAILED), abort — organizing files for a
+            # dead job produces the "failed→completed" invalid-transition warning
+            # and moves files without updating the DB correctly.
             organizing_ok = await self._state_machine.transition_to_organizing(job, session)
             if not organizing_ok:
+                if job.state in (JobState.COMPLETED, JobState.FAILED):
+                    logger.warning(
+                        f"Job {job_id}: job is already {job.state.value}; "
+                        "aborting finalization to avoid organizing a terminal job"
+                    )
+                    return
+                # Non-terminal fallback: still organize. REVIEW_NEEDED→ORGANIZING is
+                # blocked by the state machine, but REVIEW_NEEDED→COMPLETED is valid,
+                # so Phase 2 + 3 can close the job cleanly without entering ORGANIZING.
                 logger.warning(
                     f"Job {job_id}: could not enter ORGANIZING from {job.state.value}; "
                     "organizing anyway"
@@ -1375,6 +1404,11 @@ class FinalizationCoordinator:
             title.matched_episode = episode_code
             if episode_code == "extra":
                 title.is_extra = True
+            elif episode_code != "skip":
+                # Reassigning a (possibly auto-detected) extra to a real episode
+                # must clear the extra flag so finalize files it as an episode,
+                # not back into Extras/.
+                title.is_extra = False
 
         if edition:
             title.edition = edition

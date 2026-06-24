@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Auto-detected extras are no longer filed away mid-rip and frozen in the review panel. They now stay with the rest of the disc's tracks and are organized at the end, so when a disc goes to review you can reassign a misdetected extra (e.g. a dual-episode track) to an episode before it is filed.
+
 ## [0.21.11] - 2026-06-23
 
 _Highlights: disc-hash fingerprint identification is now on by default for all installs, and the Reassign Track dropdown correctly shows the disc's actual season._

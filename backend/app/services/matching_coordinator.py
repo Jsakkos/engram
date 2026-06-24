@@ -1547,75 +1547,35 @@ class MatchingCoordinator:
             await self._check_job_completion(session, job_id)
             return True
 
-        # Default: "keep" — organize to extras folder
-        from app.core.organizer import organize_tv_extras
-
-        # Count existing extras for this job to determine index
-        extras_count = 0
-        all_titles = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
-        for t in all_titles.scalars():
-            if t.match_details:
-                try:
-                    details = json.loads(t.match_details)
-                    if details.get("auto_sorted") == "extras":
-                        extras_count += 1
-                except (json.JSONDecodeError, KeyError, TypeError):
-                    pass
-
-        extra_index = extras_count + 1
-
-        org_result = await asyncio.to_thread(
-            organize_tv_extras,
-            file_path,
-            job.detected_title,
-            job.detected_season,
-            None,
-            job.disc_number,
-            extra_index,
-            title.title_index,
-            tmdb_id=str(job.tmdb_id) if job.tmdb_id else None,
-            year=job.tmdb_year,
+        # Default: "keep" — defer organization to end-of-disc finalize.
+        # The extra rides the normal MATCHED -> finalize path like any other
+        # track: a cleanly-matched disc files it into Extras/ at finalize and
+        # auto-completes, while a disc that goes to review shows it as an
+        # ordinary, reassignable track (pre-labelled "extra"). Organizing here
+        # would set COMPLETED early and freeze it in the review UI's read-only
+        # "Processed" list — the bug this fixes.
+        title.state = TitleState.MATCHED
+        title.is_extra = True
+        title.matched_episode = "extra"
+        # Deliberate classification, not a low-confidence ASR guess. A high
+        # confidence keeps the review page's first-unresolved-title focus from
+        # landing on an already-decided extra instead of a real REVIEW title.
+        title.match_confidence = 1.0
+        title.match_details = json.dumps(
+            {
+                "auto_sorted": "extras",
+                "action": "deferred",
+                "reason": f"Duration {title_minutes:.0f}min doesn't match episode runtimes",
+            }
         )
-        if org_result["success"]:
-            title.state = TitleState.COMPLETED
-            title.organized_from = file_path.name
-            title.organized_to = (
-                str(org_result.get("final_path")) if org_result.get("final_path") else None
-            )
-            title.is_extra = True
-            title.match_details = json.dumps(
-                {
-                    "auto_sorted": "extras",
-                    "action": "kept",
-                    "reason": f"Duration {title_minutes:.0f}min doesn't match episode runtimes",
-                }
-            )
-        else:
-            title.state = TitleState.COMPLETED
-            # The duration pre-filter already classified this as an extra; the
-            # only thing that failed is the file move (e.g. destination exists
-            # from a previous rip). Tag it so the UI still shows EXTRA — without
-            # this, a re-run hides the chip on every collided extra.
-            title.is_extra = True
-            title.match_details = json.dumps(
-                {
-                    "auto_sorted": "extras",
-                    "action": "kept",
-                    "organize_error": org_result["error"],
-                }
-            )
-            logger.warning(
-                f"[MATCH] Title {title_id}: extras organize failed: {org_result['error']}"
-            )
         session.add(title)
         await session.commit()
         await ws_manager.broadcast_title_update(
             job_id,
             title.id,
             title.state.value,
-            organized_from=title.organized_from,
-            organized_to=title.organized_to,
-            output_filename=title.output_filename,
+            matched_episode=title.matched_episode,
+            match_confidence=title.match_confidence,
             is_extra=title.is_extra,
             match_details=title.match_details,
         )

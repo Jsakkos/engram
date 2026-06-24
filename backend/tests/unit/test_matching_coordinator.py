@@ -105,15 +105,17 @@ class TestHandleExtras:
             assert title.is_extra is True
             assert json.loads(title.match_details)["action"] == "review"
 
-    async def test_keep_policy_organizes_to_extras(self, monkeypatch, tmp_path):
+    async def test_keep_policy_defers_as_matched_extra(self, monkeypatch, tmp_path):
+        """keep no longer organizes mid-match. The extra rests as MATCHED with the
+        synthetic "extra" code so it rides the normal end-of-disc finalize path
+        (auto-files into Extras/ on a clean disc, or stays editable if the disc
+        goes to review). Organizing here would set COMPLETED early and freeze the
+        title in the review UI's read-only "Processed" list."""
         _patch_config(monkeypatch, "keep")
         import app.core.organizer as org
 
-        monkeypatch.setattr(
-            org,
-            "organize_tv_extras",
-            Mock(return_value={"success": True, "final_path": "/lib/tv/Show/Extras/x.mkv"}),
-        )
+        org_spy = Mock()
+        monkeypatch.setattr(org, "organize_tv_extras", org_spy)
         coord = _make_coord()
         async with _unit_session_factory() as session:
             job, title = await _seed(session)
@@ -121,63 +123,14 @@ class TestHandleExtras:
                 job.id, title.id, title, job, tmp_path / "x.mkv", 10.0, [22, 44], session
             )
             assert handled is True
-            assert title.state == TitleState.COMPLETED
+            assert title.state == TitleState.MATCHED
             assert title.is_extra is True
-            assert title.organized_to == "/lib/tv/Show/Extras/x.mkv"
-            assert json.loads(title.match_details)["action"] == "kept"
-
-    async def test_keep_policy_records_organize_error(self, monkeypatch, tmp_path):
-        _patch_config(monkeypatch, "keep")
-        import app.core.organizer as org
-
-        monkeypatch.setattr(
-            org,
-            "organize_tv_extras",
-            Mock(return_value={"success": False, "error": "boom"}),
-        )
-        coord = _make_coord()
-        async with _unit_session_factory() as session:
-            job, title = await _seed(session)
-            await coord._handle_extras(
-                job.id, title.id, title, job, tmp_path / "x.mkv", 10.0, [22, 44], session
-            )
-            assert title.state == TitleState.COMPLETED
-            # The title IS an extra — the duration pre-filter classified it as one;
-            # the move just failed (e.g. destination already exists from a previous
-            # rip). The UI should still show it as EXTRA, not as a vanilla completed
-            # track. Without this flag, the chip silently disappears.
-            assert title.is_extra is True
-            assert json.loads(title.match_details)["organize_error"] == "boom"
-
-    async def test_keep_policy_threads_tmdb_id_and_year(self, monkeypatch, tmp_path):
-        """When job carries tmdb_id + tmdb_year, organize_tv_extras must receive them
-        as kwargs — otherwise match-time extras land in the bare show folder instead
-        of the disambiguated one (e.g. "Frasier/..." vs "Frasier (1993) {tmdb-3452}/...").
-        """
-        _patch_config(monkeypatch, "keep")
-        import app.core.organizer as org
-
-        mock_org = Mock(return_value={"success": True, "final_path": "/lib/tv/Show/Extras/x.mkv"})
-        monkeypatch.setattr(org, "organize_tv_extras", mock_org)
-        coord = _make_coord()
-        async with _unit_session_factory() as session:
-            job, title = await _seed(session)
-            # Simulate a job that has been identified with a specific TMDB entry.
-            job.tmdb_id = 3452
-            job.tmdb_year = 1993
-            session.add(job)
-            await session.commit()
-            await session.refresh(job)
-            await coord._handle_extras(
-                job.id, title.id, title, job, tmp_path / "x.mkv", 10.0, [22, 44], session
-            )
-
-        mock_org.assert_called_once()
-        kwargs = mock_org.call_args.kwargs
-        assert kwargs["tmdb_id"] == "3452", (
-            f"expected tmdb_id='3452', got {kwargs.get('tmdb_id')!r}"
-        )
-        assert kwargs["year"] == 1993, f"expected year=1993, got {kwargs.get('year')!r}"
+            assert title.matched_episode == "extra"
+            assert title.organized_to is None
+            assert title.match_confidence == 1.0
+            assert json.loads(title.match_details)["action"] == "deferred"
+        org_spy.assert_not_called()
+        coord._check_job_completion.assert_awaited_once()
 
 
 # Real TMDB Season 1 runtimes from the job-41 bundle (max 44, min 39).
