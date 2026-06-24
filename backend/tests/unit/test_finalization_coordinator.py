@@ -563,6 +563,44 @@ class TestCheckJobCompletion:
         assert job.state == JobState.FAILED
         coord.finalize_disc_job.assert_not_called()
 
+    async def test_already_completed_job_skips_finalization(self, tmp_path):
+        """check_job_completion must not call finalize on an already-COMPLETED job.
+
+        Regression guard for the watchdog-race bug (job 228): when a concurrent
+        reconcile_and_advance races the normal completion path, check_job_completion
+        can be called after the job is already terminal.  Without the guard it would
+        see has_matched=True and call finalize_disc_job on a dead job.
+        """
+        job_id = await _seed_job([(0, "S01E01", None, TitleState.MATCHED)], staging=str(tmp_path))
+        async with _unit_session_factory() as s:
+            job = await s.get(DiscJob, job_id)
+            job.state = JobState.COMPLETED
+            await s.commit()
+
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+        coord.finalize_disc_job.assert_not_called()
+
+    async def test_already_failed_job_skips_finalization(self, tmp_path):
+        """check_job_completion must not call finalize on an already-FAILED job.
+
+        Same watchdog-race guard: a FAILED job with some MATCHED titles (e.g.
+        deferred extras) must not re-enter finalize_disc_job.
+        """
+        job_id = await _seed_job([(0, "S01E01", None, TitleState.MATCHED)], staging=str(tmp_path))
+        async with _unit_session_factory() as s:
+            job = await s.get(DiscJob, job_id)
+            job.state = JobState.FAILED
+            await s.commit()
+
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+        coord.finalize_disc_job.assert_not_called()
+
     async def test_conflict_escalation_short_circuits_finalize(self, tmp_path):
         job_id = await _seed_job(
             [
