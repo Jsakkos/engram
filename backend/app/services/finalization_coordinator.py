@@ -1003,6 +1003,9 @@ class FinalizationCoordinator:
                         "aborting finalization to avoid organizing a terminal job"
                     )
                     return
+                # Non-terminal fallback: still organize. REVIEW_NEEDED→ORGANIZING is
+                # blocked by the state machine, but REVIEW_NEEDED→COMPLETED is valid,
+                # so Phase 2 + 3 can close the job cleanly without entering ORGANIZING.
                 logger.warning(
                     f"Job {job_id}: could not enter ORGANIZING from {job.state.value}; "
                     "organizing anyway"
