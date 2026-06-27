@@ -1,6 +1,7 @@
 """Database setup with SQLModel and async SQLite."""
 
 import logging
+import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -309,8 +310,6 @@ async def _seed_headless_defaults() -> None:
     (row already present) are untouched, so a user who explicitly disabled
     LAN access via the settings UI keeps their preference.
     """
-    import os
-
     if os.environ.get("ENGRAM_HEADLESS") != "1":
         return
 
