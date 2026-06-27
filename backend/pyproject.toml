@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "alembic>=1.13.0",
+    "alembic>=1.18.5",
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "sqlmodel>=0.0.14",
