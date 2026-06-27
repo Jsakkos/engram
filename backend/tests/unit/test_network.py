@@ -84,6 +84,12 @@ class TestReadAllowLanSync:
         monkeypatch.setattr(config_service, "_get_sync_engine", lambda: engine)
         assert config_service.read_allow_lan_sync() is False
 
+    def test_returns_none_when_table_has_no_rows(self, tmp_path, monkeypatch):
+        """An empty table means 'not yet configured' — distinct from explicit False."""
+        engine = self._engine_with(tmp_path, value=None)  # table exists, no rows inserted
+        monkeypatch.setattr(config_service, "_get_sync_engine", lambda: engine)
+        assert config_service.read_allow_lan_sync() is None
+
 
 class TestResolveStartupHost:
     """Host resolution must never crash on a config read (the schema-drift bug)."""
