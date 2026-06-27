@@ -7,6 +7,8 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - **Settings toggle to disable automatic disc ejection.** A new "Auto-Eject Disc When Ripping Completes" checkbox in Settings → Preferences → Maintenance & watchdog controls whether Engram ejects the disc when ripping finishes. Enabled by default (preserving existing behavior); disable to keep the disc loaded for manual verification or re-ripping without re-inserting.
+- Headless server build variants for Linux: `engram-linux-x64-headless` and `engram-linux-arm64-headless`. These skip browser auto-launch and default `allow_lan_access` to `True` on first run so the dashboard is reachable from another machine without any manual configuration. Intended for NAS, Raspberry Pi, Jellyfin server, and other headless deployments.
+- Docker image now publishes both `linux/amd64` and `linux/arm64` layers.
 
 ## [0.21.12] - 2026-06-23
 
