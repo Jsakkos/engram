@@ -25,12 +25,11 @@ async def test_headless_seeds_allow_lan_on_empty_table(mem_engine, monkeypatch):
     """ENGRAM_HEADLESS=1 + empty app_config seeds allow_lan_access=True."""
     monkeypatch.setenv("ENGRAM_HEADLESS", "1")
     import app.database as db_module
-    from app.database import _seed_headless_defaults
 
     session_factory = sessionmaker(mem_engine, class_=AsyncSession, expire_on_commit=False)
     monkeypatch.setattr(db_module, "async_session", session_factory)
 
-    await _seed_headless_defaults()
+    await db_module._seed_headless_defaults()
 
     async with session_factory() as session:
         row = (
@@ -45,7 +44,6 @@ async def test_headless_does_not_overwrite_existing_config(mem_engine, monkeypat
     """ENGRAM_HEADLESS=1 + existing row with allow_lan=False leaves it unchanged."""
     monkeypatch.setenv("ENGRAM_HEADLESS", "1")
     import app.database as db_module
-    from app.database import _seed_headless_defaults
 
     session_factory = sessionmaker(mem_engine, class_=AsyncSession, expire_on_commit=False)
     monkeypatch.setattr(db_module, "async_session", session_factory)
@@ -55,7 +53,7 @@ async def test_headless_does_not_overwrite_existing_config(mem_engine, monkeypat
         session.add(AppConfig(allow_lan_access=False))
         await session.commit()
 
-    await _seed_headless_defaults()
+    await db_module._seed_headless_defaults()
 
     async with session_factory() as session:
         row = (
@@ -69,12 +67,11 @@ async def test_non_headless_does_not_seed(mem_engine, monkeypatch):
     """Without ENGRAM_HEADLESS=1, _seed_headless_defaults is a no-op."""
     monkeypatch.delenv("ENGRAM_HEADLESS", raising=False)
     import app.database as db_module
-    from app.database import _seed_headless_defaults
 
     session_factory = sessionmaker(mem_engine, class_=AsyncSession, expire_on_commit=False)
     monkeypatch.setattr(db_module, "async_session", session_factory)
 
-    await _seed_headless_defaults()
+    await db_module._seed_headless_defaults()
 
     async with session_factory() as session:
         row = (await session.execute(text("SELECT id FROM app_config LIMIT 1"))).first()
