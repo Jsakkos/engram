@@ -505,7 +505,6 @@ jobs:
       - name: Smoke test built executable
         env:
           PORT: "8765"
-          HOST: "127.0.0.1"
         run: |
           ./backend/dist/engram/engram > smoke-stdout.log 2> smoke-stderr.log &
           BACKEND_PID=$!
@@ -636,7 +635,6 @@ jobs:
       - name: Smoke test built executable
         env:
           PORT: "8765"
-          HOST: "127.0.0.1"
         run: |
           ./backend/dist/engram/engram > smoke-stdout.log 2> smoke-stderr.log &
           BACKEND_PID=$!
