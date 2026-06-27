@@ -123,13 +123,16 @@ def main() -> None:
         app.state.bound_host = host
         app.state.bound_port = port
 
-        if frozen:
+        headless = os.environ.get("ENGRAM_HEADLESS") == "1"
+        if frozen and not headless:
             # Open browser after a short delay to let the server bind the port.
             # When bound to all interfaces, open localhost (http://0.0.0.0 is not
             # a valid client address); LAN clients use the address shown in the UI.
             browser_host = "localhost" if host == ALL_INTERFACES else host
             url = f"http://{browser_host}:{port}"
             _schedule_browser_open(url, updated="--updated" in sys.argv[1:])
+        elif frozen and headless:
+            logger.info(f"Headless mode: dashboard available at http://{host}:{port}")
 
         uvicorn.run(
             app,

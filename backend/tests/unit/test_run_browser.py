@@ -18,6 +18,20 @@ class _FakeTimer:
         self.fn(*self.args, **self.kwargs)
 
 
+def test_headless_main_skips_schedule_browser_open(monkeypatch):
+    """main() must not call _schedule_browser_open when ENGRAM_HEADLESS=1."""
+    scheduled = []
+    monkeypatch.setenv("ENGRAM_HEADLESS", "1")
+    monkeypatch.setattr(run, "_schedule_browser_open", lambda url, **kw: scheduled.append(url))
+    monkeypatch.setattr("app.config.is_frozen", lambda: True)
+    monkeypatch.setattr("app.core.network.resolve_startup_host", lambda *a, **kw: "127.0.0.1")
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: None)
+    run.main()
+    assert scheduled == [], "headless build must not open a browser"
+
+
 def test_normal_launch_opens_tab(monkeypatch):
     opened = []
     monkeypatch.setattr(threading, "Timer", _FakeTimer)
