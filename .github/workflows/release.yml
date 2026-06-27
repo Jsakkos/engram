@@ -532,13 +532,6 @@ jobs:
             echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
             exit 1
           fi
-          lan=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/config \
-            | python3 -c "import sys, json; print(json.load(sys.stdin)['allow_lan_access'])" 2>/dev/null) || true
-          echo "allow_lan_access: $lan"
-          if [ "$lan" != "True" ]; then
-            echo "headless build did not seed allow_lan_access=True"
-            exit 1
-          fi
           fpcalc_found=""
           for i in $(seq 1 4); do
             fpcalc_found=$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/detect-tools \
@@ -553,6 +546,13 @@ jobs:
           done
           if [ "$fpcalc_found" != "True" ]; then
             echo "bundled fpcalc was not detected"
+            exit 1
+          fi
+          lan=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/config \
+            | python3 -c "import sys, json; print(json.load(sys.stdin)['allow_lan_access'])" 2>/dev/null) || true
+          echo "allow_lan_access: $lan"
+          if [ "$lan" != "True" ]; then
+            echo "headless build did not seed allow_lan_access=True"
             exit 1
           fi
           echo "smoke test passed"
@@ -663,13 +663,6 @@ jobs:
             echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
             exit 1
           fi
-          lan=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/config \
-            | python3 -c "import sys, json; print(json.load(sys.stdin)['allow_lan_access'])" 2>/dev/null) || true
-          echo "allow_lan_access: $lan"
-          if [ "$lan" != "True" ]; then
-            echo "headless build did not seed allow_lan_access=True"
-            exit 1
-          fi
           fpcalc_found=""
           for i in $(seq 1 4); do
             fpcalc_found=$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/detect-tools \
@@ -684,6 +677,13 @@ jobs:
           done
           if [ "$fpcalc_found" != "True" ]; then
             echo "bundled fpcalc was not detected"
+            exit 1
+          fi
+          lan=$(curl -fsS --max-time 5 http://127.0.0.1:8765/api/config \
+            | python3 -c "import sys, json; print(json.load(sys.stdin)['allow_lan_access'])" 2>/dev/null) || true
+          echo "allow_lan_access: $lan"
+          if [ "$lan" != "True" ]; then
+            echo "headless build did not seed allow_lan_access=True"
             exit 1
           fi
           echo "smoke test passed"
