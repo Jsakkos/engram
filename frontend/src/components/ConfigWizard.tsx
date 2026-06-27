@@ -113,6 +113,7 @@ interface ConfigData {
     ffmpegPath: string;
     conflictResolutionDefault: string;
     episodeOrderingPreference: 'aired' | 'dvd';
+    autoEjectEnabled: boolean;
     watchdogEnabled: boolean;
     timeoutIdentifyingSeconds: number;
     timeoutRippingSeconds: number;
@@ -191,6 +192,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         ffmpegPath: '',
         conflictResolutionDefault: 'ask',
         episodeOrderingPreference: 'aired',
+        autoEjectEnabled: true,
         watchdogEnabled: true,
         timeoutIdentifyingSeconds: 600,
         timeoutRippingSeconds: 1200,
@@ -302,6 +304,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ffmpegPath: data.ffmpeg_path || '',
                     conflictResolutionDefault: data.conflict_resolution_default || 'ask',
                     episodeOrderingPreference: data.episode_ordering_preference || 'aired',
+                    autoEjectEnabled: data.auto_eject_enabled ?? true,
                     watchdogEnabled: data.watchdog_enabled ?? true,
                     timeoutIdentifyingSeconds: data.timeout_identifying_seconds ?? 600,
                     timeoutRippingSeconds: data.timeout_ripping_seconds ?? 1200,
@@ -461,6 +464,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ffmpeg_path: config.ffmpegPath,
                     conflict_resolution_default: config.conflictResolutionDefault,
                     episode_ordering_preference: config.episodeOrderingPreference,
+                    auto_eject_enabled: config.autoEjectEnabled,
                     watchdog_enabled: config.watchdogEnabled,
                     timeout_identifying_seconds: config.timeoutIdentifyingSeconds,
                     timeout_ripping_seconds: config.timeoutRippingSeconds,
@@ -1425,6 +1429,26 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span className="wizard-group-chevron">▸</span>Maintenance &amp; watchdog
                             </summary>
                             <div className="wizard-group-body">
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.autoEjectEnabled}
+                                    onChange={(e) => handleInputChange('autoEjectEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Auto-Eject Disc When Ripping Completes</strong>
+                                    <span className="checkbox-hint">
+                                        Automatically eject the disc from the drive when ripping finishes.
+                                        Disable if you want to keep the disc loaded after ripping — for
+                                        manual verification or re-ripping without re-inserting the disc.
+                                        When disabled, after manually ejecting wait a few seconds before
+                                        inserting the next disc so it is reliably detected.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
 
                         <div className="form-group">
                             <label htmlFor="stagingCleanup">Staging Cleanup Policy</label>

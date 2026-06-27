@@ -2012,13 +2012,14 @@ class JobManager:
                         )
 
         # Free the drive for the next disc.
-        try:
-            from app.core.sentinel import eject_disc
+        if cfg and cfg.auto_eject_enabled:
+            try:
+                from app.core.sentinel import eject_disc
 
-            await asyncio.to_thread(eject_disc, drive_id)
-            self._drive_monitor.notify_ejected(drive_id)
-        except (OSError, RuntimeError) as e:
-            logger.warning(f"Job {sanitize_log_value(job_id)}: eject after re-rip failed: {e}")
+                await asyncio.to_thread(eject_disc, drive_id)
+                self._drive_monitor.notify_ejected(drive_id)
+            except (OSError, RuntimeError) as e:
+                logger.warning(f"Job {sanitize_log_value(job_id)}: eject after re-rip failed: {e}")
 
     async def rerip_title_manual(self, job_id: int, title_id: int) -> None:
         """Manually re-rip one title using the disc currently in the drive.
@@ -2440,13 +2441,14 @@ class JobManager:
                         )
 
             # Eject disc and reset sentinel state so a new disc insert is detected
-            try:
-                from app.core.sentinel import eject_disc
+            if rip_config and rip_config.auto_eject_enabled:
+                try:
+                    from app.core.sentinel import eject_disc
 
-                await asyncio.to_thread(eject_disc, drive_id)
-                self._drive_monitor.notify_ejected(drive_id)
-            except (OSError, RuntimeError) as e:
-                logger.warning(f"Could not eject disc from {drive_id}: {e}")
+                    await asyncio.to_thread(eject_disc, drive_id)
+                    self._drive_monitor.notify_ejected(drive_id)
+                except (OSError, RuntimeError) as e:
+                    logger.warning(f"Could not eject disc from {drive_id}: {e}")
 
             # Post-rip convergence (walk-away Phase B4): re-read the job row —
             # the locals captured at setup go stale once mid-rip identity

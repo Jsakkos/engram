@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings toggle to disable automatic disc ejection.** A new "Auto-Eject Disc When Ripping Completes" checkbox in Settings → Preferences → Maintenance & watchdog controls whether Engram ejects the disc when ripping finishes. Enabled by default (preserving existing behavior); disable to keep the disc loaded for manual verification or re-ripping without re-inserting.
+
 ## [0.21.12] - 2026-06-23
 
 _Highlights: two small fixes — auto-detected extras stay visible in review so you can reassign them before they are filed, and the settings button now uses the universally-recognized gear icon instead of a sun/starburst._

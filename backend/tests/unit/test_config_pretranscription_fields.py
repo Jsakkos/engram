@@ -14,6 +14,7 @@ from app.models.app_config import AppConfig
 FIELDS_AND_DEFAULTS = [
     ("enable_background_pretranscription", True),
     ("pretranscribe_full_file", False),
+    ("auto_eject_enabled", True),
 ]
 
 

@@ -180,6 +180,14 @@ never deleted regardless of this setting (the source folder is yours). See
 | `staging_cleanup_policy` | `"on_success"`, `"on_completion"`, `"manual"`, or `"after_days"` | `"on_success"` |
 | `staging_cleanup_days` | Retention period when policy is `"after_days"` | `7` |
 
+### Drive Behavior
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `auto_eject_enabled` | Eject the disc automatically when ripping finishes | `true` |
+
+Disable `auto_eject_enabled` if you want to keep the disc in the drive after ripping — for example, to manually verify the output or to re-rip a title without re-inserting the disc. Applies to both normal rips and re-rips triggered from the review queue.
+
 ### Naming Conventions
 
 Organized files follow these naming patterns:

@@ -350,6 +350,18 @@ class TestConfigEndpoints:
         assert config["enable_background_pretranscription"] is False
         assert config["pretranscribe_full_file"] is True
 
+    async def test_auto_eject_enabled_roundtrips(self, client):
+        """The auto-eject toggle must persist and read back correctly.
+
+        Gates disc ejection after ripping; if the API can't save/return it the
+        setting would silently reset to True on every reload.
+        """
+        await _seed_config()
+        r = await client.put("/api/config", json={"auto_eject_enabled": False})
+        assert r.status_code == 200
+        config = (await client.get("/api/config")).json()
+        assert config["auto_eject_enabled"] is False
+
     async def test_pretranscription_flags_unrelated_put_leaves_unchanged(self, client):
         """A PUT that omits both flags must not reset them to defaults."""
         await _seed_config()
