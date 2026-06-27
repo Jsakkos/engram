@@ -316,6 +316,8 @@ class ConfigResponse(BaseModel):
     timeout_ripping_seconds: int
     timeout_matching_seconds: int
     timeout_organizing_seconds: int
+    # Drive behavior
+    auto_eject_enabled: bool
     # Staging cleanup
     staging_cleanup_policy: str
     staging_cleanup_days: int
@@ -399,6 +401,8 @@ class ConfigUpdate(BaseModel):
     timeout_ripping_seconds: int | None = None
     timeout_matching_seconds: int | None = None
     timeout_organizing_seconds: int | None = None
+    # Drive behavior
+    auto_eject_enabled: bool | None = None
     # Staging cleanup
     staging_cleanup_policy: str | None = None
     staging_cleanup_days: int | None = None
@@ -1284,6 +1288,8 @@ async def get_config() -> ConfigResponse:
         timeout_ripping_seconds=config.timeout_ripping_seconds,
         timeout_matching_seconds=config.timeout_matching_seconds,
         timeout_organizing_seconds=config.timeout_organizing_seconds,
+        # Drive behavior
+        auto_eject_enabled=config.auto_eject_enabled,
         # Staging cleanup
         staging_cleanup_policy=config.staging_cleanup_policy,
         staging_cleanup_days=config.staging_cleanup_days,

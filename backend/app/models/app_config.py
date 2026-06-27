@@ -20,7 +20,11 @@ DEFAULT_FINGERPRINT_SERVER_URL = "https://api.engramfp.com"
 
 
 class AppConfig(SQLModel, table=True):
-    """User-configurable application settings stored in database."""
+    """User-configurable application settings stored in database.
+
+    Covers paths, API keys, matching parameters, ripping coordination, staging
+    cleanup, extras policy, naming conventions, and drive behavior (auto-eject).
+    """
 
     __tablename__ = "app_config"
 
@@ -117,6 +121,9 @@ class AppConfig(SQLModel, table=True):
     timeout_organizing_seconds: int = Field(
         default=600, sa_column_kwargs={"server_default": text("600")}
     )
+
+    # Drive behavior
+    auto_eject_enabled: bool = Field(default=True, sa_column_kwargs={"server_default": text("1")})
 
     # Staging Cleanup
     staging_cleanup_policy: str = (
