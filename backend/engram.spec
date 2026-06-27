@@ -9,6 +9,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
+# Set HEADLESS_BUILD=1 in the build environment to produce the headless/server variant.
+# The runtime hook bakes ENGRAM_HEADLESS=1 into the frozen binary so no env var is
+# needed at runtime — the binary carries its own default.
+HEADLESS = os.environ.get("HEADLESS_BUILD", "0") == "1"
+
 # Collect ALL app.* submodules so PyInstaller doesn't miss any
 app_hidden = collect_submodules("app")
 
@@ -125,7 +130,7 @@ a = Analysis(
     hiddenimports=all_hidden,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["hooks/rthook_headless.py"] if HEADLESS else [],
     excludes=[],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
