@@ -58,4 +58,5 @@ jobs:
             --ref "${{ steps.version.outputs.tag }}" \
             --field tag="${{ steps.version.outputs.tag }}"
           gh workflow run docker.yml \
-            --ref "${{ steps.version.outputs.tag }}"
+            --ref "${{ steps.version.outputs.tag }}" \
+            --field tag="${{ steps.version.outputs.tag }}"

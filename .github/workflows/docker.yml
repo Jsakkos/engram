@@ -55,8 +55,9 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=semver,pattern={{version}},value=${{ inputs.tag || github.ref }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref }}
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ env.IS_RELEASE }}
 
       # Build once and load locally so we can smoke test before publishing.
