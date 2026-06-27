@@ -117,3 +117,30 @@ class TestResolveStartupHost:
             patch("app.services.config_service.read_allow_lan_sync", return_value=False),
         ):
             assert resolve_startup_host() == "127.0.0.1"
+
+    def test_headless_first_run_binds_all_interfaces(self, monkeypatch):
+        """ENGRAM_HEADLESS=1 + no config row (None) must bind 0.0.0.0."""
+        monkeypatch.setenv("ENGRAM_HEADLESS", "1")
+        with (
+            patch("app.core.network._env_host", return_value=None),
+            patch("app.services.config_service.read_allow_lan_sync", return_value=None),
+        ):
+            assert resolve_startup_host() == "0.0.0.0"
+
+    def test_headless_user_disabled_lan_respects_setting(self, monkeypatch):
+        """ENGRAM_HEADLESS=1 + explicit False in DB must still bind localhost."""
+        monkeypatch.setenv("ENGRAM_HEADLESS", "1")
+        with (
+            patch("app.core.network._env_host", return_value=None),
+            patch("app.services.config_service.read_allow_lan_sync", return_value=False),
+        ):
+            assert resolve_startup_host() == "127.0.0.1"
+
+    def test_non_headless_first_run_binds_localhost(self, monkeypatch):
+        """Without ENGRAM_HEADLESS, None from read_allow_lan_sync falls back to localhost."""
+        monkeypatch.delenv("ENGRAM_HEADLESS", raising=False)
+        with (
+            patch("app.core.network._env_host", return_value=None),
+            patch("app.services.config_service.read_allow_lan_sync", return_value=None),
+        ):
+            assert resolve_startup_host() == "127.0.0.1"

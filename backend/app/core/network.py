@@ -40,19 +40,30 @@ def resolve_startup_host(default_host: str = LOCALHOST) -> str:
 
     Called before the event loop exists, so it uses the synchronous config
     reader. Any failure (e.g. DB tables not yet created on first run) falls
-    back to the safe default — the LAN toggle defaults off anyway.
+    back to the safe default.
+
+    Headless builds (ENGRAM_HEADLESS=1) default to binding all interfaces on
+    first run (when no config row exists yet). Once the row is seeded by
+    _seed_headless_defaults() inside init_db(), the persisted value is used on
+    subsequent runs — including if the user explicitly disables LAN access via
+    the settings UI.
     """
-    allow_lan = False
+    lan_setting: bool | None
     try:
         from app.services.config_service import read_allow_lan_sync
 
-        # Narrow single-column read: tolerates schema drift (a new AppConfig
-        # column not yet reconciled into an existing DB) that a full-row SELECT
-        # would choke on at this pre-init_db point.
-        allow_lan = read_allow_lan_sync()
+        lan_setting = read_allow_lan_sync()
     except Exception as e:  # noqa: BLE001 — startup must never crash on a config read
         logger.warning("Could not read LAN access setting, binding localhost: %s", e, exc_info=True)
-        allow_lan = False
+        lan_setting = False
+
+    if lan_setting is None:
+        # No config row yet. Headless builds default to LAN access so the UI
+        # is reachable from another machine on first run.
+        allow_lan = os.environ.get("ENGRAM_HEADLESS") == "1"
+    else:
+        allow_lan = lan_setting
+
     return compute_effective_host(
         allow_lan=allow_lan, env_host=_env_host(), default_host=default_host
     )
