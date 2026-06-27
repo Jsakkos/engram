@@ -1443,6 +1443,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         Automatically eject the disc from the drive when ripping finishes.
                                         Disable if you want to keep the disc loaded after ripping — for
                                         manual verification or re-ripping without re-inserting the disc.
+                                        When disabled, after manually ejecting wait a few seconds before
+                                        inserting the next disc so it is reliably detected.
                                     </span>
                                 </span>
                             </label>
