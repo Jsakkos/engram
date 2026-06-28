@@ -2559,6 +2559,53 @@ async def import_preview(req: ImportPathRequest) -> dict:
     }
 
 
+@router.post("/import/start")
+async def import_start(req: ImportStartRequest) -> dict:
+    """Create one import job per (show, season) unit from a chosen path.
+
+    Each job gets an explicit file manifest, so nested Disc/ files import
+    correctly. Remembers the path and destination as the next defaults.
+    """
+    from app.core import import_scanner
+    from app.services import config_service
+    from app.services.job_manager import job_manager
+
+    if req.destination_mode not in ("library", "in_place"):
+        raise HTTPException(status_code=400, detail="Invalid destination_mode")
+
+    p = Path(req.path).expanduser()
+    if not p.exists():
+        raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
+
+    scan = await asyncio.to_thread(import_scanner.scan, p)
+    if not scan.units:
+        raise HTTPException(status_code=400, detail="No MKV files found to import")
+
+    root_str = str(scan.root)
+    job_ids: list[int] = []
+    for unit in scan.units:
+        files = [str(f) for f in unit.files]
+        staging = str(Path(files[0]).parent) if len(files) == 1 else os.path.commonpath(files)
+        manifest = {"root": root_str, "files": files}
+        jid = await job_manager.create_job_from_staging(
+            staging_path=staging,
+            content_type="tv" if unit.season is not None else "unknown",
+            detected_title=unit.show_name,
+            detected_season=unit.season,
+            destination_mode=req.destination_mode,
+            drive_id="import",
+            import_manifest=manifest,
+        )
+        if jid != -1:
+            job_ids.append(jid)
+
+    await config_service.update_config(
+        import_watch_path=req.path, import_destination_mode=req.destination_mode
+    )
+    logger.info("Import start: %s -> %d job(s)", sanitize_log_value(req.path), len(job_ids))
+    return {"job_ids": job_ids}
+
+
 class StagingImportRequest(BaseModel):
     """Request model for importing pre-ripped MKV files from a staging directory."""
 

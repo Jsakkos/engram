@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
+from app.database import async_session, init_db
 from app.main import app
 
 
@@ -61,4 +63,47 @@ async def test_preview_groups_per_season(client, tmp_path: Path):
 
 async def test_preview_bad_path_400(client, tmp_path: Path):
     res = await client.post("/api/import/preview", json={"path": str(tmp_path / "nope")})
+    assert res.status_code == 400
+
+
+@pytest.fixture(autouse=True)
+async def _clean_import_jobs():
+    # start creates real jobs; clean import rows around each test in this module.
+    await init_db()
+    async with async_session() as session:
+        await session.execute(text("DELETE FROM disc_titles"))
+        await session.execute(text("DELETE FROM disc_jobs WHERE drive_id = 'import'"))
+        await session.commit()
+    yield
+    async with async_session() as session:
+        await session.execute(text("DELETE FROM disc_titles"))
+        await session.execute(text("DELETE FROM disc_jobs WHERE drive_id = 'import'"))
+        await session.commit()
+
+
+async def test_start_creates_one_job_per_season_with_manifest(client, tmp_path: Path):
+    show = tmp_path / "The King of Queens (1998)"
+    _mkv(show / "Season 1" / "Disc 1" / "a.mkv")
+    _mkv(show / "Season 2" / "Disc 1" / "b.mkv")
+
+    res = await client.post(
+        "/api/import/start", json={"path": str(show), "destination_mode": "library"}
+    )
+    assert res.status_code == 200
+    job_ids = res.json()["job_ids"]
+    assert len(job_ids) == 2
+
+    async with async_session() as session:
+        from app.models.disc_job import DiscJob
+
+        for jid in job_ids:
+            job = await session.get(DiscJob, jid)
+            assert job is not None
+            assert job.drive_id == "import"
+            assert job.import_manifest_json is not None
+
+
+async def test_start_no_mkvs_400(client, tmp_path: Path):
+    (tmp_path / "empty").mkdir()
+    res = await client.post("/api/import/start", json={"path": str(tmp_path / "empty")})
     assert res.status_code == 400
