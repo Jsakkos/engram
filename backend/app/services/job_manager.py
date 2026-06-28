@@ -761,6 +761,7 @@ class JobManager:
         detected_season: int | None = None,
         destination_mode: str = "library",
         drive_id: str = "staging",
+        import_manifest: dict | None = None,
     ) -> int:
         """Create a job from pre-ripped MKV files in a staging directory."""
         from sqlmodel import select as sa_select
@@ -811,6 +812,8 @@ class JobManager:
                     job.detected_title = detected_title
                 if detected_season is not None:
                     job.detected_season = detected_season
+                if import_manifest is not None:
+                    job.import_manifest_json = json.dumps(import_manifest)
 
                 session.add(job)
                 await session.commit()

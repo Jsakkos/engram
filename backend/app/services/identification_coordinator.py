@@ -845,7 +845,12 @@ class IdentificationCoordinator:
                 await self._broadcaster.broadcast_job_state_changed(job_id, JobState.IDENTIFYING)
 
                 staging_dir = Path(job.staging_path)
-                mkv_files = sorted(staging_dir.glob("*.mkv"))
+                if job.import_manifest_json:
+                    manifest = json.loads(job.import_manifest_json)
+                    mkv_files = sorted(Path(f) for f in manifest.get("files", []))
+                    mkv_files = [f for f in mkv_files if f.exists()]
+                else:
+                    mkv_files = sorted(staging_dir.glob("*.mkv"))
 
                 if not mkv_files:
                     await self._state_machine.transition_to_failed(
