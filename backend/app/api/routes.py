@@ -5,8 +5,10 @@ import io
 import ipaddress
 import json
 import logging
+import os
 import platform
 import re
+import string
 import sys
 import zipfile
 from collections import Counter
@@ -2463,6 +2465,56 @@ async def debug_seed_fingerprint(session: AsyncSession = Depends(get_session)) -
     await session.commit()
     await session.refresh(row)
     return {"ok": True, "contribution_id": row.id}
+
+
+@router.get("/import/browse")
+async def import_browse(path: str = "") -> dict:
+    """Read-only directory listing for the manual-import picker.
+
+    Localhost-only (CORS-restricted). Returns directory names with a shallow
+    direct-child MKV count, plus selectable .mkv files. Never returns file
+    contents. Empty path returns the drive roots (Windows) or / and home (POSIX).
+    """
+    if not path:
+        if os.name == "nt":
+            roots = [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+        else:
+            roots = ["/", str(Path.home())]
+        return {"cwd": None, "parent": None, "roots": roots, "entries": []}
+
+    try:
+        p = Path(path).expanduser().resolve()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Invalid path") from exc
+    if not p.exists() or not p.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {path}")
+
+    entries: list[dict] = []
+    try:
+        for entry in os.scandir(p):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    count = 0
+                    try:
+                        for f in os.scandir(entry.path):
+                            if f.is_file(follow_symlinks=False) and f.name.lower().endswith(".mkv"):
+                                count += 1
+                    except OSError:
+                        count = 0
+                    entries.append(
+                        {"name": entry.name, "path": entry.path, "type": "dir", "mkv_count": count}
+                    )
+                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".mkv"):
+                    entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
+            except OSError:
+                continue
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Cannot read directory") from exc
+
+    entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+    parent = str(p.parent) if p.parent != p else None
+    logger.info("Import browse: %s (%d entries)", sanitize_log_value(str(p)), len(entries))
+    return {"cwd": str(p), "parent": parent, "roots": [], "entries": entries}
 
 
 class StagingImportRequest(BaseModel):
