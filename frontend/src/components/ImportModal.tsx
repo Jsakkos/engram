@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { IcoLibrary, IcoFilter, IcoError } from "../app/components/icons";
 import { SvPanel, sv } from "../app/components/synapse";
@@ -33,6 +33,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [destMode, setDestMode] = useState<"library" | "in_place">(defaultDestinationMode);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const navigate = useCallback(async (path: string) => {
     setError(null);
@@ -50,6 +51,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   useEffect(() => {
     navigate(defaultPath || "");
   }, [navigate, defaultPath]);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   const choose = useCallback(async (path: string) => {
     setSelected(path);
@@ -86,7 +91,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
 
   return (
     <motion.div
+      ref={dialogRef}
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ outline: "none" }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
