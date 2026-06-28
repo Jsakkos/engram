@@ -45,6 +45,17 @@ jobs:
           # When dispatched with an explicit tag, check out that tag's code.
           ref: ${{ inputs.tag || github.sha }}
 
+      # Guard against manual dispatches where inputs.tag is set but the workflow
+      # was triggered from a branch ref instead of the tag ref. In that case
+      # github.ref is not a tag, so metadata-action produces no semver tags even
+      # though IS_RELEASE=true — only 'latest' would be pushed. Fail early.
+      - name: Verify ref is a tag for release builds
+        if: inputs.tag != '' && !startsWith(github.ref, 'refs/tags/')
+        run: |
+          echo "::error::inputs.tag is set but github.ref is '${{ github.ref }}' (not a tag ref)."
+          echo "::error::Dispatch with --ref <tag> (e.g. gh workflow run docker.yml --ref v1.2.3) so semver tags are computed correctly."
+          exit 1
+
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v4
@@ -58,6 +69,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern=v{{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern=v{{major}}.{{minor}}
             type=raw,value=latest,enable=${{ env.IS_RELEASE }}
 
       # Build once and load locally so we can smoke test before publishing.
