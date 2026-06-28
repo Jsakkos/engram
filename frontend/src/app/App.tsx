@@ -12,6 +12,7 @@ import { useUpdateSuccessToast } from "./hooks/useUpdateSuccessToast";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
+import ImportModal from "../components/ImportModal";
 import SeasonPromptModal from "../components/SeasonPromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
 import BugReportModal from "../components/BugReportModal";
@@ -71,6 +72,9 @@ function MainDashboard() {
   const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [namePromptJob, setNamePromptJob] = useState<Job | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importDefaultPath, setImportDefaultPath] = useState("");
+  const [importDefaultMode, setImportDefaultMode] = useState<"library" | "in_place">("library");
   const [seasonPromptJob, setSeasonPromptJob] = useState<Job | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("expanded");
   const [platform, setPlatform] = useState<string | null>(null);
@@ -136,6 +140,17 @@ function MainDashboard() {
     };
     detectPlatform();
   }, []);
+
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (!cfg) return;
+        setImportDefaultPath(cfg.import_watch_path || "");
+        setImportDefaultMode(cfg.import_destination_mode === "in_place" ? "in_place" : "library");
+      })
+      .catch(() => {});
+  }, [showImport]);
 
   // Job management with WebSocket
   const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
@@ -278,6 +293,7 @@ function MainDashboard() {
         devMode={DEV_MODE}
         navItems={navItems}
         onSettingsClick={() => openSettings()}
+        onImportClick={() => setShowImport(true)}
       />
 
       {/* Filter + view-mode strip */}
@@ -789,6 +805,16 @@ function MainDashboard() {
               cancelJob(String(seasonPromptJob.id));
               setSeasonPromptJob(null);
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showImport && (
+          <ImportModal
+            onClose={() => setShowImport(false)}
+            defaultPath={importDefaultPath}
+            defaultDestinationMode={importDefaultMode}
           />
         )}
       </AnimatePresence>

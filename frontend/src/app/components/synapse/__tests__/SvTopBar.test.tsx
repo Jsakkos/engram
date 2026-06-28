@@ -13,6 +13,7 @@ function renderTopBar(navItems = buildNavItems({})) {
                 version="0.0.0-test"
                 navItems={navItems}
                 onSettingsClick={() => {}}
+                onImportClick={() => {}}
             />
         </MemoryRouter>,
     );
