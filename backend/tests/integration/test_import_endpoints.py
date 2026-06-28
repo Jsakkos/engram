@@ -42,3 +42,23 @@ async def test_browse_empty_path_returns_roots(client):
 async def test_browse_bad_path_400(client, tmp_path: Path):
     res = await client.get("/api/import/browse", params={"path": str(tmp_path / "nope")})
     assert res.status_code == 400
+
+
+async def test_preview_groups_per_season(client, tmp_path: Path):
+    show = tmp_path / "The King of Queens (1998)"
+    _mkv(show / "Season 1" / "Disc 1" / "a.mkv")
+    _mkv(show / "Season 1" / "Disc 2" / "b.mkv")
+    _mkv(show / "Season 2" / "Disc 1" / "c.mkv")
+
+    res = await client.post("/api/import/preview", json={"path": str(show)})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_jobs"] == 2
+    assert data["total_files"] == 3
+    seasons = sorted(u["season"] for u in data["units"])
+    assert seasons == [1, 2]
+
+
+async def test_preview_bad_path_400(client, tmp_path: Path):
+    res = await client.post("/api/import/preview", json={"path": str(tmp_path / "nope")})
+    assert res.status_code == 400

@@ -2467,6 +2467,15 @@ async def debug_seed_fingerprint(session: AsyncSession = Depends(get_session)) -
     return {"ok": True, "contribution_id": row.id}
 
 
+class ImportPathRequest(BaseModel):
+    path: str
+
+
+class ImportStartRequest(BaseModel):
+    path: str
+    destination_mode: str = "library"
+
+
 @router.get("/import/browse")
 async def import_browse(path: str = "") -> dict:
     """Read-only directory listing for the manual-import picker.
@@ -2515,6 +2524,39 @@ async def import_browse(path: str = "") -> dict:
     parent = str(p.parent) if p.parent != p else None
     logger.info("Import browse: %s (%d entries)", sanitize_log_value(str(p)), len(entries))
     return {"cwd": str(p), "parent": parent, "roots": [], "entries": entries}
+
+
+@router.post("/import/preview")
+async def import_preview(req: ImportPathRequest) -> dict:
+    """Scan a path and return the import units, loose files, and totals.
+
+    Filesystem-only (no network); safe to call on each folder selection.
+    """
+    from app.core import import_scanner
+
+    p = Path(req.path).expanduser()
+    if not p.exists():
+        raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
+
+    scan = await asyncio.to_thread(import_scanner.scan, p)
+    units = [
+        {
+            "show_name": u.show_name,
+            "season": u.season,
+            "file_count": len(u.files),
+            "total_bytes": u.total_bytes,
+        }
+        for u in scan.units
+    ]
+    return {
+        "root": str(scan.root),
+        "units": units,
+        "loose_files": [str(f) for f in scan.loose_files],
+        "total_jobs": len(scan.units),
+        "total_files": scan.total_files,
+        "total_bytes": scan.total_bytes,
+        "truncated": scan.truncated,
+    }
 
 
 class StagingImportRequest(BaseModel):
