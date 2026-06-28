@@ -104,3 +104,33 @@ def test_underscore_show_name_is_cleaned(tmp_path: Path):
     scan = import_scanner.scan(show)
 
     assert scan.units[0].show_name == "KING OF QUEENS"
+
+
+def test_deep_tree_trips_truncation_rail(tmp_path: Path):
+    # Nest deeper than _MAX_DEPTH so the depth safety rail fires.
+    deep = tmp_path
+    for i in range(import_scanner._MAX_DEPTH + 2):
+        deep = deep / f"d{i}"
+    _mkv(deep / "x.mkv")
+
+    scan = import_scanner.scan(tmp_path)
+
+    assert scan.truncated is True
+
+
+def test_shallow_tree_is_not_truncated(tmp_path: Path):
+    show = tmp_path / "Show"
+    _mkv(show / "Season 1" / "a.mkv")
+
+    scan = import_scanner.scan(show)
+
+    assert scan.truncated is False
+
+
+def test_lowercase_season_folder_infers_season(tmp_path: Path):
+    show = tmp_path / "Show"
+    _mkv(show / "season 2" / "a.mkv")
+
+    scan = import_scanner.scan(show)
+
+    assert scan.units[0].season == 2
