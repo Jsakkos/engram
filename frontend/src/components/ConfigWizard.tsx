@@ -145,8 +145,6 @@ interface ConfigData {
     opensubtitlesUsername: string;
     opensubtitlesPassword: string;
     allowLanAccess: boolean;
-    importWatchPath: string;
-    importDestinationMode: string;
 }
 
 interface NetworkInfo {
@@ -224,8 +222,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         opensubtitlesUsername: '',
         opensubtitlesPassword: '',
         allowLanAccess: false,
-        importWatchPath: '',
-        importDestinationMode: 'library',
     });
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -336,8 +332,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitlesUsername: data.opensubtitles_username || '',
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
                     allowLanAccess: data.allow_lan_access ?? false,
-                    importWatchPath: data.import_watch_path || '',
-                    importDestinationMode: data.import_destination_mode || 'library',
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -493,8 +487,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitles_username: config.opensubtitlesUsername,
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
                     allow_lan_access: config.allowLanAccess,
-                    import_watch_path: config.importWatchPath || null,
-                    import_destination_mode: config.importDestinationMode,
                     setup_complete: true,
                 }),
             });
@@ -728,71 +720,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             />
                         </div>
 
-                        <div className="form-group" style={{ marginTop: '1.5rem' }}>
-                            <label htmlFor="importWatchPath">Import Watch Folder</label>
-                            <div className="form-hint" style={{ display: 'block', marginBottom: '0.5rem' }}>
-                                Automatically import MKV files ripped by AutomaticRippingMachine or copied in
-                                manually. Point it at the folder that holds your rips. Supported layouts:
-                                <ul style={{ margin: '0.4rem 0 0.4rem', paddingLeft: '1.1rem' }}>
-                                    <li><code>Show Name / Season 01 / episode.mkv</code> — recommended, best episode matching</li>
-                                    <li><code>Show Name / episode.mkv</code> — flat; episodes are matched across all seasons of the show</li>
-                                    <li><code>DISC_LABEL / title_t00.mkv</code> — per-disc, ARM-style</li>
-                                </ul>
-                                Season folders may be written <code>Season 1</code> or <code>Season 01</code>.
-                                Without a season folder, matching searches every season, which is slower.
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                <input
-                                    id="importWatchPath"
-                                    type="text"
-                                    value={config.importWatchPath}
-                                    onChange={(e) => handleInputChange('importWatchPath', e.target.value)}
-                                    placeholder="Not configured (e.g., D:\ARM-Output or /mnt/arm)"
-                                    style={{ flex: 1 }}
-                                />
-                                {config.importWatchPath && (
-                                    <button
-                                        type="button"
-                                        className="btn-secondary"
-                                        onClick={() => handleInputChange('importWatchPath', '')}
-                                        style={{ whiteSpace: 'nowrap', padding: '0.375rem 0.75rem', fontSize: '0.85rem' }}
-                                    >
-                                        Clear
-                                    </button>
-                                )}
-                            </div>
-                            {config.importWatchPath && (
-                                <div style={{ marginTop: '0.75rem' }}>
-                                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 600 }}>Destination</label>
-                                    <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap' }}>
-                                        {(['library', 'in_place'] as const).map(mode => (
-                                            <button
-                                                key={mode}
-                                                type="button"
-                                                onClick={() => handleInputChange('importDestinationMode', mode)}
-                                                style={{
-                                                    padding: '0.375rem 0.875rem',
-                                                    fontSize: '0.85rem',
-                                                    cursor: 'pointer',
-                                                    background: config.importDestinationMode === mode ? 'var(--color-sv-cyan)' : 'transparent',
-                                                    color: config.importDestinationMode === mode ? 'var(--color-sv-bg0)' : 'inherit',
-                                                    border: '1px solid var(--color-sv-line-mid)',
-                                                    fontWeight: config.importDestinationMode === mode ? 700 : 400,
-                                                    marginRight: mode === 'library' ? -1 : 0,
-                                                }}
-                                            >
-                                                {mode === 'library' ? 'Organize into library' : 'Organize in place'}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <span className="form-hint">
-                                        {config.importDestinationMode === 'library'
-                                            ? 'Files are moved into your configured TV and movie library paths.'
-                                            : 'Files are organized within the watch folder itself (TV/ and Movies/ subdirectories).'}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
                     </div>
                 );
 
