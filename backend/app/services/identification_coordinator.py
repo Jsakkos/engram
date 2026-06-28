@@ -853,9 +853,12 @@ class IdentificationCoordinator:
                     mkv_files = sorted(staging_dir.glob("*.mkv"))
 
                 if not mkv_files:
-                    await self._state_machine.transition_to_failed(
-                        job, session, "No MKV files found in staging directory"
+                    msg = (
+                        "No MKV files found from import manifest (all listed files are missing)"
+                        if job.import_manifest_json
+                        else "No MKV files found in staging directory"
                     )
+                    await self._state_machine.transition_to_failed(job, session, msg)
                     return
 
                 # Build TitleInfo objects from MKV files using ffprobe
