@@ -114,12 +114,28 @@ def _library_path_for_job(job, content_type: str) -> "Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
     if job.destination_mode != "in_place":
         return None
-    from app.services.config_service import get_config_sync
 
-    cfg = get_config_sync()
-    if not cfg.import_watch_path:
+    root = None
+    manifest_json = getattr(job, "import_manifest_json", None)
+    if manifest_json:
+        try:
+            root = json.loads(manifest_json).get("root")
+        except (ValueError, TypeError):
+            root = None
+
+    if not root:
+        # Backward-compat for any pre-existing in_place job created before manual
+        # import: fall back to the legacy global watch path.
+        from app.services.config_service import get_config_sync
+
+        cfg = get_config_sync()
+        root = cfg.import_watch_path
+
+    if not root:
+        logger.warning("In-place import job %s has no manifest root; using library mode", job.id)
         return None
-    return Path(cfg.import_watch_path) / ("Movies" if content_type == "movie" else "TV")
+
+    return Path(root) / ("Movies" if content_type == "movie" else "TV")
 
 
 # --- Automatic conflict escalation ---------------------------------------
