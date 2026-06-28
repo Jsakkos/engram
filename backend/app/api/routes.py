@@ -1454,18 +1454,6 @@ async def update_config(config: ConfigUpdate) -> dict:
     if update_data:
         await update_db_config(**update_data)
 
-    # Reload the staging watcher if watch-related settings changed
-    _watch_fields = {
-        "staging_watch_enabled",
-        "staging_path",
-        "import_watch_path",
-        "import_destination_mode",
-    }
-    if update_data.keys() & _watch_fields:
-        from app.services.job_manager import job_manager
-
-        await job_manager.reload_staging_watcher()
-
     # Completing first-run setup releases any disc parked by the setup gate
     # (inserted while setup_complete was false): replay its insert event so
     # ripping starts without an eject/reinsert. The wizard sends

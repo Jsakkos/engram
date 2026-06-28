@@ -32,7 +32,6 @@ from app.core.log_context import with_job_log_context
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
-from app.core.staging_watcher import StagingWatcher
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -143,7 +142,6 @@ class JobManager:
         self._parked_discs: dict[str, str] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
-        self._staging_watcher: StagingWatcher | None = None
         # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
         self._last_activity: dict[int, float] = {}
         self._watchdog_task: asyncio.Task | None = None
@@ -277,20 +275,6 @@ class JobManager:
                 self._cleanup.run_timed_cleanup(config.staging_path, config.staging_cleanup_days)
             )
 
-        # Start staging/import watcher if either feature is enabled
-        need_watcher = (
-            config.staging_watch_enabled and config.staging_path
-        ) or config.import_watch_path
-        if need_watcher:
-            self._staging_watcher = StagingWatcher(
-                config.staging_path if config.staging_watch_enabled else "",
-                import_watch_path=config.import_watch_path or None,
-                import_destination_mode=config.import_destination_mode,
-                config=config,
-            )
-            self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
-            self._staging_watcher.start()
-
         # Start the stale-job watchdog
         if config.watchdog_enabled:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
@@ -394,36 +378,9 @@ class JobManager:
             logger.exception(f"Recovery of ORGANIZING job {job_id} failed: {e}")
             await self._fail_job(job_id, f"Organize recovery failed: {e}")
 
-    async def reload_staging_watcher(self) -> None:
-        """Stop and restart the staging/import watcher with the current DB config."""
-        from app.services.config_service import get_config as get_db_config
-
-        if self._staging_watcher:
-            self._staging_watcher.stop()
-            self._staging_watcher = None
-
-        config = await get_db_config()
-        need_watcher = (
-            config.staging_watch_enabled and config.staging_path
-        ) or config.import_watch_path
-        if need_watcher:
-            self._staging_watcher = StagingWatcher(
-                config.staging_path if config.staging_watch_enabled else "",
-                import_watch_path=config.import_watch_path or None,
-                import_destination_mode=config.import_destination_mode,
-                config=config,
-            )
-            self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
-            self._staging_watcher.start()
-            logger.info(
-                f"Staging watcher reloaded (import_watch_path={config.import_watch_path!r})"
-            )
-
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
         self._drive_monitor.stop()
-        if self._staging_watcher:
-            self._staging_watcher.stop()
 
         if self._watchdog_task:
             self._watchdog_task.cancel()
@@ -485,32 +442,6 @@ class JobManager:
             except Exception:
                 logger.error(f"Failed to cancel jobs for {safe_drive}", exc_info=True)
             await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
-
-    async def _on_staging_event(
-        self, event: str, staging_dir: str, label: str, metadata: dict | None = None
-    ) -> None:
-        """Handle new staging directory detection from StagingWatcher."""
-        source = metadata.get("source") if metadata else "staging"
-        logger.info(f"Staging event: {event} dir={staging_dir} label={label} source={source}")
-        if event == "staging_ready":
-            try:
-                is_import = bool(metadata and metadata.get("source") == "import")
-                await self.create_job_from_staging(
-                    staging_path=staging_dir,
-                    volume_label=label,
-                    content_type="unknown",
-                    detected_title=metadata.get("show_name") if is_import else None,
-                    detected_season=metadata.get("season") if is_import else None,
-                    destination_mode=metadata.get("destination_mode", "library")
-                    if is_import
-                    else "library",
-                    drive_id="import" if is_import else "staging",
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to create job from staging directory {staging_dir}: {e}",
-                    exc_info=True,
-                )
 
     # --- First-run setup gate (P12) ---
 

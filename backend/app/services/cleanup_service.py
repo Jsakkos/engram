@@ -46,9 +46,9 @@ class CleanupService:
         """Delete the staging directory for a job.
 
         For a disc rip, staging_path is a regenerable temp dir under the
-        staging root, so deleting it just reclaims space. For a watch-folder
-        import (drive_id == "import"), staging_path is the user's *original*
-        source folder on disk (the import_watch_path or a subfolder of it).
+        staging root, so deleting it just reclaims space. For a manual import
+        (drive_id == "import"), staging_path is the user's *original*
+        source folder on disk (the folder they picked, or a subfolder of it).
         Successfully imported files are *moved* out of it, so cleanup has
         nothing legitimate to reclaim — and an rmtree would destroy whatever
         remains, including content the importer never scanned (e.g. Season
@@ -125,8 +125,8 @@ class CleanupService:
                     # delete_staging, so it relies on a structural invariant to
                     # never touch a user's import source: it only deletes dirs
                     # that are (a) directly inside the managed staging_root and
-                    # (b) named "job_*". Import sources are the user's
-                    # import_watch_path (or a subfolder of it), which is neither
+                    # (b) named "job_*". Import sources are the user's chosen
+                    # import folder (or a subfolder of it), which is neither
                     # under staging_root nor named "job_*" — disc-rip staging
                     # dirs are the only things created with that prefix here. If
                     # that convention ever changes, add a drive_id == "import"
