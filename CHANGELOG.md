@@ -4,11 +4,16 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-06-28
+
+_Highlights: manual media import replaces the background watch folder with a user-triggered folder picker, headless Linux server variants for NAS and Raspberry Pi, Docker multi-arch (amd64 + arm64) with properly versioned GHCR tags, and a new auto-eject toggle._
+
 ### Added
 
-- **Settings toggle to disable automatic disc ejection.** A new "Auto-Eject Disc When Ripping Completes" checkbox in Settings → Preferences → Maintenance & watchdog controls whether Engram ejects the disc when ripping finishes. Enabled by default (preserving existing behavior); disable to keep the disc loaded for manual verification or re-ripping without re-inserting.
-- Headless server build variants for Linux: `engram-linux-x64-headless` and `engram-linux-arm64-headless`. These skip browser auto-launch and default `allow_lan_access` to `True` on first run so the dashboard is reachable from another machine without any manual configuration. Intended for NAS, Raspberry Pi, Jellyfin server, and other headless deployments.
-- Docker image now publishes both `linux/amd64` and `linux/arm64` layers.
+- **Manual media import replaces the background watch folder.** Click **IMPORT** in the top bar, browse to a folder on the server, preview the discovered seasons and their file counts, then start one import job per (show, season). The new scanner walks `Disc/` subfolders transparently and infers the season from any `Season NN` path segment, fixing two reported bugs: `Show / Season / Disc / *.mkv` trees that previously imported nothing, and partial imports that required an app restart to re-scan. The import watch path and destination mode are repurposed as last-used defaults for the picker. (#463)
+- **Settings toggle to disable automatic disc ejection.** A new "Auto-Eject Disc When Ripping Completes" checkbox in Settings → Preferences → Maintenance & watchdog controls whether Engram ejects the disc when ripping finishes. Enabled by default (preserving existing behavior); disable to keep the disc loaded for manual verification or re-ripping without re-inserting. (#457)
+- Headless server build variants for Linux: `engram-linux-x64-headless` and `engram-linux-arm64-headless`. These skip browser auto-launch and default `allow_lan_access` to `True` on first run so the dashboard is reachable from another machine without any manual configuration. Intended for NAS, Raspberry Pi, Jellyfin server, and other headless deployments. (#460)
+- Docker image now publishes both `linux/amd64` and `linux/arm64` layers, and GHCR releases now carry four versioned tags (`v0.22.0`, `0.22.0`, `0.22`, and `latest`) for Renovate Bot pinning. (#460, #462)
 
 ## [0.21.12] - 2026-06-23
 
