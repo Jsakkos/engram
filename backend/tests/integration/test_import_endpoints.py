@@ -6,15 +6,20 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+from app.api.routes import require_localhost
 from app.database import async_session, init_db
 from app.main import app
 
 
 @pytest.fixture
 async def client():
+    # The import endpoints are guarded by require_localhost; ASGITransport has no
+    # real client host, so override the dependency (the documented test pattern).
+    app.dependency_overrides[require_localhost] = lambda: None
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+    app.dependency_overrides.pop(require_localhost, None)
 
 
 def _mkv(p: Path) -> None:

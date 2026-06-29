@@ -2464,13 +2464,15 @@ class ImportStartRequest(BaseModel):
     destination_mode: str = "library"
 
 
-@router.get("/import/browse")
+@router.get("/import/browse", dependencies=[Depends(require_localhost)])
 async def import_browse(path: str = "") -> dict:
     """Read-only directory listing for the manual-import picker.
 
-    Localhost-only (CORS-restricted). Returns directory names with a shallow
-    direct-child MKV count, plus selectable .mkv files. Never returns file
-    contents. Empty path returns the drive roots (Windows) or / and home (POSIX).
+    Host-only: guarded by require_localhost so it stays unreachable from LAN
+    peers even when allow_lan_access opens the bind (CORS does not protect
+    non-browser clients). Returns directory names with a shallow direct-child
+    MKV count, plus selectable .mkv files. Never returns file contents. Empty
+    path returns the drive roots (Windows) or / and home (POSIX).
     """
     if not path:
         if os.name == "nt":
@@ -2514,7 +2516,7 @@ async def import_browse(path: str = "") -> dict:
     return {"cwd": str(p), "parent": parent, "roots": [], "entries": entries}
 
 
-@router.post("/import/preview")
+@router.post("/import/preview", dependencies=[Depends(require_localhost)])
 async def import_preview(req: ImportPathRequest) -> dict:
     """Scan a path and return the import units, loose files, and totals.
 
@@ -2547,7 +2549,7 @@ async def import_preview(req: ImportPathRequest) -> dict:
     }
 
 
-@router.post("/import/start")
+@router.post("/import/start", dependencies=[Depends(require_localhost)])
 async def import_start(req: ImportStartRequest) -> dict:
     """Create one import job per (show, season) unit from a chosen path.
 
