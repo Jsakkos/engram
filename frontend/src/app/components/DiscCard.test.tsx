@@ -261,3 +261,42 @@ describe('DiscCard — organizing', () => {
     expect(screen.getByText(/ORGANIZING TO LIBRARY/i)).toBeInTheDocument();
   });
 });
+
+describe('DiscCard — cancel confirmation', () => {
+  it('clicking cancel opens the confirmation modal without firing onCancel', () => {
+    const onCancel = vi.fn();
+    const { container } = render(
+      <DiscCard
+        disc={makeDisc({ state: 'ripping' })}
+        onCancel={onCancel}
+      />,
+    );
+
+    // Hover the card to reveal the cancel button
+    fireEvent.mouseEnter(container.firstChild as Element);
+    fireEvent.click(screen.getByRole('button', { name: /cancel job/i }));
+
+    expect(screen.getByText(/cancel rip\?/i)).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('confirming the modal fires onCancel; dismissing does not', () => {
+    const onCancel = vi.fn();
+    const { container } = render(
+      <DiscCard
+        disc={makeDisc({ state: 'ripping' })}
+        onCancel={onCancel}
+      />,
+    );
+
+    fireEvent.mouseEnter(container.firstChild as Element);
+    fireEvent.click(screen.getByRole('button', { name: /cancel job/i }));
+    fireEvent.click(screen.getByRole('button', { name: /keep ripping/i }));
+    expect(onCancel).not.toHaveBeenCalled();
+
+    // Reopen and confirm
+    fireEvent.click(screen.getByRole('button', { name: /cancel job/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^cancel rip$/i }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});

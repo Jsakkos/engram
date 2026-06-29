@@ -17,11 +17,83 @@
  * promote it to the primary callout in that state.
  */
 
-import { useState, type CSSProperties, type ReactNode, type MouseEvent } from "react";
-import { motion } from "motion/react";
+import { useState, useEffect, type CSSProperties, type ReactNode, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "motion/react";
 import { IcoCancel, IcoError, IcoRetry, IcoPlay } from "../icons";
 import type { DiscState } from "../DiscCard";
-import { sv } from "../synapse";
+import { sv, SvPanel } from "../synapse";
+
+interface ConfirmModalProps {
+    titleId: string;
+    title: string;
+    body: string;
+    confirmLabel: string;
+    dismissLabel: string;
+    confirmTone?: "red" | "cyan";
+    onConfirm: () => void;
+    onDismiss: () => void;
+}
+
+function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confirmTone = "red", onConfirm, onDismiss }: ConfirmModalProps) {
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+    }, [onDismiss]);
+
+    const confirmColor = confirmTone === "red" ? sv.red : sv.cyan;
+    const confirmBg = confirmTone === "red" ? "rgba(255,85,85,0.12)" : "rgba(94,234,212,0.12)";
+
+    return createPortal(
+        <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+        >
+            <div
+                className="absolute inset-0"
+                style={{ background: `${sv.bg0}d9`, backdropFilter: "blur(4px)" }}
+                onClick={onDismiss}
+            />
+            <motion.div
+                className="relative w-full max-w-xs"
+                initial={{ opacity: 0, scale: 0.92, y: 16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 16 }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
+                <SvPanel glow pad={24} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div id={titleId} style={{ fontFamily: sv.mono, fontSize: 13, fontWeight: 700, letterSpacing: "0.2em", color: confirmColor, textTransform: "uppercase" }}>
+                        {title}
+                    </div>
+                    <div style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim, lineHeight: 1.6 }}>
+                        {body}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                        <button
+                            onClick={onDismiss}
+                            style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", padding: "8px 14px", background: sv.bg0, border: `1px solid ${sv.lineMid}`, color: sv.inkDim, cursor: "pointer" }}
+                        >
+                            {dismissLabel}
+                        </button>
+                        <button
+                            onClick={onConfirm}
+                            style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", padding: "8px 14px", background: confirmBg, border: `1px solid ${confirmColor}`, color: confirmColor, cursor: "pointer", boxShadow: `0 0 10px ${confirmColor}44` }}
+                        >
+                            {confirmLabel}
+                        </button>
+                    </div>
+                </SvPanel>
+            </motion.div>
+        </motion.div>,
+        document.body
+    );
+}
 
 interface ActionButtonsProps {
     state: DiscState;
@@ -150,24 +222,52 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+
+    const handleCancel = (e: MouseEvent) => {
+        e.stopPropagation();
+        setShowCancelModal(true);
+    };
 
     const handleAdvance = (e: MouseEvent) => {
         e.stopPropagation();
-        if (window.confirm(
-            "Force this job to its next step?\n\n" +
-            "Tracks still ripping or matching will be sent to review (or failed if no " +
-            "file was produced), and anything already matched will be organized."
-        )) {
-            onAdvance!();
-        }
+        setShowAdvanceModal(true);
     };
 
     return (
+        <>
+        <AnimatePresence>
+            {showCancelModal && (
+                <ConfirmModal
+                    titleId="cancel-modal-title"
+                    title="Cancel rip?"
+                    body="Any files already ripped will be deleted from staging."
+                    confirmLabel="Cancel rip"
+                    dismissLabel="Keep ripping"
+                    confirmTone="red"
+                    onConfirm={() => { setShowCancelModal(false); onCancel!(); }}
+                    onDismiss={() => setShowCancelModal(false)}
+                />
+            )}
+            {showAdvanceModal && (
+                <ConfirmModal
+                    titleId="advance-modal-title"
+                    title="Force advance?"
+                    body={"Tracks still ripping or matching will be sent to review (or failed if no file was produced), and anything already matched will be organized."}
+                    confirmLabel="Force advance"
+                    dismissLabel="Keep going"
+                    confirmTone="cyan"
+                    onConfirm={() => { setShowAdvanceModal(false); onAdvance!(); }}
+                    onDismiss={() => setShowAdvanceModal(false)}
+                />
+            )}
+        </AnimatePresence>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {showCancel && (
                 <ToneButton
                     tone={RED}
-                    onClick={onCancel!}
+                    onClick={handleCancel}
                     title="Cancel job"
                     ariaLabel="Cancel job"
                     paddingX={0}
@@ -217,5 +317,6 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
             )}
 
         </div>
+        </>
     );
 }
