@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { IcoLibrary, IcoFilter, IcoError } from "../app/components/icons";
 import { SvPanel, sv } from "../app/components/synapse";
+import { formatBytesScaled as fmtBytes } from "../utils/formatting";
 import {
   browseDir,
   previewImport,
@@ -16,13 +17,6 @@ interface Props {
   defaultDestinationMode: "library" | "in_place";
 }
 
-function fmtBytes(n: number): string {
-  if (n <= 0) return "0 B";
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
-  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
-}
-
 export default function ImportModal({ onClose, defaultPath, defaultDestinationMode }: Props) {
   const [cwd, setCwd] = useState<string | null>(null);
   const [parent, setParent] = useState<string | null>(null);
@@ -34,17 +28,25 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Monotonic request tokens so a slow earlier click can't overwrite the state
+  // of a later one (navigate and choose fire together per directory click).
+  const navSeq = useRef(0);
+  const chooseSeq = useRef(0);
 
   const navigate = useCallback(async (path: string) => {
+    const seq = ++navSeq.current;
     setError(null);
     try {
       const res = await browseDir(path);
+      if (seq !== navSeq.current) return; // a newer navigation superseded this one
       setCwd(res.cwd);
       setParent(res.parent);
       setEntries(res.entries);
       setRoots(res.roots);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not read directory");
+      if (seq === navSeq.current) {
+        setError(e instanceof Error ? e.message : "Could not read directory");
+      }
     }
   }, []);
 
@@ -57,13 +59,18 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   }, []);
 
   const choose = useCallback(async (path: string) => {
+    const seq = ++chooseSeq.current;
     setSelected(path);
     setPreview(null);
     setError(null);
     try {
-      setPreview(await previewImport(path));
+      const result = await previewImport(path);
+      if (seq !== chooseSeq.current) return; // a newer selection superseded this one
+      setPreview(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not scan folder");
+      if (seq === chooseSeq.current) {
+        setError(e instanceof Error ? e.message : "Could not scan folder");
+      }
     }
   }, []);
 

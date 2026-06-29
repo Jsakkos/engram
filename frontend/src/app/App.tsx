@@ -142,14 +142,19 @@ function MainDashboard() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/config")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg) => {
-        if (!cfg) return;
-        setImportDefaultPath(cfg.import_watch_path || "");
-        setImportDefaultMode(cfg.import_destination_mode === "in_place" ? "in_place" : "library");
-      })
-      .catch(() => {});
+    // Re-read the last-used import path/destination each time the modal opens
+    // (the import-start endpoint persists them). Gate on open so closing the
+    // modal doesn't fire a wasted request, and route through apiFetch for
+    // uniform error handling.
+    if (!showImport) return;
+    import("../api/client").then(({ apiFetch }) =>
+      apiFetch<{ import_watch_path?: string; import_destination_mode?: string }>("/api/config")
+        .then((cfg) => {
+          setImportDefaultPath(cfg.import_watch_path || "");
+          setImportDefaultMode(cfg.import_destination_mode === "in_place" ? "in_place" : "library");
+        })
+        .catch(() => {}),
+    );
   }, [showImport]);
 
   // Job management with WebSocket

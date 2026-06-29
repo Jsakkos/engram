@@ -2476,7 +2476,11 @@ async def import_browse(path: str = "") -> dict:
     """
     if not path:
         if os.name == "nt":
-            roots = [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+            # Probing 26 drive letters can each block for seconds on a stale
+            # network/UNC mapping, so run it off the event loop thread.
+            roots = await asyncio.to_thread(
+                lambda: [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+            )
         else:
             roots = ["/", str(Path.home())]
         return {"cwd": None, "parent": None, "roots": roots, "entries": []}
@@ -2524,7 +2528,9 @@ async def import_preview(req: ImportPathRequest) -> dict:
     """
     from app.core import import_scanner
 
-    p = Path(req.path).expanduser()
+    # resolve() collapses .. and symlinks before the path reaches the scanner
+    # (mirrors import_browse), so a caller can't pick a traversal/symlink root.
+    p = Path(req.path).expanduser().resolve()
     if not p.exists():
         raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
 
@@ -2563,7 +2569,9 @@ async def import_start(req: ImportStartRequest) -> dict:
     if req.destination_mode not in ("library", "in_place"):
         raise HTTPException(status_code=400, detail="Invalid destination_mode")
 
-    p = Path(req.path).expanduser()
+    # resolve() collapses .. and symlinks before the path reaches the scanner
+    # (mirrors import_browse), so a caller can't pick a traversal/symlink root.
+    p = Path(req.path).expanduser().resolve()
     if not p.exists():
         raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
 
@@ -2589,11 +2597,30 @@ async def import_start(req: ImportStartRequest) -> dict:
         if jid != -1:
             job_ids.append(jid)
 
+    skipped = len(scan.units) - len(job_ids)
+    # Persist the path/destination as next-time defaults even when everything was
+    # a dedup no-op, so the modal still reopens where the user last browsed.
     await config_service.update_config(
         import_watch_path=req.path, import_destination_mode=req.destination_mode
     )
-    logger.info("Import start: %s -> %d job(s)", sanitize_log_value(req.path), len(job_ids))
-    return {"job_ids": job_ids}
+    logger.info(
+        "Import start: %s -> %d job(s) created, %d skipped",
+        sanitize_log_value(req.path),
+        len(job_ids),
+        skipped,
+    )
+    # Every unit already had an active or completed job for its folder. Tell the
+    # caller (409) instead of returning a silent empty list with 200 — the
+    # DB-backed dedup persists across restarts, so this is a real "nothing to do".
+    if not job_ids and skipped:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"All {skipped} import job(s) for this folder already exist "
+                "(active or completed); nothing new was started."
+            ),
+        )
+    return {"job_ids": job_ids, "skipped": skipped}
 
 
 class StagingImportRequest(BaseModel):
