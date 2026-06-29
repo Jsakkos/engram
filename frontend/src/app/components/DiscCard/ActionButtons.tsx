@@ -19,7 +19,6 @@
 
 import { useState, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 import { motion } from "motion/react";
-import { Bug } from "lucide-react";
 import { IcoCancel, IcoError, IcoRetry, IcoPlay } from "../icons";
 import type { DiscState } from "../DiscCard";
 import { sv } from "../synapse";
@@ -31,7 +30,6 @@ interface ActionButtonsProps {
     onReview?: () => void;
     onReIdentify?: () => void;
     onAdvance?: () => void;
-    onReportBug?: () => void;
     /** Render the "Wrong title?" button filled — it's the primary action when
      *  the review queue is suppressed pre-rip. */
     emphasizeReIdentify?: boolean;
@@ -148,11 +146,10 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, t
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onReportBug, emphasizeReIdentify = false }: ActionButtonsProps) {
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, emphasizeReIdentify = false }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
-    const showReportBug = !!onReportBug && isHovered;
 
     const handleAdvance = (e: MouseEvent) => {
         e.stopPropagation();
@@ -219,18 +216,6 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                 </ToneButton>
             )}
 
-            {showReportBug && (
-                <ToneButton
-                    tone={RED}
-                    onClick={(e) => { e.stopPropagation(); onReportBug!(); }}
-                    title="Report a bug for this job"
-                    ariaLabel="Report a bug for this job"
-                    paddingX={0}
-                    testId="disc-card-report-bug"
-                >
-                    <Bug size={14} />
-                </ToneButton>
-            )}
         </div>
     );
 }
