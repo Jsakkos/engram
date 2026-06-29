@@ -84,6 +84,12 @@ class TestReadAllowLanSync:
         monkeypatch.setattr(config_service, "_get_sync_engine", lambda: engine)
         assert config_service.read_allow_lan_sync() is False
 
+    def test_returns_none_when_table_has_no_rows(self, tmp_path, monkeypatch):
+        """An empty table means 'not yet configured' — distinct from explicit False."""
+        engine = self._engine_with(tmp_path, value=None)  # table exists, no rows inserted
+        monkeypatch.setattr(config_service, "_get_sync_engine", lambda: engine)
+        assert config_service.read_allow_lan_sync() is None
+
 
 class TestResolveStartupHost:
     """Host resolution must never crash on a config read (the schema-drift bug)."""
@@ -109,5 +115,32 @@ class TestResolveStartupHost:
         with (
             patch("app.core.network._env_host", return_value=None),
             patch("app.services.config_service.read_allow_lan_sync", return_value=False),
+        ):
+            assert resolve_startup_host() == "127.0.0.1"
+
+    def test_headless_first_run_binds_all_interfaces(self, monkeypatch):
+        """ENGRAM_HEADLESS=1 + no config row (None) must bind 0.0.0.0."""
+        monkeypatch.setenv("ENGRAM_HEADLESS", "1")
+        with (
+            patch("app.core.network._env_host", return_value=None),
+            patch("app.services.config_service.read_allow_lan_sync", return_value=None),
+        ):
+            assert resolve_startup_host() == "0.0.0.0"
+
+    def test_headless_user_disabled_lan_respects_setting(self, monkeypatch):
+        """ENGRAM_HEADLESS=1 + explicit False in DB must still bind localhost."""
+        monkeypatch.setenv("ENGRAM_HEADLESS", "1")
+        with (
+            patch("app.core.network._env_host", return_value=None),
+            patch("app.services.config_service.read_allow_lan_sync", return_value=False),
+        ):
+            assert resolve_startup_host() == "127.0.0.1"
+
+    def test_non_headless_first_run_binds_localhost(self, monkeypatch):
+        """Without ENGRAM_HEADLESS, None from read_allow_lan_sync falls back to localhost."""
+        monkeypatch.delenv("ENGRAM_HEADLESS", raising=False)
+        with (
+            patch("app.core.network._env_host", return_value=None),
+            patch("app.services.config_service.read_allow_lan_sync", return_value=None),
         ):
             assert resolve_startup_host() == "127.0.0.1"

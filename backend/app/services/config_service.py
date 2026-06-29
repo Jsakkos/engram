@@ -153,7 +153,7 @@ def get_config_sync() -> AppConfig:
         return config
 
 
-def read_allow_lan_sync() -> bool:
+def read_allow_lan_sync() -> bool | None:
     """Read only the LAN toggle, before init_db()'s reconcilers have run.
 
     Called from ``resolve_startup_host`` at process start — *before* the lifespan
@@ -161,8 +161,15 @@ def read_allow_lan_sync() -> bool:
     hydrates every model column, so it trips on any column added since the user's
     DB was created (frozen builds skip Alembic and only reconcile schema later,
     inside ``init_db``). Read the single column we need via raw SQL, tolerant of a
-    missing column or table → ``False`` (the safe default; the LAN toggle is off
-    by default anyway).
+    missing column or table.
+
+    Returns:
+        True  — allow_lan_access is explicitly enabled in the database.
+        False — allow_lan_access is explicitly disabled, or an exception occurred
+                (safe fallback).
+        None  — no app_config row exists yet (fresh install). The caller may
+                apply a build-variant default instead of always falling back to
+                localhost.
     """
     from sqlalchemy import text
 
@@ -171,7 +178,9 @@ def read_allow_lan_sync() -> bool:
             row = conn.execute(text("SELECT allow_lan_access FROM app_config LIMIT 1")).first()
     except Exception:  # noqa: BLE001 — startup must never crash on a config read
         return False
-    return bool(row[0]) if row and row[0] is not None else False
+    if row is None:
+        return None  # no config row yet (fresh install)
+    return bool(row[0])
 
 
 async def update_config(**kwargs) -> AppConfig:

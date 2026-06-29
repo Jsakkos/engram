@@ -1,6 +1,7 @@
 """Database setup with SQLModel and async SQLite."""
 
 import logging
+import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -90,6 +91,8 @@ async def init_db() -> None:
     # Legacy migration for app_config data preservation (Alembic handles schema,
     # but this preserves API keys/settings across breaking schema changes)
     await _migrate_app_config(engine)
+
+    await _seed_headless_defaults()
 
     logger.info("Database initialized successfully")
 
@@ -297,6 +300,27 @@ async def _migrate_app_config(target_engine: AsyncEngine | None = None) -> None:
                     insert_data,
                 )
                 logger.info(f"Restored app_config row with {len(insert_data)} fields")
+
+
+async def _seed_headless_defaults() -> None:
+    """Seed allow_lan_access=True on first headless install.
+
+    Runs after init_db() creates the app_config table. Only acts when
+    ENGRAM_HEADLESS=1 and no app_config row exists yet. Existing installs
+    (row already present) are untouched, so a user who explicitly disabled
+    LAN access via the settings UI keeps their preference.
+    """
+    if os.environ.get("ENGRAM_HEADLESS") != "1":
+        return
+
+    async with async_session() as session:
+        row = (await session.execute(sa_text("SELECT id FROM app_config LIMIT 1"))).first()
+        if row is not None:
+            return  # config already exists, don't override
+
+        session.add(AppConfig(allow_lan_access=True))
+        await session.commit()
+        logger.info("Headless first-run: seeded app_config with allow_lan_access=True")
 
 
 async def reset_db() -> None:
