@@ -134,3 +134,24 @@ def test_lowercase_season_folder_infers_season(tmp_path: Path):
     scan = import_scanner.scan(show)
 
     assert scan.units[0].season == 2
+
+
+def test_picked_is_show_true_for_single_show(tmp_path: Path):
+    show = tmp_path / "Seinfeld"
+    _mkv(show / "Season 1" / "a.mkv")
+
+    assert import_scanner.scan(show).picked_is_show is True
+
+
+def test_picked_is_show_false_for_parent_of_shows(tmp_path: Path):
+    _mkv(tmp_path / "Seinfeld" / "Season 1" / "a.mkv")
+    _mkv(tmp_path / "Friends" / "Season 1" / "b.mkv")
+
+    assert import_scanner.scan(tmp_path).picked_is_show is False
+
+
+def test_picked_is_show_true_for_single_file(tmp_path: Path):
+    f = tmp_path / "Some Folder" / "movie.mkv"
+    _mkv(f)
+
+    assert import_scanner.scan(f).picked_is_show is True

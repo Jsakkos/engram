@@ -2584,7 +2584,7 @@ async def import_start(req: ImportStartRequest) -> dict:
     for unit in scan.units:
         files = [str(f) for f in unit.files]
         staging = str(Path(files[0]).parent) if len(files) == 1 else os.path.commonpath(files)
-        manifest = {"root": root_str, "files": files}
+        manifest = {"root": root_str, "files": files, "picked_is_show": scan.picked_is_show}
         jid = await job_manager.create_job_from_staging(
             staging_path=staging,
             content_type="tv" if unit.season is not None else "unknown",

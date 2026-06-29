@@ -26,3 +26,30 @@ def test_in_place_uses_manifest_root_tv():
 def test_in_place_uses_manifest_root_movie():
     job = _Job("in_place", json.dumps({"root": "/media/rips", "files": []}))
     assert _library_path_for_job(job, "movie") == Path("/media/rips") / "Movies"
+
+
+def test_in_place_library_pick_keeps_genre_split():
+    # picked_is_show False (a parent-of-shows / library root) keeps TV|Movies.
+    job = _Job(
+        "in_place", json.dumps({"root": "/media/rips", "files": [], "picked_is_show": False})
+    )
+    assert _library_path_for_job(job, "tv") == Path("/media/rips") / "TV"
+
+
+def test_in_place_single_show_organizes_beside_picked_folder_tv():
+    # picked_is_show True (the picked folder IS the show): organize under the
+    # parent so the canonical Show/Season lands in/beside the picked folder, with
+    # no spurious TV/ subdir nested inside it.
+    job = _Job(
+        "in_place",
+        json.dumps({"root": "/media/rips/Seinfeld", "files": [], "picked_is_show": True}),
+    )
+    assert _library_path_for_job(job, "tv") == Path("/media/rips")
+
+
+def test_in_place_single_title_movie_organizes_beside_picked_folder():
+    job = _Job(
+        "in_place",
+        json.dumps({"root": "/media/rips/Inception (2010)", "files": [], "picked_is_show": True}),
+    )
+    assert _library_path_for_job(job, "movie") == Path("/media/rips")

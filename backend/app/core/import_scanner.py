@@ -48,6 +48,11 @@ class ImportScan:
     total_files: int
     total_bytes: int
     truncated: bool = False
+    # True when the picked folder is a single title (holds media / Season / Disc
+    # directly) rather than a parent-of-shows/library folder. Drives in-place
+    # organize layout: a single-title pick organizes next to itself, not under a
+    # spurious TV/ or Movies/ subdir created inside the title folder.
+    picked_is_show: bool = False
 
 
 def _clean_show(name: str) -> str:
@@ -143,7 +148,7 @@ def scan(path: Path) -> ImportScan:
             return ImportScan(path.parent, [], [], 0, 0, False)
         size = _safe_size(path)
         unit = ImportUnit(_clean_show(path.parent.name), None, [path], size)
-        return ImportScan(path.parent, [unit], [], 1, size, False)
+        return ImportScan(path.parent, [unit], [], 1, size, False, picked_is_show=True)
 
     root = path
     files, truncated = _iter_mkvs(root)
@@ -189,4 +194,6 @@ def scan(path: Path) -> ImportScan:
 
     total_files = len(structured) + len(loose_files)
     total_bytes = sum(u.total_bytes for u in units) + sum(_safe_size(f) for f in loose_files)
-    return ImportScan(root, units, loose_files, total_files, total_bytes, truncated)
+    return ImportScan(
+        root, units, loose_files, total_files, total_bytes, truncated, picked_is_show=picked_is_show
+    )
