@@ -79,6 +79,12 @@ class DiscJob(SQLModel, table=True):
     # Paths
     staging_path: str | None = None
     final_path: str | None = None
+    # Explicit file manifest for manual imports (drive_id == "import").
+    # JSON: {"root": "<picked folder abs path>", "files": ["<abs mkv>", ...]}.
+    # When present, identify_from_staging ingests exactly these files instead of
+    # a non-recursive glob, so files nested in Disc/ subfolders import correctly;
+    # "root" is the in-place organize base for destination_mode == "in_place".
+    import_manifest_json: str | None = Field(default=None)
 
     # Progress Tracking
     state: JobState = JobState.IDLE

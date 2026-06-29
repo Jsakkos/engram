@@ -5,8 +5,10 @@ import io
 import ipaddress
 import json
 import logging
+import os
 import platform
 import re
+import string
 import sys
 import zipfile
 from collections import Counter
@@ -1452,18 +1454,6 @@ async def update_config(config: ConfigUpdate) -> dict:
     if update_data:
         await update_db_config(**update_data)
 
-    # Reload the staging watcher if watch-related settings changed
-    _watch_fields = {
-        "staging_watch_enabled",
-        "staging_path",
-        "import_watch_path",
-        "import_destination_mode",
-    }
-    if update_data.keys() & _watch_fields:
-        from app.services.job_manager import job_manager
-
-        await job_manager.reload_staging_watcher()
-
     # Completing first-run setup releases any disc parked by the setup gate
     # (inserted while setup_complete was false): replay its insert event so
     # ripping starts without an eject/reinsert. The wizard sends
@@ -2463,6 +2453,174 @@ async def debug_seed_fingerprint(session: AsyncSession = Depends(get_session)) -
     await session.commit()
     await session.refresh(row)
     return {"ok": True, "contribution_id": row.id}
+
+
+class ImportPathRequest(BaseModel):
+    path: str
+
+
+class ImportStartRequest(BaseModel):
+    path: str
+    destination_mode: str = "library"
+
+
+@router.get("/import/browse", dependencies=[Depends(require_localhost)])
+async def import_browse(path: str = "") -> dict:
+    """Read-only directory listing for the manual-import picker.
+
+    Host-only: guarded by require_localhost so it stays unreachable from LAN
+    peers even when allow_lan_access opens the bind (CORS does not protect
+    non-browser clients). Returns directory names with a shallow direct-child
+    MKV count, plus selectable .mkv files. Never returns file contents. Empty
+    path returns the drive roots (Windows) or / and home (POSIX).
+    """
+    if not path:
+        if os.name == "nt":
+            # Probing 26 drive letters can each block for seconds on a stale
+            # network/UNC mapping, so run it off the event loop thread.
+            roots = await asyncio.to_thread(
+                lambda: [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+            )
+        else:
+            roots = ["/", str(Path.home())]
+        return {"cwd": None, "parent": None, "roots": roots, "entries": []}
+
+    try:
+        p = Path(path).expanduser().resolve()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Invalid path") from exc
+    if not p.exists() or not p.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {path}")
+
+    entries: list[dict] = []
+    try:
+        for entry in os.scandir(p):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    count = 0
+                    try:
+                        for f in os.scandir(entry.path):
+                            if f.is_file(follow_symlinks=False) and f.name.lower().endswith(".mkv"):
+                                count += 1
+                    except OSError:
+                        count = 0
+                    entries.append(
+                        {"name": entry.name, "path": entry.path, "type": "dir", "mkv_count": count}
+                    )
+                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".mkv"):
+                    entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
+            except OSError:
+                continue
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Cannot read directory") from exc
+
+    entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+    parent = str(p.parent) if p.parent != p else None
+    logger.info("Import browse: %s (%d entries)", sanitize_log_value(str(p)), len(entries))
+    return {"cwd": str(p), "parent": parent, "roots": [], "entries": entries}
+
+
+@router.post("/import/preview", dependencies=[Depends(require_localhost)])
+async def import_preview(req: ImportPathRequest) -> dict:
+    """Scan a path and return the import units, loose files, and totals.
+
+    Filesystem-only (no network); safe to call on each folder selection.
+    """
+    from app.core import import_scanner
+
+    # resolve() collapses .. and symlinks before the path reaches the scanner
+    # (mirrors import_browse), so a caller can't pick a traversal/symlink root.
+    p = Path(req.path).expanduser().resolve()
+    if not p.exists():
+        raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
+
+    scan = await asyncio.to_thread(import_scanner.scan, p)
+    units = [
+        {
+            "show_name": u.show_name,
+            "season": u.season,
+            "file_count": len(u.files),
+            "total_bytes": u.total_bytes,
+        }
+        for u in scan.units
+    ]
+    return {
+        "root": str(scan.root),
+        "units": units,
+        "loose_files": [str(f) for f in scan.loose_files],
+        "total_jobs": len(scan.units),
+        "total_files": scan.total_files,
+        "total_bytes": scan.total_bytes,
+        "truncated": scan.truncated,
+    }
+
+
+@router.post("/import/start", dependencies=[Depends(require_localhost)])
+async def import_start(req: ImportStartRequest) -> dict:
+    """Create one import job per (show, season) unit from a chosen path.
+
+    Each job gets an explicit file manifest, so nested Disc/ files import
+    correctly. Remembers the path and destination as the next defaults.
+    """
+    from app.core import import_scanner
+    from app.services import config_service
+    from app.services.job_manager import job_manager
+
+    if req.destination_mode not in ("library", "in_place"):
+        raise HTTPException(status_code=400, detail="Invalid destination_mode")
+
+    # resolve() collapses .. and symlinks before the path reaches the scanner
+    # (mirrors import_browse), so a caller can't pick a traversal/symlink root.
+    p = Path(req.path).expanduser().resolve()
+    if not p.exists():
+        raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
+
+    scan = await asyncio.to_thread(import_scanner.scan, p)
+    if not scan.units:
+        raise HTTPException(status_code=400, detail="No MKV files found to import")
+
+    root_str = str(scan.root)
+    job_ids: list[int] = []
+    for unit in scan.units:
+        files = [str(f) for f in unit.files]
+        staging = str(Path(files[0]).parent) if len(files) == 1 else os.path.commonpath(files)
+        manifest = {"root": root_str, "files": files, "picked_is_show": scan.picked_is_show}
+        jid = await job_manager.create_job_from_staging(
+            staging_path=staging,
+            content_type="tv" if unit.season is not None else "unknown",
+            detected_title=unit.show_name,
+            detected_season=unit.season,
+            destination_mode=req.destination_mode,
+            drive_id="import",
+            import_manifest=manifest,
+        )
+        if jid != -1:
+            job_ids.append(jid)
+
+    skipped = len(scan.units) - len(job_ids)
+    # Persist the path/destination as next-time defaults even when everything was
+    # a dedup no-op, so the modal still reopens where the user last browsed.
+    await config_service.update_config(
+        import_watch_path=req.path, import_destination_mode=req.destination_mode
+    )
+    logger.info(
+        "Import start: %s -> %d job(s) created, %d skipped",
+        sanitize_log_value(req.path),
+        len(job_ids),
+        skipped,
+    )
+    # Every unit already had an active or completed job for its folder. Tell the
+    # caller (409) instead of returning a silent empty list with 200 — the
+    # DB-backed dedup persists across restarts, so this is a real "nothing to do".
+    if not job_ids and skipped:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"All {skipped} import job(s) for this folder already exist "
+                "(active or completed); nothing new was started."
+            ),
+        )
+    return {"job_ids": job_ids, "skipped": skipped}
 
 
 class StagingImportRequest(BaseModel):

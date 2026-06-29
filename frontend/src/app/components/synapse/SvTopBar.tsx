@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { NavItem } from "../../navigation";
-import { IcoSettings } from "../icons";
+import { IcoSettings, IcoLibrary } from "../icons";
 import { sv } from "./tokens";
 import { SvMark } from "./SvMark";
 import { Wordmark } from "./Wordmark";
@@ -15,6 +15,7 @@ interface Props {
   devMode?: boolean;
   navItems: NavItem[];
   onSettingsClick: () => void;
+  onImportClick: () => void;
 }
 
 /**
@@ -30,6 +31,7 @@ export function SvTopBar({
   devMode = false,
   navItems,
   onSettingsClick,
+  onImportClick,
 }: Props) {
   const location = useLocation();
 
@@ -93,6 +95,36 @@ export function SvTopBar({
 
       {/* Right: LIVE pill + settings */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button
+          onClick={onImportClick}
+          aria-label="Import media"
+          title="Import media"
+          data-testid="sv-import-btn"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "transparent",
+            border: `1px solid ${sv.cyan}`,
+            color: sv.cyan,
+            fontFamily: sv.mono,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.16em",
+            padding: "7px 12px",
+            cursor: "pointer",
+            transition: "all 0.18s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = `${sv.cyan}1f`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <IcoLibrary size={14} />
+          IMPORT
+        </button>
         <SvBadge state={isConnected ? "live" : "queued"} dot>
           {isConnected ? "LIVE" : "OFFLINE"}
         </SvBadge>

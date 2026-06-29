@@ -114,12 +114,40 @@ def _library_path_for_job(job, content_type: str) -> "Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
     if job.destination_mode != "in_place":
         return None
-    from app.services.config_service import get_config_sync
 
-    cfg = get_config_sync()
-    if not cfg.import_watch_path:
+    root = None
+    picked_is_show = False
+    manifest_json = getattr(job, "import_manifest_json", None)
+    if manifest_json:
+        try:
+            data = json.loads(manifest_json)
+            root = data.get("root")
+            picked_is_show = bool(data.get("picked_is_show", False))
+        except (ValueError, TypeError):
+            root = None
+
+    if not root:
+        # Backward-compat for any pre-existing in_place job created before manual
+        # import: fall back to the legacy global watch path (a library root).
+        from app.services.config_service import get_config_sync
+
+        cfg = get_config_sync()
+        root = cfg.import_watch_path
+
+    if not root:
+        logger.warning("In-place import job %s has no manifest root; using library mode", job.id)
         return None
-    return Path(cfg.import_watch_path) / ("Movies" if content_type == "movie" else "TV")
+
+    base = Path(root)
+    if picked_is_show:
+        # The user pointed at a single title's own folder. Organize next to it:
+        # the organizer re-creates the canonical "Show (Year)/Season XX" (or
+        # "Movie (Year)") under the parent, so files land in/beside the picked
+        # folder instead of in a spurious TV/ or Movies/ subdir inside it.
+        return base.parent
+
+    # A parent-of-shows / library root: keep the TV vs Movies split underneath.
+    return base / ("Movies" if content_type == "movie" else "TV")
 
 
 # --- Automatic conflict escalation ---------------------------------------

@@ -192,6 +192,67 @@ export async function reripTitle(jobId: number, titleId: number): Promise<void> 
   return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/rerip`, { method: 'POST' });
 }
 
+// ---------------------------------------------------------------------------
+// Manual import
+// ---------------------------------------------------------------------------
+
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  type: "dir" | "mkv";
+  mkv_count?: number;
+}
+
+export interface BrowseResult {
+  cwd: string | null;
+  parent: string | null;
+  roots: string[];
+  entries: BrowseEntry[];
+}
+
+export interface PreviewUnit {
+  show_name: string | null;
+  season: number | null;
+  file_count: number;
+  total_bytes: number;
+}
+
+export interface PreviewResult {
+  root: string;
+  units: PreviewUnit[];
+  loose_files: string[];
+  total_jobs: number;
+  total_files: number;
+  total_bytes: number;
+  truncated: boolean;
+}
+
+/** List a server directory for the import picker. Empty path returns roots. */
+export async function browseDir(path: string): Promise<BrowseResult> {
+  return apiFetch<BrowseResult>(`/api/import/browse?path=${encodeURIComponent(path)}`);
+}
+
+/** Scan a path and return the import units + totals (no job is created). */
+export async function previewImport(path: string): Promise<PreviewResult> {
+  return apiFetch<PreviewResult>("/api/import/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** Create one import job per (show, season) unit under path. */
+export async function startImport(
+  path: string,
+  destinationMode: "library" | "in_place",
+): Promise<{ job_ids: number[] }> {
+  return apiFetch<{ job_ids: number[] }>("/api/import/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, destination_mode: destinationMode }),
+  });
+}
+
 /** The target kind for a post-completion track amendment. */
 export type AmendKind = "episode" | "extra" | "discard";
 

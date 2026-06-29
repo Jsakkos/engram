@@ -32,7 +32,6 @@ from app.core.log_context import with_job_log_context
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
-from app.core.staging_watcher import StagingWatcher
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -131,10 +130,11 @@ class JobManager:
         self._analyst = DiscAnalyst()
         self._active_jobs: dict[int, asyncio.Task] = {}
         self._drive_locks: dict[str, asyncio.Lock] = {}
-        # Per staging-path lock guarding create_job_from_staging's check→insert,
+        # Per staging-path lock guarding create_job_from_staging's check->insert,
         # mirroring _drive_locks for the disc path. create_job_from_staging is
-        # reachable from both the watch-folder poller and POST /api/staging/import,
-        # so concurrent calls for the same path must not both pass the dedup guard.
+        # reachable from the manual import endpoints (POST /api/import/start and
+        # POST /api/staging/import) and simulation, so concurrent calls for the
+        # same path must not both pass the dedup guard.
         self._staging_locks: dict[str, asyncio.Lock] = {}
         self._last_job_created_at: dict[str, float] = {}
         # Discs detected before first-run setup completed (P12): drive → label.
@@ -143,7 +143,6 @@ class JobManager:
         self._parked_discs: dict[str, str] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._timed_cleanup_task: asyncio.Task | None = None
-        self._staging_watcher: StagingWatcher | None = None
         # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
         self._last_activity: dict[int, float] = {}
         self._watchdog_task: asyncio.Task | None = None
@@ -277,20 +276,6 @@ class JobManager:
                 self._cleanup.run_timed_cleanup(config.staging_path, config.staging_cleanup_days)
             )
 
-        # Start staging/import watcher if either feature is enabled
-        need_watcher = (
-            config.staging_watch_enabled and config.staging_path
-        ) or config.import_watch_path
-        if need_watcher:
-            self._staging_watcher = StagingWatcher(
-                config.staging_path if config.staging_watch_enabled else "",
-                import_watch_path=config.import_watch_path or None,
-                import_destination_mode=config.import_destination_mode,
-                config=config,
-            )
-            self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
-            self._staging_watcher.start()
-
         # Start the stale-job watchdog
         if config.watchdog_enabled:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
@@ -394,36 +379,9 @@ class JobManager:
             logger.exception(f"Recovery of ORGANIZING job {job_id} failed: {e}")
             await self._fail_job(job_id, f"Organize recovery failed: {e}")
 
-    async def reload_staging_watcher(self) -> None:
-        """Stop and restart the staging/import watcher with the current DB config."""
-        from app.services.config_service import get_config as get_db_config
-
-        if self._staging_watcher:
-            self._staging_watcher.stop()
-            self._staging_watcher = None
-
-        config = await get_db_config()
-        need_watcher = (
-            config.staging_watch_enabled and config.staging_path
-        ) or config.import_watch_path
-        if need_watcher:
-            self._staging_watcher = StagingWatcher(
-                config.staging_path if config.staging_watch_enabled else "",
-                import_watch_path=config.import_watch_path or None,
-                import_destination_mode=config.import_destination_mode,
-                config=config,
-            )
-            self._staging_watcher.set_async_callback(self._on_staging_event, self._loop)
-            self._staging_watcher.start()
-            logger.info(
-                f"Staging watcher reloaded (import_watch_path={config.import_watch_path!r})"
-            )
-
     async def stop(self) -> None:
         """Stop the job manager and clean up."""
         self._drive_monitor.stop()
-        if self._staging_watcher:
-            self._staging_watcher.stop()
 
         if self._watchdog_task:
             self._watchdog_task.cancel()
@@ -485,32 +443,6 @@ class JobManager:
             except Exception:
                 logger.error(f"Failed to cancel jobs for {safe_drive}", exc_info=True)
             await event_broadcaster.broadcast_drive_removed(drive_letter, volume_label)
-
-    async def _on_staging_event(
-        self, event: str, staging_dir: str, label: str, metadata: dict | None = None
-    ) -> None:
-        """Handle new staging directory detection from StagingWatcher."""
-        source = metadata.get("source") if metadata else "staging"
-        logger.info(f"Staging event: {event} dir={staging_dir} label={label} source={source}")
-        if event == "staging_ready":
-            try:
-                is_import = bool(metadata and metadata.get("source") == "import")
-                await self.create_job_from_staging(
-                    staging_path=staging_dir,
-                    volume_label=label,
-                    content_type="unknown",
-                    detected_title=metadata.get("show_name") if is_import else None,
-                    detected_season=metadata.get("season") if is_import else None,
-                    destination_mode=metadata.get("destination_mode", "library")
-                    if is_import
-                    else "library",
-                    drive_id="import" if is_import else "staging",
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to create job from staging directory {staging_dir}: {e}",
-                    exc_info=True,
-                )
 
     # --- First-run setup gate (P12) ---
 
@@ -761,6 +693,7 @@ class JobManager:
         detected_season: int | None = None,
         destination_mode: str = "library",
         drive_id: str = "staging",
+        import_manifest: dict | None = None,
     ) -> int:
         """Create a job from pre-ripped MKV files in a staging directory."""
         from sqlmodel import select as sa_select
@@ -771,19 +704,19 @@ class JobManager:
             volume_label = staging_dir.name.upper().replace(" ", "_")
 
         # Hold a per-path lock across the dedup check and insert so two concurrent
-        # callers (poller + API, or two API calls) for the same path can't both
-        # pass the guard and insert duplicate jobs — mirrors _drive_locks on the
-        # disc path. Widened slightly by this dedup change: retries of a path with
-        # only FAILED rows now reach the check→insert that the guard used to short.
+        # callers (e.g. two API calls) for the same path can't both pass the guard
+        # and insert duplicate jobs, mirroring _drive_locks on the disc path.
+        # Widened slightly by this dedup change: retries of a path with only FAILED
+        # rows now reach the check->insert that the guard used to short.
         if str(staging_dir) not in self._staging_locks:
             self._staging_locks[str(staging_dir)] = asyncio.Lock()
 
         async with self._staging_locks[str(staging_dir)]:
             async with async_session() as session:
                 # Guard: don't create a duplicate job for the same staging directory.
-                # A watch folder is re-detected on every poll and every server
-                # restart, so a *terminal-failed* prior job (cancelled, or auto-failed
-                # by restart recovery) must NOT permanently wedge re-import — only an
+                # A staging path can be re-submitted (re-import, or after a server
+                # restart), so a *terminal-failed* prior job (cancelled, or auto-failed
+                # by restart recovery) must NOT permanently wedge re-import; only an
                 # active or review-pending job should dedup. Use .first() because a
                 # path may now accumulate multiple FAILED rows across retries.
                 existing = await session.execute(
@@ -811,6 +744,8 @@ class JobManager:
                     job.detected_title = detected_title
                 if detected_season is not None:
                     job.detected_season = detected_season
+                if import_manifest is not None:
+                    job.import_manifest_json = json.dumps(import_manifest)
 
                 session.add(job)
                 await session.commit()
@@ -819,13 +754,16 @@ class JobManager:
                 job_id = job.id
                 safe_path = str(staging_path).replace("\n", "").replace("\r", "")
                 safe_label = str(volume_label).replace("\n", "").replace("\r", "")
+                # destination_mode is user-supplied via POST /api/import/start; strip
+                # CR/LF so it can't forge log lines (matches safe_path/safe_label).
+                safe_dest = str(destination_mode).replace("\n", "").replace("\r", "")
                 logger.info(
                     "Created %s job %s from %s (label: %s, destination: %s)",
                     "import" if drive_id == "import" else "staging",
                     job_id,
                     safe_path,
                     safe_label,
-                    destination_mode,
+                    safe_dest,
                 )
 
         await event_broadcaster.broadcast_drive_inserted(drive_id, volume_label)
