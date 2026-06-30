@@ -2,7 +2,7 @@
 
 Detects disc insertion/removal using platform-specific APIs:
 - Windows: kernel32 ctypes (GetDriveTypeW, GetVolumeInformationW)
-- Linux: /sys/block/sr* enumeration, blkid, eject
+- Linux: /sys/block/sr* enumeration + ioctl(CDROM_DRIVE_STATUS), blkid, eject
 """
 
 import asyncio
@@ -17,6 +17,9 @@ from typing import Any
 if sys.platform == "win32":
     import ctypes
     import string
+
+if sys.platform != "win32":
+    import fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -143,14 +146,31 @@ def _get_volume_label_linux(drive: str) -> str:
 
 
 def _is_disc_present_linux(drive: str) -> bool:
-    """Check if a disc is present on Linux by reading /sys/block size."""
+    """Check if a disc is present on Linux.
+
+    Reads /sys/block size first: if it's zero the drive is definitely empty.
+    If non-zero (or unreadable), falls back to ioctl(CDROM_DRIVE_STATUS) which
+    queries drive firmware directly — this handles containers where sysfs is
+    frozen and never drops to 0 after disc removal.
+    """
     try:
-        dev_name = os.path.basename(drive)  # "sr0" from "/dev/sr0"
-        size_path = f"/sys/block/{dev_name}/size"
-        with open(size_path) as f:
-            size = int(f.read().strip())
-        return size > 0
+        dev_name = os.path.basename(drive)
+        with open(f"/sys/block/{dev_name}/size") as f:
+            if int(f.read().strip()) == 0:
+                return False  # sysfs confirmed empty — trust it
     except (FileNotFoundError, ValueError, PermissionError, OSError):
+        pass
+
+    # sysfs non-zero or unavailable — verify via ioctl (handles frozen sysfs in containers)
+    try:
+        CDROM_DRIVE_STATUS = 0x5326
+        CDS_DISC_OK = 4
+        fd = os.open(drive, os.O_RDONLY | os.O_NONBLOCK)
+        try:
+            return fcntl.ioctl(fd, CDROM_DRIVE_STATUS) == CDS_DISC_OK
+        finally:
+            os.close(fd)
+    except OSError:
         return False
 
 
