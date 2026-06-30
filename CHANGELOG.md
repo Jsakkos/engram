@@ -4,9 +4,18 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-06-29
+
+_Highlights: two UI polish fixes — the bug-report icon no longer causes a layout shift on hover, and selecting a `Season NN` folder in the import picker is now identified correctly._
+
 ### Fixed
 
+- **Bug report icon no longer causes a layout shift on hover.** The icon was rendered inside `ActionButtons`, which appears after `StateIndicator` in the flex row, so revealing it on hover pushed all buttons rightward. It now lives before `StateIndicator` in the card, with reserved space via an opacity toggle, so the layout stays stable. (#465, thanks @katelovescode!)
 - **Manual import now identifies a picked `Season NN` folder correctly.** Selecting a season folder directly (e.g. `…\Seinfeld\Season 4`) created a job titled "Season 4" with no season and content type "unknown", because the scanner only handled picking a show folder or a parent-of-shows folder. It now recognizes a `Season NN` pick, taking the show name from the parent folder and the season from the folder's own name (and organizes in place beside the original show folder rather than nesting a second copy inside the season). (#474)
+
+### Changed
+
+- **Frontend dependency updates** — @radix-ui/react-scroll-area 1.2.3→1.2.12, @radix-ui/react-collapsible 1.1.3→1.1.14, @radix-ui/react-slot 1.1.2→1.3.0, @playwright/test 1.60.0→1.61.1. (#468, #470, #471, #472)
 
 ## [0.22.0] - 2026-06-28
 
