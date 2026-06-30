@@ -149,20 +149,14 @@ def _get_volume_label_linux(drive: str) -> str:
 _OPTICAL_DRIVE_RE = re.compile(r"^/dev/sr(\d+)$")
 
 
-def _is_disc_present_linux(drive: str) -> bool:
-    """Check if a disc is present on Linux.
+def _check_sr_device(dev_num: int) -> bool:
+    """Check disc presence for /dev/srN by device number.
 
-    Reads /sys/block size first: if it's zero the drive is definitely empty.
-    If non-zero (or unreadable), falls back to ioctl(CDROM_DRIVE_STATUS) which
-    queries drive firmware directly — this handles containers where sysfs is
-    frozen and never drops to 0 after disc removal.
+    Accepts an int so no tainted string reaches any path expression.
+    Reads /sys/block size first (zero = definitely empty), then falls back
+    to ioctl(CDROM_DRIVE_STATUS) for containers where sysfs is frozen.
     """
-    m = _OPTICAL_DRIVE_RE.match(drive)
-    if not m:
-        return False
-    # Reconstruct paths from the captured digit group only — breaks taint flow
-    # from the original drive argument into any path expression.
-    dev_name = f"sr{m.group(1)}"
+    dev_name = f"sr{dev_num}"
     dev_path = f"/dev/{dev_name}"
     try:
         with open(f"/sys/block/{dev_name}/size") as f:
@@ -182,6 +176,14 @@ def _is_disc_present_linux(drive: str) -> bool:
             os.close(fd)
     except OSError:
         return False
+
+
+def _is_disc_present_linux(drive: str) -> bool:
+    """Check if a disc is present on Linux."""
+    m = _OPTICAL_DRIVE_RE.match(drive)
+    if not m:
+        return False
+    return _check_sr_device(int(m.group(1)))
 
 
 def _eject_disc_linux(drive: str) -> bool:
