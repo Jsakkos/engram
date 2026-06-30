@@ -1,5 +1,6 @@
 """Endpoint tests for manual import: browse, preview, start."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -131,6 +132,10 @@ async def test_start_on_season_folder_uses_parent_show(client, tmp_path: Path):
         assert job.detected_title == "Seinfeld"
         assert job.detected_season == 4
         assert job.content_type == "tv"
+        # Guard the routes->manifest serialization: a dropped key would leave the
+        # assertions above green while silently breaking in-place organize.
+        manifest = json.loads(job.import_manifest_json)
+        assert manifest["picked_is_season"] is True
 
 
 async def test_start_no_mkvs_400(client, tmp_path: Path):

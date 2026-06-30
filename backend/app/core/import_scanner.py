@@ -188,7 +188,9 @@ def scan(path: Path) -> ImportScan:
 
     def show_for(file: Path) -> str | None:
         if picked_season is not None:
-            return _clean_show(root.parent.name)
+            # A "Season NN" folder at the filesystem root has no parent name; fall
+            # back to None (the unresolved-show sentinel) rather than persisting "".
+            return _clean_show(root.parent.name) or None
         if picked_is_show:
             return _clean_show(root.name)
         try:
