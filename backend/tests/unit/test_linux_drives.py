@@ -5,7 +5,10 @@ filesystem and subprocess calls. Also verifies Windows behavior
 is unchanged.
 """
 
+import sys
 from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
 
 from app.core import sentinel
 
@@ -71,6 +74,7 @@ class TestGetVolumeLabelLinux:
         assert label == ""
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl and O_NONBLOCK are Linux-only")
 class TestIsDiscPresentLinux:
     """Tests for _is_disc_present_linux."""
 

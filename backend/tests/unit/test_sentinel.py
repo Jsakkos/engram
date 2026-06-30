@@ -150,6 +150,7 @@ class TestNotify:
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl and O_NONBLOCK are Linux-only")
 class TestLinuxReaders:
     """Linux /sys/block readers with mocked filesystem I/O."""
 
