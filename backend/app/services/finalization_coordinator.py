@@ -117,12 +117,14 @@ def _library_path_for_job(job, content_type: str) -> "Path | None":
 
     root = None
     picked_is_show = False
+    picked_is_season = False
     manifest_json = getattr(job, "import_manifest_json", None)
     if manifest_json:
         try:
             data = json.loads(manifest_json)
             root = data.get("root")
             picked_is_show = bool(data.get("picked_is_show", False))
+            picked_is_season = bool(data.get("picked_is_season", False))
         except (ValueError, TypeError):
             root = None
 
@@ -139,6 +141,13 @@ def _library_path_for_job(job, content_type: str) -> "Path | None":
         return None
 
     base = Path(root)
+    if picked_is_season:
+        # The user pointed at a single "Season NN" folder. The organizer recreates
+        # the canonical "Show (Year)/Season XX" under the returned base, so it must
+        # be the season folder's grandparent (the show's parent) — landing files at
+        # <grandparent>/Show (Year)/Season XX beside the original show folder,
+        # rather than nesting a second show folder inside the picked season.
+        return base.parent.parent
     if picked_is_show:
         # The user pointed at a single title's own folder. Organize next to it:
         # the organizer re-creates the canonical "Show (Year)/Season XX" (or

@@ -155,3 +155,43 @@ def test_picked_is_show_true_for_single_file(tmp_path: Path):
     _mkv(f)
 
     assert import_scanner.scan(f).picked_is_show is True
+
+
+def test_picked_season_folder_infers_show_from_parent(tmp_path: Path):
+    # The reported bug: user navigates INTO "Season 4" and picks it directly.
+    # Show must come from the parent ("Seinfeld"), season from the folder name.
+    season_dir = tmp_path / "Seinfeld" / "Season 4"
+    _mkv(season_dir / "e1.mkv")
+    _mkv(season_dir / "e2.mkv")
+
+    scan = import_scanner.scan(season_dir)
+
+    assert len(scan.units) == 1
+    assert scan.units[0].show_name == "Seinfeld"
+    assert scan.units[0].season == 4
+    assert scan.picked_is_season is True
+
+
+def test_picked_season_folder_with_disc_subfolders(tmp_path: Path):
+    # Files nested under Disc folders inside the picked season must still roll up
+    # into that season, with the show taken from the parent.
+    season_dir = tmp_path / "The King of Queens (1998)" / "Season 3"
+    _mkv(season_dir / "Disc 1" / "a.mkv")
+    _mkv(season_dir / "Disc 2" / "b.mkv")
+
+    scan = import_scanner.scan(season_dir)
+
+    assert len(scan.units) == 1
+    assert scan.units[0].show_name == "The King of Queens (1998)"
+    assert scan.units[0].season == 3
+    assert len(scan.units[0].files) == 2
+
+
+def test_picked_season_lowercase_padded(tmp_path: Path):
+    season_dir = tmp_path / "Show" / "season 07"
+    _mkv(season_dir / "a.mkv")
+
+    scan = import_scanner.scan(season_dir)
+
+    assert scan.units[0].show_name == "Show"
+    assert scan.units[0].season == 7
