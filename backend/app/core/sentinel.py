@@ -174,6 +174,11 @@ def _check_sr_device(dev_num: int) -> bool:
             return fcntl.ioctl(fd, CDROM_DRIVE_STATUS) == CDS_DISC_OK
         finally:
             os.close(fd)
+    except PermissionError:
+        logger.warning(
+            f"ioctl({dev_path}) permission denied — add the runtime user to the drive's group"
+        )
+        return False
     except OSError:
         return False
 
@@ -224,6 +229,8 @@ def get_volume_label(drive: str) -> str:
     if sys.platform == "win32":
         return _get_volume_label_windows(drive)
     elif sys.platform == "linux":
+        if not _OPTICAL_DRIVE_RE.match(drive):
+            return ""
         return _get_volume_label_linux(drive)
     return ""
 
@@ -242,6 +249,8 @@ def eject_disc(drive: str) -> bool:
     if sys.platform == "win32":
         return _eject_disc_windows(drive)
     elif sys.platform == "linux":
+        if not _OPTICAL_DRIVE_RE.match(drive):
+            return False
         return _eject_disc_linux(drive)
     logger.warning(f"Disc eject not supported on {sys.platform}")
     return False
