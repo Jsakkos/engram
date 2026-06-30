@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-06-30
+
+_Highlights: the cancel-job confirmation now uses an animated Synapse v2 modal instead of the browser's native `window.confirm` dialog, eliminating the accidental-tap risk on the previous single-click confirm._
+
+### Fixed
+
+- **Cancel confirmation now uses the Synapse v2 modal instead of `window.confirm`.** The native browser dialog was a single-click confirm with no animation or design context, making accidental disc-cancel easy. The new modal matches the app's design language (SvPanel, mono uppercase, red glow on the confirm button) and is covered by unit tests for open/dismiss and confirm paths. (#466)
+
 ## [0.22.1] - 2026-06-29
 
 _Highlights: two UI polish fixes — the bug-report icon no longer causes a layout shift on hover, and selecting a `Season NN` folder in the import picker is now identified correctly._
