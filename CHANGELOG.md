@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Manual import now identifies a picked `Season NN` folder correctly.** Selecting a season folder directly (e.g. `…\Seinfeld\Season 4`) created a job titled "Season 4" with no season and content type "unknown", because the scanner only handled picking a show folder or a parent-of-shows folder. It now recognizes a `Season NN` pick, taking the show name from the parent folder and the season from the folder's own name (and organizes in place beside the original show folder rather than nesting a second copy inside the season). (#474)
+
 ## [0.22.0] - 2026-06-28
 
 _Highlights: manual media import replaces the background watch folder with a user-triggered folder picker, headless Linux server variants for NAS and Raspberry Pi, Docker multi-arch (amd64 + arm64) with properly versioned GHCR tags, and a new auto-eject toggle._

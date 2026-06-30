@@ -1,5 +1,6 @@
 """Endpoint tests for manual import: browse, preview, start."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -106,6 +107,35 @@ async def test_start_creates_one_job_per_season_with_manifest(client, tmp_path: 
             assert job is not None
             assert job.drive_id == "import"
             assert job.import_manifest_json is not None
+
+
+async def test_start_on_season_folder_uses_parent_show(client, tmp_path: Path):
+    # Picking a "Season NN" folder directly must yield a TV job whose title is
+    # the parent show and whose season is the folder's own number (not a job
+    # titled "Season 4" with no season).
+    season_dir = tmp_path / "Seinfeld" / "Season 4"
+    _mkv(season_dir / "e1.mkv")
+    _mkv(season_dir / "e2.mkv")
+
+    res = await client.post(
+        "/api/import/start", json={"path": str(season_dir), "destination_mode": "library"}
+    )
+    assert res.status_code == 200
+    job_ids = res.json()["job_ids"]
+    assert len(job_ids) == 1
+
+    async with async_session() as session:
+        from app.models.disc_job import DiscJob
+
+        job = await session.get(DiscJob, job_ids[0])
+        assert job is not None
+        assert job.detected_title == "Seinfeld"
+        assert job.detected_season == 4
+        assert job.content_type == "tv"
+        # Guard the routes->manifest serialization: a dropped key would leave the
+        # assertions above green while silently breaking in-place organize.
+        manifest = json.loads(job.import_manifest_json)
+        assert manifest["picked_is_season"] is True
 
 
 async def test_start_no_mkvs_400(client, tmp_path: Path):
