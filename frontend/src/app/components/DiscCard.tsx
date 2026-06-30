@@ -8,6 +8,7 @@ import { usePosterImage } from "./DiscCard/hooks/usePosterImage";
 import { MediaTypeBadge } from "./DiscCard/MediaTypeBadge";
 import { DiscMetadata } from "./DiscCard/DiscMetadata";
 import { ActionButtons } from "./DiscCard/ActionButtons";
+import { Bug } from "lucide-react";
 import { useElapsedTime } from "../hooks/useElapsedTime";
 import { sv, SvPanel, SvLabel, SvDiscInsert, SvProgressBar, type DiscInsertPhase } from "./synapse";
 import { formatEta } from "../../utils/formatting";
@@ -427,6 +428,31 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       <span className="sv-tnum">{elapsed}</span>
                     </div>
                   )}
+                  {!!onReportBug && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onReportBug(); }}
+                      title="Report a bug for this job"
+                      aria-label="Report a bug for this job"
+                      data-testid="disc-card-report-bug"
+                      style={{
+                        opacity: isHovered ? 1 : 0,
+                        pointerEvents: isHovered ? "auto" : "none",
+                        transition: "opacity 120ms ease-out",
+                        width: 30,
+                        height: 30,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "transparent",
+                        border: `1px solid ${isHovered ? sv.red : "transparent"}`,
+                        color: sv.red,
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Bug size={14} />
+                    </button>
+                  )}
                   <StateIndicator state={disc.state} />
                   <ActionButtons
                     state={disc.state}
@@ -435,7 +461,6 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReview={onReview}
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
-                    onReportBug={onReportBug}
                     emphasizeReIdentify={showIdentityReview}
                   />
                 </div>
