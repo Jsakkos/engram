@@ -146,7 +146,7 @@ def _get_volume_label_linux(drive: str) -> str:
         return ""
 
 
-_OPTICAL_DRIVE_RE = re.compile(r"^/dev/sr\d+$")
+_OPTICAL_DRIVE_RE = re.compile(r"^/dev/sr(\d+)$")
 
 
 def _is_disc_present_linux(drive: str) -> bool:
@@ -157,10 +157,14 @@ def _is_disc_present_linux(drive: str) -> bool:
     queries drive firmware directly — this handles containers where sysfs is
     frozen and never drops to 0 after disc removal.
     """
-    if not _OPTICAL_DRIVE_RE.match(drive):
+    m = _OPTICAL_DRIVE_RE.match(drive)
+    if not m:
         return False
+    # Reconstruct paths from the captured digit group only — breaks taint flow
+    # from the original drive argument into any path expression.
+    dev_name = f"sr{m.group(1)}"
+    dev_path = f"/dev/{dev_name}"
     try:
-        dev_name = os.path.basename(drive)
         with open(f"/sys/block/{dev_name}/size") as f:
             if int(f.read().strip()) == 0:
                 return False  # sysfs confirmed empty — trust it
@@ -171,7 +175,7 @@ def _is_disc_present_linux(drive: str) -> bool:
     try:
         CDROM_DRIVE_STATUS = 0x5326
         CDS_DISC_OK = 4
-        fd = os.open(drive, os.O_RDONLY | os.O_NONBLOCK)
+        fd = os.open(dev_path, os.O_RDONLY | os.O_NONBLOCK)
         try:
             return fcntl.ioctl(fd, CDROM_DRIVE_STATUS) == CDS_DISC_OK
         finally:
