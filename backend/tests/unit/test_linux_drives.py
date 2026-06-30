@@ -5,7 +5,10 @@ filesystem and subprocess calls. Also verifies Windows behavior
 is unchanged.
 """
 
+import sys
 from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
 
 from app.core import sentinel
 
@@ -71,11 +74,18 @@ class TestGetVolumeLabelLinux:
         assert label == ""
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl and O_NONBLOCK are Linux-only")
 class TestIsDiscPresentLinux:
     """Tests for _is_disc_present_linux."""
 
     def test_disc_present_nonzero_size(self):
-        with patch("builtins.open", mock_open(read_data="4194304\n")):
+        # sysfs non-zero → ioctl confirms disc present
+        with (
+            patch("builtins.open", mock_open(read_data="4194304\n")),
+            patch("os.open", return_value=5),
+            patch("os.close"),
+            patch("fcntl.ioctl", return_value=4),
+        ):
             assert sentinel._is_disc_present_linux("/dev/sr0") is True
 
     def test_no_disc_zero_size(self):
@@ -83,11 +93,17 @@ class TestIsDiscPresentLinux:
             assert sentinel._is_disc_present_linux("/dev/sr0") is False
 
     def test_no_device_file(self):
-        with patch("builtins.open", side_effect=FileNotFoundError):
+        with (
+            patch("builtins.open", side_effect=FileNotFoundError),
+            patch("os.open", side_effect=OSError),
+        ):
             assert sentinel._is_disc_present_linux("/dev/sr0") is False
 
     def test_permission_denied(self):
-        with patch("builtins.open", side_effect=PermissionError):
+        with (
+            patch("builtins.open", side_effect=PermissionError),
+            patch("os.open", side_effect=OSError),
+        ):
             assert sentinel._is_disc_present_linux("/dev/sr0") is False
 
 

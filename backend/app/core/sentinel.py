@@ -2,13 +2,14 @@
 
 Detects disc insertion/removal using platform-specific APIs:
 - Windows: kernel32 ctypes (GetDriveTypeW, GetVolumeInformationW)
-- Linux: /sys/block/sr* enumeration, blkid, eject
+- Linux: /sys/block/sr* enumeration + ioctl(CDROM_DRIVE_STATUS), blkid, eject
 """
 
 import asyncio
 import glob
 import logging
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -17,6 +18,9 @@ from typing import Any
 if sys.platform == "win32":
     import ctypes
     import string
+
+if sys.platform != "win32":
+    import fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -142,16 +146,49 @@ def _get_volume_label_linux(drive: str) -> str:
         return ""
 
 
-def _is_disc_present_linux(drive: str) -> bool:
-    """Check if a disc is present on Linux by reading /sys/block size."""
+_OPTICAL_DRIVE_RE = re.compile(r"^/dev/sr(\d+)$")
+
+
+def _check_sr_device(dev_num: int) -> bool:
+    """Check disc presence for /dev/srN by device number.
+
+    Accepts an int so no tainted string reaches any path expression.
+    Reads /sys/block size first (zero = definitely empty), then falls back
+    to ioctl(CDROM_DRIVE_STATUS) for containers where sysfs is frozen.
+    """
+    dev_name = f"sr{dev_num}"
+    dev_path = f"/dev/{dev_name}"
     try:
-        dev_name = os.path.basename(drive)  # "sr0" from "/dev/sr0"
-        size_path = f"/sys/block/{dev_name}/size"
-        with open(size_path) as f:
-            size = int(f.read().strip())
-        return size > 0
+        with open(f"/sys/block/{dev_name}/size") as f:
+            if int(f.read().strip()) == 0:
+                return False  # sysfs confirmed empty — trust it
     except (FileNotFoundError, ValueError, PermissionError, OSError):
+        pass
+
+    # sysfs non-zero or unavailable — verify via ioctl (handles frozen sysfs in containers)
+    try:
+        CDROM_DRIVE_STATUS = 0x5326
+        CDS_DISC_OK = 4
+        fd = os.open(dev_path, os.O_RDONLY | os.O_NONBLOCK)
+        try:
+            return fcntl.ioctl(fd, CDROM_DRIVE_STATUS) == CDS_DISC_OK
+        finally:
+            os.close(fd)
+    except PermissionError:
+        logger.warning(
+            f"ioctl({dev_path}) permission denied — add the runtime user to the drive's group"
+        )
         return False
+    except OSError:
+        return False
+
+
+def _is_disc_present_linux(drive: str) -> bool:
+    """Check if a disc is present on Linux."""
+    m = _OPTICAL_DRIVE_RE.match(drive)
+    if not m:
+        return False
+    return _check_sr_device(int(m.group(1)))
 
 
 def _eject_disc_linux(drive: str) -> bool:
@@ -192,6 +229,8 @@ def get_volume_label(drive: str) -> str:
     if sys.platform == "win32":
         return _get_volume_label_windows(drive)
     elif sys.platform == "linux":
+        if not _OPTICAL_DRIVE_RE.match(drive):
+            return ""
         return _get_volume_label_linux(drive)
     return ""
 
@@ -210,6 +249,8 @@ def eject_disc(drive: str) -> bool:
     if sys.platform == "win32":
         return _eject_disc_windows(drive)
     elif sys.platform == "linux":
+        if not _OPTICAL_DRIVE_RE.match(drive):
+            return False
         return _eject_disc_linux(drive)
     logger.warning(f"Disc eject not supported on {sys.platform}")
     return False

@@ -150,6 +150,7 @@ class TestNotify:
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl and O_NONBLOCK are Linux-only")
 class TestLinuxReaders:
     """Linux /sys/block readers with mocked filesystem I/O."""
 
@@ -164,20 +165,64 @@ class TestLinuxReaders:
         with patch.object(sentinel.glob, "glob", return_value=[]):
             assert sentinel._get_optical_drives_linux() == []
 
+    def test_is_disc_present_linux_invalid_path(self):
+        assert sentinel._is_disc_present_linux("/dev/sda") is False
+        assert sentinel._is_disc_present_linux("../../etc/passwd") is False
+
     def test_is_disc_present_linux_true(self):
-        with patch("builtins.open", mock_open(read_data="2048\n")):
+        # sysfs shows non-zero → falls through to ioctl → CDS_DISC_OK (4)
+        with (
+            patch("builtins.open", mock_open(read_data="2048\n")),
+            patch("os.open", return_value=5),
+            patch("os.close"),
+            patch("fcntl.ioctl", return_value=4),
+        ):
             assert sentinel._is_disc_present_linux("/dev/sr0") is True
 
     def test_is_disc_present_linux_zero_size(self):
         with patch("builtins.open", mock_open(read_data="0\n")):
             assert sentinel._is_disc_present_linux("/dev/sr0") is False
 
+    def test_is_disc_present_linux_frozen_sysfs_tray_open(self):
+        # The container bug: sysfs frozen at non-zero but tray is open (CDS_TRAY_OPEN=2)
+        with (
+            patch("builtins.open", mock_open(read_data="80398720\n")),
+            patch("os.open", return_value=5),
+            patch("os.close"),
+            patch("fcntl.ioctl", return_value=2),
+        ):
+            assert sentinel._is_disc_present_linux("/dev/sr0") is False
+
+    def test_is_disc_present_linux_no_sysfs_ioctl_confirms(self):
+        # No sysfs (e.g. non-standard kernel) but ioctl confirms disc present
+        with (
+            patch("builtins.open", side_effect=FileNotFoundError),
+            patch("os.open", return_value=5),
+            patch("os.close"),
+            patch("fcntl.ioctl", return_value=4),
+        ):
+            assert sentinel._is_disc_present_linux("/dev/sr0") is True
+
+    def test_is_disc_present_linux_ioctl_oserror(self):
+        # sysfs non-zero but ioctl fails (permission, no device) → safe False
+        with (
+            patch("builtins.open", mock_open(read_data="2048\n")),
+            patch("os.open", side_effect=OSError("permission denied")),
+        ):
+            assert sentinel._is_disc_present_linux("/dev/sr0") is False
+
     def test_is_disc_present_linux_missing_file(self):
-        with patch("builtins.open", side_effect=FileNotFoundError):
+        with (
+            patch("builtins.open", side_effect=FileNotFoundError),
+            patch("os.open", side_effect=OSError),
+        ):
             assert sentinel._is_disc_present_linux("/dev/sr0") is False
 
     def test_is_disc_present_linux_bad_value(self):
-        with patch("builtins.open", mock_open(read_data="notanumber")):
+        with (
+            patch("builtins.open", mock_open(read_data="notanumber")),
+            patch("os.open", side_effect=OSError),
+        ):
             assert sentinel._is_disc_present_linux("/dev/sr0") is False
 
     def test_get_volume_label_linux_success(self):
