@@ -53,6 +53,11 @@ class ImportScan:
     # organize layout: a single-title pick organizes next to itself, not under a
     # spurious TV/ or Movies/ subdir created inside the title folder.
     picked_is_show: bool = False
+    # True when the picked folder is itself a "Season NN" folder. The show then
+    # comes from its parent and the season from its own name. Drives in-place
+    # organize: the canonical "Show (Year)/Season XX" is recreated under the
+    # season folder's grandparent (the show's parent), not inside the season folder.
+    picked_is_season: bool = False
 
 
 def _clean_show(name: str) -> str:
@@ -151,6 +156,16 @@ def scan(path: Path) -> ImportScan:
         return ImportScan(path.parent, [unit], [], 1, size, False, picked_is_show=True)
 
     root = path
+
+    # Third identity case: the user navigated INTO a "Season NN" folder and picked
+    # it directly. Neither the "picked folder is a show" nor the "picked folder is
+    # a parent of shows" branch fits: the show is the folder's parent, and the
+    # season is the folder's own name. Without this, show_for() returns the season
+    # folder name ("Season 4") and _season_from_path() returns None (the season
+    # segment is the root, which it excludes).
+    picked_season_match = _SEASON_RE.match(root.name)
+    picked_season = int(picked_season_match.group(1)) if picked_season_match else None
+
     files, truncated = _iter_mkvs(root)
 
     immediate_dirs = _safe_dirs(root)
@@ -172,6 +187,8 @@ def scan(path: Path) -> ImportScan:
         structured = [f for f in files if f.parent != root]
 
     def show_for(file: Path) -> str | None:
+        if picked_season is not None:
+            return _clean_show(root.parent.name)
         if picked_is_show:
             return _clean_show(root.name)
         try:
@@ -182,7 +199,10 @@ def scan(path: Path) -> ImportScan:
 
     groups: dict[tuple[str | None, int | None], list[Path]] = defaultdict(list)
     for f in structured:
-        groups[(show_for(f), _season_from_path(f, root))].append(f)
+        season = _season_from_path(f, root)
+        if season is None:
+            season = picked_season  # season folder is the root itself
+        groups[(show_for(f), season)].append(f)
 
     units: list[ImportUnit] = []
     for (show, season), unit_files in sorted(
@@ -195,5 +215,12 @@ def scan(path: Path) -> ImportScan:
     total_files = len(structured) + len(loose_files)
     total_bytes = sum(u.total_bytes for u in units) + sum(_safe_size(f) for f in loose_files)
     return ImportScan(
-        root, units, loose_files, total_files, total_bytes, truncated, picked_is_show=picked_is_show
+        root,
+        units,
+        loose_files,
+        total_files,
+        total_bytes,
+        truncated,
+        picked_is_show=picked_is_show,
+        picked_is_season=picked_season is not None,
     )
