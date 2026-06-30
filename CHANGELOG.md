@@ -6,7 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
-- **Disc auto-detection no longer breaks after the first rip on containerized installs (TrueNAS, Docker).** In some container environments `/sys/block/sr0/size` freezes at the previous disc's block count after ejection and never drops to zero. This caused two compounding bugs: a ghost FAILED job fired on every cycle (spurious "inserted" event from the frozen sysfs), and the next real disc insertion was silently ignored until the container restarted. The sentinel now verifies disc presence via `ioctl(CDROM_DRIVE_STATUS)` when sysfs reports a non-zero size, querying drive firmware directly. (#477, thanks @katelovescode!)
+- **Disc auto-detection no longer breaks after the first rip on containerized installs (TrueNAS, Docker).** In some container environments `/sys/block/sr0/size` freezes at the previous disc's block count after ejection and never drops to zero. This caused two compounding bugs: a ghost FAILED job fired on every cycle (spurious "inserted" event from the frozen sysfs), and the next real disc insertion was silently ignored until the container restarted. The sentinel now verifies disc presence via `ioctl(CDROM_DRIVE_STATUS)` when sysfs reports a non-zero size, querying drive firmware directly. (#477)
 
 ## [0.22.1] - 2026-06-29
 
