@@ -164,6 +164,10 @@ class TestLinuxReaders:
         with patch.object(sentinel.glob, "glob", return_value=[]):
             assert sentinel._get_optical_drives_linux() == []
 
+    def test_is_disc_present_linux_invalid_path(self):
+        assert sentinel._is_disc_present_linux("/dev/sda") is False
+        assert sentinel._is_disc_present_linux("../../etc/passwd") is False
+
     def test_is_disc_present_linux_true(self):
         # sysfs shows non-zero → falls through to ioctl → CDS_DISC_OK (4)
         with patch("builtins.open", mock_open(read_data="2048\n")), \

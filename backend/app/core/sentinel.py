@@ -9,6 +9,7 @@ import asyncio
 import glob
 import logging
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -145,6 +146,9 @@ def _get_volume_label_linux(drive: str) -> str:
         return ""
 
 
+_OPTICAL_DRIVE_RE = re.compile(r"^/dev/sr\d+$")
+
+
 def _is_disc_present_linux(drive: str) -> bool:
     """Check if a disc is present on Linux.
 
@@ -153,6 +157,8 @@ def _is_disc_present_linux(drive: str) -> bool:
     queries drive firmware directly — this handles containers where sysfs is
     frozen and never drops to 0 after disc removal.
     """
+    if not _OPTICAL_DRIVE_RE.match(drive):
+        return False
     try:
         dev_name = os.path.basename(drive)
         with open(f"/sys/block/{dev_name}/size") as f:
