@@ -178,3 +178,22 @@ class TestEnsurePathsExist:
         )
         await ensure_paths_exist(config)
         assert (tmp_path / "staging").exists()
+
+    async def test_ensure_paths_exist_expands_tilde(self, tmp_path, monkeypatch):
+        """A '~'-prefixed path should resolve against the home dir, not the backend dir.
+
+        Path("~/foo").is_absolute() is False, so expanduser() must run before the
+        absolute-path check or the tilde is never resolved (issue #459).
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        config = AppConfig(
+            staging_path=str(tmp_path / "staging"),
+            library_movies_path=str(tmp_path / "movies"),
+            library_tv_path=str(tmp_path / "tv"),
+            subtitles_cache_path="~/.engram/cache",
+        )
+
+        await ensure_paths_exist(config)
+
+        assert (tmp_path / ".engram" / "cache").exists()

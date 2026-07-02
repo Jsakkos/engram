@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Subtitle cache directory no longer fails to create with a permission-denied warning on startup.** `ensure_paths_exist()` checked `is_absolute()` before expanding `~`, so the default `subtitles_cache_path` of `~/.engram/cache` was never tilde-expanded and instead resolved to a literal `~` folder under the backend source directory, which is unwritable in Docker. `~` is now expanded before the absolute-path check, matching every other consumer of this setting. (#459)
+
 ## [0.22.2] - 2026-06-30
 
 _Highlights: disc auto-detection no longer breaks after the first rip on containerized installs (TrueNAS, Docker)._

@@ -271,7 +271,7 @@ async def ensure_paths_exist(config: AppConfig) -> None:
 
     for path_str in paths_to_create:
         if path_str:
-            path = Path(path_str)
+            path = Path(path_str).expanduser()
             if not path.is_absolute():
                 # Make relative paths absolute based on backend directory
                 path = Path(__file__).parent.parent / path_str
