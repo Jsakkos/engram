@@ -5,7 +5,7 @@ preserve app_config data, recreate transient tables, and remove obsolete columns
 """
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -510,3 +510,61 @@ class TestSchemaMigration:
             await session.commit()
             await session.refresh(job_no_prompt)
             assert job_no_prompt.identity_prompt_json is None
+
+
+class TestAlembicSelfHealing:
+    """Regression tests for issue #459: _add_missing_columns() (the frozen-build
+    fallback) and Alembic both run on every startup and converge toward the
+    same SQLModel metadata. If a column an Alembic migration wants to add was
+    already added out-of-band, ALTER TABLE ADD COLUMN fails with "duplicate
+    column name" and, previously, that failure was only logged — leaving
+    alembic_version stuck one revision behind forever and silently blocking
+    every later migration on every subsequent startup.
+    """
+
+    def test_upgrade_heals_when_head_column_already_present(self, tmp_path):
+        """A DB whose schema already matches head, but whose alembic_version
+        is one revision behind, must self-heal to head instead of getting
+        stuck retrying the same failing migration forever.
+        """
+        from alembic import command
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        import app.database as db_mod
+
+        db_path = tmp_path / "self_heal.db"
+        sync_engine = create_engine(f"sqlite:///{db_path}")
+
+        # migrations/env.py reads settings.database_url directly (ignores any
+        # connection passed via Config.attributes), so it must point at the
+        # temp DB before *any* Alembic command runs, including the stamp used
+        # to set up this scenario.
+        original_url = db_mod.settings.database_url
+        db_mod.settings.database_url = f"sqlite+aiosqlite:///{db_path}"
+        try:
+            # Simulate a DB that already has the full current schema (as if
+            # _add_missing_columns had already added every column, including
+            # the one the still-pending head migration wants to add).
+            SQLModel.metadata.create_all(sync_engine)
+
+            alembic_cfg = Config(str(db_mod._ALEMBIC_INI))
+            script = ScriptDirectory.from_config(alembic_cfg)
+            head = script.get_current_head()
+            down_revision = script.get_revision(head).down_revision or "base"
+
+            # Stamp alembic_version one revision behind head, so re-running
+            # the head migration's ADD COLUMN collides with the column that
+            # create_all() already put there.
+            command.stamp(alembic_cfg, down_revision)
+
+            db_mod._run_alembic_upgrade()
+
+            from alembic.runtime.migration import MigrationContext
+
+            with sync_engine.connect() as conn:
+                current_rev = MigrationContext.configure(conn).get_current_revision()
+            assert current_rev == head
+        finally:
+            db_mod.settings.database_url = original_url
+            sync_engine.dispose()

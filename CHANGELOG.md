@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **Subtitle cache directory no longer fails to create with a permission-denied warning on startup.** `ensure_paths_exist()` checked `is_absolute()` before expanding `~`, so the default `subtitles_cache_path` of `~/.engram/cache` was never tilde-expanded and instead resolved to a literal `~` folder under the backend source directory, which is unwritable in Docker. `~` is now expanded before the absolute-path check, matching every other consumer of this setting. (#459)
+- **Database migrations no longer get stuck behind a "duplicate column name" error.** `_add_missing_columns()` (the frozen-build fallback) and Alembic both converge the schema toward the same model on every startup; if a column a pending Alembic migration wanted to add had already been added out-of-band, the migration failed and was silently swallowed, leaving `alembic_version` permanently one revision behind and blocking every later migration on every subsequent restart. Alembic upgrades now apply one revision at a time and self-heal past a revision whose only failure is a column that already exists. (#459)
 
 ## [0.22.2] - 2026-06-30
 

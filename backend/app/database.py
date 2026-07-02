@@ -124,12 +124,58 @@ def _run_alembic_upgrade() -> None:
             logger.info("Alembic: stamped existing database at head")
         else:
             # Run any pending migrations
-            command.upgrade(alembic_cfg, "head")
+            _upgrade_to_head_self_healing(alembic_cfg, sync_engine)
             logger.info("Alembic: migrations up to date")
 
         sync_engine.dispose()
     except Exception as e:
         logger.warning(f"Alembic migration failed (non-fatal): {e}", exc_info=True)
+
+
+def _upgrade_to_head_self_healing(alembic_cfg, sync_engine, max_steps: int = 25) -> None:
+    """Apply pending Alembic migrations, healing revisions whose only failure
+    is a column that already exists.
+
+    _add_missing_columns() (the frozen-build fallback) and Alembic both run on
+    every startup and converge the schema toward the same SQLModel metadata.
+    If a column a pending migration wants to add was already added out-of-band,
+    its ADD COLUMN fails with "duplicate column name" and, left unhandled,
+    that leaves alembic_version stuck one revision behind forever — silently
+    blocking every later migration on every subsequent startup (issue #459).
+    Since the schema already matches what that revision would produce, treat
+    the failure as "already applied": stamp past just that one revision and
+    keep going.
+    """
+    from alembic import command
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+    from sqlalchemy.exc import OperationalError
+
+    script = ScriptDirectory.from_config(alembic_cfg)
+
+    for _ in range(max_steps):
+        with sync_engine.connect() as conn:
+            current = MigrationContext.configure(conn).get_current_revision()
+
+        if current == script.get_current_head():
+            return
+
+        try:
+            command.upgrade(alembic_cfg, "+1")
+        except OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
+            next_revs = script.get_revision(current).nextrev if current else None
+            next_rev = next(iter(next_revs)) if next_revs else None
+            if next_rev is None:
+                raise
+            logger.warning(
+                f"Alembic: revision {next_rev} adds a column that already exists "
+                "(added out-of-band); stamping as applied and continuing"
+            )
+            command.stamp(alembic_cfg, next_rev)
+
+    raise RuntimeError("Alembic upgrade did not reach head after self-healing retries")
 
 
 def _get_expected_columns(table_name: str) -> set[str]:
