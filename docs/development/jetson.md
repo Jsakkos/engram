@@ -96,7 +96,7 @@ JetPack already provides cuDNN and cuBLAS system-wide, so the on-demand wheel
 download in `backend/app/matcher/cuda_runtime.py` (used on x86_64) is only used
 as the fallback path here — step 6 above populates the same cache directly.
 
-## Enable GPU ASR
+## Enable GPU ASR (runtime toggle)
 
 GPU is not used just because it's detected — it must be explicitly enabled,
 either in the UI (Settings → Matching → GPU Acceleration → Enable) or via the
