@@ -1,0 +1,1785 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-06-10-walk-away-workflow-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Walk-Away Workflow: Rip-First Deferral + Transcript Cache + Disc-Hash Recognition - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#walk-away-workflow-rip-first-deferral-transcript-cache-disc-hash-recognition" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Walk-Away Workflow: Rip-First Deferral + Transcript Cache + Disc-Hash Recognition
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Context">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-facts-established-by-exploration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key facts established by exploration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decisions-user-confirmed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions (user-confirmed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#push-backs-incorporated-vs-the-original-proposal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push-backs incorporated (vs. the original proposal)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-a-transcript-cache-nested-scan-grid-prewarm-pr-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A — Transcript cache + nested scan grid + prewarm (PR 1)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase A — Transcript cache + nested scan grid + prewarm (PR 1)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a1-canonical-nested-scan-grid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A1. Canonical nested scan grid
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a2-persistent-transcript-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A2. Persistent transcript store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a3-background-pre-transcription-fill-the-grid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A3. Background pre-transcription ("fill the grid")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a4-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A4. Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-b-rip-first-deferral-of-identity-prompts-pr-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase B — Rip-first deferral of identity prompts (PR 2)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase B — Rip-first deferral of identity prompts (PR 2)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#b1-stateux-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B1. State/UX model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b2-matching-gate-convergence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B2. Matching gate + convergence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b3-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B3. Frontend
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b4-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B4. Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-c-disc-hash-recognition-pr-3-server-repo-pr-4-engram-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase C — Disc-hash recognition (PR 3: server repo; PR 4: engram client)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase C — Disc-hash recognition (PR 3: server repo; PR 4: engram client)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#c1-server-engram-fingerprint-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C1. Server (engram-fingerprint-server)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c2-client-engram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C2. Client (engram)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c3-tests-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C3. Tests / verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-does-not-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does NOT change
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-end-to-end-after-all-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification (end-to-end, after all phases)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#follow-ups-out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-ups (out of scope)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="walk-away-workflow-rip-first-deferral-transcript-cache-disc-hash-recognition">Walk-Away Workflow: Rip-First Deferral + Transcript Cache + Disc-Hash Recognition</h1>
+<h2 id="context">Context</h2>
+<p><a href="https://github.com/Jsakkos/engram/issues/370#issuecomment-4673060578">Issue #370's comment</a> (craigthings, 2026-06-10): the #370 fix added a <strong>pre-rip</strong> season prompt, so a headless-server user now visits the web app twice — once at disc insert (season prompt), once at job end (review). They propose ripping everything first and pooling all human-in-the-loop moments into a single end-of-job review: "drop a disc and walk away, check in once at the end if needed."</p>
+<p>We agree, and go further. The friction in the commenter's version — "user still waits for matching after answering at review" — is solved by caching ASR transcripts: re-matching with corrected metadata becomes a ~ms TF-IDF operation instead of a 5–10 min Whisper re-run. Three workstreams, in order:</p>
+<ul>
+<li><strong>Phase A</strong> — persistent ASR transcript cache + nested scan grid + background pre-transcription (makes deferred review <em>fast</em>)</li>
+<li><strong>Phase B</strong> — rip-first deferral of all identity prompts (makes review <em>pooled</em>, often <em>zero-touch</em>)</li>
+<li><strong>Phase C</strong> — disc-hash recognition in the fingerprint network (makes review <em>unnecessary</em> for discs the network has seen)</li>
+</ul>
+<h3 id="key-facts-established-by-exploration">Key facts established by exploration</h3>
+<ul>
+<li><strong>Ripping needs almost nothing.</strong> Only TV-vs-movie content type influences title selection; <code>tmdb_id</code>/<code>season</code> are pure matching-time inputs. Four conditions park a job in REVIEW_NEEDED <em>before</em> ripping today (<code>identification_coordinator.py</code>): (A) unreadable label, (B) TV + TMDB lookup failed, (C) same-name no-year collision, (D) the #370 unknown-season gate (<code>_gate_unknown_season_disc</code>, line 519). The ambiguous-movie flow (lines ~448-477) already rips first — precedent exists.</li>
+<li><strong>ASR transcripts are metadata-independent.</strong> A track's Whisper output is identical regardless of candidate show/season. Today it's memoized only in-memory (<code>EpisodeMatcher.transcriptions</code>, session-only, lost on restart). Whisper is ~5–10 min/file; TF-IDF matching is ~1ms/chunk.</li>
+<li><strong>Scan grids don't nest today.</strong> 10-point standard scan and 25-point deep re-match (<code>STRICT_SCAN_POINTS</code>) compute <em>different</em> offsets, so cached chunk transcripts can't be reused across depths without grid alignment.</li>
+<li><strong>The disc hash already flows.</strong> <code>compute_content_hash</code> (extractor.py:147-202, BD <code>BDMV/STREAM</code> + DVD <code>VIDEO_TS</code>) runs unconditionally at insert and rides along with every fingerprint contribution; the server already counts <code>(pseudonym, disc_content_hash)</code> pairs in promotion. Missing: per-title scan metadata in the payload, a <code>disc_canonical</code> aggregate, and a lookup endpoint.</li>
+</ul>
+<h3 id="decisions-user-confirmed">Decisions (user-confirmed)</h3>
+<ol>
+<li><strong>Unknown season</strong> → rip + auto cross-season match (machinery exists: all-seasons subtitle prefetch + <code>_match_across_seasons</code>); review only if inconclusive. Season-prompt CTA stays available as an optional shortcut.</li>
+<li><strong>Ambiguous TV-vs-movie</strong> → rip permissively (all titles ≥ 15 min, else longest), decide at review.</li>
+<li><strong>One plan, phases A → B → C, each its own PR</strong> (C is two PRs: server first, then client).</li>
+</ol>
+<h3 id="push-backs-incorporated-vs-the-original-proposal">Push-backs incorporated (vs. the original proposal)</h3>
+<ul>
+<li>Cache <strong>transcripts (text)</strong>, not extracted audio segments: tiny (≤1 KB/chunk), skips <em>both</em> ffmpeg and Whisper; WAVs stay ephemeral temp files.</li>
+<li>"Index the audio tracks" needs nothing new — chromaprint blobs are already persisted per <code>DiscTitle</code>.</li>
+<li>"Extract remaining segments on review" requires the nested grid (below); with it, "remaining" is well-defined and the deep re-match ladder reuses everything.</li>
+</ul>
+<hr />
+<h2 id="phase-a-transcript-cache-nested-scan-grid-prewarm-pr-1">Phase A — Transcript cache + nested scan grid + prewarm (PR 1)</h2>
+<h3 id="a1-canonical-nested-scan-grid">A1. Canonical nested scan grid</h3>
+<p><code>episode_identification.py</code> (~line 1528): replace the inline scan-point loop with a module-level <code>canonical_scan_points(video_duration, *, skip_initial, skip_final=120, chunk_len=30, num_points=10)</code>. Levels <code>n_k = 9·2^k + 1</code> → 10, 19, 37, 73, 145; each level inserts midpoints of the previous, so <strong>every shallower level is a strict subset of every deeper one</strong>. <code>num_points</code> snaps UP to the nearest level.</p>
+<p><strong>Use integer arithmetic</strong>: <code>point = skip_initial + (i * available) // (n - 1)</code> (multiply before divide). Rationally, level-k point <code>i</code> ≡ level-k+1 point <code>2i</code>; integer floor division preserves this exactly, where per-level float <code>interval</code> can differ in the last ulp and break the subset property after truncation. Offsets may shift ≤1 s vs today's float path — immaterial for 30 s chunks; don't write a regression test pinning today's exact float offsets.</p>
+<p>Snap depth constants to the lattice: <code>STRICT_SCAN_POINTS</code> 25 → <strong>37</strong> (<code>matching_coordinator.py:34</code>); <code>_CONFLICT_FIXED_DEPTHS</code> (25, 50) → <strong>(37, 73)</strong> and snap the full-coverage tier to the largest level ≤ <code>_full_coverage_points</code> (<code>finalization_coordinator.py:132</code>, <code>:212</code>). Risk to note in PR: escalation passes get ~48% denser but fully reuse the shallower pass's transcripts.</p>
+<h3 id="a2-persistent-transcript-store">A2. Persistent transcript store</h3>
+<p>New <code>backend/app/matcher/transcript_store.py</code>, modeled on <code>tmdb_persistent_cache.py</code> (per-thread sqlite3 + WAL + init lock — matcher is sync code in threads). DB: <code>~/.engram/cache/transcripts.sqlite</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">transcripts</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="n">file_key</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">      </span><span class="c1">-- sha1(f&quot;{resolved_path}|{size_bytes}|{mtime_ns}&quot;)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="n">start_s</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">duration_s</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="n">model_key</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">     </span><span class="c1">-- output-affecting ASR identity</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nb">text</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">last_used_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">file_key</span><span class="p">,</span><span class="w"> </span><span class="n">start_s</span><span class="p">,</span><span class="w"> </span><span class="n">duration_s</span><span class="p">,</span><span class="w"> </span><span class="n">model_key</span><span class="p">));</span>
+</code></pre></div>
+<ul>
+<li><code>model_key</code>: new helper <code>model_output_key()</code> in <code>asr_models.py</code> = <code>f"{type}_{name}_{device}_{compute_type}"</code> (compute_type IS output-affecting — int8 vs float16; worker counts are NOT, keep them out).</li>
+<li>File identity via path+size+mtime_ns: re-rips get fresh keys automatically; no hashing of 30 GB files.</li>
+<li>Eviction: size-capped LRU (~100k rows, prune by <code>last_used_at</code> every ~200 puts). Do <strong>not</strong> evict on staging cleanup — rows are tiny, dead rows are harmless, and surviving restarts is the headline win.</li>
+<li>Every get/put in try/except: cache failure degrades to "just transcribe", never breaks matching.</li>
+</ul>
+<p>Wire into <code>EpisodeMatcher</code>: factor the memoized-transcribe block (lines 1595-1613) into <code>transcribe_chunk_cached()</code> with lookup order L1 dict → store → ffmpeg+Whisper (write-through both). Same layering in <code>transcribe_full</code> (line ~1277) — full-file transcripts persist when produced, just not prewarmed.</p>
+<h3 id="a3-background-pre-transcription-fill-the-grid">A3. Background pre-transcription ("fill the grid")</h3>
+<p>New <code>backend/app/services/transcription_prewarm.py</code>: <code>TranscriptionPrewarmer</code> with a dedicated <code>EpisodeMatcher</code> (constructor args matching <code>EpisodeCurator._ensure_initialized</code> so <code>model_key</code>s align), per-job <code>asyncio.Task</code> dict, and the <code>MatchingCoordinator._match_semaphore</code>.</p>
+<ul>
+<li><code>start_for_job(job_id)</code>: for each ripped title's file, walk the 10-point lattice; for each missing store row: <strong>acquire the match semaphore per chunk</strong>, <code>asyncio.to_thread(transcribe_chunk_cached)</code>, release. Per-chunk acquisition means a live match waits at most one chunk — no priority queue needed. Idempotent (get-before-compute).</li>
+<li><code>cancel_for_job(job_id)</code>: wired to <code>JobStateMachine.on_terminal_state</code> plus the entry of <code>re_identify</code> / <code>set_name_and_resume</code> / rerun-matching (the real match owns the GPU; it reuses whatever got cached).</li>
+<li>Full-file prewarm gated behind config flag, default <strong>off</strong> (grid is what re-match needs; full-file is 5–10 min of speculative GPU per file).</li>
+<li>Phase A triggers: TV job parks in REVIEW_NEEDED with rematchable titles (<code>check_job_completion</code>), ambiguous-movie post-rip review. Phase B adds the awaiting-identity trigger.</li>
+</ul>
+<p>Config: <code>enable_background_pretranscription: bool = True</code>, <code>pretranscribe_full_file: bool = False</code> — <strong>three-way sync</strong> (AppConfig model + ConfigUpdate + ConfigResponse/GET + ConfigWizard) + Alembic migration with server_default (frozen builds converge via <code>_add_missing_columns</code>).</p>
+<h3 id="a4-tests">A4. Tests</h3>
+<ul>
+<li>Unit: lattice subset/coverage property tests; store round-trip, invalidation on size/mtime change, LRU prune, corrupt-DB resilience; prewarm scheduler (per-chunk acquire/release, cancellation) with stub semaphore; fake ASR model counting <code>transcribe()</code> calls — a <em>fresh matcher instance</em> (simulated restart) re-matching the same file does <strong>zero</strong> ASR calls.</li>
+<li>Integration: park a job in review with real fixture MKVs → prewarm fills exactly 10 rows → re-identify completes with mocked-ASR never invoked.</li>
+<li>Manual: <code>POST /api/simulate/insert-disc-from-staging</code> with real MKVs → land in review → watch <code>transcripts.sqlite</code> rows → <code>POST /api/jobs/{id}/re-identify</code> → log shows cache hits, sub-second per-title match.</li>
+</ul>
+<hr />
+<h2 id="phase-b-rip-first-deferral-of-identity-prompts-pr-2">Phase B — Rip-first deferral of identity prompts (PR 2)</h2>
+<h3 id="b1-stateux-model">B1. State/UX model</h3>
+<p>New nullable <code>DiscJob.identity_prompt_json</code> (<code>disc_job.py</code> + migration): <code>{"kind": "name"|"season"|"reidentify", "reason": "&lt;text&gt;"}</code>. Do <strong>not</strong> overload <code>review_reason</code> while RIPPING — too much code couples it to REVIEW_NEEDED. <code>identity_prompt_json</code> = non-blocking CTA; <code>review_reason</code> = blocking pooled review. At rip end an unanswered prompt converts into <code>review_reason</code>; answering clears it.</p>
+<p>Gate rework in <code>identify_disc</code> (<code>identification_coordinator.py</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Today's pre-rip park</th>
+<th>New behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(A) unreadable label (~:339)</td>
+<td>prompt <code>kind=name</code>, permissive title selection, → RIPPING</td>
+</tr>
+<tr>
+<td>(B) TV + tmdb_id None (~:394)</td>
+<td>prompt <code>kind=name</code> (keep "merged without separators" literal — frontend contract), skip prefetch, → RIPPING</td>
+</tr>
+<tr>
+<td>(C) no-year/ambiguous collision (~:371)</td>
+<td>prompt <code>kind=reidentify</code> (keep <code>candidates_json</code>), skip prefetch, → RIPPING</td>
+</tr>
+<tr>
+<td>(D) unknown season (<code>_gate_unknown_season_disc</code> :519)</td>
+<td>no park: all-seasons subtitle prefetch (existing <code>detected_season is None</code> path, :585-608), prompt <code>kind=season</code> ("select a season" literal preserved) as optional shortcut, → RIPPING, cross-season matching runs automatically</td>
+</tr>
+</tbody>
+</table>
+<p>Permissive selection helper (content type UNKNOWN/ambiguous): select all titles ≥ 900 s, else longest. Ambiguous-movie flow unchanged.</p>
+<h3 id="b2-matching-gate-convergence">B2. Matching gate + convergence</h3>
+<ul>
+<li><code>JobManager._on_title_ripped</code> (job_manager.py:2411-2424): dispatch <code>match_single_file</code> only when identity ready (<code>detected_title</code> set AND <code>identity_prompt_json is None</code>; season may be unknown — cross-season handles it). Otherwise leave title <code>QUEUED</code> (already counts as active in <code>check_job_completion</code>, so no premature finalize). On a mid-rip answer, dispatch matching for every QUEUED title with <code>output_filename</code> (mirror the dispatch loop in <code>identify_from_staging</code>).</li>
+<li><code>_run_ripping</code> post-rip (job_manager.py:~2120): <strong>re-read <code>content_type</code> from DB</strong> (the captured local goes stale after a mid-rip answer). Identity ready → MATCHING (today). Pending → REVIEW_NEEDED with <code>review_reason</code> from the prompt + <code>prewarmer.start_for_job()</code>.</li>
+<li><code>set_name_and_resume</code> / <code>re_identify</code> accept <code>state == RIPPING</code>: update metadata (+ existing <code>_resolve_missing_tmdb_id</code>), clear prompt, kick subtitle prefetch, dispatch ripped QUEUED titles, <strong>no state change, no new rip task</strong> — <code>JobManager.set_name_and_resume</code> (:798-810) must branch instead of unconditionally spawning <code>_run_ripping</code> (double-rip hazard). Extend <code>re_identify</code>'s has_ripped branch: a "movie" answer routes to the multi-title movie resolution path, not MATCHING.</li>
+<li>Season pinning in <code>MatchingCoordinator._match_single_file_inner</code>: when <code>job.detected_season is None</code> and <strong>≥2 MATCHED titles agree on a season with zero MATCHED disagreement</strong>, pin <code>job.detected_season</code> (persist + broadcast) so later titles take the cheap single-season path and chromaprint prepass re-engages. Per-title "review only if inconclusive" falls out of the existing calibrated-confidence gate (&lt; 0.7 → review) — no new threshold.</li>
+</ul>
+<h3 id="b3-frontend">B3. Frontend</h3>
+<ul>
+<li><code>Job</code> type gains <code>identity_prompt</code>; include it in REST jobs payload AND <code>broadcast_job_update</code> (remember the REST/WS serializer-drift hazard — both sides or the UI silently defaults).</li>
+<li><code>promptSelection.ts</code>: <code>classifyPromptJob</code> checks <code>identity_prompt.kind</code> first (any non-terminal state), falls back to <code>review_reason</code> substrings; <code>selectPromptJobs</code> widens to <code>ripping || review_needed</code>. <code>shouldAutoOpenPrompt</code> (only-active-job rule, P13) unchanged.</li>
+<li><code>adapters.ts</code>: <code>promptKind</code> for ripping jobs; <code>App.tsx</code> routes <code>'reidentify'</code> → ReIdentifyModal; verify modals don't optimistically assume state flips to RIPPING on submit.</li>
+<li><code>simulation_service.py</code>: add <code>identity_pending</code> param so sims can produce a RIPPING job carrying a prompt (sim bypasses <code>identify_disc</code>; required for E2E).</li>
+</ul>
+<h3 id="b4-tests">B4. Tests</h3>
+<ul>
+<li>Backend unit: each gate reaches RIPPING with the right prompt; <code>_on_title_ripped</code> gating + retroactive dispatch; mid-rip <code>set_name_and_resume</code> mutates without state change/second rip; post-rip pending → pooled REVIEW_NEEDED; season pinning (2-agree/0-disagree; conflict → no pin).</li>
+<li>Frontend unit: <code>promptSelection.test.ts</code> ripping-state classification + auto-open + dismissal.</li>
+<li>Integration: unreadable label → rip → mid-rip answer → matching → zero review stops; and no-answer → exactly one pooled REVIEW_NEEDED.</li>
+<li>Manual sim: insert with <code>identity_pending=name</code> → assert ripping + CTA → <code>set-name</code> mid-rip → still ripping, prompt cleared → MATCHING at rip end. Caveat (state in PR): sim bypasses <code>identify_disc</code>, so gate rewiring is covered by integration tests only.</li>
+<li>Risks to note: junk discs now consume rip time/staging space before identity confirmation (accepted); ambiguous-type discs rip more titles; <code>review_reason</code> is now strictly "blocking review".</li>
+</ul>
+<hr />
+<h2 id="phase-c-disc-hash-recognition-pr-3-server-repo-pr-4-engram-client">Phase C — Disc-hash recognition (PR 3: server repo; PR 4: engram client)</h2>
+<p>Server work on a <strong>branch</strong> in <code>C:\Github\engram-fingerprint-server</code> (main auto-deploys to prod).</p>
+<h3 id="c1-server-engram-fingerprint-server">C1. Server (engram-fingerprint-server)</h3>
+<ul>
+<li><code>migrations/003_disc_recognition.sql</code>: <code>disc_contribution</code> (pseudonym, disc_content_hash BLOB, tmdb_id, content_type, season, canonical <code>titles_json</code> + sha256 <code>titles_digest</code>, dedupe unique index on (pseudonym, hash, digest)) and <code>disc_canonical</code> (hash PK, tmdb_id, content_type, season, titles_json, tier, unique_contributors, mean_confidence).</li>
+<li><code>POST /v1/contribute-disc</code> (new route + zod schema; per-title rows mirror <code>DiscDbTitleMapping</code>: title_index, duration_seconds, size_bytes, assignment {episode|main_movie|extra|discarded, season, episode}, match_confidence, match_source). Separate endpoint, not a <code>/v1/contribute</code> field — avoids a wire_format_version bump for every client.</li>
+<li><code>GET /v1/identify-disc?hash=&lt;b64url&gt;</code> → <code>{disc: null}</code> or <code>{disc: {tmdb_id, content_type, season, tier, unique_contributors, mean_confidence, titles}}</code>. Single indexed point read.</li>
+<li><code>disc_promotion.ts</code> in the nightly cron: group by (hash, digest), latest row per pseudonym, exclude flagged contributors and mean confidence &lt; 0.7; tiers per the existing ladder (≥3 pseudonyms + mean ≥0.85 → canonical, ≥2 → confirmed, ≥1 → candidate); conflicting digests → most-contributors wins, runner-up with ≥2 caps tier at confirmed. <strong>Anti-feedback rule: exclude <code>match_source == "network_disc"</code> rows from counting</strong> — a client that applied a network mapping must not confirm it.</li>
+<li><code>/v1/forget</code> cascades to <code>disc_contribution</code>.</li>
+<li>Vitest: validation, dedupe, tiering incl. digest conflict + network_disc exclusion, identify hit/miss, forget.</li>
+</ul>
+<h3 id="c2-client-engram">C2. Client (engram)</h3>
+<ul>
+<li><strong>Read path</strong>: new <code>backend/app/core/fingerprint_disc_classifier.py</code> — <code>identify_disc_via_network(content_hash, server_url)</code>, 3–5 s timeout, best-effort. Called in <code>_run_classification</code> <strong>before</strong> the TheDiscDB block, gated on <code>enable_fingerprint_identification</code> (same trust domain, no new flag) + <code>job.content_hash</code>.</li>
+<li><code>canonical</code>: override like the DiscDB ≥0.90 path — set content_type/tmdb_id/name, confidence 0.99, <code>classification_source="fingerprint_network"</code>, no review; convert titles → <code>DiscDbTitleMapping</code> list <strong>filtered to titles whose (duration ±2 s, size ±1%) match a scanned title</strong> (guards MakeMKV-version drift), feed through existing <code>_set_discdb_mappings</code> + <code>discdb_mappings_json</code> so <code>try_discdb_assignment</code> auto-assigns episodes at rip time, zero ASR. Parameterize <code>try_discdb_assignment</code>'s hardcoded <code>"discdb"</code> source → <code>"network_disc"</code>.</li>
+<li><code>confirmed</code>: identity only (skips all Phase B prompts); chromaprint/ASR verify episodes as today. <code>candidate</code>: ignore.</li>
+<li><strong>Write path</strong>: <code>DiscContributionQueue</code> model (mirror <code>FingerprintContribution</code>) + migration. Enqueue on COMPLETED via <code>on_terminal_state</code>: require content_hash + tmdb_id + known type + ≥1 real assignment; build rows from <code>DiscTitle</code> fields; <strong>skip enqueue when every assignment's source is <code>network_disc</code></strong>. Drain inside <code>ContributionUploader._drain</code> after the episode sweep — same consent gates (<code>enable_fingerprint_contributions</code> + <code>fingerprint_disclosure_accepted</code>), retry semantics, and audit JSONL (<code>kind: "disc"</code>).</li>
+<li><strong>Privacy</strong>: disc records are release-level (pressed-disc layout), not personal; pseudonym remains the only identifier, <code>/v1/forget</code> covers it. Update JIT disclosure copy + settings text + docs privacy page; no new toggle.</li>
+</ul>
+<h3 id="c3-tests-verification">C3. Tests / verification</h3>
+<ul>
+<li>Client unit: per-tier override behavior; tolerance rejection; enqueue payload golden test; network_disc skip rule; consent gating.</li>
+<li>Integration: mocked httpx canonical response → zero <code>match_single_file</code> dispatches, all mapped titles pre-assigned.</li>
+<li>Manual: <code>fingerprint_server_url</code> → local <code>wrangler dev</code>; contribute the same disc under 2–3 pseudonyms, run promotion, re-insert → no prompts, no matching. Caveat: sim jobs never get <code>content_hash</code> (sim bypasses <code>_create_job_for_disc</code>) — optionally add a <code>content_hash</code> sim param.</li>
+</ul>
+<hr />
+<h2 id="what-does-not-change">What does NOT change</h2>
+<p>Chromaprint prepass + 0.90 gate; organizer; review-queue episode-assignment UX (only adds identity/type prompts, removes pre-rip parks); subtitle download mechanics (only <em>when</em> prefetch starts); episode fingerprint contributions; pack serving; <code>compute_content_hash</code>.</p>
+<h2 id="verification-end-to-end-after-all-phases">Verification (end-to-end, after all phases)</h2>
+<ol>
+<li>Backend <code>uv run pytest</code> (unit/integration/pipeline tiers), frontend <code>npm run test:unit</code> + <code>npm run test:e2e</code> (DEBUG=true backend; use worktree-isolated ports per CLAUDE.md).</li>
+<li>Walk-away scenario, real or staged disc: insert season-less multi-season disc → rips with CTA visible, no modal block → no user action → single REVIEW_NEEDED at end (or zero if cross-season decisive) → answer season → titles match in seconds (transcript cache hits in log).</li>
+<li>Mid-rip answer scenario: answer the CTA during rip → matching dispatches for already-ripped titles → job completes with zero review stops.</li>
+<li>Network scenario (Phase C): second insert of a community-known disc → identified + episode-assigned with no prompts and no ASR.</li>
+<li>Kill this session's servers before each PR (CLAUDE.md rule).</li>
+</ol>
+<h2 id="follow-ups-out-of-scope">Follow-ups (out of scope)</h2>
+<ul>
+<li>Reply on issue #370 summarizing the direction (offer after plan approval).</li>
+<li>Push/ntfy notification when a job lands in review (headless UX complement).</li>
+<li>Speculative both-candidate matching for same-name twins using cached transcripts (noise-floor disambiguation — show-identity-collision item 3).</li>
+<li>On implementation start: copy this plan into <code>docs/superpowers/specs/2026-06-10-walk-away-workflow-design.md</code> per repo convention.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

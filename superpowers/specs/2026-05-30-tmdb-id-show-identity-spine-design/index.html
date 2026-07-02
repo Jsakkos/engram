@@ -1,0 +1,1936 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-05-30-tmdb-id-show-identity-spine-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>TMDB-ID Show-Identity Spine + Same-Name Collision Review - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tmdb-id-show-identity-spine-same-name-collision-review" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              TMDB-ID Show-Identity Spine + Same-Name Collision Review
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Problem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-big-is-the-problem-empirical-measured-against-the-real-181-show-corpus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How big is the problem? (empirical, measured against the real 181-show corpus)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals-explicit-scope-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals (explicit scope boundaries)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Approach
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#detailed-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detailed Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Detailed Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-identity-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Identity model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-collision-detection-materiality-gate-backendappcoretmdb_classifierpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Collision detection + materiality gate (backend/app/core/tmdb_classifier.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-review-routing-reuse-existing-workflow-identification_coordinatorpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Review routing (reuse existing workflow — identification_coordinator.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-spine-subtitle-download-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Spine — subtitle download path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-spine-matching-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Spine — matching path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-corpus-guard-backendappmatcherepisode_identificationpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Corpus guard (backend/app/matcher/episode_identification.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-re-identify-round-trip-already-wired-make-it-id-driven" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Re-identify round trip (already wired; make it id-driven)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-flow-frasier-walkthrough-end-to-end-with-item-1-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Flow — Frasier walkthrough (end-to-end, with item 1 only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases-error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge Cases &amp; Error Handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#files-touched-item-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files Touched (item 1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sequencing-how-items-2-and-3-slot-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequencing — how items 2 and 3 slot in
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="tmdb-id-show-identity-spine-same-name-collision-review">TMDB-ID Show-Identity Spine + Same-Name Collision Review</h1>
+<ul>
+<li><strong>Date:</strong> 2026-05-30</li>
+<li><strong>Status:</strong> Design — approved approach, pending spec review</li>
+<li><strong>Scope:</strong> Item 1 of a 3-item decomposition (this doc). Items 2 and 3 sketched under "Sequencing".</li>
+</ul>
+<h2 id="problem">Problem</h2>
+<p>Episode matching can silently abstain when a disc's show name maps to the <strong>wrong TMDB
+show</strong>. Discovered with a "Frasier Season 1" disc that is actually the <strong>Frasier (2023)
+revival</strong> (TMDB <code>195241</code>), not the original <strong>Frasier (1993)</strong> (TMDB <code>3452</code>). The subtitle
+corpus contains only the original, so every ASR chunk scores at the noise floor
+(~0.03–0.05 cosine) against all 263 original episodes → no match → generic "needs review",
+with no explanation.</p>
+<p>The matcher is behaving correctly (it should abstain — there is no right answer in the
+reference set). The defect is <strong>upstream</strong>: identity is carried as a <strong>show-name string</strong>,
+and the <code>tmdb_id</code> that <em>would</em> disambiguate is computed, stored on the job, and then
+<strong>never used downstream</strong>. Subtitle download (<code>download_subtitles(show_name, season)</code>) and
+matching (<code>match_single_file(series_name=detected_title, …)</code>) both key on the name only.
+Two same-named shows are indistinguishable by name, so neither automatic nor manual
+re-identification can currently fix it.</p>
+<h3 id="how-big-is-the-problem-empirical-measured-against-the-real-181-show-corpus">How big is the problem? (empirical, measured against the real 181-show corpus)</h3>
+<table>
+<thead>
+<tr>
+<th>Bucket</th>
+<th style="text-align: right;">Count</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Any same-name TMDB twin</td>
+<td style="text-align: right;">54 / 181 (29%)</td>
+<td>≥2 distinct TMDB TV shows normalize to the same name</td>
+</tr>
+<tr>
+<td><strong>Tier A</strong> — both variants substantial (twin popularity ≥ 10)</td>
+<td style="text-align: right;"><strong>~8–9</strong></td>
+<td>Real reboots / international remakes, both with physical media</td>
+</tr>
+<tr>
+<td>Tier B — real-but-smaller twin (pop 3–10)</td>
+<td style="text-align: right;">15</td>
+<td>Includes the reported <strong>Frasier</strong> (75.6 vs 5.7)</td>
+</tr>
+<tr>
+<td>Tier C — twin is noise (pop &lt; 3)</td>
+<td style="text-align: right;">31</td>
+<td>Coincidental / foreign one-offs; effectively never owned or picked</td>
+</tr>
+<tr>
+<td>Today's heuristic <strong>actively</strong> mispicks (top-popularity ≠ corpus id)</td>
+<td style="text-align: right;"><strong>1</strong></td>
+<td><code>ONE PIECE</code> (corpus = 2023 live-action; popularity favors 1999 anime)</td>
+</tr>
+</tbody>
+</table>
+<p>Tier A: Avatar: The Last Airbender (2005 vs 2024), Battlestar Galactica (2004/1978/2003),
+Charmed (1998 vs 2018), Doctor Who (2005 vs 1963), One Piece (1999 anime vs 2023
+live-action), Rebelde, Shameless (US 2011 vs UK 2004), The Flash (2014 vs 1990), plus The
+Office (UK/US — scan errored, known collision). Scaled to the full ~599-show curated list,
+expect ~25–30 Tier A and ~50 Tier B.</p>
+<p><strong>Key consequence for the design.</strong> The bug splits into two populations needing <em>different</em>
+triggers:</p>
+<ul>
+<li><strong>Comparable-popularity twins (Tier A):</strong> genuinely ambiguous <em>at identify time</em>. A
+  materiality-gated collision check can catch these and route to review. This is item 1's
+  collision-detection win (~8–9 shows).</li>
+<li><strong>Dominant-twin mispicks (Frasier, most of Tier B):</strong> popularity <em>confidently</em> picks the
+  wrong-for-this-disc show and the disc carries no year — <strong>there is no identify-time
+  signal</strong>. A "flag any 2nd same-name entry" rule would instead nag on 29% of all shows.
+  These are only catchable <strong>downstream</strong>, when matching fails at the noise floor →
+  <strong>item 3 is the real trigger</strong> for the reported Frasier case.</li>
+</ul>
+<p>So the reported failure is fixed by the chain: <strong>item 3 explains it → user re-identifies →
+item 1's spine makes the <code>tmdb_id</code> pick drive download + matching → corpus then contains the
+right subtitles</strong> (on-demand download by <code>tmdb_id</code>; on-disk re-key hardened by item 2).</p>
+<h2 id="goals">Goals</h2>
+<ol>
+<li>Make <code>tmdb_id</code> a <strong>first-class identity</strong> that flows through subtitle download → matcher
+   reference selection → corpus lookup, alongside (not replacing) the human-facing show name.</li>
+<li>Detect <strong>genuinely-ambiguous same-name collisions</strong> (Tier A) at identify time and route
+   them into the <strong>existing</strong> re-identify review workflow — no new UI.</li>
+<li>Add a <strong>corpus guard</strong>: never match a disc against a precomputed corpus whose <code>tmdb_id</code>
+   contradicts the job's resolved <code>tmdb_id</code> (prevents wrong-corpus false matches; produces a
+   clean "no coverage" outcome that item 3 will explain).</li>
+<li>Make manual <strong>re-identify</strong> with a <code>tmdb_id</code> actually re-key subtitle download + matching,
+   so a human pick distinguishes 1993 from 2023.</li>
+</ol>
+<h2 id="non-goals-explicit-scope-boundaries">Non-goals (explicit scope boundaries)</h2>
+<ul>
+<li><strong>No cache re-key / migration.</strong> The on-disk corpus layout
+  (<code>precomputed/&lt;sanitize_filename(name)&gt;/…</code>, <code>data/&lt;sanitize_filename(name)&gt;/…</code>) stays
+  name-keyed. Making two same-named shows coexist on disk by keying paths on <code>tmdb_id</code>
+  (plus rebuilding/migrating the existing cache) is <strong>item 2</strong>.</li>
+<li><strong>No new "wrong show / content doesn't resemble reference" UX signal.</strong> That is <strong>item 3</strong>.</li>
+<li><strong>No automatic year-based auto-pick.</strong> No disc-year signal exists today (volume labels like
+  "Frasier Season 1" carry none; MakeMKV metadata has no year field), so it would be
+  speculative. Deferred.</li>
+</ul>
+<h2 id="approach">Approach</h2>
+<p><strong>Approach A — <code>tmdb_id</code> as an optional authoritative companion to the show name.</strong> Thread an
+optional <code>tmdb_id</code> parameter alongside the existing name through the download and matching
+call chains. Where <code>tmdb_id</code> is present it is authoritative (OpenSubtitles <code>parent_tmdb_id</code>,
+<code>fetch_season_details(tmdb_id)</code>, corpus guard); where absent (legacy paths, unresolved id)
+behavior falls back to today's name-based logic. Backward-compatible, no cache migration.</p>
+<p>Rejected: <strong>B</strong> — a <code>ShowIdentity{tmdb_id,name,year}</code> value object passed everywhere (cleaner
+long-term but large signature churn, overlaps item 2); <strong>C</strong> — resolve name→id only at the
+two entry points (smallest, but keeps name-as-identity and can't power the corpus guard).</p>
+<h2 id="detailed-design">Detailed Design</h2>
+<h3 id="1-identity-model">1. Identity model</h3>
+<p><code>tmdb_id</code> becomes an optional parameter threaded through the chain. The show name is retained
+for human display and as the fallback search key. Comparison against the manifest normalizes
+both to <code>str</code> (the manifest stores <code>tmdb_id</code> as a string, e.g. <code>"3452"</code>; the job stores it as
+<code>int</code>).</p>
+<h3 id="2-collision-detection-materiality-gate-backendappcoretmdb_classifierpy">2. Collision detection + materiality gate (<code>backend/app/core/tmdb_classifier.py</code>)</h3>
+<ul>
+<li>Extend the TMDB TV search so <code>classify_from_tmdb</code> can see <strong>all same-name candidates</strong>, not
+  just the single best. A candidate is "same-name" when its normalized name (or
+  <code>original_name</code>) equals the normalized query.</li>
+<li>Extend <code>TmdbSignal</code> with <code>ambiguous_identity: bool = False</code> and
+  <code>candidates: list[dict] | None = None</code> (each <code>{tmdb_id, name, year, popularity}</code>).</li>
+<li><strong>Materiality gate</strong> — flag <code>ambiguous_identity=True</code> only when <strong>both</strong> hold for the top
+  two same-name candidates:</li>
+<li><code>second.popularity &gt;= AMBIGUOUS_POPULARITY_FLOOR</code> (default <strong>10.0</strong>)</li>
+<li><code>first.popularity / second.popularity &lt;= AMBIGUOUS_POPULARITY_RATIO</code> (default <strong>4.0</strong>)</li>
+</ul>
+<p>Thresholds are module-level tunable constants (documented). Behaviour on the real corpus:</p>
+<table>
+<thead>
+<tr>
+<th>Show</th>
+<th>top vs 2nd popularity</th>
+<th style="text-align: right;">ratio</th>
+<th style="text-align: center;">flagged?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Avatar: The Last Airbender</td>
+<td>26.9 / 23.0</td>
+<td style="text-align: right;">1.17</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td>Doctor Who</td>
+<td>109.9 / 62.7</td>
+<td style="text-align: right;">1.75</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td>One Piece</td>
+<td>60.0 / 38.3</td>
+<td style="text-align: right;">1.57</td>
+<td style="text-align: center;">✅ (fixes the 1 active mispick)</td>
+</tr>
+<tr>
+<td>Battlestar Galactica</td>
+<td>38.7 / 13.0</td>
+<td style="text-align: right;">2.98</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td>Rebelde</td>
+<td>30.4 / 15.2</td>
+<td style="text-align: right;">2.00</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td>Charmed</td>
+<td>84.0 / 15.2</td>
+<td style="text-align: right;">5.5</td>
+<td style="text-align: center;">❌ (dominant → trust popularity; item 3 covers mispick)</td>
+</tr>
+<tr>
+<td>Shameless</td>
+<td>153.5 / 23.4</td>
+<td style="text-align: right;">6.6</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td><strong>Frasier</strong></td>
+<td>75.6 / 5.7</td>
+<td style="text-align: right;">13.3</td>
+<td style="text-align: center;">❌ (by design → item 3)</td>
+</tr>
+<tr>
+<td>Tier C long tail</td>
+<td>* / &lt;3</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: center;">❌ (floor excludes)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>When ambiguous, <code>classify_from_tmdb</code> still reports the best tentative pick (so non-TV logic
+  is unaffected) but with the flag + candidate list set.</li>
+</ul>
+<h3 id="3-review-routing-reuse-existing-workflow-identification_coordinatorpy">3. Review routing (reuse existing workflow — <code>identification_coordinator.py</code>)</h3>
+<p>In <code>_run_classification</code>, when the TMDB signal is <code>ambiguous_identity</code>:</p>
+<ul>
+<li><strong>Do not</strong> set <code>job.tmdb_id</code> (leave it <code>None</code> so nothing downstream commits to a guess).</li>
+<li>Set <code>job.review_reason</code> to a human-readable message naming the candidates, e.g.
+  <em>"Multiple shows match \"Frasier\" — the 1993 original (#3452) and a 2023 series (#195241).
+  Pick the correct one."</em> (built from <code>signal.candidates</code>).</li>
+<li><code>await self._state_machine.transition_to_review(job, session, reason=…)</code>.</li>
+</ul>
+<p>No frontend work: the dashboard already shows the <strong>Re-Identify</strong> affordance when
+<code>needsReview &amp;&amp; title</code>, and <code>ReIdentifyModal</code> already provides a live <code>GET /api/tmdb/search</code>
+candidate picker (name + year + poster + type) that returns <code>tmdb_id</code>. The user picks; the
+existing re-identify round trip (§7) carries the chosen id.</p>
+<h3 id="4-spine-subtitle-download-path">4. Spine — subtitle download path</h3>
+<p>Thread <code>tmdb_id</code> through:</p>
+<ul>
+<li><code>identification_coordinator._start_subtitle_download(job_id, title, season)</code> → add
+  <code>tmdb_id</code> param; pass <code>job.tmdb_id</code>.</li>
+<li><code>MatchingCoordinator.download_subtitles(show_name, season, tmdb_id=None)</code> → pass through.</li>
+<li><code>backend/app/matcher/testing_service.download_subtitles(show_name, season, tmdb_id=None)</code>:
+  when <code>tmdb_id</code> is provided, <strong>bypass <code>fetch_show_id(name)</code></strong> (the collision point — it
+  returns the first name search result) and use <code>tmdb_id</code> directly for
+  <code>fetch_season_details(tmdb_id)</code> and provider search. <code>OpenSubtitlesProvider.get_subtitles</code>
+  already accepts <code>tmdb_id</code> and searches by <code>parent_tmdb_id</code>; ensure the id is forwarded.</li>
+</ul>
+<p>When <code>tmdb_id</code> is <code>None</code>, the path is unchanged (today's name-based <code>fetch_show_id</code>).</p>
+<h3 id="5-spine-matching-path">5. Spine — matching path</h3>
+<ul>
+<li><code>MatchingCoordinator._match_single_file_inner</code> → call
+  <code>episode_curator.match_single_file(file_path, series_name=detected_title,
+  season=detected_season, tmdb_id=job.tmdb_id, …)</code>.</li>
+<li><code>curator.match_single_file(…, tmdb_id=None)</code> → forward into the matcher / <code>EpisodeMatcher</code>
+  so the identifier carries <code>tmdb_id</code> alongside <code>show_name</code>.</li>
+</ul>
+<h3 id="6-corpus-guard-backendappmatcherepisode_identificationpy">6. Corpus guard (<code>backend/app/matcher/episode_identification.py</code>)</h3>
+<p>The precomputed manifest entry already records <code>tmdb_id</code> per show
+(<code>manifest["shows"]["Frasier"]["tmdb_id"] == "3452"</code>). Add an <code>expected_tmdb_id</code> to the
+identifier and apply it in <code>precomputed_covers_season</code> / <code>_load_precomputed_season</code>:</p>
+<ul>
+<li>If <code>expected_tmdb_id</code> is set <strong>and</strong> the manifest entry has a <code>tmdb_id</code> <strong>and</strong>
+  <code>str(entry.tmdb_id) != str(expected_tmdb_id)</code> → treat as <strong>no precomputed coverage</strong>
+  (return <code>False</code> / <code>None</code>), and log a warning that the corpus is for a different show.</li>
+<li>If <code>expected_tmdb_id</code> is <code>None</code>, or the manifest entry lacks a <code>tmdb_id</code> (older builds) →
+  <strong>skip the guard</strong> (today's name-only behavior). Backward-compatible; the only behavioral
+  change is refusing a corpus whose id positively contradicts the job's id.</li>
+</ul>
+<p>Effect: a revival disc never matches against the original's corpus. With no precomputed
+coverage, the matcher falls back to the live reference path (<code>data/&lt;name&gt;/</code>), where the
+<code>tmdb_id</code>-keyed download (§4) has placed the <em>correct</em> subtitles.</p>
+<h3 id="7-re-identify-round-trip-already-wired-make-it-id-driven">7. Re-identify round trip (already wired; make it id-driven)</h3>
+<p><code>POST /api/jobs/{job_id}/re-identify</code> (<code>ReIdentifyRequest</code> already has <code>tmdb_id</code>) →
+<code>identification_coordinator.re_identify</code> already restarts subtitle download and re-matches.
+The only change: the restarted download (§4) and re-match (§5) now pass the <strong>chosen</strong>
+<code>tmdb_id</code>, so re-identifying "Frasier" to <code>195241</code> fetches the 2023 subtitles and the guard
+(§6) skips the 1993 precomputed corpus. The Frasier disc is post-rip (files already staged),
+so <code>re_identify</code> routes to <code>_rerun_matching</code>.</p>
+<h2 id="data-flow-frasier-walkthrough-end-to-end-with-item-1-only">Data Flow — Frasier walkthrough (end-to-end, with item 1 only)</h2>
+<ol>
+<li>Disc "Frasier Season 1" (2023 revival, no year). Classifier: 1993 dominates (ratio 13.3,
+   <strong>not</strong> flagged ambiguous) → <code>job.tmdb_id = 3452</code>.</li>
+<li>Matching: precomputed "Frasier" entry <code>tmdb_id == "3452"</code> == job id → guard <strong>passes</strong> →
+   match against 1993 corpus → all chunks at noise floor → <strong>no match → needs review</strong>.
+   <em>(Item 3 will later attach a "content doesn't resemble reference show" reason here.)</em></li>
+<li>User opens Re-Identify, searches "Frasier", sees both entries with years, picks <strong>2023
+   (#195241)</strong> → <code>re-identify {tmdb_id: 195241}</code>.</li>
+<li><code>job.tmdb_id = 195241</code>. Subtitle download keyed by <code>195241</code> → fetches 2023 subtitles into
+   <code>data/Frasier/</code>. Re-match: precomputed "Frasier" <code>tmdb_id "3452" != 195241</code> → guard skips
+   precomputed → live path reads the 2023 subtitles → <strong>matches</strong>. ✅</li>
+</ol>
+<p>A Tier-A example (e.g. Battlestar Galactica) diverges at step 1: classifier flags
+<code>ambiguous_identity</code> → review <em>before</em> any wrong-corpus match, user picks at the outset.</p>
+<h2 id="edge-cases-error-handling">Edge Cases &amp; Error Handling</h2>
+<ul>
+<li><strong>Manifest entry missing <code>tmdb_id</code></strong> (pre-v2 builds): guard skipped, name-only behavior,
+  warning logged.</li>
+<li><strong><code>job.tmdb_id</code> unresolved (<code>None</code>)</strong>: entire chain falls back to today's name-based logic.
+  No regression for the 127/181 shows with no collision.</li>
+<li><strong>String/int <code>tmdb_id</code> mismatch</strong>: always compare as <code>str</code>.</li>
+<li><strong>On-disk dir collision (shared <code>data/Frasier/</code> or <code>precomputed/Frasier/</code>)</strong>: acknowledged
+  residual. The guard prevents <em>false matches</em>; correct subtitles land via id-keyed download.
+  Full isolation (paths keyed by <code>tmdb_id</code>) is <strong>item 2</strong>. Until then, a re-identified twin
+  works as long as the shared name-dir isn't polluted by the other twin's files.</li>
+<li><strong>Ambiguous flag false-positives</strong>: thresholds are tunable; default ratio 4.0 / floor 10.0
+  flags ~5–6 Tier-A shows and stays silent on the 29% tail.</li>
+</ul>
+<h2 id="testing">Testing</h2>
+<ul>
+<li><strong>Unit (<code>tmdb_classifier</code>):</strong> mock TMDB returning two "Frasier"-named shows — assert the
+  gate flags ambiguous only when floor+ratio satisfied; assert Frasier-with-dominant-original
+  is <strong>not</strong> flagged; assert candidate list shape.</li>
+<li><strong>Unit (corpus guard):</strong> manifest entry <code>tmdb_id "3452"</code>; identifier <code>expected_tmdb_id
+  195241</code> → <code>precomputed_covers_season</code> returns <code>False</code>; <code>3452</code> → <code>True</code>; <code>None</code> → <code>True</code>
+  (skip).</li>
+<li><strong>Unit (download bypass):</strong> <code>download_subtitles(..., tmdb_id=195241)</code> does <strong>not</strong> call
+  <code>fetch_show_id</code>; uses the id for season details + <code>parent_tmdb_id</code> search.</li>
+<li><strong>Integration:</strong> ambiguous-collision job → lands in <code>REVIEW_NEEDED</code> with a <code>review_reason</code>
+  naming candidates; re-identify with <code>tmdb_id</code> re-keys download + match (assert the id is
+  threaded into <code>match_single_file</code>). <em>(Per project guidance, integration tests run against
+  the real app DB — set up job state directly in the DB; do not let it organize real files.)</em></li>
+</ul>
+<h2 id="files-touched-item-1">Files Touched (item 1)</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend/app/core/tmdb_classifier.py</code></td>
+<td>same-name candidate collection; <code>TmdbSignal.ambiguous_identity</code> + <code>candidates</code>; materiality gate + tunable constants</td>
+</tr>
+<tr>
+<td><code>backend/app/services/identification_coordinator.py</code></td>
+<td>route ambiguous → review (reason + no id); thread <code>tmdb_id</code> into <code>_start_subtitle_download</code> and re-identify restart</td>
+</tr>
+<tr>
+<td><code>backend/app/services/matching_coordinator.py</code></td>
+<td><code>tmdb_id</code> params on <code>download_subtitles</code> + <code>_match_single_file_inner</code> → <code>match_single_file</code></td>
+</tr>
+<tr>
+<td><code>backend/app/matcher/testing_service.py</code></td>
+<td><code>download_subtitles(..., tmdb_id=None)</code>; bypass <code>fetch_show_id</code> when id known</td>
+</tr>
+<tr>
+<td><code>backend/app/matcher/subtitle_provider.py</code></td>
+<td>ensure <code>tmdb_id</code> forwarded to <code>OpenSubtitlesProvider</code> search</td>
+</tr>
+<tr>
+<td><code>backend/app/core/curator.py</code></td>
+<td><code>match_single_file(..., tmdb_id=None)</code> forward</td>
+</tr>
+<tr>
+<td><code>backend/app/matcher/episode_identification.py</code></td>
+<td><code>expected_tmdb_id</code> on identifier; guard in <code>precomputed_covers_season</code> / <code>_load_precomputed_season</code></td>
+</tr>
+<tr>
+<td><code>backend/tests/unit/…</code>, <code>backend/tests/integration/…</code></td>
+<td>tests above</td>
+</tr>
+</tbody>
+</table>
+<p>No DB migration, no cache rebuild, <strong>no frontend changes</strong>.</p>
+<h2 id="sequencing-how-items-2-and-3-slot-in">Sequencing — how items 2 and 3 slot in</h2>
+<ul>
+<li><strong>Item 1 (this doc):</strong> identity spine + Tier-A collision review + corpus guard. Makes the
+  re-identify pick functional and prevents wrong-corpus false matches.</li>
+<li><strong>Item 2 (next spec):</strong> re-key the corpus by <code>tmdb_id</code> — <code>build_subtitle_cache.py</code> writes
+  <code>precomputed/&lt;tmdb_id&gt;/…</code> and <code>data/&lt;tmdb_id&gt;/…</code>, manifest keyed by id; migrate the
+  existing on-disk cache; matcher lookup by id. Removes the residual shared-dir caveat and
+  lets same-named twins coexist. Rides on item 1's <code>tmdb_id</code> plumbing.</li>
+<li><strong>Item 3 (next spec):</strong> the load-bearing fix for Frasier-class — in
+  <code>episode_identification.identify_episode</code>'s no-match path, detect "all sampled chunks at the
+  noise floor with near-zero top1/top2 margin" and emit a distinct reason
+  (<code>no_match_reason = "wrong_show_or_season"</code>); carry it on <code>MatchResult.match_details</code>
+  → <code>DiscTitle.match_details</code> → review UI banner. Self-explains the failure so users know to
+  re-identify. (NB: confirm the current shape of the chunk-vote gate / <code>select_chunk_vote</code> in
+  <code>episode_identification.py</code> when speccing — the no-match return already carries per-episode
+  best-cosine data needed to compute the signal.)</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

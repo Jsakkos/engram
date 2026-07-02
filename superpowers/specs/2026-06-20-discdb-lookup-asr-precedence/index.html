@@ -1,0 +1,1836 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-06-20-discdb-lookup-asr-precedence/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>DiscDB: enable lookup, keep contribution gated, demote DiscDB episode ordering below ASR - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#discdb-enable-lookup-keep-contribution-gated-demote-discdb-episode-ordering-below-asr" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DiscDB: enable lookup, keep contribution gated, demote DiscDB episode ordering below ASR
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-state-as-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current state (as found)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Current state (as found)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backend-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backend gating
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backend-lookup-is-read-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backend lookup is read-only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#current-episode-matching-precedence-the-bug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current episode-matching precedence (the bug)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#frontend-gating-every-featuresdiscdb-site" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend gating (every FEATURES.DISCDB site)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stale-badge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stale badge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confidence-thresholds-available-to-anchor-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence thresholds available to anchor on
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-split-the-backend-master-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Split the backend master switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-split-the-frontend-master-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Split the frontend master switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-invert-asr-discdb-episode-precedence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Invert ASR &lt;-&gt; DiscDB episode precedence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-badge-icon-refresh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Badge icon refresh
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-items-to-confirm-during-planning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open items to confirm during planning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="discdb-enable-lookup-keep-contribution-gated-demote-discdb-episode-ordering-below-asr">DiscDB: enable lookup, keep contribution gated, demote DiscDB episode ordering below ASR</h1>
+<p><strong>Date:</strong> 2026-06-20
+<strong>Status:</strong> Draft for review
+<strong>Scope:</strong> Backend feature flags, frontend feature flags, track-matching precedence, one badge restyle</p>
+<h2 id="problem">Problem</h2>
+<p>TheDiscDB integration is fully disabled behind a single master switch on each side
+(<code>DISCDB_ENABLED</code> in the backend, <code>FEATURES.DISCDB</code> in the frontend). The original
+intent was to gate only the <em>contribution</em> feature (uploading disc data to
+thediscdb.com) until its API contract and UX were validated, but the master switch
+also disables <em>lookup</em> (using TheDiscDB to help identify a disc and match its
+tracks). Lookup is read-only and safe to ship; contribution should stay off.</p>
+<p>A second issue surfaces once lookup is on: TheDiscDB numbers episodes by <strong>physical
+disc order</strong>, not <strong>aired order</strong>. Engram's matching network is built entirely on
+canonical aired order, so a DiscDB episode mapping frequently disagrees with the
+Engram ASR/fingerprint match. Today DiscDB wins that disagreement outright: when a
+mapping exists, <code>try_discdb_assignment</code> stamps the title MATCHED at confidence 0.99
+and <strong>ASR never runs</strong>. This produces wrong episode numbers on discs whose disc
+order differs from aired order.</p>
+<h2 id="goals">Goals</h2>
+<ol>
+<li>Enable TheDiscDB <strong>lookup</strong> (disc identification + track matching contribution),
+   keep <strong>contribution</strong> (local export + submit/upload) gated off.</li>
+<li>Surface the lookup-related UI (match-source badges, lookup settings toggle),
+   keep the contribute page and submit controls hidden.</li>
+<li>Make <strong>ASR the preferred episode signal</strong>: ASR always runs; DiscDB episode
+   mappings are only used when the ASR confidence is very low.</li>
+<li>Refresh the stale DiscDB match-source badge to the current icon system.</li>
+</ol>
+<h2 id="non-goals">Non-goals</h2>
+<ul>
+<li>Re-enabling any automated or manual contribution/upload path.</li>
+<li>Changing how DiscDB drives <strong>show identification</strong> (tmdb_id, content type, show
+  identity). That stays as-is and is valuable.</li>
+<li>Reworking the manual per-track "use DiscDB match" review action (its behavior is
+  preserved).</li>
+</ul>
+<h2 id="current-state-as-found">Current state (as found)</h2>
+<h3 id="backend-gating">Backend gating</h3>
+<ul>
+<li><code>backend/app/core/features.py</code>: <code>DISCDB_ENABLED = False</code> (single master switch).</li>
+<li><code>backend/app/services/identification_coordinator.py:1519</code>: lookup block gated by
+  <code>if DISCDB_ENABLED and config.discdb_enabled:</code>. Config default
+  <code>discdb_enabled = True</code>.</li>
+<li><code>backend/app/services/cleanup_service.py:38</code>: auto-export gated by
+  <code>if DISCDB_ENABLED and state == COMPLETED and config.discdb_contributions_enabled:</code>.
+  Config default <code>discdb_contributions_enabled = False</code>.</li>
+</ul>
+<h3 id="backend-lookup-is-read-only">Backend lookup is read-only</h3>
+<ul>
+<li><code>backend/app/core/discdb_classifier.py</code> <code>classify_from_discdb</code> only issues GraphQL
+  <strong>queries</strong> (<code>HASH_LOOKUP_QUERY</code>, <code>NAME_SEARCH_QUERY</code>) via <code>_graphql_request</code>
+  (<code>requests.post</code> of a query, no mutation). Enabling lookup cannot write to
+  TheDiscDB.</li>
+</ul>
+<h3 id="current-episode-matching-precedence-the-bug">Current episode-matching precedence (the bug)</h3>
+<ul>
+<li><code>backend/app/services/identification_coordinator.py:1059-1062</code>:
+  <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">discdb_applied</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_try_discdb_assignment</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">if</span> <span class="ow">not</span> <span class="n">discdb_applied</span><span class="p">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_match_single_file</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">dt</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">file_path</span><span class="p">))</span>
+</code></pre></div>
+  DiscDB short-circuits ASR. <code>try_discdb_assignment</code>
+  (<code>matching_coordinator.py:317</code>) explicitly "skips audio matching", sets
+  <code>match_confidence = 0.99</code>, <code>match_source = source</code>, state MATCHED.</li>
+</ul>
+<h3 id="frontend-gating-every-featuresdiscdb-site">Frontend gating (every <code>FEATURES.DISCDB</code> site)</h3>
+<table>
+<thead>
+<tr>
+<th>Site</th>
+<th>Concern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>frontend/src/app/App.tsx:945</code> <code>/contribute</code> route</td>
+<td>contribute</td>
+</tr>
+<tr>
+<td><code>frontend/src/config/routes.ts:39</code> route registry</td>
+<td>contribute</td>
+</tr>
+<tr>
+<td><code>frontend/src/app/navigation.ts:64</code> nav item</td>
+<td>contribute</td>
+</tr>
+<tr>
+<td><code>frontend/src/app/App.tsx:106</code> contribution stats fetch</td>
+<td>contribute</td>
+</tr>
+<tr>
+<td><code>frontend/src/components/ReviewQueue/Inspector.tsx:403</code> "use DiscDB match" action</td>
+<td>lookup</td>
+</tr>
+<tr>
+<td><code>frontend/src/components/HistoryPage.tsx:604</code> DiscDB metadata section</td>
+<td>lookup</td>
+</tr>
+<tr>
+<td><code>frontend/src/components/ConfigWizard.tsx:1220</code> DiscDB settings group</td>
+<td>mixed (split)</td>
+</tr>
+<tr>
+<td><code>frontend/src/app/components/TrackGrid.tsx:60</code> <code>discdb</code> source badge</td>
+<td>lookup</td>
+</tr>
+<tr>
+<td><code>frontend/src/app/__tests__/App.routing.test.tsx:66,74</code> route test</td>
+<td>contribute (test)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="stale-badge">Stale badge</h3>
+<ul>
+<li><code>TrackGrid.tsx:60</code>: <code>discdb: { kind: "text", label: "DISCDB", tone: "#60a5fa", ... }</code>.
+  Off-palette raw hex, plain text chip, while the Engram sources are <code>kind: "icon"</code>
+  chips (<code>MarkMono</code>, palette tones <code>sv.cyan</code> / <code>sv.magenta</code>).</li>
+</ul>
+<h3 id="confidence-thresholds-available-to-anchor-on">Confidence thresholds available to anchor on</h3>
+<ul>
+<li><code>backend/app/core/curator.py</code>: <code>HIGH_CONFIDENCE_THRESHOLD = 0.7</code>,
+  <code>LOW_CONFIDENCE_THRESHOLD = 0.5</code>.</li>
+<li><code>backend/app/matcher/episode_identification.py</code>: <code>CONFIDENCE_ACCEPT_FLOOR = 0.70</code>.</li>
+</ul>
+<h2 id="design">Design</h2>
+<h3 id="1-split-the-backend-master-switch">1. Split the backend master switch</h3>
+<p><code>backend/app/core/features.py</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">DISCDB_LOOKUP_ENABLED</span> <span class="o">=</span> <span class="kc">True</span>          <span class="c1"># disc identification + track matching (read-only)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">DISCDB_CONTRIBUTIONS_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># local export + submit/upload</span>
+</code></pre></div>
+- <code>identification_coordinator.py:1519</code> → <code>if DISCDB_LOOKUP_ENABLED and config.discdb_enabled:</code>
+- <code>cleanup_service.py:38</code> → <code>if DISCDB_CONTRIBUTIONS_ENABLED and state == COMPLETED and config.discdb_contributions_enabled:</code></p>
+<p>The old <code>DISCDB_ENABLED</code> name is removed. The two config flags
+(<code>discdb_enabled</code>, <code>discdb_contributions_enabled</code>) are unchanged; the master switch
+simply stops collapsing the distinction the config layer already drew.</p>
+<h3 id="2-split-the-frontend-master-switch">2. Split the frontend master switch</h3>
+<p><code>frontend/src/config/constants.ts</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">FEATURES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="cm">/** TheDiscDB lookups: match-source badges, history metadata, lookup settings toggle. */</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nx">DISCDB_LOOKUP</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="cm">/** TheDiscDB contributions: contribute page, nav item, stats badge, submit controls. */</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nx">DISCDB_CONTRIBUTE</span><span class="o">:</span><span class="w"> </span><span class="kt">false</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">}</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">;</span>
+</code></pre></div>
+Each site is re-gated per the table above. The <code>ConfigWizard</code> DiscDB group is split:
+the lookup toggle (<code>discdb_enabled</code>) renders under <code>DISCDB_LOOKUP</code>; the contributions
+toggle (<code>discdb_contributions_enabled</code>) and tier control render under
+<code>DISCDB_CONTRIBUTE</code>.</p>
+<h3 id="3-invert-asr-discdb-episode-precedence">3. Invert ASR &lt;-&gt; DiscDB episode precedence</h3>
+<p>ASR always runs. DiscDB episode mappings become a post-ASR low-confidence fallback.</p>
+<ul>
+<li>Remove the pre-dispatch short-circuit at <code>identification_coordinator.py:1059-1062</code>.
+  Every title with an <code>output_filename</code> dispatches <code>_match_single_file</code>
+  unconditionally.</li>
+<li>Apply the DiscDB fallback after the ASR result is evaluated inside
+  <code>_match_single_file_inner</code> (<code>matching_coordinator.py:1013</code>), keyed on the ASR
+  confidence:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ASR confidence</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&gt;= 0.7</code></td>
+<td>ASR result auto-organizes (DiscDB ignored even if it disagrees)</td>
+</tr>
+<tr>
+<td><code>0.5 &lt;= conf &lt; 0.7</code></td>
+<td>ASR result -&gt; Needs Review (unchanged)</td>
+</tr>
+<tr>
+<td><code>conf &lt; 0.5</code> AND DiscDB mapping exists</td>
+<td>DiscDB mapping auto-organizes at high confidence</td>
+</tr>
+<tr>
+<td><code>conf &lt; 0.5</code> AND no DiscDB mapping</td>
+<td>ASR guess -&gt; Needs Review (unchanged)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Floor constant: reuse <code>0.5</code> (curator <code>LOW_CONFIDENCE_THRESHOLD</code>). Define a named
+  constant for the DiscDB-fallback floor so the intent is explicit at the call site.</li>
+<li><code>try_discdb_assignment</code> is repurposed: instead of being called pre-dispatch to
+  skip matching, it is invoked from the low-confidence branch of
+  <code>_match_single_file_inner</code> to apply the stored mapping. Its existing behavior
+  (find mapping by <code>title_index</code>, set episode code / confidence 0.99 /
+  <code>match_source</code> / <code>discdb_match_details</code>, MATCHED, broadcast) is unchanged; only
+  the <strong>call site and the condition</strong> change.</li>
+<li><code>rematch_single_title(source_preference=...)</code> is untouched, so the manual
+  per-track "use DiscDB match" button still restores the stored DiscDB match on
+  demand.</li>
+</ul>
+<p>Show identification is unaffected: DiscDB's tmdb_id / content-type / show-identity
+contributions in <code>identify_disc</code> still apply. Only the per-track episode number
+precedence changes.</p>
+<h3 id="4-badge-icon-refresh">4. Badge icon refresh</h3>
+<p><code>TrackGrid.tsx</code> <code>SOURCE_DESC.discdb</code> becomes a <code>kind: "icon"</code> chip rendered through
+the existing icon path, using <code>IcoDisc</code> (from <code>icons/media.tsx</code>) on a palette token
+instead of the raw <code>#60a5fa</code>. The chip keeps its <code>data-testid="source-badge-discdb"</code>
+and tooltip ("Matched from TheDiscDB"). The icon-path branch of <code>SourceChip</code>
+currently hardcodes <code>MarkMono</code>; it is generalized to render the descriptor's icon so
+DiscDB can use <code>IcoDisc</code> while Engram sources keep <code>MarkMono</code>.</p>
+<h2 id="error-handling">Error handling</h2>
+<ul>
+<li>DiscDB lookup failure (network, GraphQL error, contract drift) already returns
+  <code>None</code> and degrades to TMDB/heuristic identification and ASR matching. No change.</li>
+<li>DiscDB fallback in the low-confidence branch: if no mapping applies, fall through
+  to the existing ASR-low-confidence review path. The fallback must never raise into
+  <code>_match_single_file_inner</code>'s result handling (guard like the current
+  <code>try_discdb_assignment</code> call).</li>
+</ul>
+<h2 id="testing">Testing</h2>
+<p>Backend:
+- Update flag references: <code>test_identification_coordinator.py</code> (patches
+  <code>DISCDB_ENABLED</code> -&gt; <code>DISCDB_LOOKUP_ENABLED</code>), <code>test_disc_name_identification.py</code>
+  (7 patch sites).
+- New precedence coverage: high-confidence ASR wins over a disagreeing DiscDB
+  mapping; mid-confidence ASR goes to review; very-low ASR with a DiscDB mapping
+  auto-organizes from DiscDB; very-low ASR with no mapping goes to review.
+- Confirm auto-export stays gated when lookup is on and contributions off.</p>
+<p>Frontend:
+- <code>TrackGrid.test.tsx</code>: assert the DiscDB chip renders via the icon path (and keep
+  the <code>source-badge-discdb</code> testid assertion).
+- Routing test: <code>FEATURES.DISCDB</code> -&gt; <code>FEATURES.DISCDB_CONTRIBUTE</code> for the
+  <code>/contribute</code> gate.</p>
+<h2 id="open-items-to-confirm-during-planning">Open items to confirm during planning</h2>
+<ul>
+<li>Re-confirm there is no automated TheDiscDB uploader (only the fingerprint-network
+  contribution_queue, which is a separate system, plus the manual contribute-page
+  submit). If an automated DiscDB uploader exists, it must be gated under
+  <code>DISCDB_CONTRIBUTIONS_ENABLED</code>.</li>
+<li>Verify the exact local in <code>_match_single_file_inner</code> carrying the ASR confidence
+  and matched episode, to place the fallback branch precisely.</li>
+</ul>
+<h2 id="risks">Risks</h2>
+<ul>
+<li>Enabling lookup means trusting TheDiscDB's GraphQL contract live; failures degrade
+  to current behavior, so worst case equals today.</li>
+<li>DiscDB-as-fallback at <code>conf &lt; 0.5</code> can still assign a disc-order episode number
+  when ASR fails. This is the accepted trade-off (chosen over routing the fallback
+  to review): it only applies when ASR could not produce a usable match, where the
+  alternative is a manual-review hand-off with no automatic guess.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

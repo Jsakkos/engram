@@ -1,0 +1,2535 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-05-27-phase2-fingerprint-server-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Phase 2: Fingerprint Network Server + Client Uploader — Design - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#phase-2-fingerprint-network-server-client-uploader-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Phase 2: Fingerprint Network Server + Client Uploader — Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#locked-in-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locked-In Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#server-side-components-engram-fingerprint-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Server-Side Components (engram-fingerprint-server)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Server-Side Components (engram-fingerprint-server)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#d1-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D1 Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-v1contribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /v1/contribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-v1forget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /v1/forget
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anti-poison-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-Poison Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#promotionworker-cron-trigger-0-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PromotionWorker (Cron Trigger, 0 3 * * *)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#packbuilderworker-cron-trigger-0-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PackBuilderWorker (Cron Trigger, 0 4 * * *)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#client-side-components-this-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Client-Side Components (this repo)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Client-Side Components (this repo)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backendappservicescontribution_uploaderpy-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/app/services/contribution_uploader.py (NEW)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#appconfig-additions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AppConfig additions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fingerprint_contributions-table-additions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fingerprint_contributions table additions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apifingerprintforget-new-local-route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/fingerprint/forget (NEW local route)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#audit-log-engramcachecontribution_logjsonl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit log (~/.engram/cache/contribution_log.jsonl)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#just-in-time-disclosure-modal-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Just-in-Time disclosure modal (frontend)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-flow-walkthroughs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Flow Walkthroughs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Flow Walkthroughs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#flow-a-first-successful-match-after-phase-2-ships-first-time-disclosure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow A — First successful match after Phase 2 ships (first-time disclosure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flow-b-steady-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow B — Steady state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flow-c-promotion-server-side-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow C — Promotion (server-side only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flow-d-packbuilder-server-side-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow D — PackBuilder (server-side only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flow-e-forget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow E — Forget
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#privacy-exactly-what-is-stored-and-retained" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Privacy — Exactly What Is Stored and Retained
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Privacy — Exactly What Is Stored and Retained">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#in-contribution-deletable-via-v1forget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In contribution (deletable via /v1/forget)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#explicitly-not-in-contribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicitly NOT in contribution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-contributor-deletable-via-v1forget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In contributor (deletable via /v1/forget)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-episode_canonical-not-deletable-via-v1forget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In episode_canonical (NOT deletable via /v1/forget)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-canonical_sketch-derived-not-deletable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In canonical_sketch (derived, NOT deletable)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-overlap_observation-deletable-via-v1forget-cascades-via-contribution_id-fk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In overlap_observation (deletable via /v1/forget — cascades via contribution_id FK)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing Strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#server-engram-fingerprint-server-typescript" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Server (engram-fingerprint-server, TypeScript)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#client-this-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Client (this repo)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#empirical-validation-against-the-spike" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Empirical validation against the spike
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cloudflare-resources-phase-2-launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloudflare resources (Phase 2 launch)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cost-forecast-v1-100-active-contributors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost forecast (v1, &lt;100 active contributors)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-1-commit-list-engram-fingerprint-server-bootstrap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day-1 Commit List — engram-fingerprint-server Bootstrap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#files-to-touch-client-repo-this-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files to Touch — Client Repo (this repo)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Files to Touch — Client Repo (this repo)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#new-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modified-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modified files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-deferred-to-phase-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of Scope — Deferred to Phase 3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-plan-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification Plan Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="phase-2-fingerprint-network-server-client-uploader-design">Phase 2: Fingerprint Network Server + Client Uploader — Design</h1>
+<blockquote>
+<p>Companion to Phase 1 (<a href="../../plans/2026-05-27-phase1-chromaprint-foundation/">docs/superpowers/plans/2026-05-27-phase1-chromaprint-foundation.md</a>, shipped as <a href="https://github.com/Jsakkos/engram/pull/242">#242</a>) and the original architecture brief (<a href="file:///C:/Users/jonat/.claude/plans/what-would-it-take-golden-fog.md">what-would-it-take-golden-fog.md, design source of truth</a>).</p>
+</blockquote>
+<h2 id="context">Context</h2>
+<p>Phase 1 added the local foundation: every successful Engram match now extracts a chromaprint via <code>fpcalc</code> and queues a <code>FingerprintContribution</code> row in SQLite. Nothing leaves the machine. Phase 1 also shipped the opt-out config (<code>enable_fingerprint_contributions</code>), per-install pseudonym auto-generation, the bootstrap CLI for fingerprinting existing libraries, and the local audit endpoint at <code>GET /api/fingerprint/contributions</code>.</p>
+<p>Phase 2 stands up the receiving side and the drainer: a Cloudflare Worker server that accepts contributions, runs anti-poison cross-checks, promotes corroborated fingerprints into a canonical tier nightly, and writes per-show packs to R2 (for Phase 3's identification path to consume later). On the client we add <code>ContributionUploader</code> — a background asyncio task that drains the queue, a just-in-time disclosure modal that gates the first upload, a <code>POST /api/fingerprint/forget</code> endpoint, and a one-time Alembic migration for two new bookkeeping columns.</p>
+<p>Out of scope for Phase 2 (intentionally — Phase 3 territory): <code>GET /v1/identify</code>, the public <code>GET /v1/pack/{tmdb_id}</code> endpoint, the client-side <code>ChromaprintMatcher</code>, and any cascade-integration changes in <code>curator.py</code>/<code>matching_coordinator.py</code> beyond what Phase 1 already shipped.</p>
+<h2 id="locked-in-decisions">Locked-In Decisions</h2>
+<p>These were validated in the 2026-05-27 brainstorming session and are load-bearing for the rest of the spec.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Decision</th>
+<th>Choice</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Server stack</td>
+<td>Cloudflare Workers + D1 + R2</td>
+<td>Scales to zero, native CDN for the eventual <code>/v1/pack</code>, $5/mo at v1 scale. Anti-poison query is feasible on Worker CPU via minhash sketching.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Repo layout</td>
+<td>Separate sibling repo <code>engram-fingerprint-server</code></td>
+<td>Independent CI/release cadence, clean secrets boundary, GitHub permissions can diverge. Wire-format changes coordinate via versioned <code>wire_format_version</code> field.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Wire format</td>
+<td>JSON body, <code>fingerprint_b64</code> = base64(zstd-varint)</td>
+<td>~2x smaller than gzip-JSON at rest; D1's 10GB limit forces this above ~600K canonical rows. Client re-encodes at upload time (Phase 1's local gzip-JSON storage stays intact).</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Pack endpoint scope</td>
+<td>PackBuilder worker only in Phase 2; public <code>GET /v1/pack</code> deferred to Phase 3</td>
+<td>Format will be tuned by Phase 3's matcher consumer. Worker writes to R2 nightly so we have data to validate Phase 3 against.</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Anti-poison threshold</td>
+<td>70% Hamming-overlap as Worker env var (<code>POISON_CONFLICT_THRESHOLD</code>); log overlap pct on EVERY contribution into <code>overlap_observation</code> table</td>
+<td>Tunable without redeploy; observability data is the prerequisite for empirical tuning.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>match_source</code> validation</td>
+<td>Code-level allowlist in the Worker (not schema-enforced enum)</td>
+<td>Future-proof: adding a new source for Phase 3's chromaprint corroboration becomes a Worker deploy, not a D1 schema migration. Still rejects spoofed/typo'd values.</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Privacy disclosure UX</td>
+<td>Just-in-time blocking modal before first upload (NOT first-run wizard)</td>
+<td>More honest — the choice arrives at the moment it matters. ConfigWizard is already crowded; abstract disclosures during initial setup get skimmed.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="system-architecture">System Architecture</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────── Engram Client (this repo, NEW Phase 2 additions) ──────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│                                                                                │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│  [Phase 1 — already shipped]                                                   │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│  Drive → JobManager → MatchingCoordinator → ChromaprintExtractor               │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│                                                ↓                               │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│                                      fingerprint_contributions table           │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│                                      (uploaded_at IS NULL when queued)         │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│                                                                                │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│  [Phase 2 — NEW]                                                               │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│                                                                                │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│  ┌── ContributionUploader (asyncio background task) ───────────────────┐       │
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│  │   • 5-min tick OR queue-size signal                                 │       │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│  │   • Reads enable_fingerprint_contributions + disclosure_accepted    │       │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│  │   • Decodes gzip-JSON blob → re-encodes as zstd-varint              │       │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│  │   • Batches ≤ 10 per POST                                           │       │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│  │   • Per-row exp backoff in next_attempt_at column, cap 7d           │       │
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│  │   • Writes ~/.engram/cache/contribution_log.jsonl on every action   │       │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│  └─────────────────────────────────────────────────────────────────────┘       │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│                                                                                │
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│  POST /api/fingerprint/forget   (NEW — local-only, require_localhost)          │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│    → call server&#39;s /v1/forget                                                  │
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│    → DELETE local pending queue (uploaded_at IS NULL only)                     │
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│    → Rotate contribution_pseudonym                                             │
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│    → Reset fingerprint_disclosure_accepted                                     │
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│                                                                                │
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│  JIT-disclosure modal (NEW — frontend, in App.tsx)                             │
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│    → Triggered by WS event &quot;fingerprint_disclosure_required&quot;                   │
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>│    → Blocks: Accept → PUT /api/config; Decline → disable contributions         │
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>└────────────────────────────────────────┬───────────────────────────────────────┘
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>                                         │ TLS only
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>                                         ▼
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>┌──────── engram-fingerprint-server (NEW separate repo, Cloudflare) ─────────────┐
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>│                                                                                │
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>│  Cloudflare Worker (TypeScript)                                                │
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>│    POST /v1/contribute   → AntiPoisonCheck (sync) → D1 contribution            │
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>│    POST /v1/forget       → D1 delete by pseudonym                              │
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>│                                                                                │
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>│  D1 Database (SQLite-on-edge)                                                  │
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>│    • contribution         — append-only raw uploads                            │
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>│    • episode_canonical    — nightly-promoted aggregate                         │
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>│    • canonical_sketch     — minhash sketches; anti-poison fast path            │
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>│    • contributor          — pseudonym registry + flag counters                 │
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>│    • overlap_observation  — empirical-tuning data for the 70% threshold        │
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>│                                                                                │
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>│  Scheduled Workers (Cron Triggers)                                             │
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>│    • PromotionWorker (0 3 * * *) — CANDIDATE/CONFIRMED/CANONICAL transitions   │
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>│    • PackBuilderWorker (0 4 * * *) — per-show packs written to R2              │
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>│                                                                                │
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>│  R2 Bucket: engram-fp-packs/{tmdb_id}.zstd  (no public read endpoint in P2)    │
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>└────────────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<h2 id="server-side-components-engram-fingerprint-server">Server-Side Components (<code>engram-fingerprint-server</code>)</h2>
+<h3 id="d1-schema">D1 Schema</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1">-- Raw contributions, append-only.</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">contribution</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="n">id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">AUTOINCREMENT</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="n">received_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="p">(</span><span class="n">unixepoch</span><span class="p">()),</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="n">pseudonym</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="n">tmdb_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="n">season</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="n">episode</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="n">fingerprint</span><span class="w"> </span><span class="nb">BLOB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">                     </span><span class="c1">-- zstd-varint, the canonical wire format</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="n">fingerprint_sha256</span><span class="w"> </span><span class="nb">BLOB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">              </span><span class="c1">-- SHA256 of decompressed varint stream</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="n">disc_content_hash</span><span class="w"> </span><span class="nb">BLOB</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">  </span><span class="n">match_confidence</span><span class="w"> </span><span class="nb">REAL</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">  </span><span class="n">match_source</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">  </span><span class="n">client_version</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">  </span><span class="n">poison_check</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;pending&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- &#39;pass&#39; | &#39;flag_conflict&#39; | &#39;flag_duplicate&#39;</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">  </span><span class="n">promoted_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w">                            </span><span class="c1">-- set by PromotionWorker</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="p">);</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_contribution_episode</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">contribution</span><span class="w"> </span><span class="p">(</span><span class="n">tmdb_id</span><span class="p">,</span><span class="w"> </span><span class="n">season</span><span class="p">,</span><span class="w"> </span><span class="n">episode</span><span class="p">);</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_contribution_pseudonym</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">contribution</span><span class="w"> </span><span class="p">(</span><span class="n">pseudonym</span><span class="p">,</span><span class="w"> </span><span class="n">received_at</span><span class="p">);</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_contribution_unpromoted</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">contribution</span><span class="w"> </span><span class="p">(</span><span class="n">promoted_at</span><span class="p">)</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">promoted_at</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span><span class="p">;</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">UNIQUE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_contribution_dedupe</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="w">  </span><span class="k">ON</span><span class="w"> </span><span class="n">contribution</span><span class="w"> </span><span class="p">(</span><span class="n">pseudonym</span><span class="p">,</span><span class="w"> </span><span class="n">tmdb_id</span><span class="p">,</span><span class="w"> </span><span class="n">season</span><span class="p">,</span><span class="w"> </span><span class="n">episode</span><span class="p">,</span><span class="w"> </span><span class="n">fingerprint_sha256</span><span class="p">);</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="c1">-- Per-pseudonym registry.</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">contributor</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="w">  </span><span class="n">pseudonym</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="w">  </span><span class="n">first_seen</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">  </span><span class="n">last_seen</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="w">  </span><span class="n">contribution_count</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="w">  </span><span class="n">flagged</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="w">  </span><span class="n">flag_count</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span>
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a><span class="p">);</span>
+<a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>
+<a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a><span class="c1">-- Promoted episodes.</span>
+<a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">episode_canonical</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a><span class="w">  </span><span class="n">tmdb_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a><span class="w">  </span><span class="n">season</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a><span class="w">  </span><span class="n">episode</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a><span class="w">  </span><span class="n">tier</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">                            </span><span class="c1">-- &#39;candidate&#39; | &#39;confirmed&#39; | &#39;canonical&#39;</span>
+<a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a><span class="w">  </span><span class="n">fingerprint</span><span class="w"> </span><span class="nb">BLOB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">                     </span><span class="c1">-- consensus fingerprint (zstd-varint)</span>
+<a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a><span class="w">  </span><span class="n">unique_contributors</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-42" name="__codelineno-1-42" href="#__codelineno-1-42"></a><span class="w">  </span><span class="n">mean_confidence</span><span class="w"> </span><span class="nb">REAL</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-43" name="__codelineno-1-43" href="#__codelineno-1-43"></a><span class="w">  </span><span class="n">promoted_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-44" name="__codelineno-1-44" href="#__codelineno-1-44"></a><span class="w">  </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">tmdb_id</span><span class="p">,</span><span class="w"> </span><span class="n">season</span><span class="p">,</span><span class="w"> </span><span class="n">episode</span><span class="p">)</span>
+<a id="__codelineno-1-45" name="__codelineno-1-45" href="#__codelineno-1-45"></a><span class="p">);</span>
+<a id="__codelineno-1-46" name="__codelineno-1-46" href="#__codelineno-1-46"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_canonical_tier</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">episode_canonical</span><span class="w"> </span><span class="p">(</span><span class="n">tier</span><span class="p">);</span>
+<a id="__codelineno-1-47" name="__codelineno-1-47" href="#__codelineno-1-47"></a>
+<a id="__codelineno-1-48" name="__codelineno-1-48" href="#__codelineno-1-48"></a><span class="c1">-- Minhash sketches; anti-poison fast path.</span>
+<a id="__codelineno-1-49" name="__codelineno-1-49" href="#__codelineno-1-49"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">canonical_sketch</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-1-50" name="__codelineno-1-50" href="#__codelineno-1-50"></a><span class="w">  </span><span class="n">tmdb_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-51" name="__codelineno-1-51" href="#__codelineno-1-51"></a><span class="w">  </span><span class="n">season</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-52" name="__codelineno-1-52" href="#__codelineno-1-52"></a><span class="w">  </span><span class="n">episode</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-53" name="__codelineno-1-53" href="#__codelineno-1-53"></a><span class="w">  </span><span class="n">sketch</span><span class="w"> </span><span class="nb">BLOB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">                          </span><span class="c1">-- 128 × uint32 LE-packed minhashes (512 bytes)</span>
+<a id="__codelineno-1-54" name="__codelineno-1-54" href="#__codelineno-1-54"></a><span class="w">  </span><span class="n">hash_count</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">                   </span><span class="c1">-- denominator for Jaccard normalization</span>
+<a id="__codelineno-1-55" name="__codelineno-1-55" href="#__codelineno-1-55"></a><span class="w">  </span><span class="n">generated_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-56" name="__codelineno-1-56" href="#__codelineno-1-56"></a><span class="w">  </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">tmdb_id</span><span class="p">,</span><span class="w"> </span><span class="n">season</span><span class="p">,</span><span class="w"> </span><span class="n">episode</span><span class="p">)</span>
+<a id="__codelineno-1-57" name="__codelineno-1-57" href="#__codelineno-1-57"></a><span class="p">);</span>
+<a id="__codelineno-1-58" name="__codelineno-1-58" href="#__codelineno-1-58"></a>
+<a id="__codelineno-1-59" name="__codelineno-1-59" href="#__codelineno-1-59"></a><span class="c1">-- Anti-poison observability (Q5 empirical-tuning data).</span>
+<a id="__codelineno-1-60" name="__codelineno-1-60" href="#__codelineno-1-60"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">overlap_observation</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-1-61" name="__codelineno-1-61" href="#__codelineno-1-61"></a><span class="w">  </span><span class="n">contribution_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">contribution</span><span class="p">(</span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<a id="__codelineno-1-62" name="__codelineno-1-62" href="#__codelineno-1-62"></a><span class="w">  </span><span class="n">max_overlap_pct</span><span class="w"> </span><span class="nb">REAL</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-63" name="__codelineno-1-63" href="#__codelineno-1-63"></a><span class="w">  </span><span class="n">max_overlap_target_tmdb_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span>
+<a id="__codelineno-1-64" name="__codelineno-1-64" href="#__codelineno-1-64"></a><span class="w">  </span><span class="n">max_overlap_target_season</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span>
+<a id="__codelineno-1-65" name="__codelineno-1-65" href="#__codelineno-1-65"></a><span class="w">  </span><span class="n">max_overlap_target_episode</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span>
+<a id="__codelineno-1-66" name="__codelineno-1-66" href="#__codelineno-1-66"></a><span class="w">  </span><span class="n">candidates_checked</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-1-67" name="__codelineno-1-67" href="#__codelineno-1-67"></a><span class="w">  </span><span class="n">computed_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-1-68" name="__codelineno-1-68" href="#__codelineno-1-68"></a><span class="p">);</span>
+</code></pre></div>
+<p>D1 migration files are numbered SQL in <code>migrations/</code> and applied via <code>wrangler d1 execute</code> in CI on deploy.</p>
+<h3 id="endpoints">Endpoints</h3>
+<h4 id="post-v1contribute"><code>POST /v1/contribute</code></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kd">interface</span><span class="w"> </span><span class="nx">ContributionRequest</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nx">wire_format_version</span><span class="o">:</span><span class="w"> </span><span class="kt">1</span><span class="p">;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nx">pseudonym</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w">                </span><span class="c1">// UUIDv4 string</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nx">tmdb_id</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nx">season</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nx">episode</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nx">fingerprint_b64</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w">          </span><span class="c1">// base64(zstd-varint blob)</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nx">fingerprint_sha256_b64</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w">   </span><span class="c1">// base64 of SHA256 of decompressed varint stream</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nx">disc_content_hash_b64</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">  </span><span class="nx">match_confidence</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w">         </span><span class="c1">// 0.0–1.0</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span><span class="nx">match_source</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;engram_asr&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;engram_discdb&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;bootstrap&quot;</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">              </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;user_review&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;engram_chromaprint_corroboration&quot;</span><span class="p">;</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">  </span><span class="nx">client_version</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w">           </span><span class="c1">// e.g. &quot;engram/0.9.2&quot;</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="p">}</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="kd">interface</span><span class="w"> </span><span class="nx">ContributionResponse</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span><span class="nx">contribution_id</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">  </span><span class="nx">poison_check</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;pass&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;flag_conflict&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;flag_duplicate&quot;</span><span class="p">;</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span><span class="nx">overlap_pct</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w">              </span><span class="c1">// 0.0–1.0; exposed for client audit</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="p">}</span>
+</code></pre></div>
+<p>Status codes:
+- <code>202 Accepted</code> — stored. <code>poison_check</code> may be <code>pass</code> or <code>flag_conflict</code>.
+- <code>200 OK</code> — silently accepted but <strong>not</strong> stored. Two distinct cases share this response shape (clients cannot tell them apart): (a) dedupe hit — we already have this exact (pseudonym, episode, fingerprint_sha256) tuple, or (b) the pseudonym is flagged and we are silently shadowbanning. Both return <code>poison_check='flag_duplicate'</code>. This ambiguity is intentional defense-in-depth.
+- <code>400 Bad Request</code> — schema invalid, base64/zstd decode failed, or match_source not in allowlist.
+- <code>429 Too Many Requests</code> — Cloudflare's pseudonymous rate-limiter; not IP-keyed.</p>
+<h4 id="post-v1forget"><code>POST /v1/forget</code></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kd">interface</span><span class="w"> </span><span class="nx">ForgetRequest</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">pseudonym</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kd">interface</span><span class="w"> </span><span class="nx">ForgetResponse</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nx">rows_deleted</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w">             </span><span class="c1">// contribution + contributor rows</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nx">canonical_unaffected</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="p">;</span><span class="w">       </span><span class="c1">// documented invariant</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>200 OK</code> always (idempotent; deleting an unknown pseudonym is not an error). <code>400</code> if pseudonym is malformed.</p>
+<h3 id="anti-poison-algorithm">Anti-Poison Algorithm</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>on POST /v1/contribute:
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  1. Validate schema; 400 on fail.
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  2. base64-decode + zstd-decompress + varint-decode fingerprint → uint32[]; 400 on fail.
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  3. SELECT contributor WHERE pseudonym = ?
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>     IF flagged = 1:
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        // silent shadowban: don&#39;t tell attackers they&#39;re flagged
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        return 200 with poison_check=&#39;flag_duplicate&#39;
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  4. Dedupe: SELECT contribution WHERE (pseudonym, tmdb_id, season, episode, fingerprint_sha256)
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>     IF exists: return 200 with existing contribution_id, poison_check=&#39;flag_duplicate&#39;
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>  5. ANTI-POISON FAST PATH:
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>       - sketch_in = minhash128(uint32[])
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>       - SELECT sketch, hash_count, tmdb_id, season, episode FROM canonical_sketch
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>         WHERE NOT (tmdb_id = ? AND season = ? AND episode = ?)
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>       - For each row: jaccard_est = popcount(sketch_in ∩ sketch_row) / 128
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>       - (max_est, target) = argmax of jaccard_est
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>  6. ANTI-POISON CONFIRM (only if max_est &gt; POISON_CONFLICT_THRESHOLD - 0.10):
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>       - Load full canonical fingerprint for target from episode_canonical.
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>       - exact_overlap = count(query_hash ∈ canonical with hamming ≤ 6) / |query_hash|
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>       - IF exact_overlap &gt; POISON_CONFLICT_THRESHOLD (env var, default 0.70):
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>            poison_check = &#39;flag_conflict&#39;
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>            UPDATE contributor SET flag_count = flag_count + 1
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>            IF flag_count &gt; 3: UPDATE contributor SET flagged = 1
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>       ELSE:
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>            poison_check = &#39;pass&#39;
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>       Record exact_overlap_pct + target in overlap_observation.
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>  7. ALWAYS-LOG (max_est ≤ POISON_CONFLICT_THRESHOLD - 0.10):
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>       poison_check = &#39;pass&#39;
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>       Record max_est + target in overlap_observation (estimate flag set)
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>  8. INSERT INTO contribution.
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>  9. UPSERT contributor (increment contribution_count, update last_seen).
+<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>  10. Return 202 with contribution_id + poison_check + overlap_pct.
+</code></pre></div>
+<p><strong>Why minhash sketches.</strong> A naive cross-overlap query — for each incoming fingerprint, Hamming-compare against every canonical fingerprint — would be O(N_canonicals × hashes_per_ep) per request. For 100K canonicals × 10K hashes each, that's 1B comparisons per request, fatal on Workers' 30s CPU ceiling. Minhash sketches let us approximate Jaccard similarity in 128 int comparisons per candidate; checking 50K sketches is ~6M ops (~50ms). The estimate has a ~5% error band, so we screen at <code>THRESHOLD - 0.10</code> and only run exact Hamming on the survivor.</p>
+<p><strong>Why silent shadowban.</strong> Telling a flagged contributor they're shadowbanned invites pseudonym rotation; silent drops waste their effort and provide better defense in depth.</p>
+<h3 id="promotionworker-cron-trigger-0-3">PromotionWorker (Cron Trigger, <code>0 3 * * *</code>)</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>For each distinct (tmdb_id, season, episode) in contribution WHERE promoted_at IS NULL:
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  1. Pull all contributions for episode where poison_check = &#39;pass&#39;.
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  2. Group by pseudonym; keep most recent per pseudonym.
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  3. Filter to match_confidence &gt;= 0.70.
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  4. Count distinct (pseudonym × disc_content_hash) pairs → independent_count.
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  5. Tier:
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>       independent_count &gt;= 3 AND mean(match_confidence) &gt;= 0.85
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>         AND no contributor.flagged                                  → CANONICAL
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>       independent_count &gt;= 2                                        → CONFIRMED
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>       independent_count &gt;= 1                                        → CANDIDATE
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>  6. If tier changes vs episode_canonical:
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>       - Compute consensus fingerprint: hash union where occurrence_count &gt;= 50% of contributors.
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>       - UPSERT episode_canonical.
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>       - Compute 128-minhash sketch of consensus fingerprint.
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>       - UPSERT canonical_sketch.
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>  7. UPDATE contribution SET promoted_at = unixepoch() WHERE id IN (processed).
+</code></pre></div>
+<h3 id="packbuilderworker-cron-trigger-0-4">PackBuilderWorker (Cron Trigger, <code>0 4 * * *</code>)</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>For each tmdb_id with changes in episode_canonical since last run:
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  1. SELECT all CANONICAL episodes for tmdb_id.
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  2. Assemble per-show pack:
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>       header: { wire_format_version: 1, tmdb_id, n_episodes, generated_at }
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>       body:   for each episode: { season, episode, fingerprint_blob, hash_count }
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>  3. zstd-compress the assembled pack.
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>  4. R2.PUT engram-fp-packs/{tmdb_id}.zstd with ETag = sha256(pack).
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>  5. Log pack size + episode count to a small tracking table for ops visibility.
+</code></pre></div>
+<p>The pack format is intentionally underspecified — Phase 3's <code>ChromaprintMatcher</code> dictates the layout once we know what local lookups need. Phase 2 ships <code>wire_format_version=1</code>; Phase 3 may bump.</p>
+<h2 id="client-side-components-this-repo">Client-Side Components (this repo)</h2>
+<h3 id="backendappservicescontribution_uploaderpy-new"><code>backend/app/services/contribution_uploader.py</code> (NEW)</h3>
+<p>Singleton asyncio task started in <code>app/main.py</code>'s <code>lifespan</code> hook, alongside the existing <code>init_db()</code> and Phase 1's pseudonym-generator.</p>
+<p>Key behaviors:
+- <strong>Tick cadence:</strong> 5-minute timer OR <code>ContributionQueue.signal()</code> size-pressure notification (≥10 unuploaded rows).
+- <strong>Pre-flight check:</strong> reads <code>enable_fingerprint_contributions</code> and <code>fingerprint_disclosure_accepted</code> each tick. If either is False, broadcasts <code>fingerprint_disclosure_required</code> (when disclosure unset) and returns.
+- <strong>Batching:</strong> SELECT up to <code>BATCH_SIZE=10</code> rows WHERE <code>uploaded_at IS NULL</code> AND <code>upload_attempts &lt; MAX_ATTEMPTS</code> AND (<code>next_attempt_at IS NULL</code> OR <code>next_attempt_at &lt;= now()</code>), ordered by <code>queued_at</code>.
+- <strong>Constants</strong> (module-level in <code>contribution_uploader.py</code>): <code>BATCH_SIZE = 10</code>, <code>MAX_ATTEMPTS = 20</code>, <code>TICK_INTERVAL_SECONDS = 300</code>, <code>BACKOFF_BASE_SECONDS = 60</code>, <code>BACKOFF_CAP_SECONDS = 7 * 86400</code>.
+- <strong>Per-row processing:</strong> decode Phase 1's gzip-JSON blob via <code>ChromaprintResult.from_blob()</code>, re-encode hashes as zstd-varint, base64-wrap, POST to <code>/v1/contribute</code>.
+- <strong>Result handling:</strong>
+  - <code>200/202/409</code> → <code>uploaded_at = now()</code>, append audit-log line.
+  - <code>400</code> → permanent fail; set <code>uploaded_at</code> to skip forever, record <code>upload_error</code>.
+  - <code>429/503/network</code> → exponential backoff: <code>next_attempt_at = now() + min(60 * 2^attempts, 7d)</code>, increment <code>upload_attempts</code>.
+- <strong>No backlog throttling</strong> (Q3-meta decision). When disclosure is accepted, the existing 10-row batch + 5-min tick rate-limits naturally to ~120 uploads/hour. Server-side Cloudflare rate-limiter is the final guardrail.</p>
+<h3 id="appconfig-additions"><code>AppConfig</code> additions</h3>
+<p>Three new fields beyond Phase 1's <code>contribution_pseudonym</code> + <code>enable_fingerprint_contributions</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">fingerprint_server_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">&quot;https://fp.engram.example/v1&quot;</span><span class="p">)</span>  <span class="c1"># deployment-time value; see &quot;Deployment&quot; section</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">fingerprint_disclosure_accepted</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">fingerprint_disclosure_accepted_at</span><span class="p">:</span> <span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+<p><code>fingerprint_server_url</code> is NOT redacted by <code>GET /api/config</code> — transparency is the whole point. Users with privacy concerns can override it to a custom server (or a <code>/dev/null</code> sink) via <code>PUT /api/config</code>.</p>
+<h3 id="fingerprint_contributions-table-additions"><code>fingerprint_contributions</code> table additions</h3>
+<p>Two new columns to support per-row backoff and error visibility:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">next_attempt_at</span><span class="p">:</span> <span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># when row becomes eligible to retry</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">upload_error</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>          <span class="c1"># last error message</span>
+</code></pre></div>
+<p>Alembic migration adds these as nullable, no backfill needed (NULL means "ready to attempt").</p>
+<h3 id="post-apifingerprintforget-new-local-route"><code>POST /api/fingerprint/forget</code> (NEW local route)</h3>
+<p><code>require_localhost</code> dependency — must not be callable from LAN. Sequence:</p>
+<ol>
+<li>POST to server <code>/v1/forget {pseudonym: &lt;current&gt;}</code>. If network fails: 503, abort.</li>
+<li>DELETE FROM <code>fingerprint_contributions</code> WHERE <code>uploaded_at IS NULL</code>.</li>
+<li>Generate fresh UUIDv4; assign to <code>app_config.contribution_pseudonym</code>.</li>
+<li>Reset <code>fingerprint_disclosure_accepted = False</code>.</li>
+<li>Append <code>{event: "forget"}</code> line to audit log.</li>
+<li>Return <code>{old_pseudonym, new_pseudonym, local_rows_deleted, server_rows_deleted}</code>.</li>
+</ol>
+<h3 id="audit-log-engramcachecontribution_logjsonl">Audit log (<code>~/.engram/cache/contribution_log.jsonl</code>)</h3>
+<p>Append-only JSONL. One line per upload (success or hard-fail) and one line per forget event. Each line self-describing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span><span class="nt">&quot;ts&quot;</span><span class="p">:</span><span class="s2">&quot;2026-05-28T03:14:15Z&quot;</span><span class="p">,</span><span class="nt">&quot;event&quot;</span><span class="p">:</span><span class="s2">&quot;upload&quot;</span><span class="p">,</span><span class="nt">&quot;contribution_id&quot;</span><span class="p">:</span><span class="mi">42</span><span class="p">,</span><span class="nt">&quot;tmdb_id&quot;</span><span class="p">:</span><span class="mi">95396</span><span class="p">,</span><span class="nt">&quot;season&quot;</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">&quot;episode&quot;</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">&quot;match_source&quot;</span><span class="p">:</span><span class="s2">&quot;engram_asr&quot;</span><span class="p">,</span><span class="nt">&quot;match_confidence&quot;</span><span class="p">:</span><span class="mf">0.91</span><span class="p">,</span><span class="nt">&quot;server_contribution_id&quot;</span><span class="p">:</span><span class="mi">17</span><span class="p">,</span><span class="nt">&quot;poison_check&quot;</span><span class="p">:</span><span class="s2">&quot;pass&quot;</span><span class="p">,</span><span class="nt">&quot;overlap_pct&quot;</span><span class="p">:</span><span class="mf">0.03</span><span class="p">}</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p">{</span><span class="nt">&quot;ts&quot;</span><span class="p">:</span><span class="s2">&quot;2026-05-28T03:14:16Z&quot;</span><span class="p">,</span><span class="nt">&quot;event&quot;</span><span class="p">:</span><span class="s2">&quot;upload_failed&quot;</span><span class="p">,</span><span class="nt">&quot;contribution_id&quot;</span><span class="p">:</span><span class="mi">43</span><span class="p">,</span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="s2">&quot;400: invalid fingerprint encoding&quot;</span><span class="p">}</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="p">{</span><span class="nt">&quot;ts&quot;</span><span class="p">:</span><span class="s2">&quot;2026-05-29T10:00:00Z&quot;</span><span class="p">,</span><span class="nt">&quot;event&quot;</span><span class="p">:</span><span class="s2">&quot;forget&quot;</span><span class="p">,</span><span class="nt">&quot;old_pseudonym&quot;</span><span class="p">:</span><span class="s2">&quot;abc-...&quot;</span><span class="p">,</span><span class="nt">&quot;rows_deleted&quot;</span><span class="p">:</span><span class="mi">12</span><span class="p">,</span><span class="nt">&quot;server_rows_deleted&quot;</span><span class="p">:</span><span class="mi">47</span><span class="p">}</span>
+</code></pre></div>
+<p><code>GET /api/fingerprint/contributions</code> (Phase 1 endpoint) gains a <code>?include_log=true</code> query param that interleaves audit-log entries with queue rows.</p>
+<h3 id="just-in-time-disclosure-modal-frontend">Just-in-Time disclosure modal (frontend)</h3>
+<p><strong>Trigger:</strong> <code>ContributionUploader._drain_one_batch()</code> finds rows to upload but <code>fingerprint_disclosure_accepted=False</code>. Broadcasts WS event:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kr">type</span><span class="w"> </span><span class="nx">FingerprintDisclosureRequiredEvent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;fingerprint_disclosure_required&quot;</span><span class="p">;</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="nx">pending_count</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="nx">pseudonym</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="nx">server_url</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="nx">fields_sent</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">      </span><span class="s2">&quot;chromaprint&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">      </span><span class="s2">&quot;tmdb_id+season+episode&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">      </span><span class="s2">&quot;match_confidence+source&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">      </span><span class="s2">&quot;disc_content_hash&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">      </span><span class="s2">&quot;client_version&quot;</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">    </span><span class="p">];</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">  </span><span class="p">};</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="p">};</span>
+</code></pre></div>
+<p><strong>Modal behavior:</strong> blocking — cannot be dismissed without choosing Accept or Decline. No banner fallback (Q-meta decision). Modal text:</p>
+<blockquote>
+<p><strong>Engram is about to start contributing audio fingerprints.</strong></p>
+<p>The local matcher just finished identifying an episode. Engram can upload a short audio fingerprint to the engram fingerprint network so future Engram users can identify the same episode in milliseconds — no subtitles, no LLM call.</p>
+<p><strong>What gets sent:</strong>
+1. The audio fingerprint (~7 KB; not the audio itself, not subtitles).
+2. The episode it matched (TMDB ID + season + episode).
+3. How confident we are in the match (so the network can weight your contribution).
+4. The disc release identifier from TheDiscDB (m2ts file size hash; not the file itself).
+5. A random per-install ID (<code>{pseudonym}</code>) — you can rotate this anytime.</p>
+<p>Your IP is not stored. You can opt out at any time in Settings. The pending <strong>{pending_count}</strong> contributions are queued locally; nothing has been uploaded yet.</p>
+<p><strong>Once contributions promote into the network's canonical layer, your individual contribution is indistinguishable from the consensus — it cannot be retroactively removed.</strong></p>
+<p>&nbsp;&nbsp;<strong>[ Accept and start contributing ]</strong> &nbsp;&nbsp; <strong>[ Disable contributions ]</strong></p>
+</blockquote>
+<p>Accept → <code>PUT /api/config {fingerprint_disclosure_accepted: true, fingerprint_disclosure_accepted_at: &lt;now&gt;}</code>. Uploader's next tick drains. Decline → <code>PUT /api/config {enable_fingerprint_contributions: false}</code>. Phase 1's toggle wins; nothing uploads.</p>
+<h2 id="data-flow-walkthroughs">Data Flow Walkthroughs</h2>
+<h3 id="flow-a-first-successful-match-after-phase-2-ships-first-time-disclosure">Flow A — First successful match after Phase 2 ships (first-time disclosure)</h3>
+<ol>
+<li>User rips a disc; existing pipeline matches a title.</li>
+<li>Phase 1 hook in <code>matching_coordinator._match_single_file_inner()</code> extracts a chromaprint, queues a <code>FingerprintContribution</code> row.</li>
+<li><code>ContributionUploader</code> ticks. Reads <code>enable_fingerprint_contributions=True</code> (default) and <code>fingerprint_disclosure_accepted=False</code> (default).</li>
+<li>Broadcasts <code>fingerprint_disclosure_required</code> over WebSocket. Returns without uploading.</li>
+<li>Frontend <code>App.tsx</code> receives event, shows the JIT modal.</li>
+<li>User clicks Accept → <code>PUT /api/config {fingerprint_disclosure_accepted: true}</code>.</li>
+<li>Next uploader tick (within 5 min): decodes each row's gzip-JSON, re-encodes as zstd-varint, POSTs <code>/v1/contribute</code>.</li>
+<li>Server runs anti-poison (minhash screen, exact confirm if needed), INSERTs, returns 202 with poison verdict + overlap_pct.</li>
+<li>Client writes audit-log line, sets <code>uploaded_at=now()</code>.</li>
+</ol>
+<h3 id="flow-b-steady-state">Flow B — Steady state</h3>
+<p>Steps 1, 2, 7, 8, 9 from Flow A. No modal. No WS event.</p>
+<h3 id="flow-c-promotion-server-side-only">Flow C — Promotion (server-side only)</h3>
+<ol>
+<li>PromotionWorker runs at 03:00 UTC.</li>
+<li>For each <code>(tmdb_id, season, episode)</code> with unpromoted contributions: filter to <code>poison_check='pass'</code> AND <code>match_confidence&gt;=0.70</code>, dedup by pseudonym, count distinct <code>(pseudonym × disc_content_hash)</code> pairs.</li>
+<li>Tier assignment per the algorithm. Compute consensus fingerprint + minhash sketch on tier change. UPSERT into <code>episode_canonical</code> + <code>canonical_sketch</code>.</li>
+<li>SET <code>promoted_at</code> on processed rows.</li>
+</ol>
+<h3 id="flow-d-packbuilder-server-side-only">Flow D — PackBuilder (server-side only)</h3>
+<ol>
+<li>PackBuilderWorker runs at 04:00 UTC (after PromotionWorker).</li>
+<li>For each tmdb_id with changes in <code>episode_canonical</code> since last run: assemble pack, zstd-compress, R2.PUT with ETag.</li>
+<li>No public read endpoint until Phase 3.</li>
+</ol>
+<h3 id="flow-e-forget">Flow E — Forget</h3>
+<ol>
+<li>User clicks "Forget me" in Settings → frontend <code>POST /api/fingerprint/forget</code>.</li>
+<li>Backend <code>POST</code> to server <code>/v1/forget {pseudonym}</code>. Server deletes from <code>contribution</code> + <code>contributor</code>; cascade deletes <code>overlap_observation</code> rows.</li>
+<li>Backend DELETE WHERE <code>uploaded_at IS NULL</code> from local <code>fingerprint_contributions</code>.</li>
+<li>Backend rotates <code>contribution_pseudonym</code>; resets <code>fingerprint_disclosure_accepted</code>.</li>
+<li>Audit log gets <code>{event: "forget"}</code> line.</li>
+<li>Future matches will queue under the new pseudonym; user sees the JIT modal again on next upload.</li>
+</ol>
+<p><strong>Privacy invariant after forget:</strong> the rows are gone, but canonical fingerprints already aggregated from them are not retroactively removed. The modal text documents this explicitly.</p>
+<h2 id="privacy-exactly-what-is-stored-and-retained">Privacy — Exactly What Is Stored and Retained</h2>
+<h3 id="in-contribution-deletable-via-v1forget">In <code>contribution</code> (deletable via /v1/forget)</h3>
+<ul>
+<li>chromaprint hash stream (zstd-varint)</li>
+<li>SHA256 of decompressed fingerprint (dedupe)</li>
+<li>tmdb_id / season / episode</li>
+<li>match_confidence / match_source / client_version</li>
+<li>disc_content_hash (TheDiscDB m2ts MD5 — identifies a disc <em>release</em>, not the user's file)</li>
+<li>pseudonym (UUIDv4)</li>
+<li>received_at</li>
+<li>poison_check verdict</li>
+</ul>
+<h3 id="explicitly-not-in-contribution">Explicitly NOT in <code>contribution</code></h3>
+<ul>
+<li>IP address (Cloudflare may log briefly; our DB never)</li>
+<li>User agent</li>
+<li>Filename, path, library structure</li>
+<li>Audio itself</li>
+<li>Subtitle text</li>
+<li>TMDB account info or any user-identifying data</li>
+</ul>
+<h3 id="in-contributor-deletable-via-v1forget">In <code>contributor</code> (deletable via /v1/forget)</h3>
+<p>pseudonym, first_seen, last_seen, contribution_count, flagged, flag_count.</p>
+<h3 id="in-episode_canonical-not-deletable-via-v1forget">In <code>episode_canonical</code> (NOT deletable via /v1/forget)</h3>
+<p>Consensus fingerprint blob, tier, <code>unique_contributors</code> COUNT (not identities), <code>mean_confidence</code>. The contributors' identity is gone once the row holds the aggregate.</p>
+<h3 id="in-canonical_sketch-derived-not-deletable">In <code>canonical_sketch</code> (derived, NOT deletable)</h3>
+<p>Minhash sketches of canonical fingerprints.</p>
+<h3 id="in-overlap_observation-deletable-via-v1forget-cascades-via-contribution_id-fk">In <code>overlap_observation</code> (deletable via /v1/forget — cascades via <code>contribution_id</code> FK)</h3>
+<p>max_overlap_pct + target + candidates_checked.</p>
+<h2 id="testing-strategy">Testing Strategy</h2>
+<h3 id="server-engram-fingerprint-server-typescript">Server (<code>engram-fingerprint-server</code>, TypeScript)</h3>
+<ul>
+<li><strong>Vitest unit tests</strong>:</li>
+<li><code>anti-poison.test.ts</code> — synthetic fingerprints designed to overlap precisely 65%, 70%, 75% with another canonical; assert flag verdicts.</li>
+<li><code>promotion.test.ts</code> — 3-pseudonym threshold edge, conflict-blocked promotion, confidence floor.</li>
+<li><code>minhash.test.ts</code> — Jaccard estimation error band (target: 95% of estimates within ±5% of true Jaccard).</li>
+<li>
+<p><code>schema-validation.test.ts</code> — every 400 path triggers correctly.</p>
+</li>
+<li>
+<p><strong>Miniflare integration</strong>:</p>
+</li>
+<li>Spin up the Worker locally with scratch D1 + R2.</li>
+<li>POST synthetic contributions, assert DB state transitions.</li>
+<li>
+<p>Run PromotionWorker as a one-shot cron, assert episode_canonical transitions.</p>
+</li>
+<li>
+<p><strong>E2E</strong>:</p>
+</li>
+<li>Engram client pointed at <code>wrangler dev</code>; run <code>simulate/insert-disc</code> end-to-end; verify contribution lands with expected poison_check.</li>
+</ul>
+<h3 id="client-this-repo">Client (this repo)</h3>
+<ul>
+<li><code>tests/unit/test_contribution_uploader.py</code> — mocked httpx; batching, dedupe-409 success-path, exponential backoff math, 400-permanent-fail path, disclosure-required gating.</li>
+<li><code>tests/unit/test_zstd_varint_encoder.py</code> — encode/decode roundtrip; size assertions (zstd-varint &lt; 70% of gzip-JSON for representative input).</li>
+<li><code>tests/integration/test_uploader_pipeline.py</code> — full path against a mocked server endpoint (httpx_mock); verify audit log writes, WS event broadcast, forget round-trip.</li>
+<li><code>frontend/e2e/fingerprint-disclosure.spec.ts</code> — Playwright; simulate a match, verify modal pops, click Accept, verify next batch drains.</li>
+</ul>
+<h3 id="empirical-validation-against-the-spike">Empirical validation against the spike</h3>
+<p>Re-run <code>spikes/chromaprint/spike.py</code> with a synthetic-attacker scenario: deliberately label one show's episodes as another's. Pipe the resulting fingerprints through the anti-poison check; verify &gt;70%-overlap detection triggers consistently against the same-content target.</p>
+<h2 id="deployment">Deployment</h2>
+<h3 id="cloudflare-resources-phase-2-launch">Cloudflare resources (Phase 2 launch)</h3>
+<ul>
+<li>1 Worker (<code>engram-fp-prod</code>) with Cron Triggers <code>0 3 * * *</code> (promotion) and <code>0 4 * * *</code> (pack-builder).</li>
+<li>1 D1 database (<code>engram-fingerprint</code>).</li>
+<li>1 R2 bucket (<code>engram-fp-packs</code>).</li>
+<li>1 custom domain — needs registration before deploy. Candidate: <code>fp.engram.app</code>. Once chosen, update <code>AppConfig.fingerprint_server_url</code> default in the client repo and the <code>wrangler.toml</code> <code>routes</code> array in the server repo.</li>
+</ul>
+<h3 id="migration-management">Migration management</h3>
+<p>D1 doesn't ship a migration framework. The server repo includes numbered SQL files in <code>migrations/</code> (e.g. <code>001_initial.sql</code>, <code>002_add_canonical_sketch.sql</code>) applied via <code>wrangler d1 execute</code> in CI on deploy. If schema complexity grows, switch to <code>drizzle-kit</code> or similar later.</p>
+<h3 id="secrets">Secrets</h3>
+<p>None in v1. The server has no upstream API keys. Cloudflare-built-in rate limiting is the only authenticated-ish surface. If contribution-rate attacks materialize, add HMAC-signed pseudonyms.</p>
+<h3 id="cost-forecast-v1-100-active-contributors">Cost forecast (v1, &lt;100 active contributors)</h3>
+<ul>
+<li>Workers Paid: $5/mo (cron triggers require Paid tier).</li>
+<li>D1: free tier sufficient (5M reads, 100K writes/day).</li>
+<li>R2: free tier sufficient (10GB storage, 10M Class A ops/mo).</li>
+<li>Bandwidth: R2 zero-egress; Workers responses tiny.</li>
+<li><strong>Total: ~$5/mo through Phase 2.</strong></li>
+</ul>
+<h3 id="observability">Observability</h3>
+<p>Cloudflare Worker logs to Logpush (free; writes to R2). Grafana Cloud dashboard reading from a Logpush sink, displaying:
+- contributions/min
+- anti-poison flag rate (<code>poison_check ≠ 'pass'</code> rate)
+- p95 endpoint latency
+- D1 query time histogram
+- <code>overlap_observation.max_overlap_pct</code> distribution (for empirical tuning of the 70% threshold)</p>
+<p>Phase 2 launch is gated on this dashboard existing.</p>
+<h2 id="day-1-commit-list-engram-fingerprint-server-bootstrap">Day-1 Commit List — <code>engram-fingerprint-server</code> Bootstrap</h2>
+<p>Per the Q-meta decision, the spec includes the server-repo bootstrap as a concrete commit sequence. The implementation plan (next step) will turn each commit into a TDD step with tests.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>commit 1  chore: wrangler init engram-fp-prod
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>            wrangler.toml, .gitignore, package.json (pnpm), tsconfig.json,
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>            .github/workflows/deploy.yml (deploy on push to main),
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>            README.md scaffold.
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>commit 2  feat(schema): D1 initial migration
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>            migrations/001_initial.sql with all five tables + indices.
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>            scripts/apply-migrations.sh wrapping wrangler d1 execute.
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>            CI step that runs it against a scratch DB before deploy.
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>commit 3  feat(types): shared types + Zod schemas
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>            src/types.ts: ContributionRequest, ContributionResponse, ForgetRequest, etc.
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>            src/schemas.ts: Zod validators that double as the 400-handler source.
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>commit 4  feat(util): zstd + varint + base64 codec
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>            src/codec.ts: encodeZstdVarint(uint32[]) → Uint8Array,
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>                          decodeZstdVarint(Uint8Array) → uint32[].
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>            Tested via vitest with roundtrip fixtures.
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>commit 5  feat(util): minhash sketching
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>            src/minhash.ts: minhash128(uint32[]) → Uint8Array (512 bytes),
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>                            jaccardEstimate(a, b) → number.
+<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>            Tested with known-distribution fixtures.
+<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>
+<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>commit 6  feat(api): POST /v1/contribute skeleton — schema validation only
+<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a>            src/routes/contribute.ts: parse → Zod validate → 202 stub.
+<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a>            No DB writes yet. Tests assert all 400 paths.
+<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>
+<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>commit 7  feat(api): POST /v1/contribute — DB insert + dedupe check
+<a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a>            Skeleton extended to actually INSERT contribution + UPSERT contributor.
+<a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a>            Dedupe via UNIQUE INDEX collision; 409→200 silent.
+<a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a>
+<a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a>commit 8  feat(api): POST /v1/contribute — anti-poison fast path
+<a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>            Minhash screen against canonical_sketch.
+<a id="__codelineno-11-35" name="__codelineno-11-35" href="#__codelineno-11-35"></a>            Records overlap_observation always.
+<a id="__codelineno-11-36" name="__codelineno-11-36" href="#__codelineno-11-36"></a>
+<a id="__codelineno-11-37" name="__codelineno-11-37" href="#__codelineno-11-37"></a>commit 9  feat(api): POST /v1/contribute — anti-poison exact confirm
+<a id="__codelineno-11-38" name="__codelineno-11-38" href="#__codelineno-11-38"></a>            On screen-trigger: load canonical fingerprint, Hamming-confirm,
+<a id="__codelineno-11-39" name="__codelineno-11-39" href="#__codelineno-11-39"></a>            set poison_check, increment contributor.flag_count if conflict.
+<a id="__codelineno-11-40" name="__codelineno-11-40" href="#__codelineno-11-40"></a>
+<a id="__codelineno-11-41" name="__codelineno-11-41" href="#__codelineno-11-41"></a>commit 10 feat(api): POST /v1/forget
+<a id="__codelineno-11-42" name="__codelineno-11-42" href="#__codelineno-11-42"></a>            Delete contribution + contributor for pseudonym.
+<a id="__codelineno-11-43" name="__codelineno-11-43" href="#__codelineno-11-43"></a>            overlap_observation cascades via FK.
+<a id="__codelineno-11-44" name="__codelineno-11-44" href="#__codelineno-11-44"></a>
+<a id="__codelineno-11-45" name="__codelineno-11-45" href="#__codelineno-11-45"></a>commit 11 feat(worker): PromotionWorker
+<a id="__codelineno-11-46" name="__codelineno-11-46" href="#__codelineno-11-46"></a>            src/workers/promotion.ts. Cron: 0 3 * * *.
+<a id="__codelineno-11-47" name="__codelineno-11-47" href="#__codelineno-11-47"></a>            Implements the algorithm; tested in Miniflare.
+<a id="__codelineno-11-48" name="__codelineno-11-48" href="#__codelineno-11-48"></a>
+<a id="__codelineno-11-49" name="__codelineno-11-49" href="#__codelineno-11-49"></a>commit 12 feat(worker): PackBuilderWorker
+<a id="__codelineno-11-50" name="__codelineno-11-50" href="#__codelineno-11-50"></a>            src/workers/pack-builder.ts. Cron: 0 4 * * *.
+<a id="__codelineno-11-51" name="__codelineno-11-51" href="#__codelineno-11-51"></a>            R2.put per-show packs; no public endpoint yet.
+<a id="__codelineno-11-52" name="__codelineno-11-52" href="#__codelineno-11-52"></a>
+<a id="__codelineno-11-53" name="__codelineno-11-53" href="#__codelineno-11-53"></a>commit 13 feat(ops): logpush + grafana dashboard
+<a id="__codelineno-11-54" name="__codelineno-11-54" href="#__codelineno-11-54"></a>            Logpush config; grafana JSON committed under docs/observability/.
+<a id="__codelineno-11-55" name="__codelineno-11-55" href="#__codelineno-11-55"></a>
+<a id="__codelineno-11-56" name="__codelineno-11-56" href="#__codelineno-11-56"></a>commit 14 chore: deploy v0.1.0 to production
+<a id="__codelineno-11-57" name="__codelineno-11-57" href="#__codelineno-11-57"></a>            Tag, push, wrangler deploy. End of Phase 2 server bootstrap.
+</code></pre></div>
+<h2 id="files-to-touch-client-repo-this-repo">Files to Touch — Client Repo (this repo)</h2>
+<h3 id="new-files">New files</h3>
+<ul>
+<li><code>backend/app/services/contribution_uploader.py</code> — the drain loop.</li>
+<li><code>backend/app/services/zstd_varint_codec.py</code> — encode/decode helper (mirror of server's codec).</li>
+<li><code>backend/app/api/fingerprint_routes.py</code> (or extend existing <code>routes.py</code>) — <code>POST /api/fingerprint/forget</code>.</li>
+<li><code>backend/migrations/versions/&lt;rev&gt;_phase2_uploader_columns.py</code> — add <code>next_attempt_at</code>, <code>upload_error</code> to <code>fingerprint_contributions</code>; add <code>fingerprint_server_url</code>, <code>fingerprint_disclosure_accepted</code>, <code>fingerprint_disclosure_accepted_at</code> to <code>app_config</code>.</li>
+<li><code>frontend/src/components/FingerprintDisclosureModal.tsx</code> — JIT modal.</li>
+<li><code>backend/tests/unit/test_contribution_uploader.py</code></li>
+<li><code>backend/tests/unit/test_zstd_varint_codec.py</code></li>
+<li><code>backend/tests/integration/test_uploader_pipeline.py</code></li>
+<li><code>frontend/e2e/fingerprint-disclosure.spec.ts</code></li>
+</ul>
+<h3 id="modified-files">Modified files</h3>
+<ul>
+<li><code>backend/app/main.py</code> — start <code>ContributionUploader</code> task in <code>lifespan</code>.</li>
+<li><code>backend/app/models/app_config.py</code> — three new fields.</li>
+<li><code>backend/app/models/fingerprint.py</code> — two new fields on <code>FingerprintContribution</code>.</li>
+<li><code>backend/app/api/routes.py</code> — <code>?include_log=true</code> on <code>GET /api/fingerprint/contributions</code>.</li>
+<li><code>backend/app/services/event_broadcaster.py</code> — new <code>broadcast_fingerprint_disclosure_required</code> method.</li>
+<li><code>frontend/src/App.tsx</code> — wire the modal into the WS event handler.</li>
+<li><code>frontend/src/components/ConfigWizard.tsx</code> — Settings panel for the existing toggle + new "Forget me" button.</li>
+<li><code>pyproject.toml</code> — add <code>zstandard</code> dependency.</li>
+</ul>
+<h2 id="out-of-scope-deferred-to-phase-3">Out of Scope — Deferred to Phase 3</h2>
+<ul>
+<li><code>GET /v1/identify</code> endpoint (per-window classification API).</li>
+<li>Public <code>GET /v1/pack/{tmdb_id}</code> endpoint.</li>
+<li>Client-side <code>ChromaprintMatcher</code> (consumes packs + identifies via minhash + temporal voting).</li>
+<li>Cascade integration (<code>chromaprint first → ASR fallback</code>) in <code>curator.py</code> / <code>matching_coordinator.py</code>.</li>
+<li>Lowering canonical confidence gate from 0.85 (Phase 4 tuning).</li>
+<li>Commentary-track detection / multi-track handling (Phase 4).</li>
+<li>Edition / alternate-cut UX surfacing (Phase 4).</li>
+</ul>
+<h2 id="verification-plan-summary">Verification Plan Summary</h2>
+<p>Launch Phase 2 only when:</p>
+<ol>
+<li>Server smoke test passes: a real <code>engram-fp-prod</code> deployment receives a real client <code>POST /v1/contribute</code>, anti-poison runs, contribution lands, <code>GET</code> audit-log reflects the upload.</li>
+<li><code>POST /v1/forget</code> round-trip verified: rows deleted server-side, local queue cleared, pseudonym rotated.</li>
+<li>JIT disclosure modal renders on first upload; Accept and Decline both honored.</li>
+<li>PromotionWorker dry-run against a seed dataset transitions a 3-contributor episode to CANONICAL.</li>
+<li>PackBuilderWorker writes a real R2 object for a CANONICAL show.</li>
+<li>Grafana dashboard displays live <code>overlap_observation</code> distribution and contribution/min counters.</li>
+<li>The <code>overlap_observation</code> table has accumulated ≥ 1000 rows so we have a starting distribution for Q5 empirical tuning of the 70% threshold.</li>
+<li>End-to-end Playwright test passes in CI.</li>
+</ol>
+<p>Two-to-four-week soak in production after Phase 2 launch before starting Phase 3, so the canonical layer can accumulate data and we can tune the 70% threshold from real distributions before Phase 3 starts consuming canonical fingerprints for identification.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
