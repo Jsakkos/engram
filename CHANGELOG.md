@@ -7,6 +7,9 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - **Discord webhook notifications for job completion.** Configure a webhook URL in Settings → Preferences → Notifications; Engram posts a color-coded embed when a disc job reaches COMPLETED (green) or FAILED (red). The URL is stored as a credential (redacted in API responses, SSRF-validated on write). Embed content is hard-coded for now — a future PR will add customizable message templates. (#482)
+### Fixed
+
+- **Subtitle cache directory no longer fails to create with a permission-denied warning on startup.** `ensure_paths_exist()` checked `is_absolute()` before expanding `~`, so the default `subtitles_cache_path` of `~/.engram/cache` was never tilde-expanded and instead resolved to a literal `~` folder under the backend source directory, which is unwritable in Docker. `~` is now expanded before the absolute-path check, matching every other consumer of this setting. (#459)
 
 ## [0.22.2] - 2026-06-30
 
