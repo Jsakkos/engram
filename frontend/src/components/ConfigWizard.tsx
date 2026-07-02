@@ -1697,7 +1697,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <div className="form-group">
                             <label htmlFor="discordWebhookUrl">
                                 Discord Webhook URL
-                                <SavedKeyBadge saved={savedKeys.discord && !config.discordWebhookUrl} text="Configured" />
+                                <SavedKeyBadge saved={savedKeys.discord} text="Configured" />
                             </label>
                             <input
                                 id="discordWebhookUrl"

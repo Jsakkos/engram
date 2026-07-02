@@ -8,7 +8,6 @@ import pytest
 from app.core.discord_notifier import notify_discord
 from app.models.disc_job import ContentType, DiscJob
 
-
 # --------------------------------------------------------------------------- #
 # notify_discord unit tests
 # --------------------------------------------------------------------------- #
@@ -47,7 +46,7 @@ async def test_notify_discord_posts_completed_embed():
     assert "✅" in embed["title"]
     assert "Completed" in embed["title"]
     assert "The Wire" in embed["description"]
-    assert embed["color"] == 0x00B97A  # teal
+    assert embed["color"] == 0x00B97A  # green
 
 
 @pytest.mark.asyncio
