@@ -4,13 +4,19 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-07-02
+
+_Highlights: Discord webhook notifications for job completion, plus fixes for a Docker subtitle-cache permission error, migrations getting stuck behind duplicate columns, and modal keyboard focus order._
+
 ### Added
 
 - **Discord webhook notifications for job completion.** Configure a webhook URL in Settings → Preferences → Notifications; Engram posts a color-coded embed when a disc job reaches COMPLETED (green) or FAILED (red). The URL is stored as a credential (redacted in API responses, SSRF-validated on write). Embed content is hard-coded for now — a future PR will add customizable message templates. (#482)
+
 ### Fixed
 
-- **Subtitle cache directory no longer fails to create with a permission-denied warning on startup.** `ensure_paths_exist()` checked `is_absolute()` before expanding `~`, so the default `subtitles_cache_path` of `~/.engram/cache` was never tilde-expanded and instead resolved to a literal `~` folder under the backend source directory, which is unwritable in Docker. `~` is now expanded before the absolute-path check, matching every other consumer of this setting. (#459)
-- **Database migrations no longer get stuck behind a "duplicate column name" error.** `_add_missing_columns()` (the frozen-build fallback) and Alembic both converge the schema toward the same model on every startup; if a column a pending Alembic migration wanted to add had already been added out-of-band, the migration failed and was silently swallowed, leaving `alembic_version` permanently one revision behind and blocking every later migration on every subsequent restart. Alembic upgrades now apply one revision at a time and self-heal past a revision whose only failure is a column that already exists. (#459)
+- **Subtitle cache directory no longer fails to create with a permission-denied warning on startup.** `ensure_paths_exist()` checked `is_absolute()` before expanding `~`, so the default `subtitles_cache_path` of `~/.engram/cache` was never tilde-expanded and instead resolved to a literal `~` folder under the backend source directory, which is unwritable in Docker. `~` is now expanded before the absolute-path check, matching every other consumer of this setting. (#481)
+- **Database migrations no longer get stuck behind a "duplicate column name" error.** `_add_missing_columns()` (the frozen-build fallback) and Alembic both converge the schema toward the same model on every startup; if a column a pending Alembic migration wanted to add had already been added out-of-band, the migration failed and was silently swallowed, leaving `alembic_version` permanently one revision behind and blocking every later migration on every subsequent restart. Alembic upgrades now apply one revision at a time and self-heal past a revision whose only failure is a column that already exists. (#483)
+- **Modal dismiss button now receives keyboard focus when the modal opens, and focus returns to the triggering element when it closes.** Addresses a WCAG 2.4.3 (Focus Order) gap: keyboard and screen-reader users previously had to tab in from wherever focus last landed, and lost their place in the page when the modal closed. (#479)
 
 ## [0.22.2] - 2026-06-30
 
