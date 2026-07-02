@@ -149,6 +149,21 @@ SO_DIR="$(dirname "$(find "$UNPACK" "$WORK/ct2-install" -name 'libctranslate2.so
 [ -d "$SO_DIR" ] || err "could not locate built libctranslate2.so"
 cp -a "$SO_DIR"/libctranslate2.so* "$BUNDLE_DIR/_internal/"
 
+# --- 8. Back up bundled libstdc++/libgcc_s that can shadow Jetson system libs
+# PyInstaller bundles _internal/libstdc++.so.6* and _internal/libgcc_s.so.1 from
+# the Ubuntu 24.04 CI runner. On JetPack 6.2.2 (Ubuntu 22.04 base) these can
+# shadow the Jetson system libstdc++ that the freshly-built CUDA/cuDNN libs
+# expect, producing "GLIBC_2.36 not found" / "GLIBC_2.38 not found" at import
+# time. Move them aside so the dynamic linker falls through to the system copy.
+info "Backing up bundled libstdc++/libgcc_s that can shadow the Jetson system libs..."
+GLIBC_BACKUP="$BUNDLE_DIR/_internal/incompatible-glibc-backup"
+mkdir -p "$GLIBC_BACKUP"
+for f in "$BUNDLE_DIR"/_internal/libstdc++.so.6 "$BUNDLE_DIR"/_internal/libstdc++.so.6.* \
+         "$BUNDLE_DIR"/_internal/libgcc_s.so.1; do
+  [ -e "$f" ] || continue
+  mv -v "$f" "$GLIBC_BACKUP/"
+done
+
 cat <<EOF
 
 $(info "Done.")
