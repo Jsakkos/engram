@@ -193,6 +193,9 @@ class AppConfig(SQLModel, table=True):
     # Read at startup before uvicorn binds; an explicit HOST env var takes precedence.
     allow_lan_access: bool = Field(default=False, sa_column_kwargs={"server_default": text("0")})
 
+    # Notifications
+    discord_webhook_url: str = ""  # Discord webhook URL for job completion alerts
+
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard
 

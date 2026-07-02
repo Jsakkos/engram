@@ -212,6 +212,7 @@ class JobManager:
         # COMPLETES (FAILED jobs never contribute). Best-effort — a raised enqueue
         # is caught here and never crashes the terminal-state dispatch.
         state_machine.on_terminal_state(self._enqueue_disc_contribution_on_terminal)
+        state_machine.on_terminal_state(self._notify_discord_on_terminal)
 
         # Reset the watchdog activity clock whenever a job changes phase.
         state_machine.on_transition(self._note_activity_on_transition)
@@ -1063,6 +1064,35 @@ class JobManager:
         except Exception as e:
             logger.warning(f"Job {job_id}: disc contribution enqueue failed: {e}", exc_info=True)
 
+    async def _notify_discord_on_terminal(self, job_id: int, state: JobState) -> None:
+        """on_terminal_state hook: schedule a Discord notification and return immediately.
+
+        Fire-and-forget via create_task so a slow or unreachable webhook never
+        delays job finalization — the 10s httpx timeout stays off the critical path.
+        """
+        asyncio.create_task(self._send_discord_notification(job_id, state))
+
+    async def _send_discord_notification(self, job_id: int, state: JobState) -> None:
+        """Send the Discord embed. Runs as a background task; all errors are swallowed."""
+        try:
+            from app.core.discord_notifier import notify_discord
+            from app.services.config_service import get_config
+
+            config = await get_config()
+            if not config.discord_webhook_url:
+                return
+
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+            label = (
+                (job.detected_title or job.volume_label or f"Job #{job_id}")
+                if job
+                else f"Job #{job_id}"
+            )
+            await notify_discord(config.discord_webhook_url, job_id, label, state.value)
+        except Exception as e:
+            logger.warning(f"Job {job_id}: Discord notification failed: {e}", exc_info=True)
+
     @staticmethod
     def _has_complete_output(output_dir: Path, title_index: int) -> bool:
         """Whether a non-empty ``*_tNN.mkv`` for this title exists in staging.
@@ -1736,6 +1766,46 @@ class JobManager:
 
             await ws_manager.broadcast_job_update(job_id, next_state.value)
             return next_state.value
+
+    async def advance_job_via_state_machine(self, job_id: int) -> str:
+        """Advance a job one step through the state machine, firing all registered callbacks.
+
+        Unlike advance_job(), this goes through state_machine.transition() so terminal
+        callbacks (e.g. Discord notifications, contribution enqueue) fire on COMPLETED/FAILED.
+        """
+        state_flow = {
+            JobState.IDLE: JobState.IDENTIFYING,
+            JobState.IDENTIFYING: JobState.RIPPING,
+            JobState.RIPPING: JobState.MATCHING,
+            JobState.MATCHING: JobState.ORGANIZING,
+            JobState.ORGANIZING: JobState.COMPLETED,
+            JobState.REVIEW_NEEDED: JobState.RIPPING,
+        }
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+
+            next_state = state_flow.get(job.state)
+            if not next_state:
+                raise ValueError(f"Cannot advance from state: {job.state}")
+
+            ok = await state_machine.transition(job, next_state, session)
+            if not ok:
+                raise ValueError(f"State machine rejected: {job.state} -> {next_state}")
+
+        return next_state.value
+
+    async def fail_job_via_state_machine(self, job_id: int, reason: str) -> None:
+        """Transition a job to FAILED through the state machine, firing all registered callbacks."""
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+            if job.state in (JobState.COMPLETED, JobState.FAILED):
+                raise ValueError("Job already in terminal state")
+            await state_machine.transition_to_failed(job, session, error_message=reason)
 
     # --- Simulation (delegated) ---
 
