@@ -132,7 +132,7 @@ def _run_alembic_upgrade() -> None:
         logger.warning(f"Alembic migration failed (non-fatal): {e}", exc_info=True)
 
 
-def _upgrade_to_head_self_healing(alembic_cfg, sync_engine, max_steps: int = 25) -> None:
+def _upgrade_to_head_self_healing(alembic_cfg, sync_engine) -> None:
     """Apply pending Alembic migrations, healing revisions whose only failure
     is a column that already exists.
 
@@ -145,6 +145,13 @@ def _upgrade_to_head_self_healing(alembic_cfg, sync_engine, max_steps: int = 25)
     Since the schema already matches what that revision would produce, treat
     the failure as "already applied": stamp past just that one revision and
     keep going.
+
+    Safe only because _add_missing_columns() backfills *columns* for every
+    table before Alembic ever runs — it does not create indexes/constraints or
+    run data backfills. Stamping a revision "done" on a duplicate-column error
+    assumes the whole revision is a no-op, so a migration must not combine
+    add_column() with other DDL or data operations in the same upgrade(), or
+    that other work would be silently skipped whenever this self-heal fires.
     """
     from alembic import command
     from alembic.runtime.migration import MigrationContext
@@ -152,6 +159,10 @@ def _upgrade_to_head_self_healing(alembic_cfg, sync_engine, max_steps: int = 25)
     from sqlalchemy.exc import OperationalError
 
     script = ScriptDirectory.from_config(alembic_cfg)
+    # Upper bound on steps needed to walk from any revision to head — derived
+    # from the actual chain length rather than a fixed constant, so it never
+    # needs manual bumping as migrations accumulate.
+    max_steps = len(list(script.walk_revisions())) + 1
 
     for _ in range(max_steps):
         with sync_engine.connect() as conn:

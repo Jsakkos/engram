@@ -568,3 +568,39 @@ class TestAlembicSelfHealing:
         finally:
             db_mod.settings.database_url = original_url
             sync_engine.dispose()
+
+    def test_self_heal_reraises_non_duplicate_column_errors(self, tmp_path, monkeypatch):
+        """An OperationalError unrelated to a duplicate column must propagate,
+        not be swallowed by the self-heal loop as if it were a no-op revision.
+        """
+        from alembic import command
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        from sqlalchemy.exc import OperationalError
+
+        import app.database as db_mod
+
+        db_path = tmp_path / "propagate.db"
+        sync_engine = create_engine(f"sqlite:///{db_path}")
+
+        original_url = db_mod.settings.database_url
+        db_mod.settings.database_url = f"sqlite+aiosqlite:///{db_path}"
+        try:
+            SQLModel.metadata.create_all(sync_engine)
+
+            alembic_cfg = Config(str(db_mod._ALEMBIC_INI))
+            script = ScriptDirectory.from_config(alembic_cfg)
+            head = script.get_current_head()
+            down_revision = script.get_revision(head).down_revision or "base"
+            command.stamp(alembic_cfg, down_revision)
+
+            def fake_upgrade(_cfg, _rev):
+                raise OperationalError("SELECT 1", {}, Exception("no such table: unrelated_table"))
+
+            monkeypatch.setattr(command, "upgrade", fake_upgrade)
+
+            with pytest.raises(OperationalError, match="no such table"):
+                db_mod._upgrade_to_head_self_healing(alembic_cfg, sync_engine)
+        finally:
+            db_mod.settings.database_url = original_url
+            sync_engine.dispose()
