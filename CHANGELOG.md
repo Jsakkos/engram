@@ -6,7 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
-- **Discord webhook notifications for job completion.** Configure a webhook URL in Settings → Preferences → Notifications; Engram posts a color-coded embed when a disc job reaches COMPLETED (green) or FAILED (red). The URL is stored as a credential (redacted in API responses, SSRF-validated on write). Embed content is hard-coded for now — a future PR will add customizable message templates. (#TBD)
+- **Discord webhook notifications for job completion.** Configure a webhook URL in Settings → Preferences → Notifications; Engram posts a color-coded embed when a disc job reaches COMPLETED (green) or FAILED (red). The URL is stored as a credential (redacted in API responses, SSRF-validated on write). Embed content is hard-coded for now — a future PR will add customizable message templates. (#482)
 
 ## [0.22.2] - 2026-06-30
 
