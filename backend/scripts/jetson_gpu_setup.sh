@@ -69,6 +69,10 @@ BUNDLED_CT2="$(sed -n 's/^__version__ *= *["'"'"']\([0-9.]*\)["'"'"'].*/\1/p' \
 CT2_VERSION="${CT2_VERSION:-${BUNDLED_CT2:-4.6.3}}"
 CUDA_ARCH="${CUDA_ARCH:-87}"   # Orin default; override for Xavier (72) etc.
 JOBS="${JOBS:-$(nproc)}"
+# Must match RUNTIME_VERSION in backend/app/matcher/cuda_runtime.py — bump both
+# together, or the app will look in the wrong ~/.engram/cuda/ subdirectory and
+# treat the runtime as absent even after this script runs.
+CUDA_RUNTIME_VERSION="cudnn9.19.0.56-cublas12.9.1.4"
 info "Building CTranslate2 v$CT2_VERSION for CUDA arch sm_$CUDA_ARCH (bundle has ${BUNDLED_CT2:-unknown})"
 if [ -n "$BUNDLED_CT2" ] && [ "$CT2_VERSION" != "$BUNDLED_CT2" ]; then
   info "WARNING: building $CT2_VERSION but bundle ships $BUNDLED_CT2 — bindings may mismatch."
@@ -164,17 +168,78 @@ for f in "$BUNDLE_DIR"/_internal/libstdc++.so.6 "$BUNDLE_DIR"/_internal/libstdc+
   mv -v "$f" "$GLIBC_BACKUP/"
 done
 
+# --- 9. Create the Engram CUDA runtime cache from JetPack libraries ---------
+# backend/app/matcher/cuda_runtime.py normally downloads cuDNN/cuBLAS wheels
+# into ~/.engram/cuda/<RUNTIME_VERSION>/ and preloads every *.so it finds there
+# before the first WhisperModel load. On Jetson, JetPack already ships matching
+# cuDNN/cuBLAS system-wide, so symlink them into that same cache layout instead
+# of downloading — this is also what flips gpu_runtime_installed to true in
+# GET /api/asr-status.
+CUDA_CACHE_DIR="$HOME/.engram/cuda/$CUDA_RUNTIME_VERSION"
+info "Creating Engram CUDA runtime cache at $CUDA_CACHE_DIR..."
+rm -rf "$CUDA_CACHE_DIR"
+mkdir -p "$CUDA_CACHE_DIR"
+"$PY311" - "$CUDA_CACHE_DIR" "$CUDA_HOME" <<'PY'
+import glob
+import json
+import os
+import sys
+from pathlib import Path
+
+cache = Path(sys.argv[1])
+cuda_home = sys.argv[2]
+patterns = [
+    f"{cuda_home}/lib64/libcublas*.so*",
+    f"{cuda_home}/lib64/libcudart*.so*",
+    f"{cuda_home}/lib64/libnvrtc*.so*",
+    f"{cuda_home}/lib64/libnvJitLink*.so*",
+    "/usr/lib/aarch64-linux-gnu/libcudnn*.so*",
+    "/lib/aarch64-linux-gnu/libcudnn*.so*",
+]
+files = []
+for pattern in patterns:
+    for src in glob.glob(pattern):
+        src_path = Path(src)
+        if not src_path.exists():
+            continue
+        dest = cache / src_path.name
+        if dest.exists() or dest.is_symlink():
+            dest.unlink()
+        os.symlink(str(src_path), str(dest))
+        files.append(src_path.name)
+files = sorted(set(files))
+if not files:
+    sys.exit(f"No CUDA/cuDNN libraries found under: {', '.join(patterns)}")
+(cache / "manifest.json").write_text(
+    json.dumps({"version": cache.name, "files": files, "complete": True}, indent=2),
+    encoding="utf-8",
+)
+print(f"Created Engram CUDA runtime cache with {len(files)} libraries:")
+for name in files:
+    print("  " + name)
+PY
+
 cat <<EOF
 
 $(info "Done.")
 GPU CTranslate2 (v$CT2_VERSION, sm_$CUDA_ARCH) installed into:
   $BUNDLE_DIR
 
+Bundled libstdc++/libgcc_s that could shadow the Jetson system libs were moved
+to:
+  $GLIBC_BACKUP
+A CUDA runtime cache (symlinked to the JetPack cuDNN/cuBLAS libraries) was
+created at:
+  $CUDA_CACHE_DIR
+
 Next steps:
   1. (Re)start Engram:        cd "$BUNDLE_DIR" && ./engram
-  2. Confirm the device:      curl localhost:8000/api/asr-status   # expect device:"cuda"
-  3. Run a match and watch GPU load with:  sudo tegrastats
-  4. ~/.engram/engram.log should show "Loaded ... on cuda" (no "Falling back to CPU").
+  2. Enable GPU ASR (it is off by default even once detected):
+                               curl -X POST localhost:8000/api/asr/gpu/enable
+  3. Restart Engram again so the new device takes effect, then confirm:
+                               curl localhost:8000/api/asr-status   # expect device:"cuda"
+  4. Run a match and watch GPU load with:  sudo tegrastats
+  5. ~/.engram/engram.log should show "Loaded ... on cuda" (no "Falling back to CPU").
 
 If ASR still reports CPU, see docs/development/jetson.md (device detection and
 JetPack version notes). To revert, restore $CT2_PKG_DIR.cpu-backup.
