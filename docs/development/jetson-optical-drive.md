@@ -265,6 +265,8 @@ sudo modprobe udf
 sudo modprobe isofs
 sudo modprobe nls_utf8 2>/dev/null || true
 sudo modprobe uas 2>/dev/null || true
+sudo modprobe usb-storage 2>/dev/null || true
+sudo modprobe crc-itu-t 2>/dev/null || true
 lsmod | grep -E 'cdrom|sr_mod|sg|udf|isofs|nls_utf8|uas|crc_itu_t'
 
 sudo tee /etc/modules-load.d/optical-drive.conf >/dev/null <<'EOF'
@@ -275,9 +277,14 @@ udf
 isofs
 nls_utf8
 uas
+usb_storage
+crc_itu_t
 EOF
 # Remove uas from the autoload list if it isn't available as a module:
 modinfo uas >/dev/null 2>&1 || sudo sed -i '/^uas$/d' /etc/modules-load.d/optical-drive.conf
+# Same for usb_storage and crc_itu_t (both are commonly built into vmlinux):
+modinfo usb_storage >/dev/null 2>&1 || sudo sed -i '/^usb_storage$/d' /etc/modules-load.d/optical-drive.conf
+modinfo crc_itu_t >/dev/null 2>&1 || sudo sed -i '/^crc_itu_t$/d' /etc/modules-load.d/optical-drive.conf
 ```
 
 ## Test the drive
