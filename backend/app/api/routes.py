@@ -365,6 +365,8 @@ class ConfigResponse(BaseModel):
     fingerprint_disclosure_accepted: bool = False
     fingerprint_disclosure_accepted_at: datetime | None = None
     contribution_pseudonym: str | None = None
+    # Notifications
+    discord_webhook_url: str = ""
 
 
 class ConfigUpdate(BaseModel):
@@ -448,6 +450,8 @@ class ConfigUpdate(BaseModel):
     # Chromaprint Phase 2
     fingerprint_server_url: str | None = None
     fingerprint_disclosure_accepted: bool | None = None
+    # Notifications
+    discord_webhook_url: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1337,6 +1341,8 @@ async def get_config() -> ConfigResponse:
         fingerprint_disclosure_accepted=config.fingerprint_disclosure_accepted,
         fingerprint_disclosure_accepted_at=config.fingerprint_disclosure_accepted_at,
         contribution_pseudonym=config.contribution_pseudonym,
+        # Notifications
+        discord_webhook_url="***" if config.discord_webhook_url else "",
     )
 
 
@@ -1402,6 +1408,16 @@ async def update_config(config: ConfigUpdate) -> dict:
             raise HTTPException(
                 status_code=422,
                 detail="fingerprint_server_url must be an http/https URL pointing to a non-internal host",
+            )
+
+    # Validate discord_webhook_url against SSRF before persisting
+    if update_data.get("discord_webhook_url"):
+        from app.core.security import is_safe_remote_url
+
+        if not is_safe_remote_url(update_data["discord_webhook_url"]):
+            raise HTTPException(
+                status_code=422,
+                detail="discord_webhook_url must be an http/https URL pointing to a non-internal host",
             )
 
     # Validate naming format strings before persisting
@@ -2297,6 +2313,30 @@ async def simulate_advance_job(job_id: int) -> dict:
     try:
         new_state = await job_manager.advance_job(job_id)
         return {"status": "advanced", "job_id": job_id, "new_state": new_state}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+
+@router.post("/simulate/step-job/{job_id}", dependencies=[Depends(require_debug)])
+async def simulate_step_job(job_id: int) -> dict:
+    """Advance a job via the state machine, firing terminal callbacks (Discord, etc). DEBUG only."""
+    from app.services.job_manager import job_manager
+
+    try:
+        new_state = await job_manager.advance_job_via_state_machine(job_id)
+        return {"status": "advanced", "job_id": job_id, "new_state": new_state}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+
+@router.post("/simulate/fail-job/{job_id}", dependencies=[Depends(require_debug)])
+async def simulate_fail_job(job_id: int, reason: str = "simulated failure") -> dict:
+    """Transition a job to FAILED via the state machine, firing terminal callbacks. DEBUG only."""
+    from app.services.job_manager import job_manager
+
+    try:
+        await job_manager.fail_job_via_state_machine(job_id, reason)
+        return {"status": "failed", "job_id": job_id, "new_state": "failed"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
 

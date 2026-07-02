@@ -214,6 +214,7 @@ async def update_config(**kwargs) -> AppConfig:
             "opensubtitles_api_key",
             "opensubtitles_password",
             "discdb_api_key",
+            "discord_webhook_url",
         }
 
         _nullable_fields = {
