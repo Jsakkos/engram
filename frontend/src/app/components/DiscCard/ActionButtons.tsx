@@ -17,7 +17,7 @@
  * promote it to the primary callout in that state.
  */
 
-import { useState, useEffect, type CSSProperties, type ReactNode, type MouseEvent } from "react";
+import { useState, useEffect, useRef, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { IcoCancel, IcoError, IcoRetry, IcoPlay } from "../icons";
@@ -36,6 +36,14 @@ interface ConfirmModalProps {
 }
 
 function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confirmTone = "red", onConfirm, onDismiss }: ConfirmModalProps) {
+    const dismissRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        const trigger = document.activeElement as HTMLElement | null;
+        dismissRef.current?.focus();
+        return () => trigger?.focus();
+    }, []);
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
         document.addEventListener("keydown", onKey);
@@ -76,6 +84,7 @@ function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confir
                     </div>
                     <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                         <button
+                            ref={dismissRef}
                             onClick={onDismiss}
                             style={{ fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", padding: "8px 14px", background: sv.bg0, border: `1px solid ${sv.lineMid}`, color: sv.inkDim, cursor: "pointer" }}
                         >
