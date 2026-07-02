@@ -108,8 +108,14 @@ curl -X POST localhost:8000/api/simulate/insert-disc \
 # Simulate disc removal
 curl -X POST "localhost:8000/api/simulate/remove-disc?drive_id=E%3A"
 
-# Manually advance a job to its next state
+# Manually advance a job to its next state (bypasses state machine callbacks)
 curl -X POST localhost:8000/api/simulate/advance-job/1
+
+# Advance a job via the state machine (fires terminal callbacks e.g. Discord notifications)
+curl -X POST localhost:8000/api/simulate/step-job/1
+
+# Transition a job directly to FAILED (fires terminal callbacks e.g. Discord notifications)
+curl -X POST "localhost:8000/api/simulate/fail-job/1?reason=disc+unreadable"
 
 # Reset all jobs (useful for test cleanup)
 curl -X DELETE localhost:8000/api/simulate/reset-all-jobs

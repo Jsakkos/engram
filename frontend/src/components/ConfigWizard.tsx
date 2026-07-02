@@ -145,6 +145,7 @@ interface ConfigData {
     opensubtitlesUsername: string;
     opensubtitlesPassword: string;
     allowLanAccess: boolean;
+    discordWebhookUrl: string;
 }
 
 interface NetworkInfo {
@@ -222,6 +223,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         opensubtitlesUsername: '',
         opensubtitlesPassword: '',
         allowLanAccess: false,
+        discordWebhookUrl: '',
     });
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -229,7 +231,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
-    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, ai: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, ai: false});
+    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, ai: boolean, discord: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, ai: false, discord: false});
     // 'error' ("couldn't check") is deliberately distinct from 'invalid' ("token
     // rejected"): conflating them sent users hunting for a token problem that may
     // not exist (#243). 'error' never counts as validated, but the gate still
@@ -285,6 +287,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     tmdb: data.tmdb_api_key === '***',
                     opensubtitles: data.opensubtitles_api_key === '***',
                     ai: data.ai_api_key === '***',
+                    discord: data.discord_webhook_url === '***',
                 });
                 // Note: API keys are redacted as "***" for security
                 setConfig({
@@ -332,6 +335,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitlesUsername: data.opensubtitles_username || '',
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
                     allowLanAccess: data.allow_lan_access ?? false,
+                    discordWebhookUrl: data.discord_webhook_url === '***' ? '' : (data.discord_webhook_url || ''),
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -487,6 +491,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitles_username: config.opensubtitlesUsername,
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
                     allow_lan_access: config.allowLanAccess,
+                    ...optional('discord_webhook_url', config.discordWebhookUrl),
                     setup_complete: true,
                 }),
             });
@@ -1678,6 +1683,34 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 )}
                             </div>
                         )}
+
+                            </div>
+                        </details>
+
+                        {/* ── Notifications ───────────────────────────────────── */}
+                        <details className="wizard-group">
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>Notifications
+                            </summary>
+                            <div className="wizard-group-body">
+
+                        <div className="form-group">
+                            <label htmlFor="discordWebhookUrl">
+                                Discord Webhook URL
+                                <SavedKeyBadge saved={savedKeys.discord} text="Configured" />
+                            </label>
+                            <input
+                                id="discordWebhookUrl"
+                                type="url"
+                                value={config.discordWebhookUrl}
+                                onChange={(e) => handleInputChange('discordWebhookUrl', e.target.value)}
+                                placeholder="https://discord.com/api/webhooks/..."
+                            />
+                            <span className="form-hint">
+                                When a disc finishes (completed or failed), Engram posts a message to this channel.
+                                Create a webhook in your Discord server's channel settings under Integrations.
+                            </span>
+                        </div>
 
                             </div>
                         </details>
