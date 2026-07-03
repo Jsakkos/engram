@@ -384,6 +384,13 @@ class MakeMKVExtractor:
         # terminates the correct process.
         self._processes: dict[int, subprocess.Popen] = {}  # job_id -> process
         self._cancelled_jobs: set[int] = set()
+        # Per-job set of title_index values to skip. Checked before each
+        # per-title rip command so a queued-but-not-yet-ripped title can be
+        # dropped mid-rip. A full-disc "all" pass cannot honor this (one process
+        # rips everything); those skips are handled downstream by deleting the
+        # finished file. Single-writer per job under the rip thread + async
+        # skip calls; set mutation is atomic under the GIL.
+        self._skipped_indices: dict[int, set[int]] = {}
         # Per-drive locks prevent concurrent MakeMKV operations on the same drive.
         # Two makemkvcon processes fighting over one drive causes both to stall/fail.
         self._drive_locks: dict[str, asyncio.Lock] = {}
@@ -912,6 +919,7 @@ class MakeMKVExtractor:
                 return (-1, str(e), set())
             finally:
                 self._processes.pop(job_id, None)
+                self._skipped_indices.pop(job_id, None)
 
         try:
             # Start ripping in thread
@@ -989,6 +997,16 @@ class MakeMKVExtractor:
                 error_message=str(e),
             )
 
+    def skip_title_index(self, job_id: int, title_index: int) -> None:
+        """Register a title_index to skip in the per-title rip loop for a job."""
+        self._skipped_indices.setdefault(job_id, set()).add(title_index)
+
+    def unskip_title_index(self, job_id: int, title_index: int) -> None:
+        """Remove a previously-registered skip (no-op if absent)."""
+        s = self._skipped_indices.get(job_id)
+        if s:
+            s.discard(title_index)
+
     def cancel(self, job_id: int) -> None:
         """Cancel ripping for a specific job."""
         self._cancelled_jobs.add(job_id)
@@ -1021,6 +1039,7 @@ class MakeMKVExtractor:
         )
         self._processes.clear()
         self._cancelled_jobs.clear()
+        self._skipped_indices.clear()
 
     def _parse_disc_info(self, output: str) -> tuple[list[TitleInfo], str]:
         """Parse MakeMKV robot-mode output to extract title information and disc name.
