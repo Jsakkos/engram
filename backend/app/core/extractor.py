@@ -106,6 +106,25 @@ def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[s
     return ignore
 
 
+def _build_rip_commands(
+    makemkv_path: str,
+    drive_spec: str,
+    output_dir: str,
+    title_indices: list[int] | None,
+) -> list[tuple[int | None, list[str]]]:
+    """Build ``(title_index, argv)`` rip commands.
+
+    ``title_index`` is None for the single full-disc "all" pass (which rips
+    every title in one MakeMKV invocation and cannot drop an individual title);
+    otherwise each command carries the specific title index so the rip loop can
+    consult the live skip-set before starting it.
+    """
+    base = [makemkv_path, "-r", "--progress=-same", "mkv", drive_spec]
+    if not title_indices:
+        return [(None, [*base, "all", output_dir])]
+    return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
+
+
 def _safe_callback(cb: Callable, *args, label: str) -> None:
     """Invoke a user-supplied callback, logging (but not raising) any exception.
 
@@ -572,52 +591,16 @@ class MakeMKVExtractor:
         drive_spec = _to_drive_spec(drive)
 
         # Prepare commands to run
-        commands = []
-
+        commands = _build_rip_commands(
+            str(self.makemkv_path),
+            drive_spec,
+            str(output_dir),
+            title_indices,
+        )
         if not title_indices:
-            # Rip ALL titles (single command, most efficient)
             logger.info("Ripping ALL titles")
-            commands.append(
-                [
-                    str(self.makemkv_path),
-                    "-r",
-                    "--progress=-same",
-                    "mkv",
-                    drive_spec,
-                    "all",
-                    str(output_dir),
-                ]
-            )
-        elif len(title_indices) == 1:
-            # Rip single specific title
-            idx = title_indices[0]
-            logger.info(f"Ripping single title {idx}")
-            commands.append(
-                [
-                    str(self.makemkv_path),
-                    "-r",
-                    "--progress=-same",
-                    "mkv",
-                    drive_spec,
-                    str(idx),
-                    str(output_dir),
-                ]
-            )
         else:
-            # Rip multiple specific titles (must loop commands)
-            logger.info(f"Ripping {len(title_indices)} specific titles: {title_indices}")
-            for idx in title_indices:
-                commands.append(
-                    [
-                        str(self.makemkv_path),
-                        "-r",
-                        "--progress=-same",
-                        "mkv",
-                        drive_spec,
-                        str(idx),
-                        str(output_dir),
-                    ]
-                )
+            logger.info(f"Ripping {len(title_indices)} specific title(s): {title_indices}")
 
         # State tracking for progress
         current_title_idx = 0  # 0-based absolute index for progress reporting
@@ -779,11 +762,25 @@ class MakeMKVExtractor:
             try:
                 self._cancelled_jobs.discard(job_id)
 
-                for cmd in commands:
+                for title_index, cmd in commands:
                     if job_id in self._cancelled_jobs:
                         break
 
                     current_title_idx += 1
+
+                    # Live skip: a queued title the user skipped before MakeMKV
+                    # reached it is dropped here. (The "all" pass has
+                    # title_index None and cannot be skipped this way; those are
+                    # handled by deleting the finished file downstream.)
+                    if title_index is not None and title_index in self._skipped_indices.get(
+                        job_id, set()
+                    ):
+                        logger.info(
+                            f"Skipping title {title_index} (command "
+                            f"{current_title_idx}/{len(commands)}) - user-skipped"
+                        )
+                        continue
+
                     logger.info(
                         f"Executing rip command {current_title_idx}/{len(commands)}: "
                         f"{' '.join(cmd)}"
