@@ -2196,10 +2196,14 @@ class JobManager:
                     titles_to_rip = [dt for dt in disc_titles if dt.is_selected]
 
                 # Safety net: transition deselected PENDING titles to terminal state
+                # SKIPPED titles are already terminal, leave them alone. Only a
+                # deselected-but-still-PENDING title needs the safety-net nudge.
                 deselected_ids = [
                     dt.id
                     for dt in disc_titles
-                    if not dt.is_selected and dt.state == TitleState.PENDING
+                    if not dt.is_selected
+                    and dt.state == TitleState.PENDING
+                    and dt.state != TitleState.SKIPPED
                 ]
                 if deselected_ids:
                     async with async_session() as cleanup_session:
