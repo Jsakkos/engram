@@ -39,6 +39,7 @@ class TitleState(StrEnum):
     REVIEW = "review"  # Ripped successfully but needs human review for episode assignment
     COMPLETED = "completed"
     FAILED = "failed"
+    SKIPPED = "skipped"  # User skipped this track before ripping; excluded, not a failure
 
 
 class DiscJob(SQLModel, table=True):
