@@ -1307,6 +1307,71 @@ class JobManager:
             await self._finalization.check_job_completion(session, job_id)
         return True
 
+    async def skip_rip_title(self, job_id: int, title_id: int) -> bool:
+        """Skip a queued/not-yet-ripped title so MakeMKV does not rip it.
+
+        Acts only on PENDING or QUEUED titles (never one actively RIPPING or
+        already terminal). Marks the title SKIPPED + deselected, registers its
+        index in the extractor's live skip-set (honored by the per-title rip
+        loop), then re-checks job completion. Returns False if the title is not
+        in a skippable state.
+        """
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                return False
+            if title.state not in (TitleState.PENDING, TitleState.QUEUED):
+                return False
+
+            title.state = TitleState.SKIPPED
+            title.is_selected = False
+            title.match_details = json.dumps({"reason": "Skipped by user", "skipped": True})
+            session.add(title)
+            await session.commit()
+            title_index = title.title_index
+
+            # Live skip for an in-progress per-title rip loop.
+            self._extractor.skip_title_index(job_id, title_index)
+
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: title "
+                f"{sanitize_log_value(title_index)} skipped by user -> SKIPPED"
+            )
+            await ws_manager.broadcast_title_update(job_id, title_id, TitleState.SKIPPED.value)
+            await self._finalization.check_job_completion(session, job_id)
+        return True
+
+    async def unskip_rip_title(self, job_id: int, title_id: int) -> bool:
+        """Reverse a skip while the title's file has not been written yet.
+
+        Allowed only while the title is still SKIPPED and no output file exists.
+        Restores PENDING + selected and clears the extractor skip-set entry.
+        """
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                return False
+            if title.state != TitleState.SKIPPED:
+                return False
+            if title.output_filename:
+                return False
+
+            title.state = TitleState.PENDING
+            title.is_selected = True
+            title.match_details = None
+            session.add(title)
+            await session.commit()
+            title_index = title.title_index
+
+            self._extractor.unskip_title_index(job_id, title_index)
+
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: title "
+                f"{sanitize_log_value(title_index)} un-skipped -> PENDING"
+            )
+            await ws_manager.broadcast_title_update(job_id, title_id, TitleState.PENDING.value)
+        return True
+
     @staticmethod
     def _forced_review_details(existing: str | None, reason: str) -> str:
         """Tag a title's match_details as force-advanced/skipped to REVIEW.
