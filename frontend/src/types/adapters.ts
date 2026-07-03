@@ -34,7 +34,8 @@ export function mapTitleStateToTrackState(
     'matched': 'matched',
     'review': 'review',
     'completed': 'completed',
-    'failed': 'failed'
+    'failed': 'failed',
+    'skipped': 'skipped'
   };
 
   return stateMap[titleState] || 'pending';

@@ -15,7 +15,7 @@ import { formatEta } from "../../utils/formatting";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "review_needed" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
-export type TrackState = "pending" | "ripping" | "queued" | "matching" | "matched" | "review" | "failed" | "completed";
+export type TrackState = "pending" | "ripping" | "queued" | "matching" | "matched" | "review" | "failed" | "completed" | "skipped";
 
 export interface MatchCandidate {
   episode: string;

@@ -12,7 +12,7 @@ export type JobState =
 
 export type ContentType = 'tv' | 'movie' | 'unknown';
 
-export type TitleState = 'pending' | 'ripping' | 'queued' | 'matching' | 'matched' | 'review' | 'completed' | 'failed';
+export type TitleState = 'pending' | 'ripping' | 'queued' | 'matching' | 'matched' | 'review' | 'completed' | 'failed' | 'skipped';
 
 export type SubtitleStatus = 'downloading' | 'completed' | 'partial' | 'failed' | null;
 
