@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from sqlalchemy import text
 
@@ -77,3 +79,22 @@ async def test_unskip_restores_pending():
         assert t.state == TitleState.PENDING
         assert t.is_selected is True
     assert 3 not in job_manager._extractor._skipped_indices.get(job_id, set())
+
+
+async def test_on_title_ripped_deletes_skipped_file(tmp_path):
+    job_id, title_id = await _make_job(title_state=TitleState.PENDING)
+    await job_manager.skip_rip_title(job_id, title_id)
+
+    fake = tmp_path / "TEST_t03.mkv"
+    fake.write_bytes(b"x" * 1024)
+
+    async with async_session() as s:
+        title = await s.get(DiscTitle, title_id)
+        sorted_titles = [title]
+
+    await job_manager._on_title_ripped(job_id, 1, Path(fake), sorted_titles)
+
+    assert not fake.exists()
+    async with async_session() as s:
+        t = await s.get(DiscTitle, title_id)
+        assert t.state == TitleState.SKIPPED

@@ -2972,6 +2972,20 @@ class JobManager:
             if not title:
                 return
 
+            if title.state == TitleState.SKIPPED:
+                # Mid-"all"-pass skip: MakeMKV wrote this title before we could
+                # drop it. Best-effort: delete the file and do not match it.
+                try:
+                    path.unlink(missing_ok=True)
+                    logger.info(
+                        f"Job {job_id}: title {title.title_index} skipped by user, "
+                        f"deleted ripped file {path.name}"
+                    )
+                except OSError as e:
+                    logger.warning(f"Job {job_id}: could not delete skipped file {path.name}: {e}")
+                await self._finalization.check_job_completion(session, job_id)
+                return
+
             title.output_filename = str(path)
 
             job = await session.get(DiscJob, job_id)
