@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Jetson GPU setup script now works on real hardware, not just in theory.** A community member's field validation on a Jetson Orin NX (JetPack 6.2.2 / R36.5.0) found `jetson_gpu_setup.sh` was missing two steps: it didn't move the PyInstaller-bundled `libstdc++.so.6`/`libgcc_s.so.1` aside (causing `GLIBC_2.36`/`GLIBC_2.38 not found` on JetPack's older Ubuntu 22.04 base) and didn't populate the `~/.engram/cuda/` runtime cache from JetPack's system cuDNN/cuBLAS (so `/api/asr-status` never reported `gpu_runtime_installed: true`). Both are now automated by the script; `docs/development/jetson.md` is updated to "validated," and a new `docs/development/jetson-optical-drive.md` documents building the Blu-ray/DVD kernel modules JetPack doesn't ship for USB optical drives. (#485)
+
 ## [0.23.0] - 2026-07-02
 
 _Highlights: Discord webhook notifications for job completion, plus fixes for a Docker subtitle-cache permission error, migrations getting stuck behind duplicate columns, and modal keyboard focus order._
