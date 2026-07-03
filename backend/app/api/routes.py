@@ -1015,6 +1015,47 @@ async def rerip_title(
     return {"status": "reripping", "job_id": job.id, "title_id": title_id}
 
 
+@router.post("/jobs/{job_id}/titles/{title_id}/skip-rip")
+async def skip_rip_title(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Skip a queued/not-yet-ripped title so MakeMKV does not rip it."""
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    from app.services.job_manager import job_manager
+
+    ok = await job_manager.skip_rip_title(job.id, title_id)
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail="Title not found, not part of this job, or not skippable "
+            "(only queued/not-yet-ripped titles can be skipped)",
+        )
+    return {"status": "skipped", "job_id": job.id, "title_id": title_id}
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/unskip-rip")
+async def unskip_rip_title(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+) -> dict:
+    """Reverse a skip while the title's file has not been written yet."""
+    if job.state in (JobState.COMPLETED, JobState.FAILED):
+        raise HTTPException(status_code=400, detail="Job has already finished")
+
+    from app.services.job_manager import job_manager
+
+    ok = await job_manager.unskip_rip_title(job.id, title_id)
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail="Title not found or no longer un-skippable (already ripped)",
+        )
+    return {"status": "unskipped", "job_id": job.id, "title_id": title_id}
+
+
 @router.post("/jobs/{job_id}/review")
 async def submit_review(
     review: ReviewRequest,
