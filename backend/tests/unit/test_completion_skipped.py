@@ -2,7 +2,6 @@ import pytest
 from sqlalchemy import text
 
 import app.database as _db
-from app.database import init_db
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
 from app.services.job_manager import job_manager
 
@@ -31,7 +30,7 @@ def _no_discord_task(monkeypatch):
 
 @pytest.fixture(autouse=True)
 async def _clean_db():
-    await init_db()
+    await _db.init_db()
     async with async_session() as s:
         await s.execute(text("DELETE FROM disc_titles"))
         await s.execute(text("DELETE FROM disc_jobs"))
