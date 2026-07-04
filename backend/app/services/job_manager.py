@@ -2978,20 +2978,20 @@ class JobManager:
 
             if title.state == TitleState.SKIPPED:
                 # Mid-"all"-pass skip: MakeMKV wrote this title before we could
-                # drop it. Best-effort: delete the file and do not match it. Log
-                # by title_index only (the disc-derived filename is a log-injection
-                # sink, py/log-injection); e.strerror is the OS reason without the
-                # path.
+                # drop it. Best-effort: delete the file and do not match it.
+                # title_index and strerror derive from the disc scan, so sanitize
+                # them inline before logging (py/log-injection), matching this
+                # file's established sanitize_log_value pattern.
                 try:
                     path.unlink(missing_ok=True)
                     logger.info(
-                        f"Job {job_id}: title {title.title_index} skipped by user, "
-                        f"deleted its ripped file"
+                        f"Job {job_id}: title {sanitize_log_value(title.title_index)} "
+                        f"skipped by user, deleted its ripped file"
                     )
                 except OSError as e:
                     logger.warning(
                         f"Job {job_id}: could not delete skipped file for title "
-                        f"{title.title_index}: {e.strerror}"
+                        f"{sanitize_log_value(title.title_index)}: {sanitize_log_value(e.strerror)}"
                     )
                 await self._finalization.check_job_completion(session, job_id)
                 return
