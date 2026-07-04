@@ -1307,6 +1307,71 @@ class JobManager:
             await self._finalization.check_job_completion(session, job_id)
         return True
 
+    async def skip_rip_title(self, job_id: int, title_id: int) -> bool:
+        """Skip a queued/not-yet-ripped title so MakeMKV does not rip it.
+
+        Acts only on PENDING or QUEUED titles (never one actively RIPPING or
+        already terminal). Marks the title SKIPPED + deselected, registers its
+        index in the extractor's live skip-set (honored by the per-title rip
+        loop), then re-checks job completion. Returns False if the title is not
+        in a skippable state.
+        """
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                return False
+            if title.state not in (TitleState.PENDING, TitleState.QUEUED):
+                return False
+
+            title.state = TitleState.SKIPPED
+            title.is_selected = False
+            title.match_details = json.dumps({"reason": "Skipped by user", "skipped": True})
+            session.add(title)
+            await session.commit()
+            title_index = title.title_index
+
+            # Live skip for an in-progress per-title rip loop.
+            self._extractor.skip_title_index(job_id, title_index)
+
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: title "
+                f"{sanitize_log_value(title_index)} skipped by user -> SKIPPED"
+            )
+            await ws_manager.broadcast_title_update(job_id, title_id, TitleState.SKIPPED.value)
+            await self._finalization.check_job_completion(session, job_id)
+        return True
+
+    async def unskip_rip_title(self, job_id: int, title_id: int) -> bool:
+        """Reverse a skip while the title's file has not been written yet.
+
+        Allowed only while the title is still SKIPPED and no output file exists.
+        Restores PENDING + selected and clears the extractor skip-set entry.
+        """
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                return False
+            if title.state != TitleState.SKIPPED:
+                return False
+            if title.output_filename:
+                return False
+
+            title.state = TitleState.PENDING
+            title.is_selected = True
+            title.match_details = None
+            session.add(title)
+            await session.commit()
+            title_index = title.title_index
+
+            self._extractor.unskip_title_index(job_id, title_index)
+
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: title "
+                f"{sanitize_log_value(title_index)} un-skipped -> PENDING"
+            )
+            await ws_manager.broadcast_title_update(job_id, title_id, TitleState.PENDING.value)
+        return True
+
     @staticmethod
     def _forced_review_details(existing: str | None, reason: str) -> str:
         """Tag a title's match_details as force-advanced/skipped to REVIEW.
@@ -2131,10 +2196,14 @@ class JobManager:
                     titles_to_rip = [dt for dt in disc_titles if dt.is_selected]
 
                 # Safety net: transition deselected PENDING titles to terminal state
+                # SKIPPED titles are already terminal, leave them alone. Only a
+                # deselected-but-still-PENDING title needs the safety-net nudge.
                 deselected_ids = [
                     dt.id
                     for dt in disc_titles
-                    if not dt.is_selected and dt.state == TitleState.PENDING
+                    if not dt.is_selected
+                    and dt.state == TitleState.PENDING
+                    and dt.state != TitleState.SKIPPED
                 ]
                 if deselected_ids:
                     async with async_session() as cleanup_session:
@@ -2905,6 +2974,28 @@ class JobManager:
                 path, sorted_titles, rip_index, job_id, session
             )
             if not title:
+                return
+
+            if title.state == TitleState.SKIPPED:
+                # Mid-"all"-pass skip: MakeMKV wrote this title before we could
+                # drop it. Best-effort: delete the file and do not match it.
+                # title_index and strerror derive from the disc scan, so sanitize
+                # them inline before logging (py/log-injection), matching this
+                # file's established sanitize_log_value pattern.
+                try:
+                    path.unlink(missing_ok=True)
+                    logger.info(
+                        f"Job {sanitize_log_value(job_id)}: title "
+                        f"{sanitize_log_value(title.title_index)} skipped by user, "
+                        f"deleted its ripped file"
+                    )
+                except OSError as e:
+                    logger.warning(
+                        f"Job {sanitize_log_value(job_id)}: could not delete skipped "
+                        f"file for title {sanitize_log_value(title.title_index)}: "
+                        f"{sanitize_log_value(e.strerror)}"
+                    )
+                await self._finalization.check_job_completion(session, job_id)
                 return
 
             title.output_filename = str(path)

@@ -713,10 +713,21 @@ class FinalizationCoordinator:
         # All titles are terminal
         logger.info(f"All titles for job {job_id} effectively processed. Finalizing...")
 
-        has_matched = any(t.state == TitleState.MATCHED for t in titles)
-        has_review = any(t.state == TitleState.REVIEW for t in titles)
-        has_completed = any(t.state == TitleState.COMPLETED for t in titles)
-        all_failed = all(t.state == TitleState.FAILED for t in titles)
+        # SKIPPED titles are user-excluded and neutral to the outcome. If nothing
+        # else remains, the disc is done with nothing to organize.
+        matchable = [t for t in titles if t.state != TitleState.SKIPPED]
+        if not matchable:
+            logger.info(
+                f"Job {job_id}: all titles skipped by user, completing with nothing organized"
+            )
+            job.progress_percent = 100.0
+            await self._state_machine.transition_to_completed(job, session)
+            return
+
+        has_matched = any(t.state == TitleState.MATCHED for t in matchable)
+        has_review = any(t.state == TitleState.REVIEW for t in matchable)
+        has_completed = any(t.state == TitleState.COMPLETED for t in matchable)
+        all_failed = all(t.state == TitleState.FAILED for t in matchable)
 
         # Detect a same-name wrong-show pick up front (pure, no IO): EVERY episode
         # candidate matched nothing AND a same-name twin is persisted. Computed
@@ -724,7 +735,7 @@ class FinalizationCoordinator:
         # single confirming pass and (b) route to the re-identify review once that
         # pass also comes back empty. Titles aren't mutated within this call, so
         # the verdict stays valid down to the branch below.
-        wrong_show = _detect_wrong_show(job, titles)
+        wrong_show = _detect_wrong_show(job, matchable)
 
         # No reference subtitles ever arrived (#370): matching could not have
         # succeeded, and deep re-match escalation would just burn ASR passes
@@ -733,7 +744,7 @@ class FinalizationCoordinator:
         # A still-"downloading" status lands here too, deliberately: titles only
         # go all-terminal mid-download via force-advance or the subtitle-wait
         # timeout, and in both cases "retry the download" is the right advice.
-        if _no_reference_subtitles(job, titles):
+        if _no_reference_subtitles(job, matchable):
             show = job.tmdb_name or job.detected_title or "this show"
             reason = (
                 f"Episode matching couldn't run: no reference subtitles were "
@@ -751,7 +762,7 @@ class FinalizationCoordinator:
         # breaks or the whole track has been transcribed. Runs BEFORE the
         # has_review short-circuit so a pass that leaves one title unmatched
         # doesn't abort escalation of the titles still colliding.
-        if await self._maybe_escalate_conflicts(session, job, titles):
+        if await self._maybe_escalate_conflicts(session, job, matchable):
             return
 
         # Then give plain low-confidence reviews (no collision) escalating deep
@@ -760,7 +771,7 @@ class FinalizationCoordinator:
         # confirming pass instead of the full ladder — so a disc identified as the
         # wrong same-named show doesn't burn 3 ASR passes against the wrong corpus.
         if await self._maybe_escalate_reviews(
-            session, job, titles, wrong_show_suspected=bool(wrong_show)
+            session, job, matchable, wrong_show_suspected=bool(wrong_show)
         ):
             return
 
@@ -789,7 +800,7 @@ class FinalizationCoordinator:
             await self._park_in_review(
                 session,
                 job,
-                f"{sum(1 for t in titles if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
+                f"{sum(1 for t in matchable if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
             )
         elif has_matched:
             try:
@@ -1478,7 +1489,9 @@ class FinalizationCoordinator:
             select(DiscTitle).where(
                 DiscTitle.job_id == job_id,
                 DiscTitle.matched_episode.is_(None),
-                DiscTitle.state.notin_([TitleState.COMPLETED, TitleState.FAILED]),
+                DiscTitle.state.notin_(
+                    [TitleState.COMPLETED, TitleState.FAILED, TitleState.SKIPPED]
+                ),
             )
         )
         unresolved = result.scalars().all()
@@ -1686,7 +1699,9 @@ class FinalizationCoordinator:
                     DiscTitle.job_id == job_id,
                     DiscTitle.matched_episode.isnot(None),
                     DiscTitle.matched_episode != "skip",
-                    DiscTitle.state.not_in([TitleState.COMPLETED, TitleState.FAILED]),
+                    DiscTitle.state.not_in(
+                        [TitleState.COMPLETED, TitleState.FAILED, TitleState.SKIPPED]
+                    ),
                 )
             )
             matched_titles = result.scalars().all()
@@ -1795,7 +1810,9 @@ class FinalizationCoordinator:
             unresolved_result = await session.execute(
                 select(DiscTitle).where(
                     DiscTitle.job_id == job_id,
-                    DiscTitle.state.not_in([TitleState.COMPLETED, TitleState.FAILED]),
+                    DiscTitle.state.not_in(
+                        [TitleState.COMPLETED, TitleState.FAILED, TitleState.SKIPPED]
+                    ),
                     DiscTitle.matched_episode.is_(None),
                 )
             )

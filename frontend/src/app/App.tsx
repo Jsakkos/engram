@@ -25,6 +25,7 @@ import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
 import { PROMPT_CTA_LABELS, classifyPromptJob, pruneDismissedIds, selectPromptJobs, shouldAutoOpenPrompt } from "./promptSelection";
 import type { Job } from "../types";
+import { skipRipTitle, unskipRipTitle } from "../api/client";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ParkedDiscBanner } from "./components/ParkedDiscBanner";
@@ -733,6 +734,8 @@ function MainDashboard() {
                   key={disc.id}
                   disc={disc}
                   onCancel={disc.state !== 'completed' && disc.state !== 'error' ? () => cancelJob(disc.id) : undefined}
+                  onSkipTrack={(titleId) => { void skipRipTitle(Number(disc.id), titleId); }}
+                  onUnskipTrack={(titleId) => { void unskipRipTitle(Number(disc.id), titleId); }}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
                   onReview={disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
                   onReIdentify={disc.needsReview && disc.title ? () => {

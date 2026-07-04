@@ -106,6 +106,25 @@ def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[s
     return ignore
 
 
+def _build_rip_commands(
+    makemkv_path: str,
+    drive_spec: str,
+    output_dir: str,
+    title_indices: list[int] | None,
+) -> list[tuple[int | None, list[str]]]:
+    """Build ``(title_index, argv)`` rip commands.
+
+    ``title_index`` is None for the single full-disc "all" pass (which rips
+    every title in one MakeMKV invocation and cannot drop an individual title);
+    otherwise each command carries the specific title index so the rip loop can
+    consult the live skip-set before starting it.
+    """
+    base = [makemkv_path, "-r", "--progress=-same", "mkv", drive_spec]
+    if not title_indices:
+        return [(None, [*base, "all", output_dir])]
+    return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
+
+
 def _safe_callback(cb: Callable, *args, label: str) -> None:
     """Invoke a user-supplied callback, logging (but not raising) any exception.
 
@@ -384,6 +403,13 @@ class MakeMKVExtractor:
         # terminates the correct process.
         self._processes: dict[int, subprocess.Popen] = {}  # job_id -> process
         self._cancelled_jobs: set[int] = set()
+        # Per-job set of title_index values to skip. Checked before each
+        # per-title rip command so a queued-but-not-yet-ripped title can be
+        # dropped mid-rip. A full-disc "all" pass cannot honor this (one process
+        # rips everything); those skips are handled downstream by deleting the
+        # finished file. Single-writer per job under the rip thread + async
+        # skip calls; set mutation is atomic under the GIL.
+        self._skipped_indices: dict[int, set[int]] = {}
         # Per-drive locks prevent concurrent MakeMKV operations on the same drive.
         # Two makemkvcon processes fighting over one drive causes both to stall/fail.
         self._drive_locks: dict[str, asyncio.Lock] = {}
@@ -565,52 +591,16 @@ class MakeMKVExtractor:
         drive_spec = _to_drive_spec(drive)
 
         # Prepare commands to run
-        commands = []
-
+        commands = _build_rip_commands(
+            str(self.makemkv_path),
+            drive_spec,
+            str(output_dir),
+            title_indices,
+        )
         if not title_indices:
-            # Rip ALL titles (single command, most efficient)
             logger.info("Ripping ALL titles")
-            commands.append(
-                [
-                    str(self.makemkv_path),
-                    "-r",
-                    "--progress=-same",
-                    "mkv",
-                    drive_spec,
-                    "all",
-                    str(output_dir),
-                ]
-            )
-        elif len(title_indices) == 1:
-            # Rip single specific title
-            idx = title_indices[0]
-            logger.info(f"Ripping single title {idx}")
-            commands.append(
-                [
-                    str(self.makemkv_path),
-                    "-r",
-                    "--progress=-same",
-                    "mkv",
-                    drive_spec,
-                    str(idx),
-                    str(output_dir),
-                ]
-            )
         else:
-            # Rip multiple specific titles (must loop commands)
-            logger.info(f"Ripping {len(title_indices)} specific titles: {title_indices}")
-            for idx in title_indices:
-                commands.append(
-                    [
-                        str(self.makemkv_path),
-                        "-r",
-                        "--progress=-same",
-                        "mkv",
-                        drive_spec,
-                        str(idx),
-                        str(output_dir),
-                    ]
-                )
+            logger.info(f"Ripping {len(title_indices)} specific title(s): {title_indices}")
 
         # State tracking for progress
         current_title_idx = 0  # 0-based absolute index for progress reporting
@@ -772,11 +762,25 @@ class MakeMKVExtractor:
             try:
                 self._cancelled_jobs.discard(job_id)
 
-                for cmd in commands:
+                for title_index, cmd in commands:
                     if job_id in self._cancelled_jobs:
                         break
 
                     current_title_idx += 1
+
+                    # Live skip: a queued title the user skipped before MakeMKV
+                    # reached it is dropped here. (The "all" pass has
+                    # title_index None and cannot be skipped this way; those are
+                    # handled by deleting the finished file downstream.)
+                    if title_index is not None and title_index in self._skipped_indices.get(
+                        job_id, set()
+                    ):
+                        logger.info(
+                            f"Skipping title {title_index} (command "
+                            f"{current_title_idx}/{len(commands)}) - user-skipped"
+                        )
+                        continue
+
                     logger.info(
                         f"Executing rip command {current_title_idx}/{len(commands)}: "
                         f"{' '.join(cmd)}"
@@ -912,6 +916,7 @@ class MakeMKVExtractor:
                 return (-1, str(e), set())
             finally:
                 self._processes.pop(job_id, None)
+                self._skipped_indices.pop(job_id, None)
 
         try:
             # Start ripping in thread
@@ -989,6 +994,16 @@ class MakeMKVExtractor:
                 error_message=str(e),
             )
 
+    def skip_title_index(self, job_id: int, title_index: int) -> None:
+        """Register a title_index to skip in the per-title rip loop for a job."""
+        self._skipped_indices.setdefault(job_id, set()).add(title_index)
+
+    def unskip_title_index(self, job_id: int, title_index: int) -> None:
+        """Remove a previously-registered skip (no-op if absent)."""
+        s = self._skipped_indices.get(job_id)
+        if s:
+            s.discard(title_index)
+
     def cancel(self, job_id: int) -> None:
         """Cancel ripping for a specific job."""
         self._cancelled_jobs.add(job_id)
@@ -1021,6 +1036,7 @@ class MakeMKVExtractor:
         )
         self._processes.clear()
         self._cancelled_jobs.clear()
+        self._skipped_indices.clear()
 
     def _parse_disc_info(self, output: str) -> tuple[list[TitleInfo], str]:
         """Parse MakeMKV robot-mode output to extract title information and disc name.

@@ -14,6 +14,10 @@ interface TrackGridProps {
    *  currently-matching tracks get a "DEEP RE-MATCH" chip so the user sees that
    *  the spinning matching state is an auto-resolution pass, not initial work. */
   conflictStatus?: string;
+  /** Skip a queued/not-yet-ripped track (PENDING/QUEUED). Omit to hide the control. */
+  onSkipTrack?: (titleId: number) => void;
+  /** Reverse a skip while still reversible (SKIPPED, not yet ripped). */
+  onUnskipTrack?: (titleId: number) => void;
 }
 
 /** Parse "… pass N of M" out of a conflict_status note, if present. */
@@ -42,6 +46,9 @@ const STATE: Record<TrackState, StateConfig> = {
   review:    { label: "NEEDS REVIEW", color: sv.yellow, border: `${sv.yellow}66`,  bg: `${sv.yellow}10`, Icon: IcoError  },
   failed:    { label: "FAILED",   color: sv.red,     border: `${sv.red}66`,        bg: `${sv.red}10`, Icon: IcoError    },
   completed: { label: "DONE",     color: sv.green,   border: `${sv.green}55`,      bg: `${sv.green}10`, Icon: IcoComplete },
+  // SKIPPED: user opted this track out of the rip. Muted, no icon, no accent —
+  // it should recede from the active grid rather than compete for attention.
+  skipped:   { label: "SKIPPED",  color: sv.inkDim,  border: `${sv.inkDim}44`,     bg: `${sv.bg2}55`, Icon: null       },
 };
 
 type SourceDesc = {
@@ -112,7 +119,7 @@ function SourceChip({ source }: { source: string }) {
   );
 }
 
-export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus }: TrackGridProps) {
+export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus, onSkipTrack, onUnskipTrack }: TrackGridProps) {
   const passInfo = parsePassInfo(conflictStatus);
   return (
     <div data-testid="sv-track-grid" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -231,6 +238,64 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {onSkipTrack && (track.state === "pending" || track.state === "queued") && (
+                    <button
+                      type="button"
+                      data-testid={`skip-track-${track.id}`}
+                      aria-label={`Skip track ${track.title}`}
+                      title="Skip this track (don't rip it)"
+                      onClick={(e) => { e.stopPropagation(); onSkipTrack(Number(track.id)); }}
+                      onMouseEnter={(e) => {
+                        // Arm destructive-but-reversible: magenta is the palette's
+                        // rip/destructive accent, so hover previews the consequence.
+                        e.currentTarget.style.color = sv.magenta;
+                        e.currentTarget.style.borderColor = `${sv.magenta}88`;
+                        e.currentTarget.style.background = `${sv.magenta}12`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = sv.inkDim;
+                        e.currentTarget.style.borderColor = sv.line;
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                      style={{
+                        fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
+                        color: sv.inkDim, background: "transparent",
+                        border: `1px solid ${sv.line}`, borderRadius: 0, padding: "2px 6px",
+                        cursor: "pointer", lineHeight: 1, transition: "color 0.15s, border-color 0.15s, background 0.15s",
+                      }}
+                    >
+                      SKIP ✕
+                    </button>
+                  )}
+                  {onUnskipTrack && track.state === "skipped" && (
+                    <button
+                      type="button"
+                      data-testid={`unskip-track-${track.id}`}
+                      aria-label={`Un-skip track ${track.title}`}
+                      title="Un-skip (rip this track after all)"
+                      onClick={(e) => { e.stopPropagation(); onUnskipTrack(Number(track.id)); }}
+                      onMouseEnter={(e) => {
+                        // Cyan is the affirmative/queued accent — brightening on
+                        // hover reads as "put it back in line".
+                        e.currentTarget.style.color = sv.cyanHi;
+                        e.currentTarget.style.borderColor = `${sv.cyan}aa`;
+                        e.currentTarget.style.background = `${sv.cyan}12`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = sv.cyan;
+                        e.currentTarget.style.borderColor = `${sv.cyan}44`;
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                      style={{
+                        fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
+                        color: sv.cyan, background: "transparent",
+                        border: `1px solid ${sv.cyan}44`, borderRadius: 0, padding: "2px 6px",
+                        cursor: "pointer", lineHeight: 1, transition: "color 0.15s, border-color 0.15s, background 0.15s",
+                      }}
+                    >
+                      UN-SKIP
+                    </button>
+                  )}
                   {Icon && (
                     <motion.div
                       animate={
@@ -269,6 +334,28 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus 
                 <div style={{ marginTop: 4 }}>
                   <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkDim, letterSpacing: "0.18em" }}>
                     QUEUED
+                  </span>
+                </div>
+              )}
+
+              {/* Skipped: opted out of the rip — muted, struck-through mark so the
+                  card visually recedes from active tracks. */}
+              {track.state === "skipped" && (
+                <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span aria-hidden style={{ fontFamily: sv.mono, fontSize: 10, color: `${sv.inkDim}99` }}>
+                    ✕
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: sv.mono,
+                      fontSize: 10,
+                      color: sv.inkDim,
+                      letterSpacing: "0.18em",
+                      textDecoration: "line-through",
+                      textDecorationColor: `${sv.inkDim}66`,
+                    }}
+                  >
+                    SKIPPED, WILL NOT RIP
                   </span>
                 </div>
               )}
