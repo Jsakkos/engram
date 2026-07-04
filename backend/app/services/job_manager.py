@@ -2985,13 +2985,15 @@ class JobManager:
                 try:
                     path.unlink(missing_ok=True)
                     logger.info(
-                        f"Job {job_id}: title {sanitize_log_value(title.title_index)} "
-                        f"skipped by user, deleted its ripped file"
+                        f"Job {sanitize_log_value(job_id)}: title "
+                        f"{sanitize_log_value(title.title_index)} skipped by user, "
+                        f"deleted its ripped file"
                     )
                 except OSError as e:
                     logger.warning(
-                        f"Job {job_id}: could not delete skipped file for title "
-                        f"{sanitize_log_value(title.title_index)}: {sanitize_log_value(e.strerror)}"
+                        f"Job {sanitize_log_value(job_id)}: could not delete skipped "
+                        f"file for title {sanitize_log_value(title.title_index)}: "
+                        f"{sanitize_log_value(e.strerror)}"
                     )
                 await self._finalization.check_job_completion(session, job_id)
                 return
