@@ -176,6 +176,13 @@ async def isolate_database(monkeypatch):
     # — a stale entry would silently skip an unrelated test's dispatch.
     _jm_inst._inflight_match_dispatch.clear()
 
+    # Same hazard for the extractor's per-job skip-set: skip_rip_title registers a
+    # job_id -> {title_index} entry that is only cleared at rip end / shutdown
+    # (neither runs in unit tests). With job ids restarting at 1 per in-memory DB,
+    # a stale entry would make an unrelated test's per-title rip silently skip a
+    # title. Clear it so each test starts with an empty skip-set.
+    _jm_inst._extractor._skipped_indices.clear()
+
     yield
 
     async with _unit_engine.begin() as conn:

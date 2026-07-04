@@ -47,6 +47,18 @@ async def _make_job(state=JobState.RIPPING, title_state=TitleState.PENDING):
             job_id=job.id, title_index=3, duration_seconds=1200, state=title_state, is_selected=True
         )
         s.add(title)
+        # A second, always-active guard title so skipping `title` never leaves the
+        # job all-terminal — that would fire job completion (and its terminal-state
+        # hooks) inside the skip, an unwanted side effect for these unit tests. The
+        # all-skipped completion path is covered directly in test_completion_skipped.
+        guard = DiscTitle(
+            job_id=job.id,
+            title_index=99,
+            duration_seconds=1200,
+            state=TitleState.PENDING,
+            is_selected=True,
+        )
+        s.add(guard)
         await s.commit()
         await s.refresh(title)
         return job.id, title.id

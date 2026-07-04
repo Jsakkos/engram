@@ -12,6 +12,24 @@ def async_session():
 
 
 @pytest.fixture(autouse=True)
+def _no_discord_task(monkeypatch):
+    """These tests drive jobs to COMPLETED/FAILED, whose terminal hook
+    fire-and-forgets a Discord notification via asyncio.create_task. That
+    detached task opens an async_session on the StaticPool in-memory DB and can
+    outlive the test's event loop, leaking a connection and intermittently
+    locking the shared DB for a later test. Stub the sender so completion here is
+    side-effect-free. (_send_discord_notification is resolved on self at call
+    time, so patching the instance attribute is honored even though
+    _notify_discord_on_terminal is a pre-registered terminal callback.)
+    """
+
+    async def _noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(job_manager, "_send_discord_notification", _noop)
+
+
+@pytest.fixture(autouse=True)
 async def _clean_db():
     await init_db()
     async with async_session() as s:
