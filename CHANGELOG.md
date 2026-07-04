@@ -4,9 +4,13 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-07-04
+
+_Highlights: manual track skipping for queued/not-yet-ripped tracks, plus field-validated Jetson GPU setup fixes._
+
 ### Added
 
-- **Manual track skipping.** Skip a queued or not-yet-ripped track (for example a bogus "play all" title that slipped past auto-detection) straight from the dashboard, so MakeMKV does not waste time ripping it. Skipped tracks show a distinct SKIPPED badge, are excluded from the library, do not count as failures, and can be un-skipped until ripping reaches them. Skipping is best-effort during an in-progress full-disc rip (the file is written then deleted) and guaranteed for per-title rips. (#NNN)
+- **Manual track skipping.** Skip a queued or not-yet-ripped track (for example a bogus "play all" title that slipped past auto-detection) straight from the dashboard, so MakeMKV does not waste time ripping it. Skipped tracks show a distinct SKIPPED badge, are excluded from the library, do not count as failures, and can be un-skipped until ripping reaches them. Skipping is best-effort during an in-progress full-disc rip (the file is written then deleted) and guaranteed for per-title rips. (#486)
 
 ### Fixed
 
