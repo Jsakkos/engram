@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -15,8 +15,12 @@ import { join } from 'node:path';
  * so reset-all-jobs is available for test isolation.
  */
 
+/** Seeded trees are torn down in afterAll so runs don't litter the OS temp dir. */
+const seededRoots: string[] = [];
+
 function seedShowTree(): string {
     const root = mkdtempSync(join(tmpdir(), 'engram-import-'));
+    seededRoots.push(root);
     const disc = join(root, 'Demo Show', 'Season 1', 'Disc 1');
     mkdirSync(disc, { recursive: true });
     writeFileSync(join(disc, 't00.mkv'), Buffer.alloc(1024));
@@ -27,6 +31,7 @@ function seedShowTree(): string {
 /** A directory with enough children to overflow any viewport, plus one real show. */
 function seedManyDirs(count = 400): string {
     const root = mkdtempSync(join(tmpdir(), 'engram-import-big-'));
+    seededRoots.push(root);
     for (let i = 0; i < count; i++) {
         mkdirSync(join(root, `Show ${String(i).padStart(3, '0')}`), { recursive: true });
     }
@@ -37,6 +42,22 @@ function seedManyDirs(count = 400): string {
 }
 
 test.describe('Manual media import', () => {
+    // These tests point the app's import_watch_path at a temp tree. That setting
+    // lives in the shared app_config table and outlives the process, so restore
+    // it: otherwise it is left dangling at a directory afterAll just deleted.
+    let originalWatchPath = '';
+
+    test.beforeAll(async ({ request }) => {
+        const cfg = await (await request.get('/api/config')).json();
+        originalWatchPath = cfg.import_watch_path ?? '';
+    });
+
+    test.afterAll(async ({ request }) => {
+        await request.put('/api/config', { data: { import_watch_path: originalWatchPath } });
+        for (const root of seededRoots) rmSync(root, { recursive: true, force: true });
+        seededRoots.length = 0;
+    });
+
     test.beforeEach(async ({ request }) => {
         await request.delete('/api/simulate/reset-all-jobs');
     });
