@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import ConfigWizard from './ConfigWizard';
 
 /**
@@ -10,6 +10,7 @@ import ConfigWizard from './ConfigWizard';
  * mounts cleanly and the deep-link scroll is observable.
  */
 beforeEach(() => {
+    localStorage.clear();
     Element.prototype.scrollIntoView = vi.fn();
     if (!window.matchMedia) {
         window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -229,5 +230,25 @@ describe('ConfigWizard — background pre-transcription toggles', () => {
         // Both fields sent; sub-toggle carries non-default true value.
         expect(body.enable_background_pretranscription).toBe(true);
         expect(body.pretranscribe_full_file).toBe(true);
+    });
+});
+
+describe('ConfigWizard — background effects preference', () => {
+    it('shows a Background Animation checkbox in Preferences, on by default, and persists a toggle to localStorage without an API call', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Preferences' }));
+
+        const toggle = await screen.findByRole('checkbox', { name: /background animation/i });
+        expect(toggle).toBeChecked();
+
+        await waitFor(() => expect((fetch as unknown as Mock).mock.calls.length).toBeGreaterThan(0));
+        const callsBeforeToggle = (fetch as unknown as Mock).mock.calls.length;
+
+        fireEvent.click(toggle);
+
+        expect(toggle).not.toBeChecked();
+        expect(localStorage.getItem('engram:backgroundEffectsEnabled')).toBe('false');
+        expect((fetch as unknown as Mock).mock.calls.length).toBe(callsBeforeToggle);
     });
 });
