@@ -94,4 +94,32 @@ describe("ImportModal", () => {
     expect(screen.getByText("..")).toBeInTheDocument();
     expect(screen.getByTestId("import-start-btn")).toBeInTheDocument();
   });
+
+  it("does not overwrite text the user is typing when a slow browse resolves", async () => {
+    let resolveBrowse: (v: client.BrowseResult) => void = () => {};
+    vi.mocked(client.browseDir).mockImplementationOnce(
+      () =>
+        new Promise<client.BrowseResult>((r) => {
+          resolveBrowse = r;
+        }),
+    );
+
+    render(<ImportModal onClose={() => {}} defaultPath="/media" defaultDestinationMode="library" />);
+
+    // The initial browse is still in flight; the user types a path.
+    const input = screen.getByTestId("import-path-input");
+    fireEvent.change(input, { target: { value: "/Volumes/TV Shows/Engram" } });
+
+    // The slow browse now lands on a different directory.
+    resolveBrowse({ cwd: "/media", parent: "/", roots: [], entries: [] });
+
+    await waitFor(() => expect(client.browseDir).toHaveBeenCalled());
+    expect((input as HTMLInputElement).value).toBe("/Volumes/TV Shows/Engram");
+  });
+
+  it("syncs the field to the directory that a folder click navigates into", async () => {
+    render(<ImportModal onClose={() => {}} defaultPath="/media" defaultDestinationMode="library" />);
+    await waitFor(() => screen.getByText("King of Queens"));
+    expect((screen.getByTestId("import-path-input") as HTMLInputElement).value).toBe("/media");
+  });
 });

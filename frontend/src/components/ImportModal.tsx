@@ -34,6 +34,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   // of a later one (navigate and choose fire together per directory click).
   const navSeq = useRef(0);
   const chooseSeq = useRef(0);
+  // Set once the user edits the path field, cleared when they submit it. Guards
+  // the cwd sync below; a ref, not state, since it must not trigger a re-render
+  // and must be readable in the same commit that applies a new cwd.
+  const pathDirty = useRef(false);
 
   // Returns false when the browse failed OR was superseded by a newer navigation.
   // Only the failure case surfaces an error notice; callers must not chain a
@@ -65,8 +69,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     dialogRef.current?.focus();
   }, []);
 
+  // Keep the field showing the current directory, but never overwrite text the
+  // user is actively typing: a slow browse can resolve mid-keystroke.
   useEffect(() => {
-    if (cwd) setPathInput(cwd);
+    if (cwd && !pathDirty.current) setPathInput(cwd);
   }, [cwd]);
 
   const choose = useCallback(async (path: string) => {
@@ -90,6 +96,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
       e.preventDefault();
       const target = pathInput.trim();
       if (!target) return;
+      // Hand the field back to the cwd sync. On a failed browse cwd never
+      // changes, so no sync fires and the bad text stays for the user to fix.
+      pathDirty.current = false;
       // Mirrors the directory-click gesture: browse into it, and preview it.
       // Only preview if the browse resolved, so one typo yields one error.
       if (await navigate(target)) await choose(target);
@@ -215,7 +224,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
             <input
               data-testid="import-path-input"
               value={pathInput}
-              onChange={(e) => setPathInput(e.target.value)}
+              onChange={(e) => {
+                pathDirty.current = true;
+                setPathInput(e.target.value);
+              }}
               spellCheck={false}
               aria-label="Path"
               placeholder="Type or paste a folder path"
