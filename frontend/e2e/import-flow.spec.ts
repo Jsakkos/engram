@@ -24,6 +24,18 @@ function seedShowTree(): string {
     return root;
 }
 
+/** A directory with enough children to overflow any viewport, plus one real show. */
+function seedManyDirs(count = 400): string {
+    const root = mkdtempSync(join(tmpdir(), 'engram-import-big-'));
+    for (let i = 0; i < count; i++) {
+        mkdirSync(join(root, `Show ${String(i).padStart(3, '0')}`), { recursive: true });
+    }
+    const season = join(root, 'Zulu Show', 'Season 1');
+    mkdirSync(season, { recursive: true });
+    writeFileSync(join(season, 't00.mkv'), Buffer.alloc(1024));
+    return root;
+}
+
 test.describe('Manual media import', () => {
     test.beforeEach(async ({ request }) => {
         await request.delete('/api/simulate/reset-all-jobs');
@@ -72,5 +84,31 @@ test.describe('Manual media import', () => {
                 { timeout: 15000 },
             )
             .toBe(true);
+    });
+
+    test('folder browser stays within the viewport and scrolls', async ({ page, request }) => {
+        const root = seedManyDirs();
+        await request.put('/api/config', { data: { import_watch_path: root } });
+
+        await page.goto('/');
+        await expect(page.locator('text=/LIVE/i')).toBeVisible({ timeout: 10000 });
+        await page.getByTestId('sv-import-btn').click();
+        await expect(page.getByText('IMPORT MEDIA')).toBeVisible();
+
+        const list = page.getByTestId('import-nav-list');
+        await expect(list.getByText('Show 000', { exact: true })).toBeVisible({ timeout: 15000 });
+
+        // The panel must not exceed the viewport.
+        const viewport = page.viewportSize()!;
+        const panel = await page.getByTestId('import-panel').boundingBox();
+        expect(panel!.height).toBeLessThanOrEqual(viewport.height);
+
+        // Header, the up-a-level row, and the footer button all stay reachable.
+        await expect(page.getByText('..', { exact: true })).toBeVisible();
+        await expect(page.getByTestId('import-start-btn')).toBeInViewport();
+
+        // The list itself is the scroll container.
+        const scrolls = await list.evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+        expect(scrolls).toBe(true);
     });
 });

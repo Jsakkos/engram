@@ -120,13 +120,24 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
       />
       <motion.div
         className="relative w-full"
-        style={{ maxWidth: 820 }}
+        style={{ maxWidth: 820, maxHeight: "82vh", minHeight: 340, display: "flex" }}
         initial={{ opacity: 0, scale: 0.96, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 16 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
       >
-        <SvPanel glow pad={0} style={{ background: sv.bg1 }}>
+        <SvPanel
+          glow
+          pad={0}
+          testid="import-panel"
+          style={{
+            background: sv.bg1,
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           {/* Header */}
           <div
             style={{
@@ -135,6 +146,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               gap: 10,
               padding: "14px 18px",
               borderBottom: `1px solid ${sv.line}`,
+              flexShrink: 0,
             }}
           >
             <IcoLibrary size={18} color={sv.cyan} />
@@ -166,7 +178,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
             </button>
           </div>
 
-          <div style={{ display: "flex", minHeight: 340 }}>
+          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
             {/* Left: navigator */}
             <div
               style={{
@@ -174,6 +186,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                 borderRight: `1px solid ${sv.line}`,
                 display: "flex",
                 flexDirection: "column",
+                minHeight: 0,
               }}
             >
               <div
@@ -190,7 +203,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               >
                 {cwd ?? "Select a drive"}
               </div>
-              <div style={{ flex: 1, overflow: "auto" }}>
+              <div data-testid="import-nav-list" style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                 {parent !== null && (
                   <Row label=".." onClick={() => navigate(parent)} kind="dir" />
                 )}
@@ -215,7 +228,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
             </div>
 
             {/* Right: preview */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
               <div
                 style={{
                   padding: "8px 14px",
@@ -228,7 +241,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               >
                 PREVIEW
               </div>
-              <div style={{ flex: 1, overflow: "auto", padding: 14 }}>
+              <div style={{ flex: 1, overflow: "auto", padding: 14, minHeight: 0 }}>
                 {!preview && (
                   <p style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint }}>
                     Select a folder or file to preview.
@@ -286,7 +299,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               </div>
 
               {/* Destination */}
-              <div style={{ padding: "10px 14px", borderTop: `1px solid ${sv.line}` }}>
+              <div
+                style={{ padding: "10px 14px", borderTop: `1px solid ${sv.line}`, flexShrink: 0 }}
+              >
                 <div
                   style={{
                     fontFamily: sv.mono,
@@ -331,6 +346,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               gap: 10,
               padding: "12px 16px",
               borderTop: `1px solid ${sv.line}`,
+              flexShrink: 0,
             }}
           >
             <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
