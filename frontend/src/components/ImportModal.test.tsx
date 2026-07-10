@@ -5,6 +5,7 @@ import ImportModal from "./ImportModal";
 import * as client from "../api/client";
 
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
   // Prior calls must not leak into the next test: vi.spyOn returns the same
   // mock (with its accumulated call history) once a method is already spied,
   // since it's the same module-level client object across the whole file.
@@ -121,5 +122,37 @@ describe("ImportModal", () => {
     render(<ImportModal onClose={() => {}} defaultPath="/media" defaultDestinationMode="library" />);
     await waitFor(() => screen.getByText("King of Queens"));
     expect((screen.getByTestId("import-path-input") as HTMLInputElement).value).toBe("/media");
+  });
+
+  it("scrolls the folder you came from into view when navigating up", async () => {
+    vi.mocked(client.browseDir)
+      .mockResolvedValueOnce({
+        cwd: "/media/King of Queens",
+        parent: "/media",
+        roots: [],
+        entries: [],
+      })
+      .mockResolvedValueOnce({
+        cwd: "/media",
+        parent: "/",
+        roots: [],
+        entries: [
+          { name: "King of Queens", path: "/media/King of Queens", type: "dir", mkv_count: 0 },
+        ],
+      });
+
+    render(
+      <ImportModal
+        onClose={() => {}}
+        defaultPath="/media/King of Queens"
+        defaultDestinationMode="library"
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("..")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText(".."));
+
+    await waitFor(() => expect(screen.getByText("King of Queens")).toBeInTheDocument());
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" });
   });
 });

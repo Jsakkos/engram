@@ -29,7 +29,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [pathInput, setPathInput] = useState(defaultPath || "");
+  const [landmark, setLandmark] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const cwdRef = useRef<string | null>(null);
   // Monotonic request tokens so a slow earlier click can't overwrite the state
   // of a later one (navigate and choose fire together per directory click).
   const navSeq = useRef(0);
@@ -48,6 +50,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     try {
       const res = await browseDir(path);
       if (seq !== navSeq.current) return false; // a newer navigation superseded this one
+      const prev = cwdRef.current;
+      cwdRef.current = res.cwd;
+      setLandmark(prev && res.entries.some((e) => e.path === prev) ? prev : null);
       setCwd(res.cwd);
       setParent(res.parent);
       setEntries(res.entries);
@@ -286,7 +291,8 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                     label={e.name}
                     count={e.type === "dir" ? e.mkv_count : undefined}
                     kind={e.type}
-                    active={selected === e.path}
+                    active={selected === e.path || landmark === e.path}
+                    scrollTo={landmark === e.path}
                     onClick={() =>
                       e.type === "dir"
                         ? (navigate(e.path), choose(e.path))
@@ -473,16 +479,24 @@ function Row({
   count,
   kind,
   active,
+  scrollTo,
   onClick,
 }: {
   label: string;
   count?: number;
   kind: "dir" | "mkv";
   active?: boolean;
+  scrollTo?: boolean;
   onClick: () => void;
 }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (scrollTo) ref.current?.scrollIntoView({ block: "center" });
+  }, [scrollTo]);
+
   return (
     <button
+      ref={ref}
       onClick={onClick}
       style={{
         display: "flex",
