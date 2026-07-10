@@ -33,20 +33,22 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const navSeq = useRef(0);
   const chooseSeq = useRef(0);
 
-  const navigate = useCallback(async (path: string) => {
+  const navigate = useCallback(async (path: string): Promise<boolean> => {
     const seq = ++navSeq.current;
     setError(null);
     try {
       const res = await browseDir(path);
-      if (seq !== navSeq.current) return; // a newer navigation superseded this one
+      if (seq !== navSeq.current) return false; // a newer navigation superseded this one
       setCwd(res.cwd);
       setParent(res.parent);
       setEntries(res.entries);
       setRoots(res.roots);
+      return true;
     } catch (e) {
       if (seq === navSeq.current) {
         setError(e instanceof Error ? e.message : "Could not read directory");
       }
+      return false;
     }
   }, []);
 
