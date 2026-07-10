@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { motion } from "motion/react";
 import { IcoLibrary, IcoFilter, IcoError } from "../app/components/icons";
 import { SvPanel, sv } from "../app/components/synapse";
@@ -27,12 +28,16 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [destMode, setDestMode] = useState<"library" | "in_place">(defaultDestinationMode);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [pathInput, setPathInput] = useState(defaultPath || "");
   const dialogRef = useRef<HTMLDivElement>(null);
   // Monotonic request tokens so a slow earlier click can't overwrite the state
   // of a later one (navigate and choose fire together per directory click).
   const navSeq = useRef(0);
   const chooseSeq = useRef(0);
 
+  // Returns false when the browse failed OR was superseded by a newer navigation.
+  // Only the failure case surfaces an error notice; callers must not chain a
+  // preview off a false return either way.
   const navigate = useCallback(async (path: string): Promise<boolean> => {
     const seq = ++navSeq.current;
     setError(null);
@@ -60,6 +65,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     dialogRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    if (cwd) setPathInput(cwd);
+  }, [cwd]);
+
   const choose = useCallback(async (path: string) => {
     const seq = ++chooseSeq.current;
     setSelected(path);
@@ -75,6 +84,18 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
       }
     }
   }, []);
+
+  const submitPath = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      const target = pathInput.trim();
+      if (!target) return;
+      // Mirrors the directory-click gesture: browse into it, and preview it.
+      // Only preview if the browse resolved, so one typo yields one error.
+      if (await navigate(target)) await choose(target);
+    },
+    [pathInput, navigate, choose],
+  );
 
   const onStart = useCallback(async () => {
     if (!selected || !preview || preview.total_jobs === 0) return;
@@ -180,6 +201,55 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
             </button>
           </div>
 
+          <form
+            onSubmit={submitPath}
+            data-testid="import-path-form"
+            style={{
+              display: "flex",
+              gap: 6,
+              padding: "8px 12px",
+              borderBottom: `1px solid ${sv.line}`,
+              flexShrink: 0,
+            }}
+          >
+            <input
+              data-testid="import-path-input"
+              value={pathInput}
+              onChange={(e) => setPathInput(e.target.value)}
+              spellCheck={false}
+              aria-label="Path"
+              placeholder="Type or paste a folder path"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontFamily: sv.mono,
+                fontSize: 11,
+                padding: "5px 8px",
+                background: sv.bg0,
+                border: `1px solid ${sv.lineMid}`,
+                color: sv.ink,
+                outline: "none",
+              }}
+            />
+            <button
+              type="submit"
+              data-testid="import-path-go"
+              style={{
+                fontFamily: sv.mono,
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                padding: "5px 12px",
+                border: `1px solid ${sv.cyan}`,
+                background: "transparent",
+                color: sv.cyan,
+                cursor: "pointer",
+              }}
+            >
+              GO
+            </button>
+          </form>
+
           <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
             {/* Left: navigator */}
             <div
@@ -191,20 +261,6 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                 minHeight: 0,
               }}
             >
-              <div
-                style={{
-                  padding: "8px 12px",
-                  fontFamily: sv.mono,
-                  fontSize: 10,
-                  color: sv.inkFaint,
-                  borderBottom: `1px solid ${sv.line}`,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {cwd ?? "Select a drive"}
-              </div>
               <div data-testid="import-nav-list" style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                 {parent !== null && (
                   <Row label=".." onClick={() => navigate(parent)} kind="dir" />
