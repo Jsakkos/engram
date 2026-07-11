@@ -81,4 +81,22 @@ describe("useBackgroundEffectsEnabled", () => {
         getItemSpy.mockRestore();
         setItemSpy.mockRestore();
     });
+
+    it("keeps multiple hook instances in sync within the same tab", () => {
+        // App.tsx and the ConfigWizard settings checkbox each mount their own
+        // instance of this hook. Toggling one must be reflected by the other
+        // immediately, without a page reload (they're separate `useState`
+        // call sites, so this only works if the hook explicitly propagates
+        // changes across instances).
+        const a = renderHook(() => useBackgroundEffectsEnabled());
+        const b = renderHook(() => useBackgroundEffectsEnabled());
+
+        expect(a.result.current[0]).toBe(true);
+        expect(b.result.current[0]).toBe(true);
+
+        act(() => a.result.current[1](false));
+
+        expect(a.result.current[0]).toBe(false);
+        expect(b.result.current[0]).toBe(false);
+    });
 });
