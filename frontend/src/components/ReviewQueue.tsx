@@ -19,6 +19,7 @@ import { llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback
 import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
+import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
@@ -1029,6 +1030,7 @@ function ReviewQueue() {
                                     marginBottom: 10,
                                     display: 'flex',
                                     alignItems: 'center',
+                                    justifyContent: 'space-between',
                                     gap: 7,
                                     fontFamily: sv.mono,
                                     fontSize: 11,
@@ -1036,12 +1038,17 @@ function ReviewQueue() {
                                     color: sv.red,
                                 }}
                             >
-                                <IcoError size={13} color={sv.red} title="No reference subtitle" />
-                                <span>
-                                    {missingRefCodes.length === 1
-                                        ? `${missingRefCodes[0]} has no reference subtitle — matching can't auto-identify it; assign manually.`
-                                        : `${missingRefCodes.length} episodes have no reference subtitle (${missingRefCodes.join(', ')}) — matching can't auto-identify them; assign manually.`}
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                    <IcoError size={13} color={sv.red} title="No reference subtitle" />
+                                    <span>
+                                        {missingRefCodes.length === 1
+                                            ? `${missingRefCodes[0]} has no reference subtitle — matching can't auto-identify it; assign manually.`
+                                            : `${missingRefCodes.length} episodes have no reference subtitle (${missingRefCodes.join(', ')}) — matching can't auto-identify them; assign manually.`}
+                                    </span>
+                                </div>
+                                {jobId && (
+                                    <SubtitleUploadModal jobId={Number(jobId)} onImported={reloadRoster} />
+                                )}
                             </div>
                         )}
                         <SvPanel pad={14}>
