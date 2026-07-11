@@ -159,9 +159,11 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
         onClick={onClose}
         data-testid="import-backdrop"
       />
+      {/* min() so the 82vh cap always wins on short viewports: a bare
+          minHeight: 340 would beat max-height below ~415px tall and re-overflow. */}
       <motion.div
         className="relative w-full"
-        style={{ maxWidth: 820, maxHeight: "82vh", minHeight: 340, display: "flex" }}
+        style={{ maxWidth: 820, maxHeight: "82vh", minHeight: "min(340px, 82vh)", display: "flex" }}
         initial={{ opacity: 0, scale: 0.96, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 16 }}
