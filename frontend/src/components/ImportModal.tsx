@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { motion } from "motion/react";
 import { IcoLibrary, IcoFilter, IcoError } from "../app/components/icons";
 import { SvPanel, sv } from "../app/components/synapse";
@@ -27,26 +28,46 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [destMode, setDestMode] = useState<"library" | "in_place">(defaultDestinationMode);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [pathInput, setPathInput] = useState(defaultPath || "");
+  const [landmark, setLandmark] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const cwdRef = useRef<string | null>(null);
   // Monotonic request tokens so a slow earlier click can't overwrite the state
   // of a later one (navigate and choose fire together per directory click).
   const navSeq = useRef(0);
   const chooseSeq = useRef(0);
+  // Set once the user edits the path field, cleared when they submit it. Guards
+  // the cwd sync below; a ref, not state, since it must not trigger a re-render
+  // and must be readable in the same commit that applies a new cwd.
+  const pathDirty = useRef(false);
 
-  const navigate = useCallback(async (path: string) => {
+  // Returns false when the browse failed OR was superseded by a newer navigation.
+  // Only the failure case surfaces an error notice; callers must not chain a
+  // preview off a false return either way.
+  const navigate = useCallback(async (path: string): Promise<boolean> => {
     const seq = ++navSeq.current;
     setError(null);
+    // Any navigation (a row click, .., a typed submit) is a fresh location
+    // gesture, so hand the field back to the cwd sync. If the user resumes
+    // typing before the browse resolves, onChange re-dirties it and their text
+    // is preserved.
+    pathDirty.current = false;
     try {
       const res = await browseDir(path);
-      if (seq !== navSeq.current) return; // a newer navigation superseded this one
+      if (seq !== navSeq.current) return false; // a newer navigation superseded this one
+      const prev = cwdRef.current;
+      cwdRef.current = res.cwd;
+      setLandmark(prev && res.entries.some((e) => e.path === prev) ? prev : null);
       setCwd(res.cwd);
       setParent(res.parent);
       setEntries(res.entries);
       setRoots(res.roots);
+      return true;
     } catch (e) {
       if (seq === navSeq.current) {
         setError(e instanceof Error ? e.message : "Could not read directory");
       }
+      return false;
     }
   }, []);
 
@@ -57,6 +78,12 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   useEffect(() => {
     dialogRef.current?.focus();
   }, []);
+
+  // Keep the field showing the current directory, but never overwrite text the
+  // user is actively typing: a slow browse can resolve mid-keystroke.
+  useEffect(() => {
+    if (cwd && !pathDirty.current) setPathInput(cwd);
+  }, [cwd]);
 
   const choose = useCallback(async (path: string) => {
     const seq = ++chooseSeq.current;
@@ -73,6 +100,20 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
       }
     }
   }, []);
+
+  const submitPath = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      const target = pathInput.trim();
+      if (!target) return;
+      // Mirrors the directory-click gesture: browse into it, and preview it.
+      // Only preview if the browse resolved, so one typo yields one error.
+      // navigate() clears the dirty flag; on a failed browse cwd never changes,
+      // so no sync fires and the bad text stays for the user to fix.
+      if (await navigate(target)) await choose(target);
+    },
+    [pathInput, navigate, choose],
+  );
 
   const onStart = useCallback(async () => {
     if (!selected || !preview || preview.total_jobs === 0) return;
@@ -118,15 +159,28 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
         onClick={onClose}
         data-testid="import-backdrop"
       />
+      {/* min() so the 82vh cap always wins on short viewports: a bare
+          minHeight: 340 would beat max-height below ~415px tall and re-overflow. */}
       <motion.div
         className="relative w-full"
-        style={{ maxWidth: 820 }}
+        style={{ maxWidth: 820, maxHeight: "82vh", minHeight: "min(340px, 82vh)", display: "flex" }}
         initial={{ opacity: 0, scale: 0.96, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 16 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
       >
-        <SvPanel glow pad={0} style={{ background: sv.bg1 }}>
+        <SvPanel
+          glow
+          pad={0}
+          testid="import-panel"
+          style={{
+            background: sv.bg1,
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           {/* Header */}
           <div
             style={{
@@ -135,6 +189,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               gap: 10,
               padding: "14px 18px",
               borderBottom: `1px solid ${sv.line}`,
+              flexShrink: 0,
             }}
           >
             <IcoLibrary size={18} color={sv.cyan} />
@@ -166,7 +221,59 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
             </button>
           </div>
 
-          <div style={{ display: "flex", minHeight: 340 }}>
+          <form
+            onSubmit={submitPath}
+            data-testid="import-path-form"
+            style={{
+              display: "flex",
+              gap: 6,
+              padding: "8px 12px",
+              borderBottom: `1px solid ${sv.line}`,
+              flexShrink: 0,
+            }}
+          >
+            <input
+              data-testid="import-path-input"
+              value={pathInput}
+              onChange={(e) => {
+                pathDirty.current = true;
+                setPathInput(e.target.value);
+              }}
+              spellCheck={false}
+              aria-label="Path"
+              placeholder="Type or paste a folder path"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontFamily: sv.mono,
+                fontSize: 11,
+                padding: "5px 8px",
+                background: sv.bg0,
+                border: `1px solid ${sv.lineMid}`,
+                color: sv.ink,
+                outline: "none",
+              }}
+            />
+            <button
+              type="submit"
+              data-testid="import-path-go"
+              style={{
+                fontFamily: sv.mono,
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                padding: "5px 12px",
+                border: `1px solid ${sv.cyan}`,
+                background: "transparent",
+                color: sv.cyan,
+                cursor: "pointer",
+              }}
+            >
+              GO
+            </button>
+          </form>
+
+          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
             {/* Left: navigator */}
             <div
               style={{
@@ -174,23 +281,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                 borderRight: `1px solid ${sv.line}`,
                 display: "flex",
                 flexDirection: "column",
+                minHeight: 0,
               }}
             >
-              <div
-                style={{
-                  padding: "8px 12px",
-                  fontFamily: sv.mono,
-                  fontSize: 10,
-                  color: sv.inkFaint,
-                  borderBottom: `1px solid ${sv.line}`,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {cwd ?? "Select a drive"}
-              </div>
-              <div style={{ flex: 1, overflow: "auto" }}>
+              <div data-testid="import-nav-list" style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                 {parent !== null && (
                   <Row label=".." onClick={() => navigate(parent)} kind="dir" />
                 )}
@@ -203,7 +297,8 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                     label={e.name}
                     count={e.type === "dir" ? e.mkv_count : undefined}
                     kind={e.type}
-                    active={selected === e.path}
+                    active={selected === e.path || landmark === e.path}
+                    scrollTo={landmark === e.path}
                     onClick={() =>
                       e.type === "dir"
                         ? (navigate(e.path), choose(e.path))
@@ -215,7 +310,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
             </div>
 
             {/* Right: preview */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
               <div
                 style={{
                   padding: "8px 14px",
@@ -228,7 +323,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               >
                 PREVIEW
               </div>
-              <div style={{ flex: 1, overflow: "auto", padding: 14 }}>
+              <div style={{ flex: 1, overflow: "auto", padding: 14, minHeight: 0 }}>
                 {!preview && (
                   <p style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkFaint }}>
                     Select a folder or file to preview.
@@ -286,7 +381,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               </div>
 
               {/* Destination */}
-              <div style={{ padding: "10px 14px", borderTop: `1px solid ${sv.line}` }}>
+              <div
+                style={{ padding: "10px 14px", borderTop: `1px solid ${sv.line}`, flexShrink: 0 }}
+              >
                 <div
                   style={{
                     fontFamily: sv.mono,
@@ -331,6 +428,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
               gap: 10,
               padding: "12px 16px",
               borderTop: `1px solid ${sv.line}`,
+              flexShrink: 0,
             }}
           >
             <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
@@ -387,16 +485,24 @@ function Row({
   count,
   kind,
   active,
+  scrollTo,
   onClick,
 }: {
   label: string;
   count?: number;
   kind: "dir" | "mkv";
   active?: boolean;
+  scrollTo?: boolean;
   onClick: () => void;
 }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (scrollTo) ref.current?.scrollIntoView({ block: "center" });
+  }, [scrollTo]);
+
   return (
     <button
+      ref={ref}
       onClick={onClick}
       style={{
         display: "flex",
