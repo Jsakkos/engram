@@ -4,6 +4,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.matcher.manual_subtitle_import import CommitInputFile, commit_files
+from app.matcher.subtitle_provider import LocalSubtitleProvider
 from app.matcher.testing_service import download_subtitles
 from tests.fixtures.tmdb_responses import (
     TMDB_SEARCH_ARRESTED_DEVELOPMENT,
@@ -382,3 +384,29 @@ class TestErrorHandling:
 
         with pytest.raises(ValueError, match="No episodes found"):
             download_subtitles("Test Show", 99)
+
+
+class TestManualSubtitleFeedsLocalProvider:
+    """Proves commit_files writes to exactly the path LocalSubtitleProvider
+    scans — the whole point of this feature is that no matcher code needs to
+    change for a manually imported subtitle to be used. This test calls
+    commit_files/LocalSubtitleProvider directly with tmp_path as the cache
+    dir; it doesn't go through the API or AppConfig.
+    """
+
+    def test_committed_file_is_returned_by_local_provider(self, tmp_path):
+        content = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
+        outcomes = commit_files(
+            tmp_path,
+            555,
+            "Manual Import Show",
+            [CommitInputFile(filename="x.srt", season=1, episode=3, content=content)],
+        )
+        assert outcomes[0].status == "imported"
+
+        provider = LocalSubtitleProvider(cache_dir=tmp_path)
+        subs = provider.get_subtitles(show_name="Manual Import Show", season=1, tmdb_id=555)
+
+        assert len(subs) == 1
+        assert subs[0].episode_info.season == 1
+        assert subs[0].episode_info.episode == 3
