@@ -13,9 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loguru import logger
+
 from app.matcher.episode_identification import reference_coverage
 from app.matcher.subtitle_provider import parse_season_episode
-from app.matcher.subtitle_utils import is_valid_srt_content
+from app.matcher.subtitle_utils import corpus_dir_name, is_valid_srt_content, sanitize_filename
 
 MIN_SEASON = 0
 MAX_SEASON = 50
@@ -127,3 +129,88 @@ def classify_files(
         )
 
     return results
+
+
+@dataclass
+class CommitInputFile:
+    filename: str
+    season: int
+    episode: int
+    content: str
+
+
+@dataclass
+class CommitFileOutcome:
+    filename: str
+    season: int
+    episode: int
+    status: str  # "imported" | "skipped" | "error"
+    reason: str | None = None
+
+
+def commit_files(
+    cache_dir: Path,
+    tmdb_id: int | None,
+    show_name: str,
+    files: list[CommitInputFile],
+) -> list[CommitFileOutcome]:
+    """Validate and write each confirmed file into the subtitle cache.
+
+    Re-validates everything independently of whatever the preview step said —
+    this must never trust a client-echoed preview verdict, since a reference
+    could have appeared between preview and commit, or the payload could be
+    tampered with. Writes to exactly the path/filename ``LocalSubtitleProvider``
+    scans, so the very next season-roster or download-subtitles pass sees it.
+    """
+    dest_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
+    show_name_for_file = sanitize_filename(show_name) or "Unknown Show"
+
+    outcomes: list[CommitFileOutcome] = []
+    claimed: set[tuple[int, int]] = set()
+
+    for f in files:
+        if not _in_range(f.season, f.episode):
+            outcomes.append(
+                CommitFileOutcome(
+                    f.filename, f.season, f.episode, "error", "season/episode out of range"
+                )
+            )
+            continue
+
+        key = (f.season, f.episode)
+        if key in claimed:
+            outcomes.append(
+                CommitFileOutcome(
+                    f.filename, f.season, f.episode, "skipped", "duplicate within this batch"
+                )
+            )
+            continue
+
+        if len(f.content.encode("utf-8")) > MAX_CONTENT_BYTES:
+            outcomes.append(
+                CommitFileOutcome(f.filename, f.season, f.episode, "error", "file too large")
+            )
+            continue
+        if not is_valid_srt_content(f.content):
+            outcomes.append(
+                CommitFileOutcome(f.filename, f.season, f.episode, "error", "not a valid SRT")
+            )
+            continue
+
+        code = f"S{f.season:02d}E{f.episode:02d}"
+        coverage = reference_coverage(cache_dir, tmdb_id, show_name, f.season, [f.episode])
+        if coverage.get(code, "missing") != "missing":
+            outcomes.append(
+                CommitFileOutcome(f.filename, f.season, f.episode, "skipped", "already_covered")
+            )
+            claimed.add(key)
+            continue
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / f"{show_name_for_file} - {code}.srt"
+        dest_path.write_text(f.content, encoding="utf-8")
+        claimed.add(key)
+        logger.info(f"Imported manual subtitle for {code} -> {dest_path}")
+        outcomes.append(CommitFileOutcome(f.filename, f.season, f.episode, "imported"))
+
+    return outcomes

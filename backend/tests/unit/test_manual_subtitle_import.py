@@ -4,8 +4,10 @@ from unittest.mock import patch
 
 from app.matcher.manual_subtitle_import import (
     MAX_CONTENT_BYTES,
+    CommitInputFile,
     PreviewInputFile,
     classify_files,
+    commit_files,
 )
 
 VALID_SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
@@ -88,3 +90,70 @@ class TestClassifyFiles:
             results = classify_files(tmp_path, 123, "Show Name", files)
         assert results[0].status == "ready"
         assert results[0].warning == "possible encoding issue"
+
+
+class TestCommitFiles:
+    def test_writes_file_to_expected_path(self, tmp_path):
+        files = [CommitInputFile(filename="x.srt", season=1, episode=5, content=VALID_SRT)]
+        with patch(
+            "app.matcher.manual_subtitle_import.reference_coverage",
+            return_value={"S01E05": "missing"},
+        ):
+            outcomes = commit_files(tmp_path, 123, "Show Name", files)
+        assert outcomes[0].status == "imported"
+        dest = tmp_path / "data" / "123" / "Show Name - S01E05.srt"
+        assert dest.exists()
+        assert dest.read_text(encoding="utf-8") == VALID_SRT
+
+    def test_skips_when_already_covered_at_commit_time(self, tmp_path):
+        files = [CommitInputFile(filename="x.srt", season=1, episode=2, content=VALID_SRT)]
+        with patch(
+            "app.matcher.manual_subtitle_import.reference_coverage",
+            return_value={"S01E02": "downloaded"},
+        ):
+            outcomes = commit_files(tmp_path, 123, "Show Name", files)
+        assert outcomes[0].status == "skipped"
+        assert outcomes[0].reason == "already_covered"
+        dest = tmp_path / "data" / "123" / "Show Name - S01E02.srt"
+        assert not dest.exists()
+
+    def test_rejects_out_of_range_season(self, tmp_path):
+        files = [CommitInputFile(filename="x.srt", season=999, episode=1, content=VALID_SRT)]
+        outcomes = commit_files(tmp_path, 123, "Show Name", files)
+        assert outcomes[0].status == "error"
+        assert "range" in outcomes[0].reason
+
+    def test_rejects_invalid_content(self, tmp_path):
+        files = [
+            CommitInputFile(filename="x.srt", season=1, episode=1, content="not a subtitle" * 5)
+        ]
+        with patch(
+            "app.matcher.manual_subtitle_import.reference_coverage",
+            return_value={"S01E01": "missing"},
+        ):
+            outcomes = commit_files(tmp_path, 123, "Show Name", files)
+        assert outcomes[0].status == "error"
+
+    def test_duplicate_within_batch_skips_second(self, tmp_path):
+        files = [
+            CommitInputFile(filename="a.srt", season=1, episode=5, content=VALID_SRT),
+            CommitInputFile(filename="b.srt", season=1, episode=5, content=VALID_SRT),
+        ]
+        with patch(
+            "app.matcher.manual_subtitle_import.reference_coverage",
+            return_value={"S01E05": "missing"},
+        ):
+            outcomes = commit_files(tmp_path, 123, "Show Name", files)
+        assert outcomes[0].status == "imported"
+        assert outcomes[1].status == "skipped"
+        assert outcomes[1].reason == "duplicate within this batch"
+
+    def test_sanitizes_show_name_in_filename(self, tmp_path):
+        files = [CommitInputFile(filename="x.srt", season=1, episode=1, content=VALID_SRT)]
+        with patch(
+            "app.matcher.manual_subtitle_import.reference_coverage",
+            return_value={"S01E01": "missing"},
+        ):
+            commit_files(tmp_path, 123, "Law & Order: SVU", files)
+        dest = tmp_path / "data" / "123" / "Law & Order - SVU - S01E01.srt"
+        assert dest.exists()
