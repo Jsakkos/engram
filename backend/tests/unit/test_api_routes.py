@@ -549,3 +549,81 @@ class TestAsrStatusEndpoint:
         assert body["workers"] >= 1
         assert "max_concurrent_matches" in body
         assert "model" in body
+
+
+# ---------------------------------------------------------------------------
+# Manual Subtitle Import
+# ---------------------------------------------------------------------------
+
+
+class TestManualSubtitleImport:
+    """Tests for POST /jobs/{job_id}/subtitles/preview and /commit."""
+
+    VALID_SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
+
+    async def _seed_tv_job(self, tmp_path, **kwargs):
+        await _seed_config(subtitles_cache_path=str(tmp_path))
+        defaults = dict(tmdb_id=999, detected_title="Test Show", detected_season=1)
+        defaults.update(kwargs)
+        return await _seed_job(**defaults)
+
+    async def _seed_job_movie(self, tmp_path):
+        await _seed_config(subtitles_cache_path=str(tmp_path))
+        return await _seed_job(content_type=ContentType.MOVIE, tmdb_id=None, detected_season=None)
+
+    async def test_preview_requires_identified_tv_job(self, client, tmp_path):
+        job = await self._seed_job_movie(tmp_path)
+        response = await client.post(
+            f"/api/jobs/{job.id}/subtitles/preview",
+            json={"files": [{"filename": "x.srt", "content": self.VALID_SRT}]},
+        )
+        assert response.status_code == 400
+
+    async def test_preview_classifies_ready_file(self, client, tmp_path):
+        job = await self._seed_tv_job(tmp_path)
+        response = await client.post(
+            f"/api/jobs/{job.id}/subtitles/preview",
+            json={"files": [{"filename": "Test.Show.S01E05.srt", "content": self.VALID_SRT}]},
+        )
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert results[0]["season"] == 1
+        assert results[0]["episode"] == 5
+        assert results[0]["status"] == "ready"
+
+    async def test_preview_rejects_too_many_files(self, client, tmp_path):
+        job = await self._seed_tv_job(tmp_path)
+        files = [
+            {"filename": f"Test.Show.S01E{i:02d}.srt", "content": self.VALID_SRT}
+            for i in range(1, 62)
+        ]
+        response = await client.post(f"/api/jobs/{job.id}/subtitles/preview", json={"files": files})
+        assert response.status_code == 400
+
+    async def test_commit_writes_file_and_reports_imported(self, client, tmp_path):
+        job = await self._seed_tv_job(tmp_path)
+        response = await client.post(
+            f"/api/jobs/{job.id}/subtitles/commit",
+            json={
+                "files": [
+                    {"filename": "x.srt", "season": 1, "episode": 5, "content": self.VALID_SRT},
+                ]
+            },
+        )
+        assert response.status_code == 200
+        outcomes = response.json()["outcomes"]
+        assert outcomes[0]["status"] == "imported"
+        dest = tmp_path / "data" / "999" / "Test Show - S01E05.srt"
+        assert dest.exists()
+
+    async def test_commit_requires_identified_tv_job(self, client, tmp_path):
+        job = await self._seed_job_movie(tmp_path)
+        response = await client.post(
+            f"/api/jobs/{job.id}/subtitles/commit",
+            json={
+                "files": [
+                    {"filename": "x.srt", "season": 1, "episode": 1, "content": self.VALID_SRT}
+                ]
+            },
+        )
+        assert response.status_code == 400
