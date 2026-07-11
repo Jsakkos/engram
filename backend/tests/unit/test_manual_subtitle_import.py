@@ -157,3 +157,24 @@ class TestCommitFiles:
             commit_files(tmp_path, 123, "Law & Order: SVU", files)
         dest = tmp_path / "data" / "123" / "Law & Order - SVU - S01E01.srt"
         assert dest.exists()
+
+    def test_write_failure_reports_error_without_crashing_batch(self, tmp_path):
+        files = [
+            CommitInputFile(filename="a.srt", season=1, episode=1, content=VALID_SRT),
+            CommitInputFile(filename="b.srt", season=1, episode=2, content=VALID_SRT),
+        ]
+        with (
+            patch(
+                "app.matcher.manual_subtitle_import.reference_coverage",
+                return_value={"S01E01": "missing", "S01E02": "missing"},
+            ),
+            patch(
+                "app.matcher.manual_subtitle_import.Path.write_text",
+                side_effect=OSError("disk full"),
+            ),
+        ):
+            outcomes = commit_files(tmp_path, 123, "Show Name", files)
+        assert outcomes[0].status == "error"
+        assert outcomes[0].reason == "failed to write file"
+        assert outcomes[1].status == "error"
+        assert outcomes[1].reason == "failed to write file"

@@ -563,7 +563,12 @@ class TestManualSubtitleImport:
 
     async def _seed_tv_job(self, tmp_path, **kwargs):
         await _seed_config(subtitles_cache_path=str(tmp_path))
-        defaults = dict(tmdb_id=999, detected_title="Test Show", detected_season=1)
+        defaults = dict(
+            tmdb_id=999,
+            detected_title="Test Show",
+            detected_season=1,
+            state=JobState.REVIEW_NEEDED,
+        )
         defaults.update(kwargs)
         return await _seed_job(**defaults)
 
@@ -627,3 +632,23 @@ class TestManualSubtitleImport:
             },
         )
         assert response.status_code == 400
+
+    async def test_commit_rejects_job_not_awaiting_review(self, client, tmp_path):
+        job = await self._seed_tv_job(tmp_path, state=JobState.COMPLETED)
+        response = await client.post(
+            f"/api/jobs/{job.id}/subtitles/commit",
+            json={
+                "files": [
+                    {"filename": "x.srt", "season": 1, "episode": 1, "content": self.VALID_SRT}
+                ]
+            },
+        )
+        assert response.status_code == 409
+
+    async def test_preview_rejects_job_not_awaiting_review(self, client, tmp_path):
+        job = await self._seed_tv_job(tmp_path, state=JobState.RIPPING)
+        response = await client.post(
+            f"/api/jobs/{job.id}/subtitles/preview",
+            json={"files": [{"filename": "x.srt", "content": self.VALID_SRT}]},
+        )
+        assert response.status_code == 409

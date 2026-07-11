@@ -206,9 +206,17 @@ def commit_files(
             claimed.add(key)
             continue
 
-        dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / f"{show_name_for_file} - {code}.srt"
-        dest_path.write_text(f.content, encoding="utf-8")
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest_path.write_text(f.content, encoding="utf-8")
+        except OSError as e:
+            logger.error(f"Failed to write manual subtitle for {code}: {e}", exc_info=True)
+            outcomes.append(
+                CommitFileOutcome(f.filename, f.season, f.episode, "error", "failed to write file")
+            )
+            continue
+
         claimed.add(key)
         logger.info(f"Imported manual subtitle for {code} -> {dest_path}")
         outcomes.append(CommitFileOutcome(f.filename, f.season, f.episode, "imported"))

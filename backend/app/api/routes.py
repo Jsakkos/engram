@@ -916,6 +916,11 @@ def _require_identified_tv_job(job: DiscJob) -> None:
         raise HTTPException(
             status_code=400, detail="Job must be an identified TV show to import manual subtitles"
         )
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot import manual subtitles in state: {job.state.value}",
+        )
 
 
 @router.post("/jobs/{job_id}/subtitles/preview", response_model=ManualSubtitlePreviewResponse)
