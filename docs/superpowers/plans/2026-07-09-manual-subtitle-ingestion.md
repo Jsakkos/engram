@@ -387,12 +387,21 @@ git commit -m "feat: add classify_files preview logic for manual subtitle import
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `backend/tests/unit/test_manual_subtitle_import.py`:
+First, add `CommitInputFile` and `commit_files` to the existing top-of-file import from Task 2 in `backend/tests/unit/test_manual_subtitle_import.py` (ruff's `E402` rejects a module-level import appended mid-file, so don't add a second import statement further down):
 
 ```python
-from app.matcher.manual_subtitle_import import CommitInputFile, commit_files
+from app.matcher.manual_subtitle_import import (
+    MAX_CONTENT_BYTES,
+    CommitInputFile,
+    PreviewInputFile,
+    classify_files,
+    commit_files,
+)
+```
 
+Then append the new test class to the same file:
 
+```python
 class TestCommitFiles:
     def test_writes_file_to_expected_path(self, tmp_path):
         files = [CommitInputFile(filename="x.srt", season=1, episode=5, content=VALID_SRT)]
