@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.matcher.subtitle_utils import is_valid_srt_file
+from app.matcher.subtitle_utils import is_valid_srt_content, is_valid_srt_file
 
 _SRT_TEXT = "1\r\n00:00:07,130 --> 00:00:09,000\nHello there\n\n2\r\n00:00:10,000 --> 00:00:12,000\nGeneral Kenobi\n"
 
@@ -39,3 +39,21 @@ class TestIsValidSrtFile:
             "just some plain notes with no subtitle timing at all here" * 2, encoding="utf-8"
         )
         assert is_valid_srt_file(p) is False
+
+
+@pytest.mark.unit
+class TestIsValidSrtContent:
+    def test_accepts_plain_srt_text(self):
+        content = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
+        assert is_valid_srt_content(content) is True
+
+    def test_rejects_html(self):
+        content = "<!DOCTYPE html><html><body>Not a subtitle</body></html>" + "x" * 60
+        assert is_valid_srt_content(content) is False
+
+    def test_rejects_too_short(self):
+        assert is_valid_srt_content("short") is False
+
+    def test_rejects_text_without_timestamps(self):
+        content = "Just some plain text with no SRT timing markers at all here." * 2
+        assert is_valid_srt_content(content) is False

@@ -42,7 +42,7 @@ from app.matcher.subtitle_utils import is_valid_srt_content, is_valid_srt_file
 
 class TestIsValidSrtContent:
     def test_accepts_plain_srt_text(self):
-        content = "1\n00:00:01,000 --> 00:00:02,000\nHello there\n"
+        content = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
         assert is_valid_srt_content(content) is True
 
     def test_rejects_html(self):
@@ -169,7 +169,7 @@ from app.matcher.manual_subtitle_import import (
     classify_files,
 )
 
-VALID_SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello there\n"
+VALID_SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
 
 
 class TestClassifyFiles:
@@ -562,7 +562,7 @@ Append to `backend/tests/unit/test_api_routes.py` (uses the existing `client`, `
 class TestManualSubtitleImport:
     """Tests for POST /jobs/{job_id}/subtitles/preview and /commit."""
 
-    VALID_SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello there\n"
+    VALID_SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
 
     async def _seed_tv_job(self, tmp_path, **kwargs):
         await _seed_config(subtitles_cache_path=str(tmp_path))
@@ -814,7 +814,7 @@ class TestManualSubtitleFeedsLocalProvider:
     """
 
     def test_committed_file_is_returned_by_local_provider(self, tmp_path):
-        content = "1\n00:00:01,000 --> 00:00:02,000\nHello there\n"
+        content = "1\n00:00:01,000 --> 00:00:02,000\nHello there, General Kenobi\n"
         outcomes = commit_files(
             tmp_path, 555, "Manual Import Show",
             [CommitInputFile(filename="x.srt", season=1, episode=3, content=content)],
