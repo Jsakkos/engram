@@ -118,6 +118,35 @@ describe("ImportModal", () => {
     expect((input as HTMLInputElement).value).toBe("/Volumes/TV Shows/Engram");
   });
 
+  it("resumes tracking the location when the user types but then clicks a folder", async () => {
+    vi.mocked(client.browseDir)
+      .mockResolvedValueOnce({
+        cwd: "/media",
+        parent: "/",
+        roots: [],
+        entries: [
+          { name: "King of Queens", path: "/media/King of Queens", type: "dir", mkv_count: 0 },
+        ],
+      })
+      .mockResolvedValueOnce({
+        cwd: "/media/King of Queens",
+        parent: "/media",
+        roots: [],
+        entries: [],
+      });
+
+    render(<ImportModal onClose={() => {}} defaultPath="/media" defaultDestinationMode="library" />);
+    const input = screen.getByTestId("import-path-input") as HTMLInputElement;
+    await waitFor(() => screen.getByText("King of Queens"));
+
+    // User starts typing a path but abandons it and clicks a folder instead.
+    fireEvent.change(input, { target: { value: "/half-typed" } });
+    fireEvent.click(screen.getByText("King of Queens"));
+
+    // The field must follow the click, not stay stuck on the abandoned text.
+    await waitFor(() => expect(input.value).toBe("/media/King of Queens"));
+  });
+
   it("syncs the field to the directory that a folder click navigates into", async () => {
     render(<ImportModal onClose={() => {}} defaultPath="/media" defaultDestinationMode="library" />);
     await waitFor(() => screen.getByText("King of Queens"));

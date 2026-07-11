@@ -47,6 +47,11 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const navigate = useCallback(async (path: string): Promise<boolean> => {
     const seq = ++navSeq.current;
     setError(null);
+    // Any navigation (a row click, .., a typed submit) is a fresh location
+    // gesture, so hand the field back to the cwd sync. If the user resumes
+    // typing before the browse resolves, onChange re-dirties it and their text
+    // is preserved.
+    pathDirty.current = false;
     try {
       const res = await browseDir(path);
       if (seq !== navSeq.current) return false; // a newer navigation superseded this one
@@ -101,11 +106,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
       e.preventDefault();
       const target = pathInput.trim();
       if (!target) return;
-      // Hand the field back to the cwd sync. On a failed browse cwd never
-      // changes, so no sync fires and the bad text stays for the user to fix.
-      pathDirty.current = false;
       // Mirrors the directory-click gesture: browse into it, and preview it.
       // Only preview if the browse resolved, so one typo yields one error.
+      // navigate() clears the dirty flag; on a failed browse cwd never changes,
+      // so no sync fires and the bad text stays for the user to fix.
       if (await navigate(target)) await choose(target);
     },
     [pathInput, navigate, choose],
