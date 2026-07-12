@@ -203,6 +203,79 @@ export async function unskipRipTitle(jobId: number, titleId: number): Promise<vo
 }
 
 // ---------------------------------------------------------------------------
+// Manual subtitle import
+// ---------------------------------------------------------------------------
+
+export interface ManualSubtitleFileIn {
+  filename: string;
+  content: string;
+}
+
+export type ManualSubtitlePreviewStatus =
+  | 'ready'
+  | 'already_covered'
+  | 'unparseable'
+  | 'invalid_content'
+  | 'duplicate';
+
+export interface ManualSubtitlePreviewResult {
+  filename: string;
+  season: number | null;
+  episode: number | null;
+  status: ManualSubtitlePreviewStatus;
+  warning?: string | null;
+}
+
+/** Classify a batch of client-read .srt files without writing anything. */
+export async function previewManualSubtitles(
+  jobId: number,
+  files: ManualSubtitleFileIn[],
+): Promise<ManualSubtitlePreviewResult[]> {
+  const res = await apiFetch<{ results: ManualSubtitlePreviewResult[] }>(
+    `/api/jobs/${jobId}/subtitles/preview`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files }),
+    },
+  );
+  return res.results;
+}
+
+export interface ManualSubtitleCommitFileIn {
+  filename: string;
+  season: number;
+  episode: number;
+  content: string;
+}
+
+export type ManualSubtitleCommitStatus = 'imported' | 'skipped' | 'error';
+
+export interface ManualSubtitleCommitOutcome {
+  filename: string;
+  season: number;
+  episode: number;
+  status: ManualSubtitleCommitStatus;
+  reason?: string | null;
+}
+
+/** Write the user-confirmed subset of previewed files into the subtitle cache. */
+export async function commitManualSubtitles(
+  jobId: number,
+  files: ManualSubtitleCommitFileIn[],
+): Promise<ManualSubtitleCommitOutcome[]> {
+  const res = await apiFetch<{ outcomes: ManualSubtitleCommitOutcome[] }>(
+    `/api/jobs/${jobId}/subtitles/commit`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files }),
+    },
+  );
+  return res.outcomes;
+}
+
+// ---------------------------------------------------------------------------
 // Manual import
 // ---------------------------------------------------------------------------
 
