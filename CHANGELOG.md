@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **An unconfirmed movie identity no longer auto-accepts.** When a disc's title couldn't be confirmed by DiscDB/TMDB from its label, an AI-guessed title was sometimes matched to an unrelated, low-popularity movie — and because that guess "agreed" with the movie heuristic, the mismatch was silently accepted and ripped straight through, misfiling real content as movie extras with no way to correct it afterward (#499). The disc-identity corroboration check that already gated this for TV shows now applies to movies too: an uncorroborated TMDB/AI identity pauses for confirmation via the existing re-identify prompt instead of completing unreviewed.
 - **The Import folder browser now scrolls.** Browsing a directory with more subfolders than fit on screen previously grew the modal past the edges of the window, stranding you in the middle of the list with no way to scroll, no visible way to go up a level, and no way to reach the start button. The folder list is now a scrolling pane inside a window-sized modal, so the header, the up-a-level row, and the start button stay put. You can also type or paste an exact folder path instead of clicking through hundreds of folders, and going up a level scrolls the folder you came from back into view.
 
 ## [0.24.0] - 2026-07-04

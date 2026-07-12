@@ -297,7 +297,10 @@ class TestTmdbSignalIntegration:
         assert result.tmdb_id is None
 
     def test_tmdb_resolves_unknown_to_movie(self):
-        """Heuristic gives UNKNOWN, TMDB says movie -> movie."""
+        """Heuristic gives UNKNOWN, TMDB says movie -> movie, but an uncorroborated
+        name (label 'MYSTERY_DISC' matches neither 'Inception' nor its disc title)
+        escalates to review (issue #499: movie identities get the same
+        corroboration check as TV, not a free pass)."""
         analyst = DiscAnalyst(config=_default_config())
         titles = _make_titles([5, 15, 75, 10, 30])  # Ambiguous durations
         signal = TmdbSignal(
@@ -310,7 +313,8 @@ class TestTmdbSignalIntegration:
 
         assert result.content_type == ContentType.MOVIE
         assert result.classification_source == "tmdb"
-        assert result.needs_review is False
+        assert result.needs_review is True
+        assert result.identity_unconfirmed is True
 
     def test_tmdb_resolves_unknown_to_tv(self):
         """Heuristic gives UNKNOWN, TMDB says TV -> TV."""
@@ -760,3 +764,28 @@ class TestUncorroboratedIdentityFlag:
         from app.core.analyst import DiscAnalysisResult
 
         assert DiscAnalysisResult(content_type=ContentType.TV).identity_unconfirmed is False
+
+    def test_uncorroborated_movie_identity_sets_flag(self):
+        """Regression for issue #499 (job 103): a disc with only 2 episode-length
+        titles plus one Play-All-length title falls through to the movie
+        heuristic (TV cluster detection needs 3+). An AI/TMDB movie guess that
+        matches neither the volume label nor the disc title must not auto-accept
+        just because the heuristic and TMDB happen to agree on 'movie' — that
+        agreement is not corroboration of *which* movie."""
+        analyst = DiscAnalyst(config=_default_config())
+        titles = _make_titles([43, 43, 84])
+        tmdb = TmdbSignal(
+            content_type=ContentType.MOVIE,
+            confidence=0.70,
+            tmdb_id=340102,
+            tmdb_name="The New Mutants",
+        )
+        result = analyst.analyze(
+            titles,
+            volume_label="DH20NNT5",
+            tmdb_signal=tmdb,
+            disc_title="DH20NNT5#9FF3",
+        )
+        assert result.content_type == ContentType.MOVIE
+        assert result.needs_review is True
+        assert result.identity_unconfirmed is True

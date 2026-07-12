@@ -580,11 +580,10 @@ class DiscAnalyst:
                 classification_source="tmdb",
                 play_all_title_indices=tmdb_play_all,
             )
-            # Review escalation (Fix 3) is scoped to TV identity (the corroboration
-            # gap this addresses); movie discs keep their prior auto-accept behavior.
+            # Review escalation (Fix 3): an uncorroborated TMDB identity — TV or
+            # movie — escalates to review rather than auto-accepting.
             if (
-                tmdb_signal.content_type == ContentType.TV
-                and tmdb_signal.tmdb_name
+                tmdb_signal.tmdb_name
                 and effective_name
                 and not _names_are_similar(effective_name, tmdb_signal.tmdb_name)
             ):
@@ -730,14 +729,16 @@ class DiscAnalyst:
             return result
 
         # Use TMDB name if similar enough to the heuristic name (same guard as analyze()).
-        # Otherwise the identity is uncorroborated -> escalate to review (Fix 3), scoped
-        # to TV (movie discs keep their prior auto-accept behavior).
+        # Otherwise the identity is uncorroborated -> escalate to review (Fix 3). Applies
+        # to both TV and movie discs: agreement between the heuristic and TMDB on
+        # *content type* is not corroboration of *which* title TMDB picked (e.g. an AI
+        # guess from an opaque label landing on an unrelated low-popularity movie).
         if tmdb_signal.tmdb_name:
             if result.detected_name is None or _names_are_similar(
                 result.detected_name, tmdb_signal.tmdb_name
             ):
                 result.detected_name = tmdb_signal.tmdb_name
-            elif not result.needs_review and result.content_type == ContentType.TV:
+            elif not result.needs_review:
                 result.needs_review = True
                 result.review_reason = _uncorroborated_review_reason(
                     result.detected_name, tmdb_signal
