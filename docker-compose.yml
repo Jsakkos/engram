@@ -24,7 +24,11 @@ services:
     restart: unless-stopped
     # Plain `devices:` passthrough isn't always enough for full drive control
     # (eject/tray) and some hosts have gotten stuck unable to stop/restart the
-    # container without it (#459).
+    # container without it (#459). NOTE: this disables seccomp/AppArmor
+    # confinement and gives the container access to ALL host devices, not just
+    # the optical drive — a real trade-off if you're running other containers
+    # on the same host. Remove this line if a narrower `cap_add`/`devices`
+    # combination works for your setup.
     privileged: true
 
     ports:
