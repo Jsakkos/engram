@@ -6,6 +6,7 @@ import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
+import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { formatToolVersion } from '../utils/formatting';
 import './ConfigWizard.css';
@@ -1711,6 +1712,18 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 Create a webhook in your Discord server's channel settings under Integrations.
                             </span>
                         </div>
+
+                            </div>
+                        </details>
+
+                        {/* ── Display ──────────────────────────────────────────── */}
+                        <details className="wizard-group" open>
+                            <summary>
+                                <span className="wizard-group-chevron">▸</span>Display
+                            </summary>
+                            <div className="wizard-group-body">
+
+                        <BackgroundEffectsSetting />
 
                             </div>
                         </details>

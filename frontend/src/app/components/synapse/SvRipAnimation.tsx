@@ -109,8 +109,10 @@ function drawField(
 }
 
 /**
- * Ambient falling-code background. Render gated on a ripping job; wrap the
- * call site in `<AnimatePresence>` for the fade-out when ripping ends.
+ * Ambient falling-code background. Conditionally mounted by the call site
+ * (plain `{ripActive && ...}`, not AnimatePresence — see SvAtmosphere.tsx
+ * for why) while ripping is active. Fades in via `initial`/`animate`;
+ * unmounts instantly (no exit transition) when ripping ends.
  */
 export function SvRipAnimation() {
   const reducedMotion = usePrefersReducedMotion();
@@ -173,7 +175,6 @@ export function SvRipAnimation() {
       }}
       initial={{ opacity: 0 }}
       animate={{ opacity: LAYER_OPACITY }}
-      exit={{ opacity: 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
       <canvas ref={canvasRef} style={{ display: "block" }} />

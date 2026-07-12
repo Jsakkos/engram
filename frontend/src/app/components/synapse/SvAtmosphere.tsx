@@ -1,5 +1,4 @@
 import type { CSSProperties, ReactNode } from "react";
-import { AnimatePresence } from "motion/react";
 import { sv } from "./tokens";
 import { SvRipAnimation } from "./SvRipAnimation";
 
@@ -106,10 +105,15 @@ export function SvAtmosphere({
       </svg>
       <div style={vignette} />
       {/* Ambient falling-code layer — sits above the atmosphere gradients
-          (z-index 0) but below the content (z-index 1). */}
-      <AnimatePresence>
-        {ripActive && <SvRipAnimation key="rip" />}
-      </AnimatePresence>
+          (z-index 0) but below the content (z-index 1). Plain conditional
+          mount, not AnimatePresence: AnimatePresence's exit-then-remove
+          bookkeeping does not reliably fire for this single-child pattern in
+          real browsers (confirmed stuck at opacity:0, DOM node never
+          removed, RAF never resumable — invisible to jsdom tests since they
+          run under MotionConfig reducedMotion="always"). The fade-IN via
+          `initial`/`animate` still works without AnimatePresence; only the
+          fade-out is lost in exchange for reliable mount/unmount. */}
+      {ripActive && <SvRipAnimation />}
       <div style={content}>{children}</div>
     </div>
   );
