@@ -84,8 +84,10 @@ Pass each drive through with `devices:`. Find yours with `ls -l /dev/sr*`:
 ```
 
 The entrypoint detects the group that owns the device on the host and adds the
-runtime user to it, so ripping works without `--privileged`. If your host has
-unusual device permissions, you can fall back to `privileged: true`.
+runtime user to it, but the shipped compose file also sets `privileged: true`:
+plain `devices:` passthrough isn't always enough for full drive control
+(eject/tray), and some hosts have gotten stuck unable to stop/restart the
+container without it ([#459](https://github.com/Jsakkos/engram/issues/459)).
 
 ## MakeMKV licensing
 

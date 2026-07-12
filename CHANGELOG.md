@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docker deployments now run `privileged: true` by default.** Plain `devices:` passthrough wasn't always enough for full optical drive control (eject/tray), and some hosts got stuck unable to stop or restart the container without it. (#459, thanks @MadsTheEngineer!)
+
 ## [0.25.0] - 2026-07-12
 
 _Highlights: manual bulk import of downloaded .srt files for episodes with no automated subtitle match, plus a Background Animation toggle for low-power devices._
