@@ -6,6 +6,19 @@ from loguru import logger
 
 from app.matcher.srt_utils import SubtitleReader, clean_text
 
+_HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
+
+
+def _looks_like_srt(header: str) -> bool:
+    """True if a decoded text header passes SRT sniffing: no HTML markers, and
+    contains the SRT timestamp arrow ``-->``. Shared by the file-based and
+    in-memory content validators below.
+    """
+    header = header.lower()
+    if any(marker in header for marker in _HTML_MARKERS):
+        return False
+    return "-->" in header
+
 
 def is_valid_srt_file(file_path: Path) -> bool:
     """Validate that ``file_path`` is a real SRT subtitle file, not HTML
@@ -34,16 +47,14 @@ def is_valid_srt_file(file_path: Path) -> bool:
         # still well past the first timestamp).
         raw = file_path.read_bytes()[:1000]
         if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
-            header = raw.decode("utf-16", errors="ignore").lower()
+            header = raw.decode("utf-16", errors="ignore")
         else:
-            header = raw.decode("utf-8", errors="ignore").lower()
+            header = raw.decode("utf-8", errors="ignore")
 
-        if any(marker in header for marker in ["<!doctype", "<html", "<head", "<body", "<div"]):
-            logger.warning(f"Rejecting {file_path.name}: appears to be HTML, not SRT")
-            return False
-
-        if "-->" not in header:
-            logger.warning(f"Rejecting {file_path.name}: no SRT timestamp markers found")
+        if not _looks_like_srt(header):
+            logger.warning(
+                f"Rejecting {file_path.name}: not a valid SRT (HTML or no timestamp markers)"
+            )
             return False
 
         return True
@@ -51,6 +62,17 @@ def is_valid_srt_file(file_path: Path) -> bool:
     except Exception as e:
         logger.warning(f"Error validating {file_path}: {e}")
         return False
+
+
+def is_valid_srt_content(content: str) -> bool:
+    """Validate in-memory SRT text (e.g. a manually uploaded file read
+    client-side) using the same sniffing heuristics as ``is_valid_srt_file``,
+    without touching disk. Size is checked in UTF-8 bytes to match the
+    on-disk 50-byte threshold.
+    """
+    if len(content.encode("utf-8")) < 50:
+        return False
+    return _looks_like_srt(content[:1000])
 
 
 # Ordered season/episode patterns, tried in sequence. The first match wins.

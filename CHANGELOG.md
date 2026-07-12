@@ -4,6 +4,9 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Background Animation toggle.** A new Settings → Preferences → Display checkbox disables the falling-code rip animation, a full-viewport canvas redrawn at 20fps that's a meaningful CPU/GPU cost on low-power devices (reported case: ARM64). Stored per-browser (not synced across devices viewing the same backend), defaults on, and seeds from the OS's reduced-motion setting when no explicit choice has been made. (#502)
 ### Fixed
 
 - **An unconfirmed movie identity no longer auto-accepts.** When a disc's title couldn't be confirmed by DiscDB/TMDB from its label, an AI-guessed title was sometimes matched to an unrelated, low-popularity movie — and because that guess "agreed" with the movie heuristic, the mismatch was silently accepted and ripped straight through, misfiling real content as movie extras with no way to correct it afterward (#499). The disc-identity corroboration check that already gated this for TV shows now applies to movies too: an uncorroborated TMDB/AI identity pauses for confirmation via the existing re-identify prompt instead of completing unreviewed.

@@ -9,6 +9,7 @@ import { useDiscFilters } from "./hooks/useDiscFilters";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useNotifications } from "./hooks/useNotifications";
 import { useUpdateSuccessToast } from "./hooks/useUpdateSuccessToast";
+import { useBackgroundEffectsEnabled } from "./hooks/useBackgroundEffectsEnabled";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
 import NamePromptModal from "../components/NamePromptModal";
@@ -257,6 +258,7 @@ function MainDashboard() {
   // the 320px rail crushes the card column, so it folds away entirely.
   const railFits = useMediaQuery("(min-width: 1100px)");
   const showSideRail = filteredDiscs.length > 0 && viewMode === "expanded" && railFits;
+  const [backgroundEffectsEnabled] = useBackgroundEffectsEnabled();
 
   const reviewJobs = jobs.filter((j) => j.state === 'review_needed');
   const navItems = buildNavItems({
@@ -283,7 +285,7 @@ function MainDashboard() {
   };
 
   return (
-    <SvAtmosphere ripActive={discsData.some((d) => d.state === "ripping")}>
+    <SvAtmosphere ripActive={backgroundEffectsEnabled && discsData.some((d) => d.state === "ripping")}>
       {/* Full-screen overlay when WS has been down past the grace period.
           Stays on top of all chrome (z-index 100 inside Splash). */}
       {showOfflineSplash && (

@@ -34,6 +34,13 @@ from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
 from app.matcher.episode_identification import reference_coverage
+from app.matcher.manual_subtitle_import import (
+    MAX_FILES_PER_BATCH,
+    CommitInputFile,
+    PreviewInputFile,
+    classify_files,
+    commit_files,
+)
 from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
@@ -855,6 +862,148 @@ async def get_season_roster(
         ordering_diverges=ordering_data["diverges"],
         current_ordering=ordering_data["current"],
         ordering_options=[OrderingOption(**o) for o in ordering_data["options"]],
+    )
+
+
+class ManualSubtitleFileIn(BaseModel):
+    """One file in a manual-subtitle preview request, as read client-side."""
+
+    filename: str
+    content: str
+
+
+class ManualSubtitlePreviewRequest(BaseModel):
+    files: list[ManualSubtitleFileIn]
+
+
+class ManualSubtitlePreviewResult(BaseModel):
+    filename: str
+    season: int | None = None
+    episode: int | None = None
+    status: Literal["ready", "already_covered", "unparseable", "invalid_content", "duplicate"]
+    warning: str | None = None
+
+
+class ManualSubtitlePreviewResponse(BaseModel):
+    results: list[ManualSubtitlePreviewResult]
+
+
+class ManualSubtitleCommitFileIn(BaseModel):
+    filename: str
+    season: int
+    episode: int
+    content: str
+
+
+class ManualSubtitleCommitRequest(BaseModel):
+    files: list[ManualSubtitleCommitFileIn]
+
+
+class ManualSubtitleCommitOutcome(BaseModel):
+    filename: str
+    season: int
+    episode: int
+    status: Literal["imported", "skipped", "error"]
+    reason: str | None = None
+
+
+class ManualSubtitleCommitResponse(BaseModel):
+    outcomes: list[ManualSubtitleCommitOutcome]
+
+
+def _require_identified_tv_job(job: DiscJob) -> None:
+    if job.content_type != ContentType.TV or not job.tmdb_id or not job.detected_title:
+        raise HTTPException(
+            status_code=400, detail="Job must be an identified TV show to import manual subtitles"
+        )
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot import manual subtitles in state: {job.state.value}",
+        )
+
+
+@router.post("/jobs/{job_id}/subtitles/preview", response_model=ManualSubtitlePreviewResponse)
+async def preview_manual_subtitles(
+    request: ManualSubtitlePreviewRequest,
+    job: DiscJob = Depends(get_job_or_404),
+) -> ManualSubtitlePreviewResponse:
+    """Classify a batch of user-supplied .srt files before import.
+
+    Read-only — does not write anything. See ``classify_files`` for the
+    per-file status logic (ready / already_covered / unparseable /
+    invalid_content / duplicate).
+    """
+    _require_identified_tv_job(job)
+    if len(request.files) > MAX_FILES_PER_BATCH:
+        raise HTTPException(status_code=400, detail=f"Too many files (max {MAX_FILES_PER_BATCH})")
+
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    cache_dir = Path(config.subtitles_cache_path).expanduser()
+
+    results = await asyncio.to_thread(
+        classify_files,
+        cache_dir,
+        job.tmdb_id,
+        job.detected_title,
+        [PreviewInputFile(filename=f.filename, content=f.content) for f in request.files],
+    )
+    return ManualSubtitlePreviewResponse(
+        results=[
+            ManualSubtitlePreviewResult(
+                filename=r.filename,
+                season=r.season,
+                episode=r.episode,
+                status=r.status,
+                warning=r.warning,
+            )
+            for r in results
+        ]
+    )
+
+
+@router.post("/jobs/{job_id}/subtitles/commit", response_model=ManualSubtitleCommitResponse)
+async def commit_manual_subtitles(
+    request: ManualSubtitleCommitRequest,
+    job: DiscJob = Depends(get_job_or_404),
+) -> ManualSubtitleCommitResponse:
+    """Write the user-confirmed subset of previewed files into the subtitle
+    cache. Re-validates independently of the preview step (see ``commit_files``).
+    """
+    _require_identified_tv_job(job)
+    if len(request.files) > MAX_FILES_PER_BATCH:
+        raise HTTPException(status_code=400, detail=f"Too many files (max {MAX_FILES_PER_BATCH})")
+
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    cache_dir = Path(config.subtitles_cache_path).expanduser()
+
+    outcomes = await asyncio.to_thread(
+        commit_files,
+        cache_dir,
+        job.tmdb_id,
+        job.detected_title,
+        [
+            CommitInputFile(
+                filename=f.filename, season=f.season, episode=f.episode, content=f.content
+            )
+            for f in request.files
+        ],
+    )
+    return ManualSubtitleCommitResponse(
+        outcomes=[
+            ManualSubtitleCommitOutcome(
+                filename=o.filename,
+                season=o.season,
+                episode=o.episode,
+                status=o.status,
+                reason=o.reason,
+            )
+            for o in outcomes
+        ]
     )
 
 

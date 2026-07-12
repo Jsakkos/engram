@@ -76,6 +76,8 @@ function renderApp() {
 }
 
 beforeEach(() => {
+    localStorage.clear();
+
     // jsdom has no matchMedia; SvRipAnimation (rendered for a ripping job)
     // reads prefers-reduced-motion through it. Shim it as "no preference".
     vi.stubGlobal(
@@ -403,5 +405,23 @@ describe('App — B7 content-change re-arm', () => {
             expect(newDialog).not.toBe(afterClearDialog);
         }
         expect(screen.getByText(/re-identify disc/i)).toBeInTheDocument();
+    });
+});
+
+describe('App — background effects preference', () => {
+    it('renders the rip animation while ripping when the preference is on (default)', async () => {
+        mockJobs([makeJob({ id: 1, state: 'ripping', volume_label: 'INCEPTION_2010', content_type: 'movie' })]);
+        renderApp();
+
+        expect(await screen.findByTestId('sv-rip-animation')).toBeInTheDocument();
+    });
+
+    it('does not render the rip animation while ripping when the preference is off', async () => {
+        localStorage.setItem('engram:backgroundEffectsEnabled', 'false');
+        mockJobs([makeJob({ id: 1, state: 'ripping', volume_label: 'INCEPTION_2010', content_type: 'movie' })]);
+        renderApp();
+
+        await screen.findByTestId('sv-atmosphere');
+        expect(screen.queryByTestId('sv-rip-animation')).not.toBeInTheDocument();
     });
 });
