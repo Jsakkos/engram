@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Import folder browser now scrolls.** Browsing a directory with more subfolders than fit on screen previously grew the modal past the edges of the window, stranding you in the middle of the list with no way to scroll, no visible way to go up a level, and no way to reach the start button. The folder list is now a scrolling pane inside a window-sized modal, so the header, the up-a-level row, and the start button stay put. You can also type or paste an exact folder path instead of clicking through hundreds of folders, and going up a level scrolls the folder you came from back into view.
+
 ## [0.24.0] - 2026-07-04
 
 _Highlights: manual track skipping for queued/not-yet-ripped tracks, plus field-validated Jetson GPU setup fixes._
