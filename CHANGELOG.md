@@ -4,13 +4,23 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-07-12
+
+_Highlights: manual bulk import of downloaded .srt files for episodes with no automated subtitle match, plus a Background Animation toggle for low-power devices._
+
 ### Added
 
+- **Manual subtitle bulk import.** For episodes where none of Engram's 3 automated subtitle sources (OpenSubtitles, Addic7ed, TVsubtitles) found a reference, you can now upload a folder of manually downloaded `.srt` files directly from the review page's "no reference subtitle" warning banner. Files are previewed (season/episode parsed from filename, duplicates and encoding issues flagged) before a separate commit step validates and writes them into the existing subtitle cache, so no changes to the matching engine were needed. (#501)
 - **Background Animation toggle.** A new Settings → Preferences → Display checkbox disables the falling-code rip animation, a full-viewport canvas redrawn at 20fps that's a meaningful CPU/GPU cost on low-power devices (reported case: ARM64). Stored per-browser (not synced across devices viewing the same backend), defaults on, and seeds from the OS's reduced-motion setting when no explicit choice has been made. (#502)
+
 ### Fixed
 
-- **An unconfirmed movie identity no longer auto-accepts.** When a disc's title couldn't be confirmed by DiscDB/TMDB from its label, an AI-guessed title was sometimes matched to an unrelated, low-popularity movie — and because that guess "agreed" with the movie heuristic, the mismatch was silently accepted and ripped straight through, misfiling real content as movie extras with no way to correct it afterward (#499). The disc-identity corroboration check that already gated this for TV shows now applies to movies too: an uncorroborated TMDB/AI identity pauses for confirmation via the existing re-identify prompt instead of completing unreviewed.
-- **The Import folder browser now scrolls.** Browsing a directory with more subfolders than fit on screen previously grew the modal past the edges of the window, stranding you in the middle of the list with no way to scroll, no visible way to go up a level, and no way to reach the start button. The folder list is now a scrolling pane inside a window-sized modal, so the header, the up-a-level row, and the start button stay put. You can also type or paste an exact folder path instead of clicking through hundreds of folders, and going up a level scrolls the folder you came from back into view.
+- **An unconfirmed movie identity no longer auto-accepts.** When a disc's title couldn't be confirmed by DiscDB/TMDB from its label, an AI-guessed title was sometimes matched to an unrelated, low-popularity movie — and because that guess "agreed" with the movie heuristic, the mismatch was silently accepted and ripped straight through, misfiling real content as movie extras with no way to correct it afterward (#499). The disc-identity corroboration check that already gated this for TV shows now applies to movies too: an uncorroborated TMDB/AI identity pauses for confirmation via the existing re-identify prompt instead of completing unreviewed. (#503)
+- **The Import folder browser now scrolls.** Browsing a directory with more subfolders than fit on screen previously grew the modal past the edges of the window, stranding you in the middle of the list with no way to scroll, no visible way to go up a level, and no way to reach the start button. The folder list is now a scrolling pane inside a window-sized modal, so the header, the up-a-level row, and the start button stay put. You can also type or paste an exact folder path instead of clicking through hundreds of folders, and going up a level scrolls the folder you came from back into view. (#500)
+
+### Changed
+
+- **Dependency updates** — tailwindcss 4.3.1→4.3.2 (#497), httpx >=0.26.0→>=0.28.1 (#498), faster-whisper >=1.0.0→>=1.2.1 (#492), eslint 10.4.0→10.6.0 (#493), @radix-ui/react-tooltip 1.1.8→1.2.12 (#496), @radix-ui/react-collapsible 1.1.14→1.1.16 (#495), @radix-ui/react-label 2.1.10→2.1.11 (#494), postcss 8.5.15→8.5.16 (#491), @vitejs/plugin-react 6.0.2→6.0.3 (#489), autoprefixer 10.5.0→10.5.2 (#490).
 
 ## [0.24.0] - 2026-07-04
 
