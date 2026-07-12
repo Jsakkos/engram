@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Background Animation toggle.** A new Settings → Preferences → Display checkbox disables the falling-code rip animation, a full-viewport canvas redrawn at 20fps that's a meaningful CPU/GPU cost on low-power devices (reported case: ARM64). Stored per-browser (not synced across devices viewing the same backend), defaults on, and seeds from the OS's reduced-motion setting when no explicit choice has been made. (#502)
+
 ## [0.24.0] - 2026-07-04
 
 _Highlights: manual track skipping for queued/not-yet-ripped tracks, plus field-validated Jetson GPU setup fixes._
