@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { toast } from 'sonner';
 import ConfigWizard from './ConfigWizard';
 
 /**
@@ -250,5 +251,76 @@ describe('ConfigWizard — background effects preference', () => {
         expect(toggle).not.toBeChecked();
         expect(localStorage.getItem('engram:backgroundEffectsEnabled')).toBe('false');
         expect((fetch as unknown as Mock).mock.calls.length).toBe(callsBeforeToggle);
+    });
+});
+
+describe('ConfigWizard — Discord notification templates', () => {
+    it('reads the saved templates from GET and sends edits on PUT', async () => {
+        mockApi({
+            discord_template_completed: '{{title}} is done',
+            discord_template_failed: '{{title}} failed: {{error}}',
+        });
+        const onComplete = vi.fn();
+        render(<ConfigWizard {...noop} onComplete={onComplete} isOnboarding={false} initialSection="preferences" />);
+
+        const completedField = await screen.findByLabelText(/completed message/i);
+        expect(completedField).toHaveValue('{{title}} is done');
+        const failedField = screen.getByLabelText(/failed message/i);
+        expect(failedField).toHaveValue('{{title}} failed: {{error}}');
+
+        fireEvent.change(completedField, { target: { value: '{{title}} - {{duration}}' } });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+        await waitFor(() => expect(onComplete).toHaveBeenCalled());
+        const putCall = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.find(
+            (c) => c[1]?.method === 'PUT',
+        );
+        const body = JSON.parse(putCall?.[1]?.body as string);
+        expect(body.discord_template_completed).toBe('{{title}} - {{duration}}');
+        expect(body.discord_template_failed).toBe('{{title}} failed: {{error}}');
+    });
+
+    it('surfaces a 422 validation error from the server as a toast', async () => {
+        mockApi();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+                const url = typeof input === 'string' ? input : input.toString();
+                if (init?.method === 'PUT') {
+                    return Promise.resolve({
+                        ok: false,
+                        status: 422,
+                        json: async () => ({ detail: 'discord_template_completed: Unknown template variable(s): bogus' }),
+                        text: async () => JSON.stringify({ detail: 'discord_template_completed: Unknown template variable(s): bogus' }),
+                    });
+                }
+                const config = { setup_complete: true, staging_path: '/staging', library_movies_path: '/movies', library_tv_path: '/tv' };
+                if (url.includes('/api/asr-status')) return Promise.resolve({ ok: true, status: 200, json: async () => ASR_STATUS, text: async () => '' });
+                if (url.includes('/api/detect-tools'))
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: async () => ({
+                            makemkv: { found: false, path: null, version: null, error: null },
+                            ffmpeg: { found: false, path: null, version: null, error: null },
+                            platform: 'win32',
+                        }),
+                        text: async () => '',
+                    });
+                if (url.includes('/api/network/info'))
+                    return Promise.resolve({ ok: true, status: 200, json: async () => ({ lan_access_enabled: false, active_lan_bound: false, lan_ip: null, port: 8000, lan_url: null }), text: async () => '' });
+                return Promise.resolve({ ok: true, status: 200, json: async () => config, text: async () => JSON.stringify(config) });
+            }),
+        );
+
+        const toastErrorSpy = vi.spyOn(toast, 'error');
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+        const completedField = await screen.findByLabelText(/completed message/i);
+        fireEvent.change(completedField, { target: { value: '{{bogus}}' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+        await waitFor(() =>
+            expect(toastErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown template variable')),
+        );
     });
 });

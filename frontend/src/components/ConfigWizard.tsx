@@ -147,6 +147,8 @@ interface ConfigData {
     opensubtitlesPassword: string;
     allowLanAccess: boolean;
     discordWebhookUrl: string;
+    discordTemplateCompleted: string;
+    discordTemplateFailed: string;
 }
 
 interface NetworkInfo {
@@ -225,6 +227,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         opensubtitlesPassword: '',
         allowLanAccess: false,
         discordWebhookUrl: '',
+        discordTemplateCompleted: '',
+        discordTemplateFailed: '',
     });
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -337,6 +341,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
                     allowLanAccess: data.allow_lan_access ?? false,
                     discordWebhookUrl: data.discord_webhook_url === '***' ? '' : (data.discord_webhook_url || ''),
+                    discordTemplateCompleted: data.discord_template_completed || '',
+                    discordTemplateFailed: data.discord_template_failed || '',
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -493,6 +499,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
                     allow_lan_access: config.allowLanAccess,
                     ...optional('discord_webhook_url', config.discordWebhookUrl),
+                    discord_template_completed: config.discordTemplateCompleted,
+                    discord_template_failed: config.discordTemplateFailed,
                     setup_complete: true,
                 }),
             });
@@ -1710,6 +1718,36 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             <span className="form-hint">
                                 When a disc finishes (completed or failed), Engram posts a message to this channel.
                                 Create a webhook in your Discord server's channel settings under Integrations.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="discordTemplateCompleted">Completed Message</label>
+                            <textarea
+                                id="discordTemplateCompleted"
+                                value={config.discordTemplateCompleted}
+                                onChange={(e) => handleInputChange('discordTemplateCompleted', e.target.value)}
+                                placeholder="**{{title}}**"
+                                rows={2}
+                            />
+                            <span className="form-hint">
+                                Available variables: {'{{'}title{'}}'}, {'{{'}drive{'}}'}, {'{{'}content_type{'}}'}, {'{{'}season{'}}'},{' '}
+                                {'{{'}tmdb_name{'}}'}, {'{{'}tmdb_year{'}}'}, {'{{'}duration{'}}'}, {'{{'}subtitle_status{'}}'},{' '}
+                                {'{{'}path{'}}'}, {'{{'}total_titles{'}}'}. Leave blank to use the default.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="discordTemplateFailed">Failed Message</label>
+                            <textarea
+                                id="discordTemplateFailed"
+                                value={config.discordTemplateFailed}
+                                onChange={(e) => handleInputChange('discordTemplateFailed', e.target.value)}
+                                placeholder="**{{title}}**"
+                                rows={2}
+                            />
+                            <span className="form-hint">
+                                Same variables as above, plus {'{{'}error{'}}'} for the failure reason. Leave blank to use the default.
                             </span>
                         </div>
 

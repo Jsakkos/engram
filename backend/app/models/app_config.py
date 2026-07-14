@@ -195,6 +195,10 @@ class AppConfig(SQLModel, table=True):
 
     # Notifications
     discord_webhook_url: str = ""  # Discord webhook URL for job completion alerts
+    # Discord embed description templates (chevron/mustache {{var}} syntax).
+    # "" means use the built-in default (see app.core.discord_notifier).
+    discord_template_completed: str = ""
+    discord_template_failed: str = ""
 
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard

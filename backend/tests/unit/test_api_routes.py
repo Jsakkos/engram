@@ -288,6 +288,32 @@ class TestConfigEndpoints:
         assert config["makemkv_key"] == "***"
         assert config["tmdb_api_key"] == "***"
 
+    async def test_update_config_rejects_unknown_discord_template_variable(self, client):
+        await _seed_config()
+        response = await client.put("/api/config", json={"discord_template_completed": "{{bogus}}"})
+        assert response.status_code == 422
+        assert "bogus" in response.json()["detail"]
+
+    async def test_update_config_accepts_valid_discord_template(self, client):
+        await _seed_config()
+        response = await client.put(
+            "/api/config", json={"discord_template_completed": "{{title}} is done"}
+        )
+        assert response.status_code == 200
+
+        verify = await client.get("/api/config")
+        config = verify.json()
+        assert config["discord_template_completed"] == "{{title}} is done"
+
+    async def test_update_config_accepts_blank_discord_template(self, client):
+        await _seed_config(discord_template_completed="{{title}} is done")
+        response = await client.put("/api/config", json={"discord_template_completed": ""})
+        assert response.status_code == 200
+
+        verify = await client.get("/api/config")
+        config = verify.json()
+        assert config["discord_template_completed"] == ""
+
     async def test_ai_api_key_persists_and_blank_does_not_clobber(self, client):
         """Reproduces the user's report end-to-end through the real routes:
 

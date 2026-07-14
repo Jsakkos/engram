@@ -317,7 +317,9 @@
 
 .form-group input[type="text"],
 .form-group input[type="password"],
-.form-group input[type="number"] {
+.form-group input[type="number"],
+.form-group input[type="url"],
+.form-group textarea {
     width: 100%;
     padding: 0.65rem 0.75rem;
     background: rgba(94, 234, 212, 0.04);
@@ -328,14 +330,20 @@
     transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
-.form-group input:focus {
+.form-group textarea {
+    resize: vertical;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
     outline: none;
     border-color: var(--color-sv-cyan);
     box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
     background: rgba(94, 234, 212, 0.08);
 }
 
-.form-group input::placeholder {
+.form-group input::placeholder,
+.form-group textarea::placeholder {
     color: var(--color-sv-ink-ghost);
 }
 
