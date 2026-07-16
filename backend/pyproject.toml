@@ -31,7 +31,7 @@ dependencies = [
     "loguru>=0.7.0",
     "httpx>=0.28.1",
     "rich>=13.7.0",
-    "librosa>=0.10.1",
+    "librosa>=0.11.0",
     "soundfile>=0.12.1",
     "zstandard>=0.25.0",
 ]
