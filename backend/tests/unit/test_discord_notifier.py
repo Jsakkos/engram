@@ -9,7 +9,6 @@ import pytest
 from app.core.discord_notifier import (
     build_template_context,
     notify_discord,
-    render_discord_template,
     validate_discord_template,
 )
 from app.models.disc_job import ContentType, DiscJob
@@ -121,6 +120,9 @@ def test_validate_discord_template_rejects_unknown_variable():
 
 
 def test_validate_discord_template_rejects_malformed_syntax():
+    """Malformed mustache syntax is rejected; the exact wording is chevron's own
+    (we pass its exception through verbatim), so we only assert rejection, not
+    the message text — pinning that would test chevron, not our code."""
     error = validate_discord_template("{{title")
     assert error is not None
 
@@ -144,8 +146,7 @@ def test_build_template_context_default_template_matches_current_output():
         volume_label="BREAKING_BAD_S1D1",
     )
     context = build_template_context(job, job_id=1)
-    rendered = render_discord_template("**{{title}}**", context)
-    assert rendered == "**Breaking Bad**"
+    assert context["title"] == "Breaking Bad"
 
 
 def test_build_template_context_error_populated_on_failed_job():
@@ -156,8 +157,7 @@ def test_build_template_context_error_populated_on_failed_job():
         error_message="disc unreadable",
     )
     context = build_template_context(job, job_id=2)
-    rendered = render_discord_template("{{error}}", context)
-    assert rendered == "disc unreadable"
+    assert context["error"] == "disc unreadable"
 
 
 def test_build_template_context_error_empty_on_completed_job():
@@ -168,8 +168,7 @@ def test_build_template_context_error_empty_on_completed_job():
         volume_label="INCEPTION_2010",
     )
     context = build_template_context(job, job_id=3)
-    rendered = render_discord_template("[{{error}}]", context)
-    assert rendered == "[]"
+    assert context["error"] == ""
 
 
 def test_build_template_context_duration_formatted_when_both_timestamps_set():
@@ -200,8 +199,7 @@ def test_build_template_context_duration_empty_when_not_completed():
 def test_build_template_context_falls_back_when_job_is_none():
     """Job vanished before re-fetch — context still yields a usable title, no crash."""
     context = build_template_context(None, job_id=42)
-    rendered = render_discord_template("{{title}}", context)
-    assert rendered == "Job #42"
+    assert context["title"] == "Job #42"
 
 
 # --------------------------------------------------------------------------- #
