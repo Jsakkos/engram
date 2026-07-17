@@ -33,7 +33,7 @@ from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
-from app.models import DiscJob, JobState
+from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
@@ -1006,7 +1006,7 @@ class JobManager:
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
-            if job and job.state not in (JobState.COMPLETED, JobState.FAILED):
+            if job and job.state not in TERMINAL_JOB_STATES:
                 await state_machine.transition_to_failed(
                     job, session, error_message="Cancelled by user"
                 )
@@ -1088,7 +1088,7 @@ class JobManager:
             if not config.discord_webhook_url:
                 return
 
-            if state not in (JobState.COMPLETED, JobState.FAILED):
+            if state not in TERMINAL_JOB_STATES:
                 logger.warning(
                     f"Job {job_id}: Discord notification requested for non-terminal state {state}"
                 )

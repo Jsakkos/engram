@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import DiscJob, JobState
+from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.services.event_broadcaster import EventBroadcaster
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class JobStateMachine:
 
         # Set completed_at timestamp for terminal states
         prompt_cleared = False
-        if to_state in (JobState.COMPLETED, JobState.FAILED):
+        if to_state in TERMINAL_JOB_STATES:
             job.completed_at = datetime.now(UTC)
             # Walk-away Phase B: a terminal job can't act on an identity answer
             # — retire the non-blocking CTA in the same commit (the model's
@@ -182,7 +182,7 @@ class JobStateMachine:
                 )
 
         # Fire terminal-state callbacks (COMPLETED or FAILED)
-        if to_state in (JobState.COMPLETED, JobState.FAILED):
+        if to_state in TERMINAL_JOB_STATES:
             for cb in self._on_terminal_callbacks:
                 try:
                     await cb(job.id, to_state)
