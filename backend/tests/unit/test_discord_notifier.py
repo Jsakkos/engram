@@ -225,6 +225,20 @@ async def test_send_notification_noop_when_no_webhook():
 
 
 @pytest.mark.asyncio
+async def test_send_notification_noop_for_non_terminal_state():
+    """Called with a non-terminal state (defensive guard) → notify_discord never called."""
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(99, JobState.RIPPING)
+        mock_notify.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_send_notification_fires_on_completed():
     """COMPLETED with webhook URL → notify_discord called with job label."""
     from app.database import async_session

@@ -1088,6 +1088,12 @@ class JobManager:
             if not config.discord_webhook_url:
                 return
 
+            if state not in (JobState.COMPLETED, JobState.FAILED):
+                logger.warning(
+                    f"Job {job_id}: Discord notification requested for non-terminal state {state}"
+                )
+                return
+
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
 
