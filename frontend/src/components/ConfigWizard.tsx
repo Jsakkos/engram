@@ -8,6 +8,7 @@ import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
+import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
 import { formatToolVersion } from '../utils/formatting';
 import './ConfigWizard.css';
 
@@ -232,6 +233,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     });
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string}>({completed: '', failed: ''});
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
@@ -352,6 +354,23 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         };
         loadConfig();
     }, []);
+
+    // Live Discord template validation, debounced. The real enforcement is
+    // server-side (PUT /api/config re-validates before persisting) — this is
+    // UX only, so a network hiccup ('error' status) doesn't block Save.
+    useEffect(() => {
+        const timer = window.setTimeout(async () => {
+            const [completedResult, failedResult] = await Promise.all([
+                requestDiscordTemplateValidation(config.discordTemplateCompleted),
+                requestDiscordTemplateValidation(config.discordTemplateFailed),
+            ]);
+            setDiscordTemplateErrors({
+                completed: completedResult.status === 'invalid' ? completedResult.error : '',
+                failed: failedResult.status === 'invalid' ? failedResult.error : '',
+            });
+        }, 400);
+        return () => window.clearTimeout(timer);
+    }, [config.discordTemplateCompleted, config.discordTemplateFailed]);
 
     // Detect tools when entering step 2
     useEffect(() => {
@@ -1730,6 +1749,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 placeholder="**{{title}}**"
                                 rows={2}
                             />
+                            {discordTemplateErrors.completed && (
+                                <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {discordTemplateErrors.completed}</span>
+                            )}
                             <span className="form-hint">
                                 Available variables: {'{{'}title{'}}'}, {'{{'}drive{'}}'}, {'{{'}content_type{'}}'}, {'{{'}season{'}}'},{' '}
                                 {'{{'}tmdb_name{'}}'}, {'{{'}tmdb_year{'}}'}, {'{{'}duration{'}}'}, {'{{'}subtitle_status{'}}'},{' '}
@@ -1746,6 +1768,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 placeholder="**{{title}}**"
                                 rows={2}
                             />
+                            {discordTemplateErrors.failed && (
+                                <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {discordTemplateErrors.failed}</span>
+                            )}
                             <span className="form-hint">
                                 Same variables as above, plus {'{{'}error{'}}'} for the failure reason. Leave blank to use the default.
                             </span>
@@ -1872,7 +1897,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleNext}
-                            disabled={isSaving}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed}
                         >
                             {step === totalSteps ? (isSaving ? 'Saving...' : 'Complete Setup') : 'Next →'}
                         </button>
@@ -1880,7 +1905,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleSave}
-                            disabled={isSaving}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed}
                         >
                             {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>

@@ -78,6 +78,7 @@ function mockApi(configOverrides: Record<string, unknown> = {}) {
                     };
                 if (url.includes('/api/network/info'))
                     return { lan_access_enabled: false, active_lan_bound: false, lan_ip: null, port: 8000, lan_url: null };
+                if (url.includes('/api/validate/discord-template')) return { valid: true };
                 return config;
             };
             return Promise.resolve({ ok: true, status: 200, json, text: async () => JSON.stringify(config) });
@@ -322,5 +323,86 @@ describe('ConfigWizard — Discord notification templates', () => {
         await waitFor(() =>
             expect(toastErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown template variable')),
         );
+    });
+
+    it('shows a live validation error and disables Save Changes while a template is invalid', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+                const url = typeof input === 'string' ? input : input.toString();
+                const config = { setup_complete: true, staging_path: '/staging', library_movies_path: '/movies', library_tv_path: '/tv' };
+                const json = async () => {
+                    if (url.includes('/api/asr-status')) return ASR_STATUS;
+                    if (url.includes('/api/detect-tools'))
+                        return {
+                            makemkv: { found: false, path: null, version: null, error: null },
+                            ffmpeg: { found: false, path: null, version: null, error: null },
+                            platform: 'win32',
+                        };
+                    if (url.includes('/api/network/info'))
+                        return { lan_access_enabled: false, active_lan_bound: false, lan_ip: null, port: 8000, lan_url: null };
+                    if (url.includes('/api/validate/discord-template')) {
+                        const { template } = JSON.parse((init?.body as string) || '{}');
+                        return template === '{{bogus}}'
+                            ? { valid: false, error: 'Unknown template variable(s): bogus' }
+                            : { valid: true };
+                    }
+                    return config;
+                };
+                return Promise.resolve({ ok: true, status: 200, json, text: async () => JSON.stringify(config) });
+            }),
+        );
+
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+        const completedField = await screen.findByLabelText(/completed message/i);
+        const saveButton = screen.getByRole('button', { name: 'Save Changes' });
+        expect(saveButton).toBeEnabled();
+
+        fireEvent.change(completedField, { target: { value: '{{bogus}}' } });
+
+        expect(await screen.findByText(/unknown template variable/i)).toBeInTheDocument();
+        await waitFor(() => expect(saveButton).toBeDisabled());
+    });
+
+    it('clears the validation error and re-enables Save Changes once the template becomes valid', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+                const url = typeof input === 'string' ? input : input.toString();
+                const config = { setup_complete: true, staging_path: '/staging', library_movies_path: '/movies', library_tv_path: '/tv' };
+                const json = async () => {
+                    if (url.includes('/api/asr-status')) return ASR_STATUS;
+                    if (url.includes('/api/detect-tools'))
+                        return {
+                            makemkv: { found: false, path: null, version: null, error: null },
+                            ffmpeg: { found: false, path: null, version: null, error: null },
+                            platform: 'win32',
+                        };
+                    if (url.includes('/api/network/info'))
+                        return { lan_access_enabled: false, active_lan_bound: false, lan_ip: null, port: 8000, lan_url: null };
+                    if (url.includes('/api/validate/discord-template')) {
+                        const { template } = JSON.parse((init?.body as string) || '{}');
+                        return template === '{{bogus}}'
+                            ? { valid: false, error: 'Unknown template variable(s): bogus' }
+                            : { valid: true };
+                    }
+                    return config;
+                };
+                return Promise.resolve({ ok: true, status: 200, json, text: async () => JSON.stringify(config) });
+            }),
+        );
+
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+        const completedField = await screen.findByLabelText(/completed message/i);
+        const saveButton = screen.getByRole('button', { name: 'Save Changes' });
+
+        fireEvent.change(completedField, { target: { value: '{{bogus}}' } });
+        expect(await screen.findByText(/unknown template variable/i)).toBeInTheDocument();
+        await waitFor(() => expect(saveButton).toBeDisabled());
+
+        fireEvent.change(completedField, { target: { value: '{{title}}' } });
+
+        await waitFor(() => expect(screen.queryByText(/unknown template variable/i)).not.toBeInTheDocument());
+        await waitFor(() => expect(saveButton).toBeEnabled());
     });
 });

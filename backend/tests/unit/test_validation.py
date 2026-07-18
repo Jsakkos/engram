@@ -1210,3 +1210,58 @@ class TestTmdbValidationRemainingBranches:
         result = _run(validate_tmdb(TmdbValidationRequest(api_key="k")))
         assert result.valid is False
         assert "Validation failed" in result.error
+
+
+class TestValidateDiscordTemplateEndpoint:
+    """POST /validate/discord-template — live per-keystroke validation for ConfigWizard."""
+
+    def test_valid_template(self):
+        from app.api.validation import (
+            DiscordTemplateValidationRequest,
+            validate_discord_template_endpoint,
+        )
+
+        result = _run(
+            validate_discord_template_endpoint(
+                DiscordTemplateValidationRequest(template="{{title}} - {{duration}}")
+            )
+        )
+        assert result.valid is True
+        assert result.error is None
+
+    def test_empty_template_is_valid(self):
+        from app.api.validation import (
+            DiscordTemplateValidationRequest,
+            validate_discord_template_endpoint,
+        )
+
+        result = _run(
+            validate_discord_template_endpoint(DiscordTemplateValidationRequest(template=""))
+        )
+        assert result.valid is True
+
+    def test_unknown_variable(self):
+        from app.api.validation import (
+            DiscordTemplateValidationRequest,
+            validate_discord_template_endpoint,
+        )
+
+        result = _run(
+            validate_discord_template_endpoint(
+                DiscordTemplateValidationRequest(template="{{bogus}}")
+            )
+        )
+        assert result.valid is False
+        assert "bogus" in result.error
+
+    def test_malformed_syntax(self):
+        from app.api.validation import (
+            DiscordTemplateValidationRequest,
+            validate_discord_template_endpoint,
+        )
+
+        result = _run(
+            validate_discord_template_endpoint(DiscordTemplateValidationRequest(template="{{title"))
+        )
+        assert result.valid is False
+        assert result.error is not None
