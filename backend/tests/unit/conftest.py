@@ -183,6 +183,13 @@ async def isolate_database(monkeypatch):
     # title. Clear it so each test starts with an empty skip-set.
     _jm_inst._extractor._skipped_indices.clear()
 
+    # Same hazard again for the cancellation-intent map (#506): reconcile_and_advance
+    # records a job id there before cancelling its rip task, and the entry is normally
+    # consumed by that task's CancelledError handler. A test whose loop closed first
+    # can strand one, and job ids restart at 1 with each fresh in-memory DB — a stale
+    # entry would make an unrelated test's genuine user cancel look watchdog-initiated.
+    _jm_inst._cancel_reasons.clear()
+
     yield
 
     async with _unit_engine.begin() as conn:
