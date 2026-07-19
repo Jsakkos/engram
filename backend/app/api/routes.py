@@ -3126,7 +3126,7 @@ def _build_markdown_summary(
         parts.append("")
     if recent_errors:
         parts += ["### Recent Errors"]
-        if job_summary and recent_errors_is_fallback:
+        if recent_errors_is_fallback:
             parts += [
                 "_Note: this job has no tagged log lines (predates job-tagged "
                 "logging or none were emitted) — showing the most recent global "

@@ -171,6 +171,30 @@ class TestBugReport:
         assert data["recent_errors_is_fallback"] is True
         assert "not specific to this job" in data["markdown"].lower()
 
+    async def test_report_marks_fallback_note_even_when_job_id_does_not_resolve(
+        self, client, fake_tools, monkeypatch
+    ):
+        """A stale/deleted job_id has no DB row (job_summary stays None), but
+
+        _read_job_error_lines still runs off job_id alone and can return the
+        fallback tail — the disclaimer must track recent_errors_is_fallback,
+        not job_summary's presence, or the two representations disagree.
+        """
+        monkeypatch.setattr(
+            "app.api.routes._read_job_tagged_logs",
+            lambda jid, limit=2000, log_path=None: (
+                ["t | ERROR | job=39 | a:b:1 - unrelated job's error"],
+                True,
+            ),
+        )
+
+        resp = await client.get("/api/diagnostics/report?job_id=999999")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["job"] is None
+        assert data["recent_errors_is_fallback"] is True
+        assert "not specific to this job" in data["markdown"].lower()
+
 
 class TestBundle:
     async def test_bundle_returns_zip_with_expected_members(self, client, fake_tools, monkeypatch):
