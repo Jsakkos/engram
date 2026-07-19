@@ -11,6 +11,17 @@ from tests.unit.conftest import _unit_session_factory
 
 
 @pytest.mark.unit
+def test_disc_title_output_index_defaults_to_none():
+    """New column: the disc-native _tNN number captured at scan time.
+
+    Must default to None so legacy rows (created before this migration, or by
+    call sites that never populate it) fall back to title_index-based matching.
+    """
+    t = DiscTitle(job_id=1, title_index=0, duration_seconds=100)
+    assert t.output_index is None
+
+
+@pytest.mark.unit
 def test_find_staging_file_prefers_output_filename(tmp_path):
     f = tmp_path / "Show_t07.mkv"
     f.write_bytes(b"x")

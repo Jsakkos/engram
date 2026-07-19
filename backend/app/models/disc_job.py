@@ -166,7 +166,12 @@ class DiscTitle(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     job_id: int = Field(foreign_key="disc_jobs.id", index=True)
-    title_index: int  # MakeMKV title index
+    title_index: int  # MakeMKV title index (scan-order position, 0-based)
+    output_index: int | None = None  # Disc-native "_tNN" number MakeMKV embeds in this
+    # title's suggested output filename (TINFO attr 27), captured at scan time. Usually
+    # equal to title_index, but not guaranteed — some discs number titles starting at 1
+    # or with gaps (issue #517). None on rows created before this field existed, or
+    # where MakeMKV supplied no suggested filename; those fall back to title_index.
     duration_seconds: int
     file_size_bytes: int = 0
     chapter_count: int = 0
