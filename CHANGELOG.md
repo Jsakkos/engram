@@ -11,6 +11,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **Docker deployments now run `privileged: true` by default.** Plain `devices:` passthrough wasn't always enough for full optical drive control (eject/tray), and some hosts got stuck unable to stop or restart the container without it. (#459, thanks @MadsTheEngineer!)
+- **Bug reports no longer show another job's errors as if they were yours.** The "Report Bug" diagnostic report ignored which job it was opened for and always pulled the last 20 global error lines — a report opened for a cancelled job with no errors of its own could show an unrelated job's failure from days earlier. Recent errors are now scoped to the job the report is for, and when a job predates per-job log tagging and there's genuinely nothing job-specific to show, the report (both the modal and the copied/GitHub text) now says so instead of silently substituting unrelated errors. (#506, #522)
 
 ## [0.25.0] - 2026-07-12
 

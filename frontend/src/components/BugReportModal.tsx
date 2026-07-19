@@ -21,6 +21,8 @@ interface BugReport {
     completed_at: string | null;
   } | null;
   recent_errors: string[];
+  /** True when recent_errors is the unscoped global tail, not this job's own errors. */
+  recent_errors_is_fallback: boolean;
   config: Record<string, string | number | boolean>;
   github_url: string;
   markdown: string;
@@ -351,6 +353,12 @@ export default function BugReportModal({ open, onClose, jobId }: BugReportModalP
                     </Section>
 
                     <Section title="Recent Errors">
+                      {report.recent_errors_is_fallback && report.recent_errors.length > 0 && (
+                        <SvNotice tone="warn">
+                          These are the most recent global errors, not specific to this job — it
+                          has no tagged log lines of its own.
+                        </SvNotice>
+                      )}
                       <pre
                         style={{
                           margin: 0,
