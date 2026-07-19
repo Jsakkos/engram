@@ -62,6 +62,18 @@ class SpeedCalculator:
         return 0
 
 
+def expected_native_index(title) -> int:
+    """The disc-native "_tNN" number expected in this title's ripped filename.
+
+    Prefers ``output_index`` (MakeMKV's actual native number, captured at scan
+    time); falls back to ``title_index`` for rows/stand-ins without it. Takes
+    a duck-typed object (not strictly ``DiscTitle``) via ``getattr`` so test
+    doubles (``SimpleNamespace``) that don't define ``output_index`` still work.
+    """
+    output_index = getattr(title, "output_index", None)
+    return output_index if output_index is not None else title.title_index
+
+
 async def resolve_title_from_filename(
     path: Path,
     sorted_titles: list[DiscTitle],
@@ -91,7 +103,7 @@ async def resolve_title_from_filename(
 
     if title_index is not None:
         for st in sorted_titles:
-            expected = st.output_index if st.output_index is not None else st.title_index
+            expected = expected_native_index(st)
             if expected == title_index:
                 title = await session.get(DiscTitle, st.id)
                 break
@@ -149,8 +161,7 @@ def find_staging_file(job: DiscJob, title: DiscTitle) -> Path | None:
                 return p2
 
     if job.staging_path:
-        output_index = getattr(title, "output_index", None)
-        glob_index = output_index if output_index is not None else title.title_index
+        glob_index = expected_native_index(title)
         matches = list(Path(job.staging_path).glob(f"*_t{glob_index:02d}.mkv"))
         if matches:
             return matches[0]

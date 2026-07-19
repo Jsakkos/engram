@@ -53,6 +53,7 @@ from app.services.matching_coordinator import (
 )
 from app.services.ripping_helpers import (
     SpeedCalculator,
+    expected_native_index,
     resolve_title_from_filename,
 )
 from app.services.simulation_service import SimulationService
@@ -1109,14 +1110,14 @@ class JobManager:
             logger.warning(f"Job {job_id}: Discord notification failed: {e}", exc_info=True)
 
     @staticmethod
-    def _has_complete_output(output_dir: Path, title_index: int) -> bool:
+    def _has_complete_output(output_dir: Path, title: DiscTitle) -> bool:
         """Whether a non-empty ``*_tNN.mkv`` for this title exists in staging.
 
         Used by the one-pass rip fallback to tell which selected titles a single
         'all' invocation actually produced (vs. ones it never reached after a
         stall), so only the truly-missing titles are re-ripped individually.
         """
-        for mkv in output_dir.glob(f"*_t{title_index:02d}.mkv"):
+        for mkv in output_dir.glob(f"*_t{expected_native_index(title):02d}.mkv"):
             try:
                 if mkv.stat().st_size > 0:
                     return True
@@ -1135,7 +1136,7 @@ class JobManager:
             if p.exists():
                 return p
         if staging:
-            matches = list(staging.glob(f"*_t{title.title_index:02d}.mkv"))
+            matches = list(staging.glob(f"*_t{expected_native_index(title):02d}.mkv"))
             if matches:
                 return matches[0]
         return None
@@ -2322,7 +2323,7 @@ class JobManager:
                             current_title_num = 0
                             file_sizes: dict[int, int] = {}
                             for t in sorted_titles:
-                                pattern = f"*_t{t.title_index:02d}.mkv"
+                                pattern = f"*_t{expected_native_index(t):02d}.mkv"
                                 matches = list(output_dir.glob(pattern))
                                 if matches:
                                     file_sizes[t.id] = matches[0].stat().st_size
@@ -2479,7 +2480,7 @@ class JobManager:
                         if (
                             db_t
                             and db_t.state in (TitleState.PENDING, TitleState.RIPPING)
-                            and not self._has_complete_output(output_dir, t.title_index)
+                            and not self._has_complete_output(output_dir, t)
                         ):
                             missing.append(t)
                 if missing:

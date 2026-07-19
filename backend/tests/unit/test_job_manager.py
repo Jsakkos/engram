@@ -874,12 +874,16 @@ class TestOnePassRipFallback:
     selected, and re-rip only the still-missing titles individually if it fails."""
 
     def test_has_complete_output_detects_nonempty_title_file(self, tmp_path):
-        assert job_manager._has_complete_output(tmp_path, 0) is False
+        from types import SimpleNamespace
+
+        t0 = SimpleNamespace(title_index=0, output_index=None)
+        t1 = SimpleNamespace(title_index=1, output_index=None)
+        assert job_manager._has_complete_output(tmp_path, t0) is False
         (tmp_path / "Some Show_t00.mkv").write_bytes(b"data")
-        assert job_manager._has_complete_output(tmp_path, 0) is True
+        assert job_manager._has_complete_output(tmp_path, t0) is True
         # An empty file is not "complete".
         (tmp_path / "Some Show_t01.mkv").write_bytes(b"")
-        assert job_manager._has_complete_output(tmp_path, 1) is False
+        assert job_manager._has_complete_output(tmp_path, t1) is False
 
     async def test_all_selected_rips_in_single_pass(self, rip_env, monkeypatch):
         """When every title is selected, the rip uses one 'all' invocation
