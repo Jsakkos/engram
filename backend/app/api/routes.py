@@ -3127,12 +3127,12 @@ def _build_markdown_summary(
     if recent_errors:
         parts += ["### Recent Errors"]
         if recent_errors_is_fallback:
-            parts += [
+            fallback_note = (
                 "_Note: this job has no tagged log lines (predates job-tagged "
                 "logging or none were emitted) — showing the most recent global "
-                "error tail below, which is not specific to this job._",
-                "",
-            ]
+                "error tail below, which is not specific to this job._"
+            )
+            parts += [fallback_note, ""]
         parts += ["```"]
         parts += recent_errors[-10:]
         parts += ["```", ""]
