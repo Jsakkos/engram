@@ -138,8 +138,17 @@ preferred. The branch:
 
 1. Runs the MakeMKV scan as normal. This is still required: the manual payload supplies
    identity, not the disc's title list, durations, or sizes.
-2. Skips `_run_classification` entirely (no TMDB lookup, no Analyst TV/movie clustering, no
-   DiscDB identity lookup).
+2. Runs `_run_classification` unchanged, then **overrides** its identity fields.
+
+   Corrected during planning: an earlier draft of this spec said to skip
+   `_run_classification` entirely. That is the wrong seam. The method does two jobs, identity
+   resolution (DiscDB, TMDB, AI) *and* structural analysis (duration clustering, Play-All
+   index detection, ambiguous-movie detection), and its result feeds title persistence,
+   Play-All deselection (`identify_disc:361`), and DiscDB extras tagging (`identify_disc:387`).
+   All of that is identity-independent and still wanted. Overriding afterwards costs one
+   redundant TMDB lookup on an edge-case path and fully satisfies the actual requirement,
+   which is that a wrong guess must never drive subtitles or matching.
+
 3. Applies `detected_title`, `content_type`, `detected_season` from the payload. Resolves
    `tmdb_id` from the payload if the user picked an autocomplete row; otherwise attempts a
    best-effort TMDB search by name; otherwise leaves it `None`.
@@ -151,6 +160,18 @@ preferred. The branch:
 Critically, **none of the walk-away identity gates (A unreadable label, B TMDB lookup failed,
 C same-name collision, D unknown season) and no collision backstop may fire on a manual job.**
 The user has asserted identity; a manual disc must never park or raise an identity prompt.
+
+Clearing the TMDB and DiscDB signals is **not sufficient** to achieve that. Two of the four
+gates fire on absence rather than presence, and both need an explicit `_is_manual` guard:
+
+- **Gate B** (`identify_disc:481`) fires when `content_type == TV and not job.tmdb_id`. A
+  freeform title with no TMDB match legitimately has no `tmdb_id`, so this gate would raise a
+  name prompt on exactly the discs this feature exists to serve.
+- **Gate D** (`identify_disc:517`) fires when `detected_season is None`, raising a season
+  prompt.
+
+Gates A and C are already safe: A requires a missing title, which the manual path always
+supplies, and C sits inside the `needs_review` branch that the override clears.
 
 ### Card edit path
 
