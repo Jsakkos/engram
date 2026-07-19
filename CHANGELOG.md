@@ -11,6 +11,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **Docker deployments now run `privileged: true` by default.** Plain `devices:` passthrough wasn't always enough for full optical drive control (eject/tray), and some hosts got stuck unable to stop or restart the container without it. (#459, thanks @MadsTheEngineer!)
+- Fixed titles being lost or mis-organized on discs where MakeMKV's native title numbering doesn't start at "t00" (e.g. some Blu-ray sets start at "t01"): the first title would hang and fail after ripping, and the last title's rip would be silently deleted from staging (#517).
 
 ## [0.25.0] - 2026-07-12
 
