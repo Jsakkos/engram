@@ -85,7 +85,8 @@ async def _seed_job(
     detected_season=1,
     identity_prompt_json=None,
 ) -> int:
-    """Seed a job with the given (title_index, episode, output_filename, title_state) titles."""
+    """Seed a job with the given (title_index, episode, output_filename, title_state)
+    titles. Each tuple may carry an optional 5th element, output_index."""
     md = match_details_by_idx or {}
     async with _unit_session_factory() as session:
         job = DiscJob(
@@ -104,11 +105,14 @@ async def _seed_job(
         session.add(job)
         await session.commit()
         await session.refresh(job)
-        for idx, ep, outfn, tstate in titles:
+        for entry in titles:
+            idx, ep, outfn, tstate, *rest = entry
+            output_index = rest[0] if rest else None
             session.add(
                 DiscTitle(
                     job_id=job.id,
                     title_index=idx,
+                    output_index=output_index,
                     duration_seconds=duration,
                     matched_episode=ep,
                     match_confidence=0.8,
@@ -255,6 +259,30 @@ class TestFinalizeDiscJob:
         assert titles[0].state == TitleState.REVIEW
         assert job.state == JobState.REVIEW_NEEDED
         mock_organize.assert_not_called()
+
+    async def test_resolves_source_file_via_output_index_when_numbering_offset(
+        self, tmp_path, mock_organize
+    ):
+        """Issue #517: disc has no "t00" — MakeMKV's native numbering starts at 1.
+
+        Title scan-index 0 has output_index=1 (its suggested filename was
+        "..._t01.mkv"). No output_filename was recorded, so the organize-time
+        glob fallback in _resolve_source_file must consult output_index, not
+        title_index, to find the staged file.
+        """
+        f0 = tmp_path / "show_t01.mkv"
+        f0.write_text("")
+        job_id = await _seed_job(
+            [(0, "S01E01", None, TitleState.MATCHED, 1)],  # 5th element = output_index
+            staging=str(tmp_path),
+        )
+
+        await _make_coord().finalize_disc_job(job_id)
+
+        job, titles = await _load(job_id)
+        assert titles[0].state == TitleState.COMPLETED
+        assert job.state == JobState.COMPLETED
+        mock_organize.assert_called_once()
 
     async def test_organize_failure_marks_review(self, tmp_path, monkeypatch):
         import app.core.organizer as org
