@@ -348,6 +348,7 @@ Components use updated settings
 - **API Keys**: `makemkv_key`, `tmdb_api_key` (redacted in responses)
 - **Matching**: `max_concurrent_matches` (default: 3), threshold constants in Analyst
 - **Conflict resolution**: `conflict_resolution_default` ("skip" | "overwrite" | "ask")
+- **Discord notifications**: `discord_template_completed` / `discord_template_failed` — customizable embed description (chevron `{{var}}` mustache syntax, see `app/core/discord_notifier.py::ALLOWED_TEMPLATE_VARS`); empty string = built-in default
 
 ### Configuration Validation
 

@@ -33,7 +33,7 @@ from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
-from app.models import DiscJob, JobState
+from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
@@ -1006,7 +1006,7 @@ class JobManager:
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
-            if job and job.state not in (JobState.COMPLETED, JobState.FAILED):
+            if job and job.state not in TERMINAL_JOB_STATES:
                 await state_machine.transition_to_failed(
                     job, session, error_message="Cancelled by user"
                 )
@@ -1075,21 +1075,36 @@ class JobManager:
     async def _send_discord_notification(self, job_id: int, state: JobState) -> None:
         """Send the Discord embed. Runs as a background task; all errors are swallowed."""
         try:
-            from app.core.discord_notifier import notify_discord
+            from app.core.discord_notifier import (
+                DEFAULT_TEMPLATE_COMPLETED,
+                DEFAULT_TEMPLATE_FAILED,
+                build_template_context,
+                notify_discord,
+                render_discord_template,
+            )
             from app.services.config_service import get_config
 
             config = await get_config()
             if not config.discord_webhook_url:
                 return
 
+            if state not in TERMINAL_JOB_STATES:
+                logger.warning(
+                    f"Job {job_id}: Discord notification requested for non-terminal state {state}"
+                )
+                return
+
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
-            label = (
-                (job.detected_title or job.volume_label or f"Job #{job_id}")
-                if job
-                else f"Job #{job_id}"
-            )
-            await notify_discord(config.discord_webhook_url, job_id, label, state.value)
+
+            if state == JobState.COMPLETED:
+                template = config.discord_template_completed or DEFAULT_TEMPLATE_COMPLETED
+            else:
+                template = config.discord_template_failed or DEFAULT_TEMPLATE_FAILED
+
+            context = build_template_context(job, job_id)
+            description = render_discord_template(template, context)
+            await notify_discord(config.discord_webhook_url, job_id, description, state.value)
         except Exception as e:
             logger.warning(f"Job {job_id}: Discord notification failed: {e}", exc_info=True)
 

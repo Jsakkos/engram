@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Customizable Discord notification messages.** The Discord embed sent when a disc completes or fails now uses a template you control, instead of a fixed message. Set separate messages for the completed and failed cases in Settings → Notifications, using `{{title}}`, `{{drive}}`, `{{duration}}`, `{{error}}`, and other job details as variables. Leave either field blank to keep the previous default message.
+
 ### Fixed
 
 - **Docker deployments now run `privileged: true` by default.** Plain `devices:` passthrough wasn't always enough for full optical drive control (eject/tray), and some hosts got stuck unable to stop or restart the container without it. (#459, thanks @MadsTheEngineer!)

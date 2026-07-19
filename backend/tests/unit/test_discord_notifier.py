@@ -1,11 +1,18 @@
 """Tests for Discord webhook notifications."""
 
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.discord_notifier import notify_discord
+from app.core.discord_notifier import (
+    DEFAULT_TEMPLATE_COMPLETED,
+    build_template_context,
+    notify_discord,
+    render_discord_template,
+    validate_discord_template,
+)
 from app.models.disc_job import ContentType, DiscJob
 
 # --------------------------------------------------------------------------- #
@@ -17,13 +24,13 @@ from app.models.disc_job import ContentType, DiscJob
 async def test_notify_discord_noop_on_empty_url():
     """Empty webhook URL → no HTTP call made."""
     with patch("httpx.AsyncClient") as mock_client_cls:
-        await notify_discord("", job_id=1, label="Show Name", state="completed")
+        await notify_discord("", job_id=1, description="**Show Name**", state="completed")
         mock_client_cls.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_notify_discord_posts_completed_embed():
-    """COMPLETED state → green embed with checkmark title."""
+    """COMPLETED state → green embed with checkmark title, description passed through verbatim."""
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
     mock_client = AsyncMock()
@@ -35,7 +42,7 @@ async def test_notify_discord_posts_completed_embed():
         await notify_discord(
             "https://discord.com/api/webhooks/123/abc",
             job_id=5,
-            label="The Wire",
+            description="**The Wire**",
             state="completed",
         )
 
@@ -45,13 +52,13 @@ async def test_notify_discord_posts_completed_embed():
     embed = kwargs["json"]["embeds"][0]
     assert "✅" in embed["title"]
     assert "Completed" in embed["title"]
-    assert "The Wire" in embed["description"]
+    assert embed["description"] == "**The Wire**"
     assert embed["color"] == 0x00B97A  # green
 
 
 @pytest.mark.asyncio
 async def test_notify_discord_posts_failed_embed():
-    """FAILED state → red embed with X title."""
+    """FAILED state → red embed with X title, description passed through verbatim."""
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
     mock_client = AsyncMock()
@@ -63,13 +70,14 @@ async def test_notify_discord_posts_failed_embed():
         await notify_discord(
             "https://discord.com/api/webhooks/123/abc",
             job_id=5,
-            label="Mystery Disc",
+            description="**Mystery Disc**",
             state="failed",
         )
 
     embed = mock_client.post.call_args[1]["json"]["embeds"][0]
     assert "❌" in embed["title"]
     assert "Failed" in embed["title"]
+    assert embed["description"] == "**Mystery Disc**"
     assert embed["color"] == 0xE53935  # red
 
 
@@ -88,9 +96,135 @@ async def test_notify_discord_swallows_http_errors():
         await notify_discord(
             "https://discord.com/api/webhooks/123/abc",
             job_id=3,
-            label="Some Disc",
+            description="**Some Disc**",
             state="completed",
         )
+
+
+# --------------------------------------------------------------------------- #
+# validate_discord_template
+# --------------------------------------------------------------------------- #
+
+
+def test_validate_discord_template_accepts_valid_template():
+    assert validate_discord_template("{{title}} - {{duration}}") is None
+
+
+def test_validate_discord_template_accepts_empty_string():
+    """Empty template is valid — falls back to the built-in default at render time."""
+    assert validate_discord_template("") is None
+
+
+def test_validate_discord_template_rejects_unknown_variable():
+    error = validate_discord_template("{{bogus}}")
+    assert error is not None
+    assert "bogus" in error
+
+
+def test_validate_discord_template_rejects_malformed_syntax():
+    """Malformed mustache syntax is rejected; the exact wording is chevron's own
+    (we pass its exception through verbatim), so we only assert rejection, not
+    the message text — pinning that would test chevron, not our code."""
+    error = validate_discord_template("{{title")
+    assert error is not None
+
+
+def test_validate_discord_template_rejects_unknown_variable_in_section_tag():
+    error = validate_discord_template("{{#bogus}}x{{/bogus}}")
+    assert error is not None
+    assert "bogus" in error
+
+
+def test_validate_discord_template_accepts_comment_tag():
+    """Mustache comments ({{! ... }}) are inert and shouldn't be flagged as unknown
+    variables. Chevron's tokenizer already filters comment tags out internally —
+    this pins that behavior against a future chevron version regressing it."""
+    assert validate_discord_template("{{title}} {{! a comment }}") is None
+
+
+# --------------------------------------------------------------------------- #
+# build_template_context / render_discord_template
+# --------------------------------------------------------------------------- #
+
+
+def test_build_template_context_default_template_matches_current_output():
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        detected_title="Breaking Bad",
+        volume_label="BREAKING_BAD_S1D1",
+    )
+    context = build_template_context(job, job_id=1)
+    assert context["title"] == "Breaking Bad"
+
+
+def test_build_template_context_error_populated_on_failed_job():
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        volume_label="BAD_DISC",
+        error_message="disc unreadable",
+    )
+    context = build_template_context(job, job_id=2)
+    assert context["error"] == "disc unreadable"
+
+
+def test_build_template_context_error_empty_on_completed_job():
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        detected_title="Inception",
+        volume_label="INCEPTION_2010",
+    )
+    context = build_template_context(job, job_id=3)
+    assert context["error"] == ""
+
+
+def test_build_template_context_duration_formatted_when_both_timestamps_set():
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        detected_title="Inception",
+        volume_label="INCEPTION_2010",
+        created_at=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        completed_at=datetime(2026, 1, 1, 11, 12, tzinfo=UTC),
+    )
+    context = build_template_context(job, job_id=4)
+    assert context["duration"] == "1h 12m"
+
+
+def test_build_template_context_duration_empty_when_not_completed():
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        detected_title="Inception",
+        volume_label="INCEPTION_2010",
+        completed_at=None,
+    )
+    context = build_template_context(job, job_id=5)
+    assert context["duration"] == ""
+
+
+def test_build_template_context_falls_back_when_job_is_none():
+    """Job vanished before re-fetch — context still yields a usable title, no crash."""
+    context = build_template_context(None, job_id=42)
+    assert context["title"] == "Job #42"
+
+
+def test_render_discord_template_default_does_not_html_escape_title():
+    """The built-in default must reproduce the old raw-f-string output byte-for-byte,
+    including titles with mustache-escaped characters — regression test for the
+    DEFAULT_TEMPLATE_* switch to unescaped {{{title}}} syntax."""
+    rendered = render_discord_template(DEFAULT_TEMPLATE_COMPLETED, {"title": "Law & Order"})
+    assert rendered == "**Law & Order**"
+
+
+def test_render_discord_template_does_not_resolve_partial_tags_from_filesystem():
+    """{{>title}} tokenizes as a partial (not a variable) and passes validation since
+    'title' is an allowed variable name too. Without partials_dict={}, chevron would
+    try to load ./title.mustache from the backend's CWD at render time."""
+    rendered = render_discord_template("{{>title}}", {"title": "Inception"})
+    assert rendered == ""
 
 
 # --------------------------------------------------------------------------- #
@@ -110,6 +244,20 @@ async def test_send_notification_noop_when_no_webhook():
 
     with patch("app.core.discord_notifier.notify_discord") as mock_notify:
         await job_manager._send_discord_notification(99, JobState.COMPLETED)
+        mock_notify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_notification_noop_for_non_terminal_state():
+    """Called with a non-terminal state (defensive guard) → notify_discord never called."""
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(99, JobState.RIPPING)
         mock_notify.assert_not_called()
 
 
@@ -139,12 +287,12 @@ async def test_send_notification_fires_on_completed():
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
     mock_notify.assert_called_once()
-    _, label, state = (
+    _, description, state = (
         mock_notify.call_args[0][1],
         mock_notify.call_args[0][2],
         mock_notify.call_args[0][3],
     )
-    assert label == "Breaking Bad"
+    assert description == "**Breaking Bad**"
     assert state == "completed"
 
 
@@ -202,8 +350,76 @@ async def test_send_notification_falls_back_to_volume_label():
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
-    label = mock_notify.call_args[0][2]
-    assert label == "UNKNOWN_DISC"
+    description = mock_notify.call_args[0][2]
+    assert description == "**UNKNOWN_DISC**"
+
+
+@pytest.mark.asyncio
+async def test_send_notification_uses_configured_completed_template():
+    """A custom discord_template_completed renders instead of the default."""
+    from app.database import async_session
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_template_completed="Done: {{title}} ({{drive}})",
+    )
+
+    async with async_session() as session:
+        job = DiscJob(
+            drive_id="E:",
+            content_type=ContentType.TV,
+            detected_title="Breaking Bad",
+            volume_label="BREAKING_BAD_S1D1",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+
+    description = mock_notify.call_args[0][2]
+    assert description == "Done: Breaking Bad (BREAKING_BAD_S1D1)"
+
+    await update_config(discord_template_completed="")
+
+
+@pytest.mark.asyncio
+async def test_send_notification_uses_configured_failed_template():
+    """A custom discord_template_failed renders and includes the error."""
+    from app.database import async_session
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_template_failed="Failed: {{title}} — {{error}}",
+    )
+
+    async with async_session() as session:
+        job = DiscJob(
+            drive_id="E:",
+            content_type=ContentType.MOVIE,
+            volume_label="BAD_DISC",
+            error_message="disc unreadable",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(job_id, JobState.FAILED)
+
+    description = mock_notify.call_args[0][2]
+    assert description == "Failed: BAD_DISC — disc unreadable"
+
+    await update_config(discord_template_failed="")
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,9 @@ class JobState(StrEnum):
     FAILED = "failed"
 
 
+TERMINAL_JOB_STATES = frozenset({JobState.COMPLETED, JobState.FAILED})
+
+
 class ContentType(StrEnum):
     """Type of content on the disc."""
 

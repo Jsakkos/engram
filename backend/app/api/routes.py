@@ -374,6 +374,8 @@ class ConfigResponse(BaseModel):
     contribution_pseudonym: str | None = None
     # Notifications
     discord_webhook_url: str = ""
+    discord_template_completed: str = ""
+    discord_template_failed: str = ""
 
 
 class ConfigUpdate(BaseModel):
@@ -459,6 +461,8 @@ class ConfigUpdate(BaseModel):
     fingerprint_disclosure_accepted: bool | None = None
     # Notifications
     discord_webhook_url: str | None = None
+    discord_template_completed: str | None = None
+    discord_template_failed: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1533,6 +1537,8 @@ async def get_config() -> ConfigResponse:
         contribution_pseudonym=config.contribution_pseudonym,
         # Notifications
         discord_webhook_url="***" if config.discord_webhook_url else "",
+        discord_template_completed=config.discord_template_completed,
+        discord_template_failed=config.discord_template_failed,
     )
 
 
@@ -1609,6 +1615,15 @@ async def update_config(config: ConfigUpdate) -> dict:
                 status_code=422,
                 detail="discord_webhook_url must be an http/https URL pointing to a non-internal host",
             )
+
+    # Validate Discord notification templates before persisting
+    from app.core.discord_notifier import validate_discord_template
+
+    for field in ("discord_template_completed", "discord_template_failed"):
+        if update_data.get(field):
+            error = validate_discord_template(update_data[field])
+            if error:
+                raise HTTPException(status_code=422, detail=f"{field}: {error}")
 
     # Validate naming format strings before persisting
     from app.core.organizer import (

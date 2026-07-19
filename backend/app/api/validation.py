@@ -45,6 +45,12 @@ class TmdbValidationRequest(BaseModel):
     api_key: str
 
 
+class DiscordTemplateValidationRequest(BaseModel):
+    """Request model for Discord notification template validation."""
+
+    template: str
+
+
 class ValidationResponse(BaseModel):
     """Response model for validation endpoints."""
 
@@ -616,3 +622,21 @@ async def validate_tmdb(request: TmdbValidationRequest) -> ValidationResponse:
         )
     except Exception as e:
         return ValidationResponse(valid=False, error=f"Validation failed: {str(e)}")
+
+
+@router.post("/validate/discord-template", response_model=ValidationResponse)
+async def validate_discord_template_endpoint(
+    request: DiscordTemplateValidationRequest,
+) -> ValidationResponse:
+    """Validate a Discord notification template string (chevron/mustache syntax).
+
+    Live per-keystroke check for ConfigWizard; PUT /api/config re-validates via
+    the same underlying function before persisting, so this is UX-only — it
+    can't be bypassed to skip the real enforcement.
+    """
+    from app.core.discord_notifier import validate_discord_template
+
+    error = validate_discord_template(request.template)
+    if error:
+        return ValidationResponse(valid=False, error=error)
+    return ValidationResponse(valid=True)

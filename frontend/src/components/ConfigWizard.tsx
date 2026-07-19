@@ -8,6 +8,7 @@ import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
+import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
 import { formatToolVersion } from '../utils/formatting';
 import './ConfigWizard.css';
 
@@ -147,6 +148,8 @@ interface ConfigData {
     opensubtitlesPassword: string;
     allowLanAccess: boolean;
     discordWebhookUrl: string;
+    discordTemplateCompleted: string;
+    discordTemplateFailed: string;
 }
 
 interface NetworkInfo {
@@ -225,9 +228,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         opensubtitlesPassword: '',
         allowLanAccess: false,
         discordWebhookUrl: '',
+        discordTemplateCompleted: '',
+        discordTemplateFailed: '',
     });
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string}>({completed: '', failed: ''});
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
@@ -337,6 +343,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
                     allowLanAccess: data.allow_lan_access ?? false,
                     discordWebhookUrl: data.discord_webhook_url === '***' ? '' : (data.discord_webhook_url || ''),
+                    discordTemplateCompleted: data.discord_template_completed || '',
+                    discordTemplateFailed: data.discord_template_failed || '',
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -346,6 +354,30 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         };
         loadConfig();
     }, []);
+
+    // Live Discord template validation, debounced. The real enforcement is
+    // server-side (PUT /api/config re-validates before persisting) — this is
+    // UX only, so a network hiccup ('error' status) doesn't block Save.
+    useEffect(() => {
+        const timer = window.setTimeout(async () => {
+            // Empty template is always valid (falls back to the built-in default) —
+            // skip the round-trip, which also avoids validating on mount before the
+            // user has touched either field.
+            const [completedResult, failedResult] = await Promise.all([
+                config.discordTemplateCompleted
+                    ? requestDiscordTemplateValidation(config.discordTemplateCompleted)
+                    : Promise.resolve({ status: 'valid' as const }),
+                config.discordTemplateFailed
+                    ? requestDiscordTemplateValidation(config.discordTemplateFailed)
+                    : Promise.resolve({ status: 'valid' as const }),
+            ]);
+            setDiscordTemplateErrors({
+                completed: completedResult.status === 'invalid' ? completedResult.error : '',
+                failed: failedResult.status === 'invalid' ? failedResult.error : '',
+            });
+        }, 400);
+        return () => window.clearTimeout(timer);
+    }, [config.discordTemplateCompleted, config.discordTemplateFailed]);
 
     // Detect tools when entering step 2
     useEffect(() => {
@@ -493,6 +525,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
                     allow_lan_access: config.allowLanAccess,
                     ...optional('discord_webhook_url', config.discordWebhookUrl),
+                    discord_template_completed: config.discordTemplateCompleted,
+                    discord_template_failed: config.discordTemplateFailed,
                     setup_complete: true,
                 }),
             });
@@ -1713,6 +1747,44 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             </span>
                         </div>
 
+                        <div className="form-group">
+                            <label htmlFor="discordTemplateCompleted">Completed Message</label>
+                            <textarea
+                                id="discordTemplateCompleted"
+                                value={config.discordTemplateCompleted}
+                                onChange={(e) => handleInputChange('discordTemplateCompleted', e.target.value)}
+                                placeholder="**{{title}}**"
+                                rows={2}
+                            />
+                            {discordTemplateErrors.completed && (
+                                <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {discordTemplateErrors.completed}</span>
+                            )}
+                            <span className="form-hint">
+                                Available variables: {'{{'}title{'}}'}, {'{{'}drive{'}}'}, {'{{'}content_type{'}}'}, {'{{'}season{'}}'},{' '}
+                                {'{{'}tmdb_name{'}}'}, {'{{'}tmdb_year{'}}'}, {'{{'}duration{'}}'}, {'{{'}subtitle_status{'}}'},{' '}
+                                {'{{'}path{'}}'}, {'{{'}total_titles{'}}'}. Leave blank to use the default. Use triple braces
+                                ({'{{{'}var{'}}}'}) instead of double to avoid HTML-escaping characters like {'&'}, {'<'}, {'>'}.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="discordTemplateFailed">Failed Message</label>
+                            <textarea
+                                id="discordTemplateFailed"
+                                value={config.discordTemplateFailed}
+                                onChange={(e) => handleInputChange('discordTemplateFailed', e.target.value)}
+                                placeholder="**{{title}}**"
+                                rows={2}
+                            />
+                            {discordTemplateErrors.failed && (
+                                <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {discordTemplateErrors.failed}</span>
+                            )}
+                            <span className="form-hint">
+                                Same variables as above, plus {'{{'}error{'}}'} for the failure reason. Leave blank to use the default.
+                                Use triple braces ({'{{{'}var{'}}}'}) to avoid HTML-escaping.
+                            </span>
+                        </div>
+
                             </div>
                         </details>
 
@@ -1834,7 +1906,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleNext}
-                            disabled={isSaving}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed}
                         >
                             {step === totalSteps ? (isSaving ? 'Saving...' : 'Complete Setup') : 'Next →'}
                         </button>
@@ -1842,7 +1914,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleSave}
-                            disabled={isSaving}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed}
                         >
                             {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>
