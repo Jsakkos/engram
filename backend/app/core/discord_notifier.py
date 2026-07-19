@@ -27,8 +27,8 @@ ALLOWED_TEMPLATE_VARS = frozenset(
     }
 )
 
-DEFAULT_TEMPLATE_COMPLETED = "**{{title}}**"
-DEFAULT_TEMPLATE_FAILED = "**{{title}}**"
+DEFAULT_TEMPLATE_COMPLETED = "**{{{title}}}**"
+DEFAULT_TEMPLATE_FAILED = "**{{{title}}}**"
 
 
 def validate_discord_template(template: str) -> str | None:
@@ -87,7 +87,7 @@ def build_template_context(job: DiscJob | None, job_id: int) -> dict[str, str]:
 
 
 def render_discord_template(template: str, context: dict) -> str:
-    return chevron.render(template, context)
+    return chevron.render(template, context, partials_dict={})
 
 
 async def notify_discord(webhook_url: str, job_id: int, description: str, state: str) -> None:

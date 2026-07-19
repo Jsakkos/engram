@@ -7,8 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.discord_notifier import (
+    DEFAULT_TEMPLATE_COMPLETED,
     build_template_context,
     notify_discord,
+    render_discord_template,
     validate_discord_template,
 )
 from app.models.disc_job import ContentType, DiscJob
@@ -133,6 +135,13 @@ def test_validate_discord_template_rejects_unknown_variable_in_section_tag():
     assert "bogus" in error
 
 
+def test_validate_discord_template_accepts_comment_tag():
+    """Mustache comments ({{! ... }}) are inert and shouldn't be flagged as unknown
+    variables. Chevron's tokenizer already filters comment tags out internally —
+    this pins that behavior against a future chevron version regressing it."""
+    assert validate_discord_template("{{title}} {{! a comment }}") is None
+
+
 # --------------------------------------------------------------------------- #
 # build_template_context / render_discord_template
 # --------------------------------------------------------------------------- #
@@ -200,6 +209,22 @@ def test_build_template_context_falls_back_when_job_is_none():
     """Job vanished before re-fetch — context still yields a usable title, no crash."""
     context = build_template_context(None, job_id=42)
     assert context["title"] == "Job #42"
+
+
+def test_render_discord_template_default_does_not_html_escape_title():
+    """The built-in default must reproduce the old raw-f-string output byte-for-byte,
+    including titles with mustache-escaped characters — regression test for the
+    DEFAULT_TEMPLATE_* switch to unescaped {{{title}}} syntax."""
+    rendered = render_discord_template(DEFAULT_TEMPLATE_COMPLETED, {"title": "Law & Order"})
+    assert rendered == "**Law & Order**"
+
+
+def test_render_discord_template_does_not_resolve_partial_tags_from_filesystem():
+    """{{>title}} tokenizes as a partial (not a variable) and passes validation since
+    'title' is an allowed variable name too. Without partials_dict={}, chevron would
+    try to load ./title.mustache from the backend's CWD at render time."""
+    rendered = render_discord_template("{{>title}}", {"title": "Inception"})
+    assert rendered == ""
 
 
 # --------------------------------------------------------------------------- #

@@ -360,9 +360,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // UX only, so a network hiccup ('error' status) doesn't block Save.
     useEffect(() => {
         const timer = window.setTimeout(async () => {
+            // Empty template is always valid (falls back to the built-in default) —
+            // skip the round-trip, which also avoids validating on mount before the
+            // user has touched either field.
             const [completedResult, failedResult] = await Promise.all([
-                requestDiscordTemplateValidation(config.discordTemplateCompleted),
-                requestDiscordTemplateValidation(config.discordTemplateFailed),
+                config.discordTemplateCompleted
+                    ? requestDiscordTemplateValidation(config.discordTemplateCompleted)
+                    : Promise.resolve({ status: 'valid' as const }),
+                config.discordTemplateFailed
+                    ? requestDiscordTemplateValidation(config.discordTemplateFailed)
+                    : Promise.resolve({ status: 'valid' as const }),
             ]);
             setDiscordTemplateErrors({
                 completed: completedResult.status === 'invalid' ? completedResult.error : '',
@@ -1755,7 +1762,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             <span className="form-hint">
                                 Available variables: {'{{'}title{'}}'}, {'{{'}drive{'}}'}, {'{{'}content_type{'}}'}, {'{{'}season{'}}'},{' '}
                                 {'{{'}tmdb_name{'}}'}, {'{{'}tmdb_year{'}}'}, {'{{'}duration{'}}'}, {'{{'}subtitle_status{'}}'},{' '}
-                                {'{{'}path{'}}'}, {'{{'}total_titles{'}}'}. Leave blank to use the default.
+                                {'{{'}path{'}}'}, {'{{'}total_titles{'}}'}. Leave blank to use the default. Use triple braces
+                                ({'{{{'}var{'}}}'}) instead of double to avoid HTML-escaping characters like {'&'}, {'<'}, {'>'}.
                             </span>
                         </div>
 
@@ -1773,6 +1781,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             )}
                             <span className="form-hint">
                                 Same variables as above, plus {'{{'}error{'}}'} for the failure reason. Leave blank to use the default.
+                                Use triple braces ({'{{{'}var{'}}}'}) to avoid HTML-escaping.
                             </span>
                         </div>
 
