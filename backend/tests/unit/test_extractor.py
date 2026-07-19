@@ -283,6 +283,23 @@ class TestParseDiscInfo:
         assert disc_name == ""
         assert titles == []
 
+    def test_scan_time_output_index_expression(self):
+        """Pins the exact expression identification_coordinator.py uses when
+        building a DiscTitle from a scanned TitleInfo — output_index is the
+        native _tNN number parsed from the suggested filename (disc_title),
+        or None when MakeMKV supplied no suggested filename (issue #517: this
+        is what lets resolve_title_from_filename match ripped files correctly
+        even when that native number doesn't equal the scan-order index).
+        """
+        titles, _ = _extractor()._parse_disc_info(self.SAMPLE)
+        t0 = {t.index: t for t in titles}[0]
+        output_index = title_index_from_filename(t0.disc_title) if t0.disc_title else None
+        assert output_index == 0  # this sample's disc_title is "Inception_t00.mkv"
+
+        t1 = {t.index: t for t in titles}[1]  # has no TINFO:1,27 line -> disc_title == ""
+        output_index_t1 = title_index_from_filename(t1.disc_title) if t1.disc_title else None
+        assert output_index_t1 is None
+
 
 @pytest.mark.unit
 class TestParseDuration:
