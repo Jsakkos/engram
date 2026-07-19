@@ -52,6 +52,29 @@ def test_find_staging_file_returns_none_when_nothing_found(tmp_path):
     assert find_staging_file(job, title) is None
 
 
+@pytest.mark.unit
+def test_find_staging_file_glob_prefers_output_index(tmp_path):
+    """Same offset scenario as Task 3, but for the glob-fallback path (used
+    when output_filename is missing/stale, e.g. re-matching after a restart).
+    """
+    f = tmp_path / "C1title_t01.mkv"
+    f.write_bytes(b"x")
+    job = SimpleNamespace(staging_path=str(tmp_path))
+    title = SimpleNamespace(output_filename=None, title_index=0, output_index=1, organized_to=None)
+    assert find_staging_file(job, title) == f
+
+
+@pytest.mark.unit
+def test_find_staging_file_glob_falls_back_to_title_index_when_output_index_unset(tmp_path):
+    f = tmp_path / "Show_t07.mkv"
+    f.write_bytes(b"x")
+    job = SimpleNamespace(staging_path=str(tmp_path))
+    title = SimpleNamespace(
+        output_filename=None, title_index=7, output_index=None, organized_to=None
+    )
+    assert find_staging_file(job, title) == f
+
+
 # --- resolve_title_from_filename ------------------------------------------
 #
 # Regression focus (single-track re-rip): a re-rip passes ONLY the re-ripped

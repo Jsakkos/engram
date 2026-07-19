@@ -149,7 +149,9 @@ def find_staging_file(job: DiscJob, title: DiscTitle) -> Path | None:
                 return p2
 
     if job.staging_path:
-        matches = list(Path(job.staging_path).glob(f"*_t{title.title_index:02d}.mkv"))
+        output_index = getattr(title, "output_index", None)
+        glob_index = output_index if output_index is not None else title.title_index
+        matches = list(Path(job.staging_path).glob(f"*_t{glob_index:02d}.mkv"))
         if matches:
             return matches[0]
 
