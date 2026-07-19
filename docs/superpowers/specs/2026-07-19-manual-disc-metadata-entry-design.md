@@ -88,9 +88,22 @@ These were settled during brainstorming and should be confirmed before planning:
 
 ### Provenance marker
 
-Set `DiscJob.classification_source = "manual"` when identity was user-asserted. This drives
-the UI provenance chip and tells the identify path to trust the supplied fields. No schema
-change.
+`DiscJob.classification_source` records how identity was obtained. It is already a
+fine-grained descriptive taxonomy (`heuristic`, `tmdb`, `tmdb+heuristic`, `ai`,
+`fingerprint_network`, `discdb_*`, `staging_import`), so this design adds two values in the
+same spirit rather than collapsing both entry points into one:
+
+- `"manual"`: identity asserted up front via the arm path, never guessed.
+- `"manual_correction"`: the user overrode an automatic guess from a live card.
+
+The value is **descriptive only**. No control flow may branch on it. The manual identify
+branch is selected by the presence of an armed payload, not by reading this string back,
+which keeps a diagnostic label from silently becoming load-bearing. The field is already
+serialized into the DiscDB export (`discdb_exporter.py:168`) and diagnostic snapshots, so the
+distinction pays for itself in later debugging at no cost.
+
+The UI renders a single `MANUAL ID` chip for both values. The distinction is for diagnostics,
+not for the user. No schema change.
 
 ### Arm store
 
@@ -149,14 +162,19 @@ entry point.
 
 ## Frontend design
 
-Mockup: `.superpowers/brainstorm/4602-1784487504/content/ui-mockup.html` (gitignored; rendered
-against the real Synapse v2 tokens).
+Mockup: `docs/design_handoff_synapse/explorations/2026-07-19-manual-disc-metadata-entry.html`,
+rendered against the real Synapse v2 tokens.
 
 1. **`ManualIdentityModal`**, generalized from `ReIdentifyModal`. Content-type segmented
-   control, title with TMDB autocomplete, season, and an optional disc-number field (normally
-   parsed from the volume label by regex, which is exactly what fails on these discs). Two
+   control, title with TMDB autocomplete, season, and an optional disc-number field. Two
    modes differing only in header text and primary button label: "Arm drive" and
    "Save & re-match".
+
+   The disc-number field is load-bearing, not decoration. `disc_number` is normally parsed
+   from the volume label by regex and defaults to `1` when that fails, and `organizer.py:619`
+   names extras `"{show} Disc {disc_number} Extra t{NN}.mkv"`. On a multi-disc box set with
+   unreadable labels, which is precisely this feature's target case, every disc would default
+   to `1` and their extras would collide on disk. The field prevents that.
 2. **Top bar**: a magenta `MANUAL` button beside `IMPORT` in `SvTopBar.tsx`, following the
    existing IMPORT button's mono/uppercase/1px-border vocabulary.
 3. **Armed card**: a dashed, glow-less panel occupying a dashboard card slot, showing the
@@ -203,10 +221,9 @@ Frontend unit (vitest, colocated):
 E2E: the simulation endpoints need an arm-aware path so
 `POST /api/simulate/insert-disc` can exercise arm, insert, and unattended rip.
 
-## Open items
+## Resolved during review
 
-- Whether the disc-number field earns its place in the modal or should be dropped as scope
-  creep, given the volume-label regex handles the common case.
-- Whether submitting a card edit on an auto-identified job should flip
-  `classification_source` to `"manual"`, or whether a separate marker is warranted to
-  distinguish "user asserted from the start" from "user corrected a guess".
+- **Disc-number field: keep it.** It prevents an extras filename collision on multi-disc sets
+  with unreadable labels. See the frontend section for the mechanism.
+- **Provenance values: two, not one.** `"manual"` and `"manual_correction"`, descriptive only,
+  rendered as one chip. See the provenance marker section.
