@@ -115,6 +115,62 @@ class TestBugReport:
         assert data["makemkv_version"] == "MakeMKV not found"
         assert data["ffmpeg_version"] == "FFmpeg not found"
 
+    async def test_report_without_job_id_uses_global_recent_errors(self, client, fake_tools):
+        """No job context → falls back to the plain global ERROR/CRITICAL tail."""
+        resp = await client.get("/api/diagnostics/report")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["recent_errors_is_fallback"] is False
+
+    async def test_report_scopes_recent_errors_to_the_requested_job(
+        self, client, fake_tools, monkeypatch
+    ):
+        """Regression for #506: job 47's report must not surface job 39's errors."""
+        job = await _seed_job(volume_label="MOVIE_47")
+
+        def fake_tagged_logs(jid, limit=2000, log_path=None):
+            assert jid == job.id
+            return (
+                [f"t | ERROR | job={job.id} | x:y:1 - this job's own error"],
+                False,
+            )
+
+        monkeypatch.setattr("app.api.routes._read_job_tagged_logs", fake_tagged_logs)
+        # If the endpoint fell back to the unscoped global reader, this
+        # unrelated line would leak into the report instead.
+        monkeypatch.setattr(
+            "app.api.routes._read_recent_error_lines",
+            lambda *a, **k: ["t | ERROR | job=39 | a:b:1 - unrelated job's error"],
+        )
+
+        resp = await client.get(f"/api/diagnostics/report?job_id={job.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["recent_errors"] == [f"t | ERROR | job={job.id} | x:y:1 - this job's own error"]
+        assert not any("unrelated" in ln for ln in data["recent_errors"])
+        assert data["recent_errors_is_fallback"] is False
+        assert "unrelated" not in data["markdown"]
+
+    async def test_report_marks_fallback_when_job_has_no_tagged_lines(
+        self, client, fake_tools, monkeypatch
+    ):
+        """No tagged lines → the fallback must be labeled, not silently mixed in."""
+        job = await _seed_job(volume_label="CANCELLED_MOVIE")
+
+        monkeypatch.setattr(
+            "app.api.routes._read_job_tagged_logs",
+            lambda jid, limit=2000, log_path=None: (
+                ["t | ERROR | job=39 | a:b:1 - unrelated job's error"],
+                True,
+            ),
+        )
+
+        resp = await client.get(f"/api/diagnostics/report?job_id={job.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["recent_errors_is_fallback"] is True
+        assert "not specific to this job" in data["markdown"].lower()
+
 
 class TestBundle:
     async def test_bundle_returns_zip_with_expected_members(self, client, fake_tools, monkeypatch):
@@ -223,6 +279,39 @@ class TestJobTaggedLogReader:
         lines, is_fallback = _read_job_tagged_logs(1, log_path=tmp_path / "nope.log")
         assert lines == []
         assert is_fallback is True
+
+
+class TestJobErrorLineReader:
+    """_read_job_error_lines scopes 'recent errors' to one job (issue #506)."""
+
+    def test_filters_to_matching_job_errors_only(self, tmp_path):
+        from app.api.routes import _read_job_error_lines
+
+        log = tmp_path / "engram.log"
+        log.write_text(
+            "t | ERROR | job=47 | a:b:1 - job 47's own error\n"
+            "t | ERROR | job=39 | a:b:1 - unrelated job's error\n"
+            "t | INFO | job=47 | a:b:1 - job 47 info, not an error\n",
+            encoding="utf-8",
+        )
+        lines, is_fallback = _read_job_error_lines(47, log_path=log)
+        assert is_fallback is False
+        assert lines == ["t | ERROR | job=47 | a:b:1 - job 47's own error"]
+
+    def test_falls_back_when_job_has_no_tagged_lines(self, tmp_path):
+        from app.api.routes import _read_job_error_lines
+
+        log = tmp_path / "engram.log"
+        log.write_text(
+            "t | ERROR | job=- | a:b:1 - global error, no job tag\n"
+            "t | ERROR | job=99 | a:b:1 - a different job's error\n",
+            encoding="utf-8",
+        )
+        # Job 47 has no tagged lines at all → fall back to the global tail,
+        # but flag it so callers know these aren't job 47's errors.
+        lines, is_fallback = _read_job_error_lines(47, log_path=log)
+        assert is_fallback is True
+        assert any("global error" in ln for ln in lines)
 
 
 def test_sanitize_obj_redacts_home_and_secrets():

@@ -3089,7 +3089,12 @@ async def _collect_environment() -> dict:
     }
 
 
-def _build_markdown_summary(env: dict, job_summary: dict | None, recent_errors: list[str]) -> str:
+def _build_markdown_summary(
+    env: dict,
+    job_summary: dict | None,
+    recent_errors: list[str],
+    recent_errors_is_fallback: bool = False,
+) -> str:
     """Render the factual core of a bug report (env + job context + errors).
 
     Used verbatim by the GitHub issue body and as the opening of the
@@ -3120,7 +3125,15 @@ def _build_markdown_summary(env: dict, job_summary: dict | None, recent_errors: 
             parts.append(f"- **Error**: {job_summary['error']}")
         parts.append("")
     if recent_errors:
-        parts += ["### Recent Errors", "```"]
+        parts += ["### Recent Errors"]
+        if job_summary and recent_errors_is_fallback:
+            parts += [
+                "_Note: this job has no tagged log lines (predates job-tagged "
+                "logging or none were emitted) — showing the most recent global "
+                "error tail below, which is not specific to this job._",
+                "",
+            ]
+        parts += ["```"]
         parts += recent_errors[-10:]
         parts += ["```", ""]
     return "\n".join(parts)
@@ -3184,6 +3197,24 @@ def _read_job_tagged_logs(
     if matched:
         return ([_sanitize_line(ln) for ln in matched[-limit:]], False)
     return (_read_recent_error_lines(log_path=log_path), True)
+
+
+def _read_job_error_lines(
+    job_id: int, limit: int = 20, log_path: Path | None = None
+) -> tuple[list[str], bool]:
+    """Return ``(lines, is_fallback)`` — this job's ERROR/CRITICAL log lines.
+
+    Scopes to the job via ``_read_job_tagged_logs`` so a bug report for one
+    job never surfaces another job's errors (#506: job 47's report showed
+    job 39's errors because the old code read the unscoped global tail
+    regardless of ``job_id``). When the job has no tagged lines at all
+    (predates job-tagged logging), the fallback is already the global
+    ERROR/CRITICAL tail — ``is_fallback`` lets callers flag it as such.
+    """
+    lines, is_fallback = _read_job_tagged_logs(job_id, log_path=log_path)
+    if not is_fallback:
+        lines = [ln for ln in lines if "ERROR" in ln or "CRITICAL" in ln]
+    return (lines[-limit:], is_fallback)
 
 
 def _cap_text(text: str, max_chars: int = 200_000) -> str:
@@ -3310,7 +3341,14 @@ async def generate_bug_report(
                 "completed_at": str(job.completed_at) if job.completed_at else None,
             }
 
-    recent_errors = _read_recent_error_lines()
+    # Scope "recent errors" to the requested job so a bug report never leaks
+    # an unrelated job's errors (#506). Only fall back to the unscoped global
+    # tail when the report was opened without job context at all.
+    if job_id is not None:
+        recent_errors, recent_errors_is_fallback = _read_job_error_lines(job_id)
+    else:
+        recent_errors = _read_recent_error_lines()
+        recent_errors_is_fallback = False
 
     report = {
         "app_version": env["app_version"],
@@ -3320,12 +3358,13 @@ async def generate_bug_report(
         "ffmpeg_version": env["ffmpeg_version"],
         "job": job_summary,
         "recent_errors": recent_errors,
+        "recent_errors_is_fallback": recent_errors_is_fallback,
         "config": env["config"],
     }
 
     # --- GitHub issue body (kept small; full detail lives in the bundle) ---
     body_parts = [
-        _build_markdown_summary(env, job_summary, recent_errors),
+        _build_markdown_summary(env, job_summary, recent_errors, recent_errors_is_fallback),
         "### Steps to Reproduce",
         "1. ",
         "",
