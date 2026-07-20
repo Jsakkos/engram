@@ -1,9 +1,12 @@
 """Arm/disarm API: validation, drive-occupied rejection, one-shot semantics."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+import app.api.websocket as websocket_module
 from app.database import async_session, init_db
 from app.main import app
 from app.models.disc_job import DiscJob, JobState
@@ -25,8 +28,10 @@ async def setup_db():
         await session.execute(text("DELETE FROM disc_jobs"))
         await session.commit()
     arm_store.disarm("E:")
+    arm_store.disarm("F:")
     yield
     arm_store.disarm("E:")
+    arm_store.disarm("F:")
 
 
 async def test_arm_stores_payload(client):
@@ -81,6 +86,26 @@ async def test_arm_conflicts_when_drive_has_active_job(client):
     assert arm_store.peek("E:") is None
 
 
+async def test_arm_conflict_check_is_scoped_to_drive(client):
+    """A non-terminal job on a DIFFERENT drive must not block arming E:.
+
+    The endpoint's 409 query filters on ``DiscJob.drive_id == req.drive_id``.
+    Without a job on another drive in the fixture, dropping that filter
+    entirely would still pass every other test in this file.
+    """
+    async with async_session() as session:
+        session.add(DiscJob(drive_id="F:", volume_label="BUSY_ELSEWHERE", state=JobState.RIPPING))
+        await session.commit()
+
+    resp = await client.post(
+        "/api/manual/arm",
+        json={"drive_id": "E:", "title": "Arrested Development", "content_type": "tv"},
+    )
+
+    assert resp.status_code == 200
+    assert arm_store.peek("E:") is not None
+
+
 async def test_arm_allowed_when_drive_job_is_terminal(client):
     async with async_session() as session:
         session.add(DiscJob(drive_id="E:", volume_label="OLD", state=JobState.COMPLETED))
@@ -112,3 +137,62 @@ async def test_disarm_when_not_armed_is_not_an_error(client):
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "not_armed"
+
+
+async def test_arm_broadcasts_drive_armed(client):
+    """Arming must call broadcast_drive_armed with the drive id and full identity.
+
+    The route imports ``manager`` locally inside the function body (deferred
+    import), so patching the module attribute is required for the mock to be
+    the object the handler actually calls.
+    """
+    with patch.object(
+        websocket_module.manager, "broadcast_drive_armed", new_callable=AsyncMock
+    ) as mock_broadcast:
+        resp = await client.post(
+            "/api/manual/arm",
+            json={
+                "drive_id": "E:",
+                "title": "Arrested Development",
+                "content_type": "tv",
+                "season": 1,
+                "tmdb_id": 4589,
+            },
+        )
+
+    assert resp.status_code == 200
+    mock_broadcast.assert_called_once_with(
+        "E:",
+        {
+            "title": "Arrested Development",
+            "content_type": "tv",
+            "season": 1,
+            "tmdb_id": 4589,
+            "disc_number": None,
+        },
+    )
+
+
+async def test_disarm_broadcasts_none_when_something_was_armed(client):
+    await client.post(
+        "/api/manual/arm",
+        json={"drive_id": "E:", "title": "The Office", "content_type": "tv"},
+    )
+
+    with patch.object(
+        websocket_module.manager, "broadcast_drive_armed", new_callable=AsyncMock
+    ) as mock_broadcast:
+        resp = await client.post("/api/manual/disarm", json={"drive_id": "E:"})
+
+    assert resp.status_code == 200
+    mock_broadcast.assert_called_once_with("E:", None)
+
+
+async def test_disarm_does_not_broadcast_when_nothing_was_armed(client):
+    with patch.object(
+        websocket_module.manager, "broadcast_drive_armed", new_callable=AsyncMock
+    ) as mock_broadcast:
+        resp = await client.post("/api/manual/disarm", json={"drive_id": "E:"})
+
+    assert resp.status_code == 200
+    mock_broadcast.assert_not_called()
