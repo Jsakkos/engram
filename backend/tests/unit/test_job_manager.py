@@ -139,6 +139,53 @@ class TestOnTitleRipped:
         assert t.state == TitleState.RIPPING  # unchanged
 
 
+@pytest.mark.unit
+class TestBackfillUnmatchedTitles:
+    """Issue #517: backfill's own "already assigned?" dedup check must key off
+    the disc-native title number (output_index when set), not the raw
+    scan-order title_index — mirrors the fix already applied to
+    resolve_title_from_filename/find_staging_file. Otherwise, on a disc whose
+    native MakeMKV numbering doesn't start at t00, a title that was already
+    correctly resolved during the normal rip flow gets misidentified as
+    "unmatched" and reprocessed redundantly.
+    """
+
+    async def test_skips_already_assigned_title_on_native_numbering_offset(
+        self, tmp_path, monkeypatch
+    ):
+        """Disc has no "t00" — native numbering starts at 1. Title scan-index 0
+        has output_index=1 and output_filename already set (resolved correctly
+        by resolve_title_from_filename during the normal rip flow). The staging
+        file is literally named "..._t01.mkv". Backfill must recognize this
+        file as already-assigned via the native number, not re-treat it as
+        unmatched and reprocess it.
+        """
+        staging = tmp_path
+        existing_path = staging / "Show_S01E01_t01.mkv"
+        existing_path.write_text("")
+
+        job, title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(staging),
+            title_index=0,
+            output_index=1,
+            output_filename=str(existing_path),
+            state=TitleState.MATCHED,
+        )
+
+        called = []
+        monkeypatch.setattr(
+            job_manager,
+            "_on_title_ripped",
+            AsyncMock(side_effect=lambda *a, **k: called.append(a)),
+        )
+
+        await job_manager._backfill_unmatched_titles(job.id, staging, [title])
+
+        # Must NOT be reprocessed — it's already assigned under its native number.
+        assert called == []
+
+
 _PROMPT = json.dumps({"kind": "name", "reason": "Disc label unreadable"})
 
 

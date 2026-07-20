@@ -27,6 +27,7 @@ from app.core.extractor import (
     STALL_FAILURE_REASON,
     MakeMKVExtractor,
     compute_content_hash,
+    title_index_from_filename,
 )
 from app.core.log_context import with_job_log_context
 from app.core.organizer import movie_organizer
@@ -3204,29 +3205,25 @@ class JobManager:
         self, job_id: int, staging_dir: Path, sorted_titles: list[DiscTitle]
     ) -> None:
         """Scan staging dir for .mkv files not yet assigned to a title."""
-        import re as _re
-
         async with async_session() as session:
             result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
             titles = result.scalars().all()
-            assigned_indices = {t.title_index for t in titles if t.output_filename is not None}
+            assigned_native = {
+                expected_native_index(t) for t in titles if t.output_filename is not None
+            }
 
             mkv_files = list(staging_dir.glob("*.mkv")) if staging_dir.exists() else []
 
             for mkv in mkv_files:
-                idx_match = _re.search(r"t(\d+)\.mkv$", mkv.name, _re.IGNORECASE)
-                if not idx_match:
-                    idx_match = _re.search(r"title[_]?(\d+)\.mkv$", mkv.name, _re.IGNORECASE)
-                if not idx_match:
+                native_index = title_index_from_filename(mkv.name)
+                if native_index is None:
                     continue
-
-                title_index = int(idx_match.group(1))
-                if title_index in assigned_indices:
+                if native_index in assigned_native:
                     continue
 
                 logger.info(
                     f"Backfill: found unmatched file {mkv.name} "
-                    f"(title_index={title_index}, Job {job_id})"
+                    f"(native title number={native_index}, Job {job_id})"
                 )
                 await self._on_title_ripped(job_id, 0, mkv, sorted_titles)
 
