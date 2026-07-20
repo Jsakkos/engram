@@ -1332,6 +1332,11 @@ class JobManager:
         Only rewrites placeholder wording (``_GENERIC_FAILURE_MESSAGES`` or empty),
         so a precise message from elsewhere — e.g. "Finalization failed: …" — is
         left intact.
+
+        The transition that failed the job already broadcast the generic wording,
+        so the correction is re-broadcast here too. Without that, a dashboard open
+        at the moment of the stall keeps showing the misleading message until the
+        page is reloaded — the very thing this reason exists to fix.
         """
         session.expire_all()
         job = await session.get(DiscJob, job_id)
@@ -1345,6 +1350,15 @@ class JobManager:
         logger.info(
             f"Job {sanitize_log_value(job_id)}: failure reason set to {sanitize_log_value(message)}"
         )
+        # Non-fatal: the DB is already committed, so a broadcast failure must not
+        # undo the correction (mirrors the state machine's own broadcast guard).
+        try:
+            await ws_manager.broadcast_job_update(job_id, JobState.FAILED.value, error=message)
+        except Exception:
+            logger.warning(
+                f"Job {sanitize_log_value(job_id)}: failed to broadcast corrected reason",
+                exc_info=True,
+            )
 
     async def skip_title(
         self, job_id: int, title_id: int, *, target: TitleState = TitleState.REVIEW

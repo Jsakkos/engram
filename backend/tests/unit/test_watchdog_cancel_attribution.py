@@ -50,6 +50,23 @@ def _quiet_ws(monkeypatch):
 
 
 @pytest.fixture
+def job_broadcasts(monkeypatch):
+    """Record every broadcast_job_update on the ws singleton.
+
+    ``EventBroadcaster(ws_manager)`` holds the same instance job_manager imports,
+    so patching the method here captures both the state machine's transition
+    broadcast and any direct call.
+    """
+    calls = []
+
+    async def _capture(job_id, state, **kwargs):
+        calls.append({"job_id": job_id, "state": state, **kwargs})
+
+    monkeypatch.setattr(ws_manager, "broadcast_job_update", _capture)
+    return calls
+
+
+@pytest.fixture
 def rip_env(monkeypatch, tmp_path):
     """Neutralize the side-effecting steps in _run_ripping that are orthogonal to
     cancellation attribution: physical eject, the makemkv log dir, and the
@@ -169,14 +186,38 @@ async def test_reconcile_cancel_records_stall_reason_not_user_cancel(rip_env, mo
         reason="stale timeout in ripping",
         failure_message="Ripping stalled - no progress after 1200s",
     )
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    await asyncio.wait([task])
+    assert task.cancelled(), "the rip task must end cancelled (asyncio convention)"
 
     refreshed, refreshed_title = await _reload(job.id, title.id)
     assert refreshed_title.state == TitleState.FAILED
     assert refreshed.state == JobState.FAILED
     assert refreshed.error_message != "Cancelled by user"
     assert refreshed.error_message == "Ripping stalled - no progress after 1200s"
+
+
+async def test_corrected_failure_reason_is_broadcast_to_live_clients(
+    rip_env, monkeypatch, job_broadcasts
+):
+    """The corrected reason must reach connected dashboards, not just the DB.
+
+    ``transition_to_failed`` broadcasts the *generic* wording at commit time, so a
+    corrective DB write alone would leave anyone watching live on the misleading
+    message until they reloaded -- the exact thing this change set out to fix.
+    """
+    job, _title = await _seed(rip_env, subtitle_status="completed")
+    task = await _start_hung_rip(job.id, monkeypatch)
+
+    await job_manager.reconcile_and_advance(
+        job.id,
+        reason="stale timeout in ripping",
+        failure_message="Ripping stalled - no progress after 1200s",
+    )
+    await asyncio.wait([task])
+
+    failures = [c for c in job_broadcasts if c["state"] == JobState.FAILED.value]
+    assert failures, "the job failing must be broadcast at all"
+    assert failures[-1]["error"] == "Ripping stalled - no progress after 1200s"
 
 
 async def test_reconcile_review_outcome_survives_the_cancelled_rip_task(rip_env, monkeypatch):
@@ -196,8 +237,8 @@ async def test_reconcile_review_outcome_survives_the_cancelled_rip_task(rip_env,
         reason="stale timeout in ripping",
         failure_message="Ripping stalled - no progress after 1200s",
     )
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    await asyncio.wait([task])
+    assert task.cancelled(), "the rip task must end cancelled (asyncio convention)"
 
     refreshed, refreshed_title = await _reload(job.id, title.id)
     assert advanced is True
@@ -212,8 +253,8 @@ async def test_user_cancel_still_records_cancelled_by_user(rip_env, monkeypatch)
     task = await _start_hung_rip(job.id, monkeypatch)
 
     await job_manager.cancel_job(job.id)
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    await asyncio.wait([task])
+    assert task.cancelled(), "the rip task must end cancelled (asyncio convention)"
 
     refreshed, _ = await _reload(job.id)
     assert refreshed.state == JobState.FAILED
@@ -243,8 +284,8 @@ async def test_user_cancel_of_job_with_review_titles_still_fails(rip_env, monkey
     task = await _start_hung_rip(job.id, monkeypatch)
 
     await job_manager.cancel_job(job.id)
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    await asyncio.wait([task])
+    assert task.cancelled(), "the rip task must end cancelled (asyncio convention)"
 
     refreshed, _ = await _reload(job.id)
     assert refreshed.state == JobState.FAILED
