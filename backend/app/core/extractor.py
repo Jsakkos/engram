@@ -241,6 +241,10 @@ class RipResult:
     output_files: list[Path]
     error_message: str | None = None
     stalled_titles: list[int] | None = None  # Command indices that were skipped due to stall
+    # Specific reason for a stall, when one is known (e.g. a region mismatch).
+    # None means the generic STALL_FAILURE_REASON applies. Callers routing
+    # stalled titles to review read this so the live update and History agree.
+    failure_reason: str | None = None
 
 
 class ScanTimeoutError(Exception):

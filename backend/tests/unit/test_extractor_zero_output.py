@@ -14,6 +14,7 @@ import pytest
 from app.core.extractor import (
     REGION_MISMATCH_FAILURE_REASON,
     STALL_FAILURE_REASON,
+    RipResult,
     _is_region_mismatch,
     _should_abandon_zero_output_rip,
 )
@@ -75,3 +76,22 @@ class TestZeroOutputAbandonDecision:
 
     def test_no_stalls_never_abandons(self):
         assert _should_abandon_zero_output_rip(stall_count=0, completed_outputs=0) is False
+
+
+@pytest.mark.unit
+class TestRipResultFailureReason:
+    """RipResult carries the specific stall reason so the live per-title update
+    and the History entry cannot disagree about why a rip failed."""
+
+    def test_failure_reason_defaults_to_none(self):
+        result = RipResult(success=True, output_files=[])
+        assert result.failure_reason is None
+
+    def test_failure_reason_round_trips(self):
+        result = RipResult(
+            success=False,
+            output_files=[],
+            stalled_titles=[1],
+            failure_reason=REGION_MISMATCH_FAILURE_REASON,
+        )
+        assert result.failure_reason == REGION_MISMATCH_FAILURE_REASON
