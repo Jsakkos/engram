@@ -9,11 +9,16 @@ MakeMKV command loop:
   proven unreadable, instead of burning one full stall timeout per title.
 """
 
+import threading
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
 from app.core.extractor import (
     REGION_MISMATCH_FAILURE_REASON,
     STALL_FAILURE_REASON,
+    MakeMKVExtractor,
     RipResult,
     _is_region_mismatch,
     _should_abandon_zero_output_rip,
@@ -95,3 +100,140 @@ class TestRipResultFailureReason:
             failure_reason=REGION_MISMATCH_FAILURE_REASON,
         )
         assert result.failure_reason == REGION_MISMATCH_FAILURE_REASON
+
+
+class _FakeStdout:
+    """MakeMKV stdout that emits a few lines then hangs until terminated.
+
+    The reader loop consumes this with ``iter(process.stdout.readline, "")``, so
+    ``readline`` must return "" to signal EOF. Blocking until the stall watchdog
+    kills the process is exactly the behaviour of a MakeMKV stuck at disc-open.
+    """
+
+    def __init__(self, lines: list[str], killed: threading.Event):
+        self._lines = list(lines)
+        self._killed = killed
+
+    def readline(self) -> str:
+        if self._lines:
+            return self._lines.pop(0) + "\n"
+        self._killed.wait(timeout=10)
+        return ""
+
+
+class _FakeProc:
+    """A makemkvcon that never writes a file and must be killed to stop."""
+
+    def __init__(self, lines: list[str]):
+        self._killed = threading.Event()
+        self.returncode = None
+        self.stdout = _FakeStdout(lines, self._killed)
+        self.stderr = None
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = 1
+        self._killed.set()
+
+    def wait(self):
+        self._killed.wait(timeout=10)
+        if self.returncode is None:
+            self.returncode = 1
+        return self.returncode
+
+
+@pytest.mark.unit
+class TestZeroOutputAbandonWiring:
+    """End-to-end through the real command loop with makemkvcon stubbed."""
+
+    async def test_abandons_remaining_titles_and_reports_them_stalled(self, tmp_path):
+        """Four titles, every one stalling with no output: the loop must stop
+        after ZERO_OUTPUT_STALL_LIMIT and still report all four as stalled."""
+        spawned = []
+
+        def _fake_popen(cmd, **kwargs):
+            proc = _FakeProc(["PRGV:14417,11915,65536"])
+            spawned.append(proc)
+            return proc
+
+        errors: list[tuple[int, str]] = []
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+
+        with (
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+            patch("app.core.extractor.STALL_POLL_INTERVAL", 0.05),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0",
+                tmp_path,
+                title_indices=[0, 1, 2, 3],
+                stall_timeout=0.2,
+                title_error_callback=lambda idx, reason: errors.append((idx, reason)),
+                job_id=1,
+            )
+
+        # Only the first two commands ever ran; the rest were abandoned.
+        assert len(spawned) == 2
+        # All four titles are still accounted for as stalled, so none is left
+        # stranded in RIPPING with no review entry.
+        assert result.stalled_titles == [1, 2, 3, 4]
+        assert sorted(idx for idx, _ in errors) == [1, 2, 3, 4]
+
+    async def test_region_mismatch_sets_the_specific_reason(self, tmp_path):
+        """A stall preceded by MSG:3032 reports the region cause, not 'dirty'."""
+
+        def _fake_popen(cmd, **kwargs):
+            return _FakeProc(
+                [
+                    'MSG:3032,0,2,"Region setting of drive ASUS:BW-16D1HT does not '
+                    "match the region of currently inserted disc, trying to work "
+                    'around..."',
+                    "PRGV:14417,11915,65536",
+                ]
+            )
+
+        errors: list[tuple[int, str]] = []
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+
+        with (
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+            patch("app.core.extractor.STALL_POLL_INTERVAL", 0.05),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0",
+                tmp_path,
+                title_indices=[0, 1],
+                stall_timeout=0.2,
+                title_error_callback=lambda idx, reason: errors.append((idx, reason)),
+                job_id=2,
+            )
+
+        assert result.failure_reason == REGION_MISMATCH_FAILURE_REASON
+        assert all(reason == REGION_MISMATCH_FAILURE_REASON for _, reason in errors)
+
+    async def test_plain_stall_keeps_the_generic_reason(self, tmp_path):
+        """Without MSG:3032 the message is unchanged, so existing behaviour holds."""
+
+        def _fake_popen(cmd, **kwargs):
+            return _FakeProc(["PRGV:14417,11915,65536"])
+
+        errors: list[tuple[int, str]] = []
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+
+        with (
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+            patch("app.core.extractor.STALL_POLL_INTERVAL", 0.05),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0",
+                tmp_path,
+                title_indices=[0, 1],
+                stall_timeout=0.2,
+                title_error_callback=lambda idx, reason: errors.append((idx, reason)),
+                job_id=3,
+            )
+
+        assert result.failure_reason is None
+        assert all(reason == STALL_FAILURE_REASON for _, reason in errors)

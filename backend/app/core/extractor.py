@@ -693,6 +693,16 @@ class MakeMKVExtractor:
         )
         _fs_lock = threading.Lock()
 
+        # Set when MakeMKV reports a region mismatch (MSG:3032). Single-element
+        # list so the watchdog thread sees writes from the reader loop, matching
+        # the last_progress pattern below. Declared out here (not inside
+        # run_rip_with_streaming) because the RipResult returns below also read it.
+        region_mismatch = [False]
+
+        def _stall_reason() -> str:
+            """The most specific reason we can give for a stall."""
+            return REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else STALL_FAILURE_REASON
+
         def _fire_title_complete(fname: str, size: int, ordinal: int) -> None:
             """Record output file and invoke the title callback (lock held).
 
@@ -816,7 +826,7 @@ class MakeMKVExtractor:
                             _safe_callback(
                                 title_error_callback,
                                 current_title_idx,
-                                STALL_FAILURE_REASON,
+                                _stall_reason(),
                                 label="title_error_callback",
                             )
                         try:
@@ -871,7 +881,7 @@ class MakeMKVExtractor:
                         last_progress[0] = time.monotonic()
                         watchdog_thread = threading.Thread(
                             target=_stall_watchdog,
-                            args=(process, output_dir, stall_timeout),
+                            args=(process, output_dir, stall_timeout, STALL_POLL_INTERVAL),
                             daemon=True,
                         )
                         watchdog_thread.start()
@@ -904,6 +914,11 @@ class MakeMKVExtractor:
                         # only signal that reliably maps to a specific title.
                         if line.startswith(("PRGV:", "PRGC:", "PRGT:")):
                             last_progress[0] = time.monotonic()
+
+                        # A region mismatch makes MakeMKV retry disc-open forever;
+                        # remember it so the stall is reported with its real cause.
+                        if _is_region_mismatch(line):
+                            region_mismatch[0] = True
 
                         # Catch robot-mode MSG lines about file creation
                         filepath = _extract_created_mkv(line, output_dir)
@@ -957,6 +972,34 @@ class MakeMKVExtractor:
                                         logger.warning(
                                             f"Failed to delete incomplete file {mkv.name}: {e}"
                                         )
+                            # Give up rather than re-opening a disc that has
+                            # already failed at disc-open this many times with
+                            # nothing written. Each retry costs a full
+                            # stall_timeout, which is what made a region-locked
+                            # disc take ~26 minutes to resolve (issue #506).
+                            if _should_abandon_zero_output_rip(
+                                len(stalled_commands), len(output_files)
+                            ):
+                                remaining = list(range(current_title_idx + 1, len(commands) + 1))
+                                if remaining:
+                                    logger.warning(
+                                        f"Abandoning rip after {len(stalled_commands)} "
+                                        f"stalled command(s) with no output. Skipping "
+                                        f"{len(remaining)} remaining command(s)."
+                                    )
+                                # Report the untried commands as stalled too, so every
+                                # title still reaches review instead of being stranded.
+                                for skipped_idx in remaining:
+                                    stalled_commands.add(skipped_idx)
+                                    if title_error_callback:
+                                        _safe_callback(
+                                            title_error_callback,
+                                            skipped_idx,
+                                            _stall_reason(),
+                                            label="title_error_callback",
+                                        )
+                                break
+
                             # Don't break — continue to next command
                             continue
 
@@ -1039,6 +1082,7 @@ class MakeMKVExtractor:
                     output_files=output_files,
                     error_message=stderr or "Unknown error during ripping",
                     stalled_titles=stalled_list,
+                    failure_reason=REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else None,
                 )
 
             # Find all MKV files in output directory if none tracked
@@ -1053,6 +1097,7 @@ class MakeMKVExtractor:
                 success=True,
                 output_files=output_files,
                 stalled_titles=stalled_list,
+                failure_reason=REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else None,
             )
 
         except Exception as e:
