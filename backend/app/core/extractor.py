@@ -82,9 +82,16 @@ def title_index_from_filename(name: str) -> int | None:
 
     ``_files_to_ignore`` is the one real gap: it has no DB access to consult
     ``output_index``, so on an offset-numbered disc it can disagree with
-    ``resolve_title_from_filename`` during a single-track re-rip. This is a
-    documented, narrow gap (see issue #517's fix plan, Follow-up section), not
-    an oversight.
+    ``resolve_title_from_filename`` whenever ``rip_titles`` is called with a
+    real subset of titles — the manual single-track re-rip path
+    (``job_manager.rerip_titles``), and also the automatic one-pass-stalled
+    fallback that re-rips individually-missing titles after a failed 'all'
+    pass. In practice this is bounded: a stale sibling file typically earns
+    ``TitleCompletionDetector``'s deletion-protection within
+    ``STABLE_CHECKS_REQUIRED`` polls (~9s), well inside the default stall
+    timeout, so the risk is redundant reprocessing rather than data loss. This
+    is a documented, narrow gap (see issue #517's fix plan, Follow-up
+    section), not an oversight.
     """
     m = re.search(r"t(\d+)\.mkv$", name, re.IGNORECASE)
     if not m:

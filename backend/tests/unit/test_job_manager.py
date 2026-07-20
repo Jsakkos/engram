@@ -932,6 +932,21 @@ class TestOnePassRipFallback:
         (tmp_path / "Some Show_t01.mkv").write_bytes(b"")
         assert job_manager._has_complete_output(tmp_path, t1) is False
 
+    def test_has_complete_output_prefers_output_index_when_numbering_offset(self, tmp_path):
+        """Issue #517: disc has no "t00" — MakeMKV's native numbering starts at 1.
+
+        Title scan-index 0 has output_index=1 (its suggested filename was
+        "..._t01.mkv"). The one-pass fallback's "is this title already done?"
+        check must consult output_index, not title_index, or it will treat an
+        already-ripped title as still missing and needlessly re-rip it.
+        """
+        from types import SimpleNamespace
+
+        t0 = SimpleNamespace(title_index=0, output_index=1)
+        assert job_manager._has_complete_output(tmp_path, t0) is False
+        (tmp_path / "Some Show_t01.mkv").write_bytes(b"data")
+        assert job_manager._has_complete_output(tmp_path, t0) is True
+
     async def test_all_selected_rips_in_single_pass(self, rip_env, monkeypatch):
         """When every title is selected, the rip uses one 'all' invocation
         (title_indices=None) instead of one command per title."""
