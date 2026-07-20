@@ -75,14 +75,16 @@ def title_index_from_filename(name: str) -> int | None:
     ``DiscTitle`` row should prefer matching against ``DiscTitle.output_index``
     (the native number recorded at scan time), falling back to ``title_index``
     only for legacy rows without it — see
-    ``app.services.ripping_helpers.expected_native_index``, which every
-    resolution site except ``_files_to_ignore`` (below) now uses.
+    ``app.services.ripping_helpers.expected_native_index``, which most
+    resolution sites call directly. ``finalization_coordinator._resolve_source_file``
+    applies the same precedence inline (it works over a DB-free dict snapshot,
+    not a title object, so it can't call the helper directly).
 
-    ``_files_to_ignore`` is a known, deliberate exception: it has no DB access
-    to consult ``output_index``, so on an offset-numbered disc it can disagree
-    with ``resolve_title_from_filename`` during a single-track re-rip. This is
-    a documented, narrow gap (see the plan's Follow-up section), not an
-    oversight.
+    ``_files_to_ignore`` is the one real gap: it has no DB access to consult
+    ``output_index``, so on an offset-numbered disc it can disagree with
+    ``resolve_title_from_filename`` during a single-track re-rip. This is a
+    documented, narrow gap (see issue #517's fix plan, Follow-up section), not
+    an oversight.
     """
     m = re.search(r"t(\d+)\.mkv$", name, re.IGNORECASE)
     if not m:
