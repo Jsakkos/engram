@@ -1,7 +1,10 @@
 """Arm store: one-shot, drive-scoped manual identity payloads."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
+from app.api.websocket import ConnectionManager
 from app.services.manual_identity import ArmStore, ManualIdentity
 
 
@@ -67,3 +70,37 @@ def test_to_dict_is_json_safe(identity):
         "tmdb_id": 4589,
         "disc_number": 2,
     }
+
+
+@pytest.mark.asyncio
+async def test_broadcast_drive_armed_sends_identity(identity):
+    manager = ConnectionManager()
+    manager.broadcast = AsyncMock()
+
+    await manager.broadcast_drive_armed("E:", identity.to_dict())
+
+    manager.broadcast.assert_awaited_once_with(
+        {
+            "type": "drive_armed",
+            "drive_id": "E:",
+            "identity": {
+                "title": "Arrested Development",
+                "content_type": "tv",
+                "season": 1,
+                "tmdb_id": 4589,
+                "disc_number": 2,
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_broadcast_drive_armed_none_clears():
+    manager = ConnectionManager()
+    manager.broadcast = AsyncMock()
+
+    await manager.broadcast_drive_armed("E:", None)
+
+    manager.broadcast.assert_awaited_once_with(
+        {"type": "drive_armed", "drive_id": "E:", "identity": None}
+    )

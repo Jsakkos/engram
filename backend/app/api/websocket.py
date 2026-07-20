@@ -175,6 +175,24 @@ class ConnectionManager:
             }
         )
 
+    async def broadcast_drive_armed(
+        self,
+        drive_id: str,
+        identity: dict | None,
+    ) -> None:
+        """Broadcast a drive's armed manual identity.
+
+        ``identity=None`` clears the armed state (disarmed, or consumed by an
+        inserted disc). Mirrors ``broadcast_drive_event``'s flat shape.
+        """
+        await self.broadcast(
+            {
+                "type": "drive_armed",
+                "drive_id": drive_id,
+                "identity": identity,
+            }
+        )
+
     async def broadcast_title_update(
         self,
         job_id: int,
