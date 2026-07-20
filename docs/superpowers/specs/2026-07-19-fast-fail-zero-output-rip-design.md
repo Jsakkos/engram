@@ -76,12 +76,24 @@ Three changes, ordered by how much time each saves.
 
 The per-title fallback exists to recover the "one bad title lost the rest of the
 disc" case. That premise requires partial success worth salvaging. When the
-all-pass produced zero output files, there is no partial success: the disc itself
-is the problem, and re-opening it once per title is guaranteed waste.
+all-pass stalled and produced zero output files, there is no partial success: the
+disc itself is the problem, and re-opening it once per title is guaranteed waste.
 
-Gate the fallback on the all-pass having produced at least one output file. When
-it produced none, skip the fallback and route every still-missing title straight
-to review via the existing stall-routing path.
+Skip the fallback only when both conditions hold:
+
+- the all-pass reported stalled titles (`result.stalled_titles` is non-empty), and
+- the all-pass produced zero output files.
+
+**Both conditions are required.** A pass that returns `success=True` with an empty
+`output_files` list has produced no evidence that the disc is unreadable, so a
+per-title retry is still legitimate there. Only a stall is positive evidence that
+MakeMKV could not read the disc. This distinction is load-bearing: the existing
+regression test `test_single_pass_failure_reripsonly_missing`
+(`tests/unit/test_job_manager.py:908-923`) asserts that a zero-output pass with no
+stall still triggers the fallback, and it must keep passing.
+
+When both hold, skip the fallback and route every still-missing title straight to
+review via the existing stall-routing path.
 
 This is the single largest saving. It removes the entire serial burn rather than
 trimming it, taking job 47's shape from about 26 minutes to roughly the 2 minutes
@@ -161,7 +173,7 @@ stall watchdog fires
        no  -> continue to next command
 
 RipResult(stalled_titles=[...], failure_reason=...)     [change 3]
-  -> _run_ripping: all-pass produced zero files?        [new, change 1]
+  -> _run_ripping: all-pass stalled AND zero files?     [new, change 1]
        yes -> skip per-title fallback
        no  -> per-title fallback as today
   -> route each stalled title to REVIEW (rip_stalled, region-aware reason)
@@ -187,8 +199,11 @@ Backend tests, `backend/tests/unit/`.
 - All-pass stalls with zero output files: `rip_titles` is called exactly once (no
   fallback invocation), and all selected titles land in `REVIEW` with
   `rip_stalled`.
-- All-pass stalls with some output files: the fallback still runs, preserving
-  today's recovery behavior. This is the regression guard for change 1.
+- All-pass stalls but produced some output files: the fallback still runs,
+  preserving today's recovery behavior for a partially readable disc.
+- All-pass returns `success=True` with zero output files and no stall: the
+  fallback still runs. This is the existing
+  `test_single_pass_failure_reripsonly_missing` case and must not regress.
 
 **Region mismatch (change 3):**
 
