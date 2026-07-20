@@ -65,14 +65,24 @@ def _extract_created_mkv(line: str, output_dir: Path) -> Path | None:
 
 
 def title_index_from_filename(name: str) -> int | None:
-    """Parse the MakeMKV title index out of an output filename, or None.
+    """Parse MakeMKV's disc-native title number out of an output filename, or None.
 
     MakeMKV names each output ``{label}_t{NN}.mkv`` (or ``title_NN.mkv``) where
-    ``NN`` is the disc title index — the same number stored as
-    ``DiscTitle.title_index`` and passed on the rip command line. This is the
-    single source of truth for the ``filename <-> title`` mapping; both the
-    completion detector's ignore-list and ``resolve_title_from_filename`` rely
-    on it so they cannot disagree.
+    ``NN`` is MakeMKV's own disc-native title number. This is USUALLY the same
+    as the scan-order ``DiscTitle.title_index``, but not guaranteed — some
+    discs number titles starting at 1 (no "t00") or with gaps (issue #517).
+    Callers that need to map a ripped filename back to a specific
+    ``DiscTitle`` row should prefer matching against ``DiscTitle.output_index``
+    (the native number recorded at scan time), falling back to ``title_index``
+    only for legacy rows without it — see
+    ``app.services.ripping_helpers.expected_native_index``, which every
+    resolution site except ``_files_to_ignore`` (below) now uses.
+
+    ``_files_to_ignore`` is a known, deliberate exception: it has no DB access
+    to consult ``output_index``, so on an offset-numbered disc it can disagree
+    with ``resolve_title_from_filename`` during a single-track re-rip. This is
+    a documented, narrow gap (see the plan's Follow-up section), not an
+    oversight.
     """
     m = re.search(r"t(\d+)\.mkv$", name, re.IGNORECASE)
     if not m:
