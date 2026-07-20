@@ -15,6 +15,7 @@ from app.core.extractor import (
     REGION_MISMATCH_FAILURE_REASON,
     STALL_FAILURE_REASON,
     _is_region_mismatch,
+    _should_abandon_zero_output_rip,
 )
 
 
@@ -45,3 +46,32 @@ class TestRegionMismatchDetection:
         # dirty when the real problem is the drive's region setting.
         assert REGION_MISMATCH_FAILURE_REASON != STALL_FAILURE_REASON
         assert "region" in REGION_MISMATCH_FAILURE_REASON.lower()
+
+
+@pytest.mark.unit
+class TestZeroOutputAbandonDecision:
+    """When every attempt stalls and nothing is written, stop re-opening the disc.
+
+    Abandoning is not lossy: each skipped title still routes to REVIEW as
+    re-rippable, and the user has a manual re-rip path. So the threshold can be
+    aggressive.
+    """
+
+    def test_does_not_abandon_below_the_stall_threshold(self):
+        # One stall is not yet evidence the whole disc is unreadable.
+        assert _should_abandon_zero_output_rip(stall_count=1, completed_outputs=0) is False
+
+    def test_abandons_at_threshold_with_no_output(self):
+        assert _should_abandon_zero_output_rip(stall_count=2, completed_outputs=0) is True
+
+    def test_abandons_above_threshold_with_no_output(self):
+        assert _should_abandon_zero_output_rip(stall_count=5, completed_outputs=0) is True
+
+    def test_never_abandons_once_any_output_exists(self):
+        # A disc that produced a file is partially readable. Stalls on later
+        # titles are the "one bad title" case the per-title loop exists to
+        # survive, so keep going.
+        assert _should_abandon_zero_output_rip(stall_count=9, completed_outputs=1) is False
+
+    def test_no_stalls_never_abandons(self):
+        assert _should_abandon_zero_output_rip(stall_count=0, completed_outputs=0) is False

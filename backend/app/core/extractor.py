@@ -43,6 +43,18 @@ REGION_MISMATCH_FAILURE_REASON = (
 # Post-process force checks bypass this requirement (process exit guarantees write done).
 STABLE_CHECKS_REQUIRED = 3
 
+# Consecutive stalled commands, with nothing written by any of them, after which
+# a rip gives up instead of re-opening the disc once per remaining title. A disc
+# that has failed this many times in a row at disc-open is not going to succeed
+# on the next title, and each retry costs a full ripping_stall_timeout.
+# Abandoning is safe because every skipped title still routes to REVIEW as
+# re-rippable (see route_rip_failure_to_review).
+ZERO_OUTPUT_STALL_LIMIT = 2
+
+# Seconds between stall-watchdog polls. A module constant so tests can shorten it;
+# production behaviour is unchanged at 5 s.
+STALL_POLL_INTERVAL = 5.0
+
 
 def _to_drive_spec(drive: str) -> str:
     """Normalize a drive identifier into a MakeMKV drive spec.
@@ -62,6 +74,20 @@ def _is_stalled(now: float, last_progress: float, timeout: float) -> bool:
     writing but is still emitting progress lines is therefore NOT stalled.
     """
     return (now - last_progress) >= timeout
+
+
+def _should_abandon_zero_output_rip(stall_count: int, completed_outputs: int) -> bool:
+    """Whether to stop issuing rip commands because the disc is unreadable.
+
+    True only when this invocation has stalled ``ZERO_OUTPUT_STALL_LIMIT`` times
+    **and** produced no completed output at all. Requiring zero output is what
+    keeps the "one bad title, rest of the disc fine" case working: as soon as a
+    single file lands, the rip is partially succeeding and every remaining title
+    is still worth attempting.
+    """
+    if completed_outputs > 0:
+        return False
+    return stall_count >= ZERO_OUTPUT_STALL_LIMIT
 
 
 def _extract_created_mkv(line: str, output_dir: Path) -> Path | None:
