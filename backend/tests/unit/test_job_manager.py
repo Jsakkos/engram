@@ -988,6 +988,77 @@ class TestOnePassRipFallback:
         assert rip.await_args_list[0].kwargs["title_indices"] is None  # one-pass
         assert sorted(rip.await_args_list[1].kwargs["title_indices"]) == [0, 1]  # fallback
 
+    async def test_stalled_pass_with_no_output_skips_fallback(self, rip_env, monkeypatch):
+        """A disc that stalled and wrote nothing is unreadable: re-opening it
+        once per title only burns another stall timeout each (issue #506).
+
+        Also covers the region-mismatch plumbing: the reason carried on
+        RipResult must reach match_details under the existing rip_stalled code
+        (a new error code would be wiped by auto-escalation).
+        """
+        from app.core.extractor import REGION_MISMATCH_FAILURE_REASON
+
+        job = await _seed_two_selected(str(rip_env))
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+        # Keep match-failure handling from spawning a detached task: a leaked
+        # task holds a StaticPool session past teardown and breaks a later test
+        # (see the isolate_database fixture's note in tests/unit/conftest.py).
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+        rip = AsyncMock(
+            return_value=RipResult(
+                success=True,
+                output_files=[],
+                stalled_titles=[1, 2],
+                failure_reason=REGION_MISMATCH_FAILURE_REASON,
+            )
+        )
+        monkeypatch.setattr(job_manager._extractor, "rip_titles", rip)
+
+        await job_manager._run_ripping(job.id)
+
+        assert rip.await_count == 1
+
+        # Skipping the fallback must not strand the titles: each still has to
+        # reach REVIEW as re-rippable, or the disc silently disappears from the
+        # UI with no way for the user to act on it.
+        async with _unit_session_factory() as session:
+            titles = (
+                (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id)))
+                .scalars()
+                .all()
+            )
+            refreshed_job = await session.get(DiscJob, job.id)
+        assert [t.state for t in titles] == [TitleState.REVIEW, TitleState.REVIEW]
+        for t in titles:
+            d = json.loads(t.match_details)
+            assert d["error"] == "rip_stalled"
+            assert d["rerip_eligible"] is True
+            assert d["message"] == REGION_MISMATCH_FAILURE_REASON
+        assert refreshed_job.state == JobState.REVIEW_NEEDED
+
+    async def test_stalled_pass_with_some_output_still_falls_back(self, rip_env, monkeypatch):
+        """A partially readable disc keeps the per-title recovery path: one bad
+        title must not cost the rest of the disc."""
+        job = await _seed_two_selected(str(rip_env))
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+        # Keep match-failure handling from spawning a detached task: a leaked
+        # task holds a StaticPool session past teardown and breaks a later test
+        # (see the isolate_database fixture's note in tests/unit/conftest.py).
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+        produced = rip_env / "Some Show_t00.mkv"
+        produced.write_bytes(b"data")
+
+        rip = AsyncMock(
+            return_value=RipResult(success=True, output_files=[produced], stalled_titles=[2])
+        )
+        monkeypatch.setattr(job_manager._extractor, "rip_titles", rip)
+
+        await job_manager._run_ripping(job.id)
+
+        assert rip.await_count == 2
+
 
 @pytest.mark.unit
 class TestRunRippingCallsNotifyEjected:

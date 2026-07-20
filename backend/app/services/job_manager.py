@@ -2567,7 +2567,32 @@ class JobManager:
                             and not self._has_complete_output(output_dir, t)
                         ):
                             missing.append(t)
-                if missing:
+                # A pass that stalled and wrote nothing means the disc itself is
+                # unreadable (bad region setting, unsupported protection, dead
+                # drive). The per-title fallback exists to rescue the "one bad
+                # title lost the rest of the disc" case, which presupposes
+                # partial success; with zero output there is nothing to rescue
+                # and each retry costs another full stall timeout (issue #506).
+                # Both conditions are required: a pass that simply reported no
+                # files without stalling has given us no evidence of an
+                # unreadable disc, so it still earns a per-title retry.
+                disc_unreadable = bool(result.stalled_titles) and not result.output_files
+                if not missing:
+                    # The single pass produced every title. 'all'-mode stall
+                    # bookkeeping uses command indices that don't map to titles,
+                    # so discard it — nothing actually failed.
+                    result.stalled_titles = None
+                    result.success = True
+                elif disc_unreadable:
+                    # Titles are still missing, but retrying is pointless. Leave
+                    # result.stalled_titles intact so the routing below sends each
+                    # one to review; discarding it here would strand them all.
+                    logger.warning(
+                        f"Job {safe_job}: single-pass rip stalled with no output; "
+                        f"skipping the per-title fallback for {len(missing)} title(s) "
+                        f"and routing them to review."
+                    )
+                else:
                     logger.warning(
                         f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
                         f"missing; re-ripping individually: "
@@ -2591,12 +2616,6 @@ class JobManager:
                     # Stall bookkeeping below now refers to the fallback's per-title
                     # command order, not the original full title list.
                     stall_title_list = missing
-                else:
-                    # The single pass produced every title. 'all'-mode stall
-                    # bookkeeping uses command indices that don't map to titles,
-                    # so discard it — nothing actually failed.
-                    result.stalled_titles = None
-                    result.success = True
 
             if not result.success and not result.stalled_titles:
                 await self._fail_job(job_id, result.error_message)
@@ -2614,7 +2633,10 @@ class JobManager:
                             f"stalled (fallback) → REVIEW (re-rippable)"
                         )
                         await self._matching.route_rip_failure_to_review(
-                            job_id, stalled_title.id, "rip_stalled", STALL_FAILURE_REASON
+                            job_id,
+                            stalled_title.id,
+                            "rip_stalled",
+                            result.failure_reason or STALL_FAILURE_REASON,
                         )
 
             # Eject disc and reset sentinel state so a new disc insert is detected
