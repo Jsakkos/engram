@@ -28,6 +28,16 @@ _CREATED_MKV_PATTERN = re.compile(r'["\']([^"\']+\.mkv)["\']')
 # callback and the job_manager fallback so the live update and History agree.
 STALL_FAILURE_REASON = "Ripping stalled — no progress; the disc may be dirty or damaged."
 
+# MakeMKV emits MSG:3032 when the drive's region setting does not match the
+# inserted disc. It retries internally ("trying to work around...") and can hang
+# there indefinitely, so the rip reads as a generic stall. Detecting the code
+# lets us name the real cause instead of blaming the disc.
+REGION_MISMATCH_FAILURE_REASON = (
+    "Ripping stalled: the drive's region setting does not match this disc's "
+    "region, so MakeMKV could not open the disc. Set the drive's region to match "
+    "the disc, or use a region-free drive."
+)
+
 # Consecutive stable-size polls required before declaring in-flight title completion.
 # Each poll is ~3 s apart, so STABLE_CHECKS_REQUIRED=3 means ~9 s of write-silence.
 # Post-process force checks bypass this requirement (process exit guarantees write done).
@@ -62,6 +72,16 @@ def _extract_created_mkv(line: str, output_dir: Path) -> Path | None:
     if not match:
         return None
     return output_dir / Path(match.group(1)).name
+
+
+def _is_region_mismatch(line: str) -> bool:
+    """Whether *line* is MakeMKV's MSG:3032 region-mismatch warning.
+
+    Robot mode emits ``MSG:3032,0,2,"Region setting of drive ..."``. The trailing
+    comma in the prefix keeps this from matching unrelated codes that merely
+    contain the digits (e.g. ``MSG:13032``).
+    """
+    return line.startswith("MSG:3032,")
 
 
 def title_index_from_filename(name: str) -> int | None:
