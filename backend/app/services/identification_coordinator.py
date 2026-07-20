@@ -40,6 +40,7 @@ from app.services.identity_prompts import (
     mid_rip_resume_action,
 )
 from app.services.job_state_machine import JobStateMachine
+from app.services.manual_identity import ManualIdentity
 from app.services.ripping_helpers import build_title_list
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,35 @@ def _candidates_json_from_signal(signal) -> str | None:
     """
     cands = getattr(signal, "all_candidates", None) if signal else None
     return json.dumps(cands) if cands else None
+
+
+def _apply_manual_identity(analysis, manual: ManualIdentity) -> None:
+    """Overwrite a classification result with the user's asserted identity.
+
+    Runs AFTER ``_run_classification`` so everything structural the Analyst
+    produced (Play-All indices, duration clustering, extras hints) survives;
+    only identity and the review triggers are replaced.
+
+    Clearing ``_tmdb_signal``/``_discdb_signal`` is load-bearing: the same-name
+    collision gate and the no-year backstop both read them, and a manual disc
+    must never raise a collision prompt. Note that clearing signals alone does
+    NOT suppress gates B and D, which fire on ABSENCE (no tmdb_id / no season);
+    those are guarded separately at their call sites via ``_is_manual``.
+    """
+    analysis.content_type = ContentType(manual.content_type)
+    analysis.detected_name = manual.title
+    analysis.detected_season = manual.season
+    analysis.tmdb_id = manual.tmdb_id
+    analysis.tmdb_name = manual.title if manual.tmdb_id else None
+    analysis.confidence = 1.0
+    analysis.classification_source = "manual"
+    analysis.needs_review = False
+    analysis.review_reason = None
+    analysis.is_ambiguous_movie = False
+    analysis.identity_unconfirmed = False
+    analysis.tmdb_degraded_reason = None
+    analysis._tmdb_signal = None
+    analysis._discdb_signal = None
 
 
 def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
@@ -240,7 +270,9 @@ class IdentificationCoordinator:
         self._run_ripping = run_ripping
         self._finalize_disc_job = finalize_disc_job
 
-    async def identify_disc(self, job_id: int) -> None:
+    async def identify_disc(
+        self, job_id: int, manual_identity: ManualIdentity | None = None
+    ) -> None:
         """Identify the disc contents using MakeMKV and the Analyst.
 
         Walk-away B2 path map: the four former pre-rip parks (A unreadable
@@ -248,6 +280,11 @@ class IdentificationCoordinator:
         ship to RIPPING with an ``identity_prompt_json`` CTA — see
         tests/unit/test_identify_rip_first_gates.py's module docstring for the
         gate-by-gate table and where each seam is pinned.
+
+        A non-None ``manual_identity`` is a user assertion (armed via
+        ``POST /api/manual/arm``) that overrides whatever classification finds
+        and suppresses every identity gate/prompt below — the disc rips
+        unattended on the asserted identity. See ``_apply_manual_identity``.
         """
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -283,6 +320,13 @@ class IdentificationCoordinator:
                     job, job_id, titles, session, disc_name=disc_name
                 )
 
+                # User-asserted identity wins over anything classification found.
+                # Applied before any field is copied onto the job so every
+                # downstream branch sees the manual values.
+                _is_manual = manual_identity is not None
+                if manual_identity is not None:
+                    _apply_manual_identity(analysis, manual_identity)
+
                 logger.info(f"Job {job_id} Analysis Result: {analysis}")
 
                 # Save snapshot for debugging and test fixture generation
@@ -299,12 +343,19 @@ class IdentificationCoordinator:
 
                 # If TMDB and DiscDB both failed and label looks like a catalog
                 # number, clear detected_title so the NamePromptModal triggers.
+                # Gate E (identity gate, absence-triggered like B/D): after a
+                # manual override both signals are None BY DESIGN
+                # (_apply_manual_identity clears them), so without the
+                # `not _is_manual` guard this would erase the user's asserted
+                # title on exactly the catalog-number-style unreadable labels
+                # this feature targets, silently re-triggering Gate A.
                 discdb_signal = getattr(analysis, "_discdb_signal", None)
                 tmdb_signal = getattr(analysis, "_tmdb_signal", None)
                 if (
                     not tmdb_signal
                     and not discdb_signal
                     and job.detected_title
+                    and not _is_manual
                     and DiscAnalyst._looks_like_catalog_number(job.volume_label)
                 ):
                     logger.info(
@@ -338,6 +389,12 @@ class IdentificationCoordinator:
                 else:
                     job.disc_number = 1
                     logger.info("No disc number detected in volume label, defaulting to 1")
+
+                # A manually supplied disc number overrides the label regex,
+                # which is exactly what fails on the unreadable labels this
+                # feature targets. Applied after the regex block so it wins.
+                if manual_identity is not None and manual_identity.disc_number is not None:
+                    job.disc_number = manual_identity.disc_number
 
                 # Clear any existing titles for this job
                 await session.execute(delete(DiscTitle).where(DiscTitle.job_id == job_id))
@@ -483,6 +540,9 @@ class IdentificationCoordinator:
                     and not job.tmdb_id
                     and job.detected_title
                     and not _collision
+                    # A manual disc with a freeform title legitimately has no
+                    # tmdb_id. The user asserted this name; do not second-guess it.
+                    and not _is_manual
                 ):
                     reason = (
                         f'Could not find "{job.detected_title}" on TMDB — the disc label '
@@ -514,7 +574,9 @@ class IdentificationCoordinator:
                     # kind="season" prompt and continues — detected_season
                     # stays None, so the prefetch below takes the all-seasons
                     # path and matching searches across every season.
-                    if job.detected_season is None:
+                    # A manual disc with no season matches across all seasons
+                    # silently; prompting would break the unattended contract.
+                    if job.detected_season is None and not _is_manual:
                         await self._gate_unknown_season_disc(job, session, job_id)
                     await self._start_tv_subtitle_prefetch(job)
 
