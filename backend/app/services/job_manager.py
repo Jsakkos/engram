@@ -81,6 +81,23 @@ _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 # auto-modal) — same UX as that established path.
 _FALLBACK_IDENTITY_REVIEW_REASON = NO_TITLE_REVIEW_REASON
 
+# Job-level failure wording that carries no diagnostic value on its own. A
+# force-advance may replace one of these with the specific reason it knows
+# (see _stamp_generic_failure_reason); anything else is left alone. "Cancelled
+# by user" is deliberately NOT here: with the #506 race suppressed, only a real
+# user action writes it, and a force-advance must never rewrite that record.
+_GENERIC_FAILURE_MESSAGES = frozenset({"All titles failed to process", "Ripping failed"})
+
+# User-facing wording for a phase that stopped making progress, keyed by the state
+# the job was stuck in. The watchdog formats these with the elapsed ceiling so the
+# History entry says why the job stopped instead of blaming the user (#506).
+_STALE_PHASE_FAILURE_MESSAGES = {
+    JobState.IDENTIFYING: "Identification stalled — no progress after {timeout}s",
+    JobState.RIPPING: "Ripping stalled — no progress after {timeout}s",
+    JobState.MATCHING: "Matching stalled — no progress after {timeout}s",
+    JobState.ORGANIZING: "Organizing stalled — no progress after {timeout}s",
+}
+
 
 def _strip_review_flags(match_details: str | None) -> str | None:
     """Remove stale review-reason keys from a match_details JSON string.
@@ -148,6 +165,13 @@ class JobManager:
         # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
         self._last_activity: dict[int, float] = {}
         self._watchdog_task: asyncio.Task | None = None
+        # Job ids whose in-flight task was cancelled BY US (reconcile_and_advance),
+        # mapped to the reason. Cancellation is delivered at the target coroutine's
+        # next await, so the entry is what lets its CancelledError handler tell an
+        # internal force-advance from a genuine user cancel — and know that the
+        # reconcile pass, not the handler, owns the job's final state (#506).
+        # Written before the cancel, consumed by the handler, swept in _on_task_done.
+        self._cancel_reasons: dict[int, str] = {}
         # Title ids with a live (spawned, not yet finished) match task. Guards
         # _dispatch_title_match against double-spawning a title's match: the
         # QUEUED→MATCHING flip happens only post-semaphore in match_single_file,
@@ -1225,7 +1249,9 @@ class JobManager:
         for title_id, file_path in recovered:
             await self._dispatch_title_match(job_id, title_id, file_path)
 
-    async def reconcile_and_advance(self, job_id: int, *, reason: str = "forced") -> bool:
+    async def reconcile_and_advance(
+        self, job_id: int, *, reason: str = "forced", failure_message: str | None = None
+    ) -> bool:
         """Force a stuck job to its next resting state (watchdog + manual advance).
 
         Cancels any in-flight rip, resolves every still-active title (PENDING/RIPPING/
@@ -1237,11 +1263,22 @@ class JobManager:
         QUEUED is deliberately NOT in the active set below: a queued track is draining
         the global match semaphore, not stuck, so the watchdog must never force it to
         review (a genuinely hung *active* match is caught by the per-track timeout).
+
+        ``reason`` tags the affected titles' ``match_details`` (audit trail).
+        ``failure_message`` is the *user-facing* wording for the job as a whole, used
+        only if the completion check below actually lands it in FAILED — it lets the
+        watchdog say "Ripping stalled …" instead of the generic fallback (#506).
         """
         # Stop any in-flight rip/processing task so it can't race the reconcile.
-        if job_id in self._active_jobs:
-            self._active_jobs[job_id].cancel()
-            del self._active_jobs[job_id]
+        # Record WHY first: cancellation is delivered asynchronously (at the rip
+        # coroutine's next await), so its CancelledError handler runs concurrently
+        # with the rest of this method and needs to tell an internal force-advance
+        # apart from a genuine user cancel. See _run_ripping's handler (#506).
+        task = self._active_jobs.pop(job_id, None)
+        if task is not None:
+            if not task.done():
+                self._cancel_reasons[job_id] = failure_message or reason
+            task.cancel()
         self._extractor.cancel(job_id)
 
         # NOTE: QUEUED excluded on purpose — see docstring (queued ≠ stuck).
@@ -1283,7 +1320,47 @@ class JobManager:
             await session.commit()
 
             await self._finalization.check_job_completion(session, job_id)
+
+            # If that landed the job in FAILED, make the recorded reason reflect
+            # what actually happened (a stall / force-advance) rather than the
+            # generic fallback. Never overwrites a specific message.
+            if failure_message:
+                await self._stamp_generic_failure_reason(session, job_id, failure_message)
         return True
+
+    async def _stamp_generic_failure_reason(self, session, job_id: int, message: str) -> None:
+        """Replace a *generic* FAILED reason with a more specific one.
+
+        Only rewrites placeholder wording (``_GENERIC_FAILURE_MESSAGES`` or empty),
+        so a precise message from elsewhere — e.g. "Finalization failed: …" — is
+        left intact.
+
+        The transition that failed the job already broadcast the generic wording,
+        so the correction is re-broadcast here too. Without that, a dashboard open
+        at the moment of the stall keeps showing the misleading message until the
+        page is reloaded — the very thing this reason exists to fix.
+        """
+        session.expire_all()
+        job = await session.get(DiscJob, job_id)
+        if not job or job.state != JobState.FAILED:
+            return
+        if job.error_message and job.error_message not in _GENERIC_FAILURE_MESSAGES:
+            return
+        job.error_message = message
+        session.add(job)
+        await session.commit()
+        logger.info(
+            f"Job {sanitize_log_value(job_id)}: failure reason set to {sanitize_log_value(message)}"
+        )
+        # Non-fatal: the DB is already committed, so a broadcast failure must not
+        # undo the correction (mirrors the state machine's own broadcast guard).
+        try:
+            await ws_manager.broadcast_job_update(job_id, JobState.FAILED.value, error=message)
+        except Exception:
+            logger.warning(
+                f"Job {sanitize_log_value(job_id)}: failed to broadcast corrected reason",
+                exc_info=True,
+            )
 
     async def skip_title(
         self, job_id: int, title_id: int, *, target: TitleState = TitleState.REVIEW
@@ -1489,7 +1566,13 @@ class JobManager:
                 f"Watchdog: job {job.id} idle {idle:.0f}s in "
                 f"{job.state.value} (timeout {timeout}s) → auto-advancing"
             )
-            await self.reconcile_and_advance(job.id, reason=f"stale timeout in {job.state.value}")
+            await self.reconcile_and_advance(
+                job.id,
+                reason=f"stale timeout in {job.state.value}",
+                failure_message=_STALE_PHASE_FAILURE_MESSAGES.get(
+                    job.state, "Stalled — no progress after {timeout}s"
+                ).format(timeout=timeout),
+            )
 
     async def _watchdog_loop(self) -> None:
         """Periodically auto-advance jobs that have stopped making progress."""
@@ -2628,14 +2711,42 @@ class JobManager:
                 await self._finalize_ripped_movie(job_id, output_dir, volume_label, detected_title)
 
         except asyncio.CancelledError:
-            logger.info(f"Job {safe_job} was cancelled")
-            try:
-                await self._fail_job(job_id, "Cancelled by user")
-            except Exception:
-                logger.warning(
-                    f"Job {safe_job}: _fail_job raised during cancellation recovery",
-                    exc_info=True,
+            # Who cancelled us? reconcile_and_advance records its intent before
+            # calling cancel(), so a present entry means this is an INTERNAL
+            # force-advance (stale-job watchdog or manual advance), not a user
+            # cancel. Both bugs in #506 live here:
+            #
+            #   1. attribution — writing "Cancelled by user" for a watchdog
+            #      timeout made the two indistinguishable in History, and told
+            #      users they had cancelled a job they never touched;
+            #   2. the race — cancel() only schedules CancelledError at the next
+            #      await, so this handler runs *concurrently* with the reconcile
+            #      pass that cancelled it. An unconditional _fail_job here beat
+            #      reconcile's REVIEW_NEEDED and, because check_job_completion
+            #      returns early on a terminal job, the intended outcome could
+            #      never be re-derived. Users landed on a review queue that the
+            #      job state locked them out of.
+            #
+            # So for an internal cancel we write nothing: reconcile owns the final
+            # state and records its own reason (see _stamp_generic_failure_reason).
+            # A genuine user cancel keeps the original behaviour — including for a
+            # job that already has REVIEW titles, which must still be failable.
+            cancel_reason = self._cancel_reasons.pop(job_id, None)
+            if cancel_reason is not None:
+                logger.info(
+                    f"Job {safe_job}: rip cancelled by force-advance "
+                    f"({sanitize_log_value(cancel_reason)}) — leaving the final "
+                    f"state to the reconcile pass"
                 )
+            else:
+                logger.info(f"Job {safe_job} was cancelled")
+                try:
+                    await self._fail_job(job_id, "Cancelled by user")
+                except Exception:
+                    logger.warning(
+                        f"Job {safe_job}: _fail_job raised during cancellation recovery",
+                        exc_info=True,
+                    )
             # Re-raise so the task is actually marked cancelled (asyncio convention).
             raise
         except Exception as e:
@@ -3229,6 +3340,11 @@ class JobManager:
 
     def _on_task_done(self, task: asyncio.Task, job_id: int) -> None:
         """Callback for background tasks to log any unhandled exceptions."""
+        # Sweep the cancellation-intent entry. Runs after the coroutine has fully
+        # unwound (so its handler already consumed the entry); this only catches
+        # the case where the task finished before the cancel took effect, which
+        # would otherwise leave a stale reason to mislabel the job's NEXT rip.
+        self._cancel_reasons.pop(job_id, None)
         if task.cancelled():
             logger.info(f"Job {job_id} task was cancelled")
         elif exc := task.exception():
