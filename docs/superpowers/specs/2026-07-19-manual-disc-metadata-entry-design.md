@@ -170,8 +170,23 @@ gates fire on absence rather than presence, and both need an explicit `_is_manua
 - **Gate D** (`identify_disc:517`) fires when `detected_season is None`, raising a season
   prompt.
 
+- **Gate E**, the catalog-number title-clearing block (`identify_disc:~344`), found during
+  implementation. It fires when `not tmdb_signal and not discdb_signal and
+  _looks_like_catalog_number(volume_label)`, nulling `detected_title` to trigger the name
+  prompt. This is the nastiest of the three, because the override *itself* creates the
+  trigger: clearing both signals is load-bearing for the collision gates, which makes
+  `not tmdb_signal and not discdb_signal` trivially true for every manual disc. On a
+  catalog-style label (`FHED3456`), exactly the kind this feature exists to serve, it would
+  erase the user's asserted title and silently re-trigger Gate A. Guarded with `not _is_manual`.
+
 Gates A and C are already safe: A requires a missing title, which the manual path always
 supplies, and C sits inside the `needs_review` branch that the override clears.
+
+**Testing caveat:** the guards are boolean clauses inside a long method. Tests that
+re-implement the condition in the test file are tautological and would still pass if the
+guard were deleted from production code. The real regression guard is the end-to-end test in
+Task 5, which drives `identify_disc` with a manual identity and asserts the job reaches
+`RIPPING` with no prompt.
 
 ### Card edit path
 
