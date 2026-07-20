@@ -80,57 +80,6 @@ def test_override_preserves_structural_analysis():
     assert result.play_all_title_indices == [7, 8]
 
 
-def test_gate_b_condition_is_suppressed_for_manual():
-    """Gate B fires on ABSENCE of tmdb_id, so the override alone cannot stop it.
-
-    This pins the _is_manual guard: without it, a manual TV disc whose title
-    has no TMDB match would raise a name prompt and break the unattended rip.
-    """
-    is_tv = True
-    tmdb_id = None
-    detected_title = "Home Movies 1998"
-    collision = False
-
-    def gate_b_fires(is_manual: bool) -> bool:
-        return bool(is_tv and not tmdb_id and detected_title and not collision and not is_manual)
-
-    assert gate_b_fires(is_manual=False) is True
-    assert gate_b_fires(is_manual=True) is False
-
-
-def test_gate_d_condition_is_suppressed_for_manual():
-    detected_season = None
-
-    def gate_d_fires(is_manual: bool) -> bool:
-        return detected_season is None and not is_manual
-
-    assert gate_d_fires(is_manual=False) is True
-    assert gate_d_fires(is_manual=True) is False
-
-
-def test_gate_e_catalog_number_clearing_is_suppressed_for_manual():
-    """Gate E: the catalog-number title-clearing block also fires on absence.
-
-    ``if not tmdb_signal and not discdb_signal and job.detected_title and
-    _looks_like_catalog_number(job.volume_label)`` clears ``job.detected_title``
-    back to None. After the manual override, both signals ARE cleared to None
-    by design (see ``_apply_manual_identity``), so without a guard this block
-    would silently erase the user's asserted title on exactly the
-    unreadable-label discs this feature targets, re-triggering Gate A.
-    """
-    tmdb_signal = None
-    discdb_signal = None
-    detected_title = "My Home Movies"
-    looks_like_catalog_number = True  # e.g. volume label "FHED3456"
-
-    def gate_e_fires(is_manual: bool) -> bool:
-        return bool(
-            not tmdb_signal
-            and not discdb_signal
-            and detected_title
-            and looks_like_catalog_number
-            and not is_manual
-        )
-
-    assert gate_e_fires(is_manual=False) is True
-    assert gate_e_fires(is_manual=True) is False
+# Gates B, D, and E's _is_manual guards are pinned end-to-end (against the
+# real identify_disc control flow, not a reimplementation) in
+# tests/integration/test_manual_identify_e2e.py.
