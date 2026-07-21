@@ -27,6 +27,7 @@ from app.core.extractor import (
     STALL_FAILURE_REASON,
     MakeMKVExtractor,
     compute_content_hash,
+    title_index_from_filename,
 )
 from app.core.log_context import with_job_log_context
 from app.core.organizer import movie_organizer
@@ -53,6 +54,7 @@ from app.services.matching_coordinator import (
 )
 from app.services.ripping_helpers import (
     SpeedCalculator,
+    expected_native_index,
     resolve_title_from_filename,
 )
 from app.services.simulation_service import SimulationService
@@ -1133,14 +1135,14 @@ class JobManager:
             logger.warning(f"Job {job_id}: Discord notification failed: {e}", exc_info=True)
 
     @staticmethod
-    def _has_complete_output(output_dir: Path, title_index: int) -> bool:
+    def _has_complete_output(output_dir: Path, title: DiscTitle) -> bool:
         """Whether a non-empty ``*_tNN.mkv`` for this title exists in staging.
 
         Used by the one-pass rip fallback to tell which selected titles a single
         'all' invocation actually produced (vs. ones it never reached after a
         stall), so only the truly-missing titles are re-ripped individually.
         """
-        for mkv in output_dir.glob(f"*_t{title_index:02d}.mkv"):
+        for mkv in output_dir.glob(f"*_t{expected_native_index(title):02d}.mkv"):
             try:
                 if mkv.stat().st_size > 0:
                     return True
@@ -1159,7 +1161,7 @@ class JobManager:
             if p.exists():
                 return p
         if staging:
-            matches = list(staging.glob(f"*_t{title.title_index:02d}.mkv"))
+            matches = list(staging.glob(f"*_t{expected_native_index(title):02d}.mkv"))
             if matches:
                 return matches[0]
         return None
@@ -2405,7 +2407,7 @@ class JobManager:
                             current_title_num = 0
                             file_sizes: dict[int, int] = {}
                             for t in sorted_titles:
-                                pattern = f"*_t{t.title_index:02d}.mkv"
+                                pattern = f"*_t{expected_native_index(t):02d}.mkv"
                                 matches = list(output_dir.glob(pattern))
                                 if matches:
                                     file_sizes[t.id] = matches[0].stat().st_size
@@ -2562,7 +2564,7 @@ class JobManager:
                         if (
                             db_t
                             and db_t.state in (TitleState.PENDING, TitleState.RIPPING)
-                            and not self._has_complete_output(output_dir, t.title_index)
+                            and not self._has_complete_output(output_dir, t)
                         ):
                             missing.append(t)
                 if missing:
@@ -3314,29 +3316,25 @@ class JobManager:
         self, job_id: int, staging_dir: Path, sorted_titles: list[DiscTitle]
     ) -> None:
         """Scan staging dir for .mkv files not yet assigned to a title."""
-        import re as _re
-
         async with async_session() as session:
             result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
             titles = result.scalars().all()
-            assigned_indices = {t.title_index for t in titles if t.output_filename is not None}
+            assigned_native = {
+                expected_native_index(t) for t in titles if t.output_filename is not None
+            }
 
             mkv_files = list(staging_dir.glob("*.mkv")) if staging_dir.exists() else []
 
             for mkv in mkv_files:
-                idx_match = _re.search(r"t(\d+)\.mkv$", mkv.name, _re.IGNORECASE)
-                if not idx_match:
-                    idx_match = _re.search(r"title[_]?(\d+)\.mkv$", mkv.name, _re.IGNORECASE)
-                if not idx_match:
+                native_index = title_index_from_filename(mkv.name)
+                if native_index is None:
                     continue
-
-                title_index = int(idx_match.group(1))
-                if title_index in assigned_indices:
+                if native_index in assigned_native:
                     continue
 
                 logger.info(
                     f"Backfill: found unmatched file {mkv.name} "
-                    f"(title_index={title_index}, Job {job_id})"
+                    f"(native title number={native_index}, Job {job_id})"
                 )
                 await self._on_title_ripped(job_id, 0, mkv, sorted_titles)
 

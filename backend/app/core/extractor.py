@@ -65,14 +65,33 @@ def _extract_created_mkv(line: str, output_dir: Path) -> Path | None:
 
 
 def title_index_from_filename(name: str) -> int | None:
-    """Parse the MakeMKV title index out of an output filename, or None.
+    """Parse MakeMKV's disc-native title number out of an output filename, or None.
 
     MakeMKV names each output ``{label}_t{NN}.mkv`` (or ``title_NN.mkv``) where
-    ``NN`` is the disc title index — the same number stored as
-    ``DiscTitle.title_index`` and passed on the rip command line. This is the
-    single source of truth for the ``filename <-> title`` mapping; both the
-    completion detector's ignore-list and ``resolve_title_from_filename`` rely
-    on it so they cannot disagree.
+    ``NN`` is MakeMKV's own disc-native title number. This is USUALLY the same
+    as the scan-order ``DiscTitle.title_index``, but not guaranteed — some
+    discs number titles starting at 1 (no "t00") or with gaps (issue #517).
+    Callers that need to map a ripped filename back to a specific
+    ``DiscTitle`` row should prefer matching against ``DiscTitle.output_index``
+    (the native number recorded at scan time), falling back to ``title_index``
+    only for legacy rows without it — see
+    ``app.services.ripping_helpers.expected_native_index``, which most
+    resolution sites call directly. ``finalization_coordinator._resolve_source_file``
+    applies the same precedence inline (it works over a DB-free dict snapshot,
+    not a title object, so it can't call the helper directly).
+
+    ``_files_to_ignore`` is the one real gap: it has no DB access to consult
+    ``output_index``, so on an offset-numbered disc it can disagree with
+    ``resolve_title_from_filename`` whenever ``rip_titles`` is called with a
+    real subset of titles — the manual single-track re-rip path
+    (``job_manager.rerip_titles``), and also the automatic one-pass-stalled
+    fallback that re-rips individually-missing titles after a failed 'all'
+    pass. In practice this is bounded: a stale sibling file typically earns
+    ``TitleCompletionDetector``'s deletion-protection within
+    ``STABLE_CHECKS_REQUIRED`` polls (~9s), well inside the default stall
+    timeout, so the risk is redundant reprocessing rather than data loss. This
+    is a documented, narrow gap (see issue #517's fix plan, Follow-up
+    section), not an oversight.
     """
     m = re.search(r"t(\d+)\.mkv$", name, re.IGNORECASE)
     if not m:

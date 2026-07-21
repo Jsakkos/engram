@@ -62,6 +62,18 @@ class SpeedCalculator:
         return 0
 
 
+def expected_native_index(title) -> int:
+    """The disc-native "_tNN" number expected in this title's ripped filename.
+
+    Prefers ``output_index`` (MakeMKV's actual native number, captured at scan
+    time); falls back to ``title_index`` for rows/stand-ins without it. Takes
+    a duck-typed object (not strictly ``DiscTitle``) via ``getattr`` so test
+    doubles (``SimpleNamespace``) that don't define ``output_index`` still work.
+    """
+    output_index = getattr(title, "output_index", None)
+    return output_index if output_index is not None else title.title_index
+
+
 async def resolve_title_from_filename(
     path: Path,
     sorted_titles: list[DiscTitle],
@@ -81,29 +93,34 @@ async def resolve_title_from_filename(
     safe_name = sanitize_log_value(path.name)
 
     # Try to extract the MakeMKV title index from the filename (e.g.
-    # B1_t00.mkv -> 0). This is the authoritative mapping — MakeMKV's _tNN is
-    # the disc title index, which is also DiscTitle.title_index.
+    # B1_t00.mkv -> 0). MakeMKV's _tNN suffix is its own disc-native title
+    # number, which is NOT guaranteed to equal DiscTitle.title_index (the
+    # 0-based scan-order position) — some discs number titles starting at 1
+    # or with gaps (issue #517). Prefer the native number recorded at scan
+    # time (DiscTitle.output_index); fall back to title_index for rows that
+    # predate that field (output_index is None) so legacy behavior is unchanged.
     title_index = title_index_from_filename(path.name)
 
     if title_index is not None:
         for st in sorted_titles:
-            if st.title_index == title_index:
+            expected = expected_native_index(st)
+            if expected == title_index:
                 title = await session.get(DiscTitle, st.id)
                 break
         if title:
             logger.debug(
-                f"Mapped {safe_name} to title_index={title_index} "
-                f"(Title DB id={title.id}, Job {job_id})"
+                f"Mapped {safe_name} to native title number {title_index} "
+                f"(Title DB id={title.id}, title_index={title.title_index}, Job {job_id})"
             )
         else:
-            # The filename names a real title index that isn't among the titles
+            # The filename names a real title number that isn't among the titles
             # this rip produced — it's a foreign file (e.g. another title's
             # already-finished output sitting in the staging dir during a
             # single-title re-rip). Do NOT positionally fall back: that would
             # mis-attribute it onto the wrong (subset) title and stamp it with
             # the wrong filename. Treat it as unresolved.
             logger.debug(
-                f"Ripped file {safe_name} has title_index={title_index} not in this "
+                f"Ripped file {safe_name} has native title number {title_index} not in this "
                 f"rip's title set — ignoring as foreign (Job {job_id})"
             )
             return None
@@ -144,7 +161,8 @@ def find_staging_file(job: DiscJob, title: DiscTitle) -> Path | None:
                 return p2
 
     if job.staging_path:
-        matches = list(Path(job.staging_path).glob(f"*_t{title.title_index:02d}.mkv"))
+        glob_index = expected_native_index(title)
+        matches = list(Path(job.staging_path).glob(f"*_t{glob_index:02d}.mkv"))
         if matches:
             return matches[0]
 

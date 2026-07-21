@@ -53,6 +53,7 @@ async def _add_title(
     state: TitleState,
     *,
     output: str | None = None,
+    output_index: int | None = None,
     matched_episode: str | None = None,
     selected: bool = True,
 ) -> int:
@@ -60,6 +61,7 @@ async def _add_title(
         t = DiscTitle(
             job_id=job_id,
             title_index=index,
+            output_index=output_index,
             duration_seconds=2700,
             state=state,
             is_selected=selected,
@@ -101,6 +103,28 @@ async def test_reconcile_stuck_movie_with_file_matched(tmp_path):
     f.write_bytes(b"x")
     job_id = await _make_job(tmp_path, content_type=ContentType.MOVIE, state=JobState.RIPPING)
     tid = await _add_title(job_id, 0, TitleState.RIPPING, output=str(f))
+
+    await job_manager.reconcile_stuck_titles(job_id)
+
+    t = await _title(tid)
+    assert t.state == TitleState.MATCHED
+    assert t.output_filename == str(f)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stuck_finds_file_via_output_index_when_numbering_offset(tmp_path):
+    """Issue #517: disc has no "t00" — MakeMKV's native numbering starts at 1.
+
+    Title scan-index 0 has output_index=1 (its suggested filename was
+    "..._t01.mkv"). No output_filename was ever recorded (simulating the
+    orphaned-last-title case reconcile_stuck_titles exists to catch) — the
+    only way to find the ripped file is the glob fallback in _find_title_file,
+    which must consult output_index, not title_index.
+    """
+    f = tmp_path / "disc_t01.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, content_type=ContentType.MOVIE, state=JobState.RIPPING)
+    tid = await _add_title(job_id, 0, TitleState.RIPPING, output_index=1)
 
     await job_manager.reconcile_stuck_titles(job_id)
 
