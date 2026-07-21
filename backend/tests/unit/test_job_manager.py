@@ -1005,11 +1005,16 @@ class TestOnePassRipFallback:
         # (see the isolate_database fixture's note in tests/unit/conftest.py).
         monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
 
+        # The all-pass is a SINGLE MakeMKV command, so a real stalled all-pass
+        # reports at most one command index (stalled_titles=[1]) regardless of
+        # how many titles were selected. Both titles are still "missing" (no
+        # output file), and routing must key off that missing set, not off the
+        # single stalled index — otherwise only the first title reaches REVIEW.
         rip = AsyncMock(
             return_value=RipResult(
                 success=True,
                 output_files=[],
-                stalled_titles=[1, 2],
+                stalled_titles=[1],
                 failure_reason=REGION_MISMATCH_FAILURE_REASON,
             )
         )
@@ -1019,9 +1024,10 @@ class TestOnePassRipFallback:
 
         assert rip.await_count == 1
 
-        # Skipping the fallback must not strand the titles: each still has to
-        # reach REVIEW as re-rippable, or the disc silently disappears from the
-        # UI with no way for the user to act on it.
+        # Skipping the fallback must not strand the titles: BOTH must reach
+        # REVIEW as re-rippable, or the ones beyond the first are downgraded to
+        # FAILED by reconcile_stuck_titles — losing the region diagnosis and the
+        # manual re-rip path (which requires REVIEW).
         async with _unit_session_factory() as session:
             titles = (
                 (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id)))

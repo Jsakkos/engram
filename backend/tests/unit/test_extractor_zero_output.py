@@ -183,16 +183,14 @@ class TestZeroOutputAbandonWiring:
 
     async def test_region_mismatch_sets_the_specific_reason(self, tmp_path):
         """A stall preceded by MSG:3032 reports the region cause, not 'dirty'."""
+        region_line = (
+            'MSG:3032,0,2,"Region setting of drive ASUS:BW-16D1HT does not '
+            "match the region of currently inserted disc, trying to work "
+            'around..."'
+        )
 
         def _fake_popen(cmd, **kwargs):
-            return _FakeProc(
-                [
-                    'MSG:3032,0,2,"Region setting of drive ASUS:BW-16D1HT does not '
-                    "match the region of currently inserted disc, trying to work "
-                    'around..."',
-                    "PRGV:14417,11915,65536",
-                ]
-            )
+            return _FakeProc([region_line, "PRGV:14417,11915,65536"])
 
         errors: list[tuple[int, str]] = []
         ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))

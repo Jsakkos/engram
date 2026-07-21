@@ -2584,14 +2584,37 @@ class JobManager:
                     result.stalled_titles = None
                     result.success = True
                 elif disc_unreadable:
-                    # Titles are still missing, but retrying is pointless. Leave
-                    # result.stalled_titles intact so the routing below sends each
-                    # one to review; discarding it here would strand them all.
+                    # Titles are still missing, but retrying is pointless. Route
+                    # every missing title to review HERE, directly by id — the
+                    # generic stalled_titles loop below cannot do it: an all-pass
+                    # is a single MakeMKV command, so result.stalled_titles is at
+                    # most [1] no matter how many titles were selected, and that
+                    # loop would route only the first. Skipping the fallback via
+                    # that loop would strand the rest in reconcile_stuck_titles →
+                    # FAILED, losing the region diagnosis and the manual re-rip
+                    # path (which requires REVIEW).
                     logger.warning(
                         f"Job {safe_job}: single-pass rip stalled with no output; "
                         f"skipping the per-title fallback for {len(missing)} title(s) "
                         f"and routing them to review."
                     )
+                    reason = result.failure_reason or STALL_FAILURE_REASON
+                    for t in missing:
+                        logger.warning(
+                            f"Job {safe_job}: title {t.title_index} "
+                            f"stalled (no output) → REVIEW (re-rippable)"
+                        )
+                        await self._matching.route_rip_failure_to_review(
+                            job_id, t.id, "rip_stalled", reason
+                        )
+                    # The outcome is now fully handled: every title is in REVIEW,
+                    # so the job must HOLD in REVIEW_NEEDED, not fall into the
+                    # _fail_job guard below. Clear stalled_titles so the generic
+                    # routing loop is a no-op (it would otherwise mis-route the
+                    # first title), and mark success so the fail guard is skipped
+                    # even when the rip reported success=False.
+                    result.stalled_titles = None
+                    result.success = True
                 else:
                     logger.warning(
                         f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
