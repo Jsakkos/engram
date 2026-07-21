@@ -16,6 +16,8 @@ import NamePromptModal from "../components/NamePromptModal";
 import ImportModal from "../components/ImportModal";
 import SeasonPromptModal from "../components/SeasonPromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
+import ArmDiscModal from "../components/ArmDiscModal";
+import ArmedDriveCard from "./components/ArmedDriveCard";
 import BugReportModal from "../components/BugReportModal";
 import UpdateModal from "../components/UpdateModal";
 import { FingerprintDisclosureModal } from "../components/FingerprintDisclosureModal";
@@ -160,12 +162,38 @@ function MainDashboard() {
   }, [showImport]);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   useUpdateSuccessToast(updateStatus);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
   const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  // Manual disc identity (#520): arms a drive so the next disc it sees adopts
+  // a user-asserted identity. The modal opens from the top-bar MANUAL button;
+  // armed drives themselves are tracked by useJobManagement (WS-driven).
+  const [showArmModal, setShowArmModal] = useState(false);
+
+  // Best-effort target for the arm modal: prefer a drive that's already
+  // armed (re-opening to edit), else the drive of the first active job, else
+  // fall back to "E:" — the common single-optical-drive case. Multi-drive
+  // setups can retype the drive id in a future iteration; this keeps the
+  // common path working without a drive picker.
+  const defaultDriveId =
+    Object.keys(armedDrives)[0] ?? jobs.find((j) => j.drive_id)?.drive_id ?? "E:";
+
+  const disarmDrive = async (driveId: string) => {
+    try {
+      await fetch('/api/manual/disarm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drive_id: driveId }),
+      });
+      // The drive_armed(identity: null) broadcast is the source of truth for
+      // clearing the card — no optimistic local mutation needed here.
+    } catch {
+      // Non-critical — worst case the card lingers until the user retries.
+    }
+  };
 
   // Show the full-screen Splash with a "RECONNECTING…" label when the
   // WebSocket has been down for >2.5s. The grace period absorbs momentary
@@ -302,6 +330,7 @@ function MainDashboard() {
         navItems={navItems}
         onSettingsClick={() => openSettings()}
         onImportClick={() => setShowImport(true)}
+        onManualClick={() => setShowArmModal(true)}
       />
 
       {/* Filter + view-mode strip */}
@@ -430,6 +459,23 @@ function MainDashboard() {
           />
         )}
       </AnimatePresence>
+
+      {/* Armed-drive cards — a drive holds a user-asserted identity (manual
+          disc metadata entry, #520) and is waiting for a disc. Not real jobs,
+          so they render outside the job list/filter machinery; disarming
+          removes the card via the drive_armed(identity:null) broadcast. */}
+      {Object.keys(armedDrives).length > 0 && (
+        <div
+          className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 mt-4"
+          style={{ display: "flex", flexDirection: "column", gap: 12 }}
+        >
+          <AnimatePresence>
+            {Object.entries(armedDrives).map(([driveId, identity]) => (
+              <ArmedDriveCard key={driveId} driveId={driveId} identity={identity} onDisarm={disarmDrive} />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Platform guidance banner for Linux/macOS users */}
       <AnimatePresence>
@@ -852,6 +898,18 @@ function MainDashboard() {
               dismissedPromptIdsRef.current.add(reIdentifyTarget.id);
               setReIdentifyTarget(null);
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Arm Disc Modal — opened from the top-bar MANUAL button; arms a drive
+          with a user-asserted identity ahead of the next disc insert. */}
+      <AnimatePresence>
+        {showArmModal && (
+          <ArmDiscModal
+            driveId={defaultDriveId}
+            onClose={() => setShowArmModal(false)}
+            onArmed={() => setShowArmModal(false)}
           />
         )}
       </AnimatePresence>

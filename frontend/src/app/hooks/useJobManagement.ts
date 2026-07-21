@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { apiFetch, apiFetchVoid } from '../../api/client';
 import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage } from '../../types';
+import type { ArmedIdentity } from '../components/ArmedDriveCard';
 
 // Trailing-debounce window for refetches triggered by a burst of unknown
 // `job_update` messages, so we issue one fetch instead of N.
@@ -58,6 +59,12 @@ export function useJobManagement(devMode: boolean = false) {
     // Discs detected before first-run setup completed — the backend parks them
     // instead of ripping into unconfirmed paths (P12). Drives the dashboard banner.
     const [parkedDiscs, setParkedDiscs] = useState<ParkedDisc[]>([]);
+    // Drives armed with a user-asserted identity (manual disc metadata entry),
+    // keyed by drive id — the next disc inserted there adopts the identity
+    // instead of going through auto-classification. Populated/cleared by the
+    // `drive_armed` broadcast (identity present = armed, null = disarmed or
+    // consumed by an insert).
+    const [armedDrives, setArmedDrives] = useState<Record<string, ArmedIdentity>>({});
 
     // Use WebSocket URL that works with Vite proxy
     // When running on localhost:5173, connects to ws://localhost:5173/ws (proxied to backend)
@@ -405,6 +412,18 @@ export function useJobManagement(devMode: boolean = false) {
                     setParkedDiscs((message as ParkedDiscsMessage).discs);
                     break;
 
+                case 'drive_armed': {
+                    const driveId = message.drive_id;
+                    const identity = message.identity;
+                    setArmedDrives(prev => {
+                        const next = { ...prev };
+                        if (identity) next[driveId] = identity;
+                        else delete next[driveId];
+                        return next;
+                    });
+                    break;
+                }
+
                 default:
                     break;
             }
@@ -419,6 +438,7 @@ export function useJobManagement(devMode: boolean = false) {
         isConnected,
         updateStatus,
         parkedDiscs,
+        armedDrives,
         cancelJob,
         advanceJob,
         clearCompleted,

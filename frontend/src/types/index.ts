@@ -230,6 +230,24 @@ export interface ParkedDiscsMessage {
     discs: ParkedDisc[];
 }
 
+/**
+ * A drive was armed (identity present) or disarmed/consumed (identity null)
+ * via the manual-disc-identity flow (`POST /api/manual/arm|disarm`, or the
+ * arm being consumed by a subsequent disc insert). `identity` mirrors the
+ * `ArmedIdentity` shape used by `ArmedDriveCard`.
+ */
+export interface DriveArmedMessage {
+    type: 'drive_armed';
+    drive_id: string;
+    identity: {
+        title: string;
+        content_type: string;
+        season: number | null;
+        tmdb_id: number | null;
+        disc_number: number | null;
+    } | null;
+}
+
 export type WebSocketMessage =
     | DriveEvent
     | JobUpdate
@@ -238,7 +256,8 @@ export type WebSocketMessage =
     | TitlesDiscovered
     | UpdateStatusMessage
     | FingerprintDisclosureRequiredMessage
-    | ParkedDiscsMessage;
+    | ParkedDiscsMessage
+    | DriveArmedMessage;
 
 export interface Config {
     makemkv_path: string;
