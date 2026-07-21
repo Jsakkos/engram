@@ -2567,7 +2567,55 @@ class JobManager:
                             and not self._has_complete_output(output_dir, t)
                         ):
                             missing.append(t)
-                if missing:
+                # A pass that stalled and wrote nothing means the disc itself is
+                # unreadable (bad region setting, unsupported protection, dead
+                # drive). The per-title fallback exists to rescue the "one bad
+                # title lost the rest of the disc" case, which presupposes
+                # partial success; with zero output there is nothing to rescue
+                # and each retry costs another full stall timeout (issue #506).
+                # Both conditions are required: a pass that simply reported no
+                # files without stalling has given us no evidence of an
+                # unreadable disc, so it still earns a per-title retry.
+                disc_unreadable = bool(result.stalled_titles) and not result.output_files
+                if not missing:
+                    # The single pass produced every title. 'all'-mode stall
+                    # bookkeeping uses command indices that don't map to titles,
+                    # so discard it — nothing actually failed.
+                    result.stalled_titles = None
+                    result.success = True
+                elif disc_unreadable:
+                    # Titles are still missing, but retrying is pointless. Route
+                    # every missing title to review HERE, directly by id — the
+                    # generic stalled_titles loop below cannot do it: an all-pass
+                    # is a single MakeMKV command, so result.stalled_titles is at
+                    # most [1] no matter how many titles were selected, and that
+                    # loop would route only the first. Skipping the fallback via
+                    # that loop would strand the rest in reconcile_stuck_titles →
+                    # FAILED, losing the region diagnosis and the manual re-rip
+                    # path (which requires REVIEW).
+                    logger.warning(
+                        f"Job {safe_job}: single-pass rip stalled with no output; "
+                        f"skipping the per-title fallback for {len(missing)} title(s) "
+                        f"and routing them to review."
+                    )
+                    reason = result.failure_reason or STALL_FAILURE_REASON
+                    for t in missing:
+                        logger.warning(
+                            f"Job {safe_job}: title {t.title_index} "
+                            f"stalled (no output) → REVIEW (re-rippable)"
+                        )
+                        await self._matching.route_rip_failure_to_review(
+                            job_id, t.id, "rip_stalled", reason
+                        )
+                    # The outcome is now fully handled: every title is in REVIEW,
+                    # so the job must HOLD in REVIEW_NEEDED, not fall into the
+                    # _fail_job guard below. Clear stalled_titles so the generic
+                    # routing loop is a no-op (it would otherwise mis-route the
+                    # first title), and mark success so the fail guard is skipped
+                    # even when the rip reported success=False.
+                    result.stalled_titles = None
+                    result.success = True
+                else:
                     logger.warning(
                         f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
                         f"missing; re-ripping individually: "
@@ -2591,12 +2639,6 @@ class JobManager:
                     # Stall bookkeeping below now refers to the fallback's per-title
                     # command order, not the original full title list.
                     stall_title_list = missing
-                else:
-                    # The single pass produced every title. 'all'-mode stall
-                    # bookkeeping uses command indices that don't map to titles,
-                    # so discard it — nothing actually failed.
-                    result.stalled_titles = None
-                    result.success = True
 
             if not result.success and not result.stalled_titles:
                 await self._fail_job(job_id, result.error_message)
@@ -2614,7 +2656,10 @@ class JobManager:
                             f"stalled (fallback) → REVIEW (re-rippable)"
                         )
                         await self._matching.route_rip_failure_to_review(
-                            job_id, stalled_title.id, "rip_stalled", STALL_FAILURE_REASON
+                            job_id,
+                            stalled_title.id,
+                            "rip_stalled",
+                            result.failure_reason or STALL_FAILURE_REASON,
                         )
 
             # Eject disc and reset sentinel state so a new disc insert is detected
