@@ -1308,7 +1308,9 @@ async def re_identify_job(
     Accepted while RIPPING too (walk-away B5): a mid-rip answer updates the
     metadata and dispatches parked titles without interrupting the rip.
     """
-    if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING):
+    # IDENTIFYING included so the always-on card control is usable for the whole
+    # window the UI offers it (#520).
+    if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING, JobState.IDENTIFYING):
         raise HTTPException(
             status_code=400,
             detail=f"Job must be in review_needed or ripping state, currently: {job.state.value}",

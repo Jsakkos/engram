@@ -1329,7 +1329,9 @@ class IdentificationCoordinator:
             if not job:
                 raise ValueError(f"Job {job_id} not found")
 
-            if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING):
+            # IDENTIFYING included so the always-on card control is usable for the whole
+            # window the UI offers it (#520).
+            if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING, JobState.IDENTIFYING):
                 raise ValueError(f"Cannot re-identify job in state: {job.state.value}")
 
             mid_rip = job.state == JobState.RIPPING
@@ -1345,6 +1347,10 @@ class IdentificationCoordinator:
             job.content_type = ContentType(content_type_str)
             if season is not None:
                 job.detected_season = season
+            # The resulting identity is user-asserted regardless of what was
+            # guessed first. "manual_correction" distinguishes this from the
+            # arm path's "manual" for diagnostics; both render one UI chip.
+            job.classification_source = "manual_correction"
             if not mid_rip:
                 # Mid-rip there is no review_reason to clear, and leaving it
                 # untouched keeps a convergence-race park readable (see the

@@ -182,3 +182,66 @@ async def test_manual_identity_survives_gates_b_d_and_e_simultaneously():
     # routes it to the all-seasons path) — confirms we reached that branch
     # rather than short-circuiting somewhere earlier.
     prefetch.assert_awaited_once()
+
+
+@pytest.mark.integration
+async def test_re_identify_records_manual_correction_provenance(monkeypatch):
+    """Drives the REAL IdentificationCoordinator.re_identify (#520 Task 6),
+    not the mocked API endpoint, so it actually proves classification_source
+    gets set to "manual_correction" rather than asserting a copy of the
+    assignment.
+
+    Boundary stubs, and why each is needed:
+    - ``tmdb_id`` is passed explicitly so ``re_identify`` takes the
+      ``if tmdb_id is not None`` branch and skips its own
+      ``get_config()``/``classify_from_tmdb`` re-lookup entirely — avoids
+      needing to also patch config_service's ``async_session`` (a second
+      module-level name distinct from identification_coordinator's) to keep
+      this test off both the real DB and the network.
+    - ``_resolve_show_year`` is still reached (tmdb_id is now truthy) and
+      falls through to a live ``fetch_show_details`` network call unless
+      stubbed — patched to a fixed year.
+    - ``_restart_subtitle_download`` is wired at JobManager construction
+      time (not just at ``start()``), so the production
+      ``job_manager._identification`` singleton already has a real,
+      non-None callback that would kick off actual subtitle downloading;
+      stubbed to an AsyncMock.
+    - The job is seeded with no ``staging_path``, so ``has_ripped`` is
+      False and the pre-rip branch runs, meaning ``re_identify`` itself
+      never calls ``_run_ripping`` or matching dispatch — nothing else to
+      stub for this branch.
+    """
+    monkeypatch.setattr(idc, "_resolve_show_year", lambda *a, **k: 2005)
+
+    async with _session_factory() as session:
+        job = DiscJob(
+            drive_id="E:",
+            volume_label="X",
+            state=JobState.IDENTIFYING,
+            staging_path=None,
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    coord = job_manager._identification
+    with patch.object(coord, "_restart_subtitle_download", AsyncMock()) as restart_mock:
+        result = await coord.re_identify(job_id, "The Office", "tv", season=2, tmdb_id=2316)
+
+    job = await _reload_job(job_id)
+
+    assert job.classification_source == "manual_correction"
+    assert job.detected_title == "The Office"
+    assert job.content_type == ContentType.TV
+    assert job.detected_season == 2
+    assert job.tmdb_id == 2316
+
+    # The widened guard (#520) let an IDENTIFYING job all the way through to
+    # the pre-rip resume path instead of raising ValueError.
+    assert job.state == JobState.RIPPING
+    assert result["resume_action"] == "start_rip"
+
+    # TV + known season + no ripped files -> the corrected-title subtitle
+    # restart fires (stubbed, so no real network/download happens).
+    restart_mock.assert_awaited_once_with(job_id, "The Office", 2, 2316)

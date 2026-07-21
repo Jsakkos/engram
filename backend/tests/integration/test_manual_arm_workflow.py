@@ -10,6 +10,7 @@ import app.api.websocket as websocket_module
 from app.database import async_session, init_db
 from app.main import app
 from app.models.disc_job import DiscJob, JobState
+from app.services.job_manager import job_manager
 from app.services.manual_identity import arm_store
 
 
@@ -196,3 +197,41 @@ async def test_disarm_does_not_broadcast_when_nothing_was_armed(client):
 
     assert resp.status_code == 200
     mock_broadcast.assert_not_called()
+
+
+async def test_re_identify_accepted_while_identifying(client):
+    """The always-on card control offers re-identify for the whole scanning
+    window (#520), which maps to the backend's IDENTIFYING state. The 400
+    guard must accept it, not just REVIEW_NEEDED/RIPPING."""
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", volume_label="X", state=JobState.IDENTIFYING)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    with patch.object(job_manager, "re_identify_job", new=AsyncMock()):
+        resp = await client.post(
+            f"/api/jobs/{job_id}/re-identify",
+            json={"title": "The Office", "content_type": "tv", "season": 2},
+        )
+
+    assert resp.status_code == 200
+
+
+async def test_re_identify_still_rejected_when_completed(client):
+    """COMPLETED must still be rejected — the History page's AmendTitleModal
+    owns post-hoc edits, not this endpoint."""
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", volume_label="X", state=JobState.COMPLETED)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    resp = await client.post(
+        f"/api/jobs/{job_id}/re-identify",
+        json={"title": "The Office", "content_type": "tv", "season": 2},
+    )
+
+    assert resp.status_code == 400
