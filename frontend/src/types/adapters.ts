@@ -164,6 +164,7 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     promptKind,
     tmdbDegradedReason: job.tmdb_degraded_reason || undefined,
     identityReview,
+    identitySource: job.classification_source,
     tmdbId: job.tmdb_id ?? null,
     tmdbName: job.tmdb_name ?? null,
     tmdbYear: job.tmdb_year ?? null,

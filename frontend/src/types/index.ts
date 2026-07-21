@@ -69,6 +69,13 @@ export interface Job {
      * Set by the backend during disc identification when an open identity question ships with the rip (walk-away Phase B).
      */
     identity_prompt_json?: string | null;
+    /**
+     * How this job's identity was determined: "manual" (user-armed before
+     * insert) or "manual_correction" (user overrode a guess on a live card),
+     * vs. an automatic source (e.g. "tmdb", "discdb", "ai"). Drives the
+     * MANUAL ID provenance chip and the contextual "Edit ID" button label.
+     */
+    classification_source?: string;
 }
 
 export interface DiscTitle {

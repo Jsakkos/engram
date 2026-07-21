@@ -104,6 +104,11 @@ export interface DiscData {
   tmdbDegradedReason?: string;
   /** True when at least one title on this disc has a rip-level failure (re-rippable). */
   hasDamagedTrack?: boolean;
+  /** How this disc's identity was obtained, from the backend's
+   *  classification_source. "manual" (asserted before the rip) and
+   *  "manual_correction" (user overrode a guess) both render one chip;
+   *  the distinction exists only for diagnostics. */
+  identitySource?: string;
 }
 
 interface DiscCardProps {
@@ -237,6 +242,12 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     // title-load race: titles resolve after the job list, so without this guard
     // the banner/emphasis could flash then vanish on first render / reconnect.
     const showIdentityReview = !!disc.identityReview && !!disc.tracksLoaded;
+
+    // The identity came from the user, not detection — either armed before
+    // insert ("manual") or corrected on a live card ("manual_correction").
+    // Drives the MANUAL ID chip and the contextual identity-button label.
+    const isManualIdentity =
+      disc.identitySource === 'manual' || disc.identitySource === 'manual_correction';
 
     return (
       <motion.div
@@ -384,6 +395,24 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   discLabel={disc.discLabel}
                 />
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {isManualIdentity && (
+                    <span
+                      data-testid="disccard-manual-badge"
+                      title="Identity was entered by you, not detected"
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        letterSpacing: "0.2em",
+                        color: sv.cyan,
+                        border: `1px solid ${sv.cyan}66`,
+                        background: `${sv.cyan}14`,
+                        padding: "3px 6px",
+                      }}
+                    >
+                      MANUAL ID
+                    </span>
+                  )}
                   {disc.hasDamagedTrack && (
                     <span
                       data-testid="disccard-damaged-badge"
@@ -464,6 +493,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
                     emphasizeReIdentify={showIdentityReview}
+                    manualIdentity={isManualIdentity}
                   />
                 </div>
               </div>

@@ -114,6 +114,10 @@ interface ActionButtonsProps {
     /** Render the "Wrong title?" button filled — it's the primary action when
      *  the review queue is suppressed pre-rip. */
     emphasizeReIdentify?: boolean;
+    /** Identity was user-asserted (armed or corrected) rather than detected —
+     *  relabels the button "Edit ID" instead of "Wrong title?" so it reads as
+     *  a routine edit, not a correction of a mistake. */
+    manualIdentity?: boolean;
 }
 
 // States where Force-advance makes sense (job is actively processing).
@@ -227,7 +231,7 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, t
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, emphasizeReIdentify = false }: ActionButtonsProps) {
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, emphasizeReIdentify = false, manualIdentity = false }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
@@ -302,13 +306,13 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                 <ToneButton
                     tone={CYAN}
                     onClick={(e) => { e.stopPropagation(); onReIdentify(); }}
-                    title="Wrong title — re-identify disc"
-                    ariaLabel="Wrong title — re-identify disc"
+                    title={manualIdentity ? "Edit ID — this disc's identity was entered manually" : "Wrong title — re-identify disc"}
+                    ariaLabel={manualIdentity ? "Edit ID — edit disc identity" : "Wrong title — re-identify disc"}
                     paddingX={10}
                     emphasis={emphasizeReIdentify}
                 >
                     <IcoRetry size={12} />
-                    <span style={{ fontSize: 10 }}>Wrong title?</span>
+                    <span style={{ fontSize: 10 }}>{manualIdentity ? "Edit ID" : "Wrong title?"}</span>
                 </ToneButton>
             )}
 

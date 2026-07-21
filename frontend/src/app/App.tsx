@@ -786,10 +786,18 @@ function MainDashboard() {
                   onUnskipTrack={(titleId) => { void unskipRipTitle(Number(disc.id), titleId); }}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
                   onReview={disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
-                  onReIdentify={disc.needsReview && disc.title ? () => {
-                    const job = jobs.find(j => String(j.id) === disc.id);
-                    if (job) setReIdentifyTarget(job);
-                  } : undefined}
+                  // Always-on identity control (#520): available for the whole
+                  // window the backend accepts a re-identify (scanning→ripping→
+                  // review), not only in review. Excludes matching/organizing
+                  // (work in flight) and completed (History's AmendTitleModal owns it).
+                  onReIdentify={
+                    disc.title && ['scanning', 'ripping', 'review_needed'].includes(disc.state)
+                      ? () => {
+                          const job = jobs.find(j => String(j.id) === disc.id);
+                          if (job) setReIdentifyTarget(job);
+                        }
+                      : undefined
+                  }
                   // P13 + walk-away Phase B: jobs needing a name/season/identity —
                   // parked in review OR still ripping — get a card CTA that opens
                   // the prompt on demand (it no longer auto-opens over the dashboard
