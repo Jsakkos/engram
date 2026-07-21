@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { NavItem } from "../../navigation";
-import { IcoSettings, IcoLibrary } from "../icons";
+import { IcoSettings, IcoLibrary, IcoDisc } from "../icons";
 import { sv } from "./tokens";
 import { SvMark } from "./SvMark";
 import { Wordmark } from "./Wordmark";
@@ -16,6 +16,7 @@ interface Props {
   navItems: NavItem[];
   onSettingsClick: () => void;
   onImportClick: () => void;
+  onManualClick?: () => void;
 }
 
 /**
@@ -32,6 +33,7 @@ export function SvTopBar({
   navItems,
   onSettingsClick,
   onImportClick,
+  onManualClick,
 }: Props) {
   const location = useLocation();
 
@@ -95,6 +97,36 @@ export function SvTopBar({
 
       {/* Right: LIVE pill + settings */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button
+          onClick={onManualClick}
+          aria-label="Manual disc identity"
+          title="Enter disc metadata manually for the next disc"
+          data-testid="sv-manual-btn"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "transparent",
+            border: `1px solid ${sv.magenta}`,
+            color: sv.magenta,
+            fontFamily: sv.mono,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.16em",
+            padding: "7px 12px",
+            cursor: "pointer",
+            transition: "all 0.18s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = `${sv.magenta}1f`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <IcoDisc size={14} />
+          MANUAL
+        </button>
         <button
           onClick={onImportClick}
           aria-label="Import media"
