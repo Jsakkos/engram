@@ -4,10 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-07-22
+
+_Highlights: enter your own disc details when Engram can't work them out, plus customizable Discord notification messages._
+
 ### Added
 
 - **Enter disc details yourself when Engram can't work them out.** A new **Manual** button lets you name a disc before you insert it: pick the show or film, season, and disc number, and the next disc in that drive adopts exactly what you entered, skipping automatic identification and ripping unattended with no questions asked. It's built for the awkward cases — homemade discs, obscure releases, and labels that are just a catalog number — where the automatic guess would otherwise stop to ask. Every active disc also gains an always-available identity control, so you can correct a title mid-rip instead of waiting for Engram to ask, and a disc you identified yourself is now marked with a **Manual ID** tag so you can tell at a glance which titles were asserted rather than detected. Episode matching still runs automatically on a manually named disc; anything it can't resolve lands in the usual Review Queue. (#520)
-- **Customizable Discord notification messages.** The Discord embed sent when a disc completes or fails now uses a template you control, instead of a fixed message. Set separate messages for the completed and failed cases in Settings → Notifications, using `{{title}}`, `{{drive}}`, `{{duration}}`, `{{error}}`, and other job details as variables. Leave either field blank to keep the previous default message.
+- **Customizable Discord notification messages.** The Discord embed sent when a disc completes or fails now uses a template you control, instead of a fixed message. Set separate messages for the completed and failed cases in Settings → Notifications, using `{{title}}`, `{{drive}}`, `{{duration}}`, `{{error}}`, and other job details as variables. Leave either field blank to keep the previous default message. (#508, thanks @katelovescode!)
 
 ### Fixed
 
@@ -17,6 +21,10 @@ All notable changes to Engram will be documented in this file.
 - **A disc Engram cannot read at all now gives up in about two minutes instead of twenty-six.** When the first rip pass stalled without writing a single byte, Engram still retried every title on the disc one at a time, spending a full stall timeout on each before the phase watchdog finally stepped in. A pass that stalls with no output is now treated as evidence the disc itself is unreadable: the per-title retries are skipped and every track goes straight to the review queue, where it can still be re-ripped manually. (#506)
 - **A region-locked disc now says so.** When a rip stalls because the drive's region setting does not match the disc, Engram surfaces that as the reason instead of reporting that the disc may be dirty or damaged, which sent people off cleaning and re-testing a disc that was never the problem. (#506)
 - **Bug reports no longer show another job's errors as if they were yours.** The "Report Bug" diagnostic report ignored which job it was opened for and always pulled the last 20 global error lines — a report opened for a cancelled job with no errors of its own could show an unrelated job's failure from days earlier. Recent errors are now scoped to the job the report is for, and when a job predates per-job log tagging and there's genuinely nothing job-specific to show, the report (both the modal and the copied/GitHub text) now says so instead of silently substituting unrelated errors. (#506, #522)
+
+### Changed
+
+- **Dependency updates** — sharp 0.34.5→0.35.3 (#528), @radix-ui/react-navigation-menu 1.2.5→1.2.19 (#530), @radix-ui/react-context-menu 2.2.16→2.3.4 (#529), @radix-ui/react-dropdown-menu 2.1.6→2.1.20 (#513), @radix-ui/react-toggle 1.1.10→1.1.14 (#512), @radix-ui/react-slider 1.4.1→1.4.3 (#510), vitest/@vitest/coverage-v8 4.1.9→4.1.10 (#518), librosa >=0.10.1→>=0.11.0 (#519), postcss 8.5.16→8.5.19 (#515), @types/node 25.9.4→25.9.5 (#514).
 
 ## [0.25.0] - 2026-07-12
 
