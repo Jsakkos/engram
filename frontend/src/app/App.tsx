@@ -28,7 +28,7 @@ import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
 import { PROMPT_CTA_LABELS, classifyPromptJob, pruneDismissedIds, selectPromptJobs, shouldAutoOpenPrompt } from "./promptSelection";
 import type { Job } from "../types";
-import { skipRipTitle, unskipRipTitle } from "../api/client";
+import { skipRipTitle, unskipRipTitle, disarmDrive as disarmDriveRequest } from "../api/client";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ParkedDiscBanner } from "./components/ParkedDiscBanner";
@@ -183,11 +183,7 @@ function MainDashboard() {
 
   const disarmDrive = async (driveId: string) => {
     try {
-      await fetch('/api/manual/disarm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ drive_id: driveId }),
-      });
+      await disarmDriveRequest(driveId);
       // The drive_armed(identity: null) broadcast is the source of truth for
       // clearing the card — no optimistic local mutation needed here.
     } catch {
@@ -786,12 +782,15 @@ function MainDashboard() {
                   onUnskipTrack={(titleId) => { void unskipRipTitle(Number(disc.id), titleId); }}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
                   onReview={disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
-                  // Always-on identity control (#520): available for the whole
-                  // window the backend accepts a re-identify (scanning→ripping→
-                  // review), not only in review. Excludes matching/organizing
-                  // (work in flight) and completed (History's AmendTitleModal owns it).
+                  // Always-on identity control (#520): available while ripping or
+                  // parked in review, not only in review. Deliberately EXCLUDES
+                  // 'scanning' (IDENTIFYING) — the identify_disc task is still in
+                  // flight then, and re-identifying would race a second rip against
+                  // the drive (see routes.py re_identify guard). Also excludes
+                  // matching/organizing (work in flight) and completed (History's
+                  // AmendTitleModal owns it).
                   onReIdentify={
-                    disc.title && ['scanning', 'ripping', 'review_needed'].includes(disc.state)
+                    disc.title && ['ripping', 'review_needed'].includes(disc.state)
                       ? () => {
                           const job = jobs.find(j => String(j.id) === disc.id);
                           if (job) setReIdentifyTarget(job);

@@ -45,10 +45,13 @@ describe('ArmDiscModal', () => {
   });
 
   it('surfaces a 409 as a readable conflict message', async () => {
+    // apiFetchVoid reads the error body via res.text(), so the 409 detail must
+    // come back as JSON text (mirrors the real ApiError.body contract).
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 409,
-      json: async () => ({ detail: 'Drive E: already has an active job.' }),
+      statusText: 'Conflict',
+      text: async () => JSON.stringify({ detail: 'Drive E: already has an active job.' }),
     }) as never;
     render(<ArmDiscModal driveId="E:" onClose={vi.fn()} onArmed={vi.fn()} />);
 
@@ -56,5 +59,17 @@ describe('ArmDiscModal', () => {
     fireEvent.click(screen.getByTestId('arm-submit'));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/already has an active job/i);
+  });
+
+  it('arms the drive the user typed, not just the default', async () => {
+    render(<ArmDiscModal driveId="E:" onClose={vi.fn()} onArmed={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/drive to arm/i), { target: { value: 'F:' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), { target: { value: 'The Office' } });
+    fireEvent.click(screen.getByTestId('arm-submit'));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(JSON.parse(init.body).drive_id).toBe('F:');
   });
 });

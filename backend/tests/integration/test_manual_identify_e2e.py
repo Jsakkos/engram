@@ -214,10 +214,14 @@ async def test_re_identify_records_manual_correction_provenance(monkeypatch):
     monkeypatch.setattr(idc, "_resolve_show_year", lambda *a, **k: 2005)
 
     async with _session_factory() as session:
+        # REVIEW_NEEDED, not IDENTIFYING: re-identify deliberately rejects
+        # IDENTIFYING (#520) because the identify_disc task is still in flight
+        # then. A parked (REVIEW_NEEDED) disc with no ripped files hits the same
+        # pre-rip "start_rip" branch this test exercises.
         job = DiscJob(
             drive_id="E:",
             volume_label="X",
-            state=JobState.IDENTIFYING,
+            state=JobState.REVIEW_NEEDED,
             staging_path=None,
         )
         session.add(job)
@@ -237,8 +241,7 @@ async def test_re_identify_records_manual_correction_provenance(monkeypatch):
     assert job.detected_season == 2
     assert job.tmdb_id == 2316
 
-    # The widened guard (#520) let an IDENTIFYING job all the way through to
-    # the pre-rip resume path instead of raising ValueError.
+    # Parked disc, no ripped files -> pre-rip resume path (start a fresh rip).
     assert job.state == JobState.RIPPING
     assert result["resume_action"] == "start_rip"
 

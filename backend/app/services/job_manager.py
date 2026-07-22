@@ -682,7 +682,8 @@ class JobManager:
                 if armed is not None:
                     logger.info(
                         f"Job {job.id}: adopting armed manual identity "
-                        f"'{sanitize_log_value(armed.title)}' ({armed.content_type})"
+                        f"'{sanitize_log_value(armed.title)}' "
+                        f"({sanitize_log_value(armed.content_type)})"
                     )
                     await ws_manager.broadcast_drive_armed(drive_letter, None)
 

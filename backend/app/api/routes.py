@@ -1308,9 +1308,10 @@ async def re_identify_job(
     Accepted while RIPPING too (walk-away B5): a mid-rip answer updates the
     metadata and dispatches parked titles without interrupting the rip.
     """
-    # IDENTIFYING included so the always-on card control is usable for the whole
-    # window the UI offers it (#520).
-    if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING, JobState.IDENTIFYING):
+    # REVIEW_NEEDED / RIPPING only — NOT IDENTIFYING: re-identifying a job whose
+    # identify_disc task is still in flight races a second rip against the same
+    # drive (see IdentificationCoordinator.re_identify's guard for the full rationale, #520).
+    if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING):
         raise HTTPException(
             status_code=400,
             detail=f"Job must be in review_needed or ripping state, currently: {job.state.value}",
@@ -1394,7 +1395,7 @@ async def arm_manual_identity(
     await ws_manager.broadcast_drive_armed(req.drive_id, identity.to_dict())
     logger.info(
         f"Armed drive {sanitize_log_value(req.drive_id)} with manual identity "
-        f"'{sanitize_log_value(req.title)}' ({req.content_type})"
+        f"'{sanitize_log_value(req.title)}' ({sanitize_log_value(req.content_type)})"
     )
     return {"status": "armed", "drive_id": req.drive_id}
 
@@ -1412,6 +1413,23 @@ async def disarm_manual_identity(req: DisarmManualRequest) -> dict:
     return {
         "status": "disarmed" if was_armed else "not_armed",
         "drive_id": req.drive_id,
+    }
+
+
+@router.get("/manual/armed")
+async def list_armed_drives() -> dict:
+    """Snapshot every currently-armed drive.
+
+    Lets the dashboard restore its ``ArmedDriveCard``s on page load and after a
+    WebSocket reconnect (the ``drive_armed`` push only carries live deltas), the
+    same way ``GET /api/parked-discs`` reseeds parked discs.
+    """
+    from app.services.manual_identity import arm_store
+
+    return {
+        "armed": {
+            drive_id: identity.to_dict() for drive_id, identity in arm_store.all_armed().items()
+        }
     }
 
 

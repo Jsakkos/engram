@@ -1332,9 +1332,17 @@ class IdentificationCoordinator:
             if not job:
                 raise ValueError(f"Job {job_id} not found")
 
-            # IDENTIFYING included so the always-on card control is usable for the whole
-            # window the UI offers it (#520).
-            if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING, JobState.IDENTIFYING):
+            # REVIEW_NEEDED and RIPPING only — deliberately NOT IDENTIFYING (#520).
+            # While a job is IDENTIFYING its background identify_disc task is still
+            # running (that task is the only thing that moves it out of IDENTIFYING).
+            # Re-identifying then would fall into the pre-rip "start_rip" branch below
+            # and spawn a SECOND _run_ripping against the same job/drive while the
+            # original task keeps going — a lost-update on the row plus the exact
+            # makemkvcon double-rip conflict CLAUDE.md warns about. REVIEW_NEEDED is
+            # safe (identify_disc has exited); RIPPING is safe (the mid_rip branch
+            # dispatches matches without starting a new rip). Editing during the scan
+            # has no value anyway: no identity has been proposed yet to correct.
+            if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING):
                 raise ValueError(f"Cannot re-identify job in state: {job.state.value}")
 
             mid_rip = job.state == JobState.RIPPING

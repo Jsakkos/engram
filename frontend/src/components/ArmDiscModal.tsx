@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from 'react';
 import { motion } from 'motion/react';
 import { IcoDrive, IcoError } from '../app/components/icons';
 import { SvPanel, SvLabel, sv } from '../app/components/synapse';
+import { armDrive, ApiError } from '../api/client';
 import IdentityFields, { type IdentityValue } from './IdentityFields';
 
 interface ArmDiscModalProps {
@@ -25,6 +26,9 @@ export default function ArmDiscModal({ driveId, onClose, onArmed }: ArmDiscModal
         tmdbId: undefined,
     });
     const [discNumber, setDiscNumber] = useState('');
+    // Editable so multi-drive setups can target a specific drive; seeded from the
+    // caller's best-effort default. Trimmed on submit.
+    const [drive, setDrive] = useState(driveId);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     // Mirrors IdentityFields' internal search-query state so Enter-to-submit
@@ -32,39 +36,38 @@ export default function ArmDiscModal({ driveId, onClose, onArmed }: ArmDiscModal
     // IdentityFields itself).
     const [hasSearchQuery, setHasSearchQuery] = useState(false);
 
-    const canSubmit = !!identity.title.trim() && !busy;
+    const canSubmit = !!identity.title.trim() && !!drive.trim() && !busy;
 
     const handleSubmit = async () => {
-        if (!identity.title.trim() || busy) return;
+        if (!identity.title.trim() || !drive.trim() || busy) return;
         setBusy(true);
         setError(null);
         try {
-            const resp = await fetch('/api/manual/arm', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    drive_id: driveId,
-                    title: identity.title.trim(),
-                    content_type: identity.contentType,
-                    season: identity.contentType === 'tv' ? (parseInt(identity.season, 10) || 1) : null,
-                    tmdb_id: identity.tmdbId ?? null,
-                    disc_number: discNumber ? parseInt(discNumber, 10) : null,
-                }),
+            await armDrive({
+                drive_id: drive.trim(),
+                title: identity.title.trim(),
+                content_type: identity.contentType,
+                season: identity.contentType === 'tv' ? (parseInt(identity.season, 10) || 1) : null,
+                tmdb_id: identity.tmdbId ?? null,
+                disc_number: discNumber ? parseInt(discNumber, 10) : null,
             });
-            if (!resp.ok) {
-                let detail = 'Could not arm the drive.';
-                try {
-                    const body = await resp.json();
-                    if (body?.detail) detail = body.detail;
-                } catch {
-                    // fall through to generic message
-                }
-                setError(detail);
-                return;
-            }
             onArmed();
-        } catch {
-            setError('Could not reach the server.');
+        } catch (e) {
+            // apiFetchVoid throws ApiError on non-2xx; the 409 (drive busy) carries
+            // a human-readable {detail} in the JSON body. Fall back to generic text
+            // for a network failure or an unparseable body.
+            let detail = 'Could not arm the drive.';
+            if (e instanceof ApiError) {
+                try {
+                    const parsed = JSON.parse(e.body);
+                    if (parsed?.detail) detail = parsed.detail;
+                } catch {
+                    // unparseable body — keep the generic message
+                }
+            } else {
+                detail = 'Could not reach the server.';
+            }
+            setError(detail);
         } finally {
             setBusy(false);
         }
@@ -154,9 +157,34 @@ export default function ArmDiscModal({ driveId, onClose, onArmed }: ArmDiscModal
                         </div>
 
                         <p style={{ fontFamily: sv.mono, fontSize: 12, color: sv.inkDim, margin: 0 }}>
-                            Arm drive <span style={{ color: sv.ink }}>{driveId}</span> with the identity
-                            below. The next disc inserted there will adopt it and rip unattended.
+                            Arm a drive with the identity below. The next disc inserted there
+                            will adopt it and rip unattended.
                         </p>
+
+                        {/* Drive — editable so multi-drive setups can target a specific
+                            drive rather than the caller's best-effort default. */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <SvLabel size={10}>Drive</SvLabel>
+                            <input
+                                type="text"
+                                value={drive}
+                                onChange={(e) => setDrive(e.target.value)}
+                                aria-label="Drive to arm"
+                                placeholder="E:"
+                                style={{
+                                    width: 128,
+                                    background: sv.bg0,
+                                    border: `1px solid ${sv.lineMid}`,
+                                    color: sv.cyanHi,
+                                    fontFamily: sv.mono,
+                                    fontSize: 13,
+                                    padding: '10px 12px',
+                                    outline: 'none',
+                                }}
+                                onFocus={(e) => (e.currentTarget.style.borderColor = sv.cyan)}
+                                onBlur={(e) => (e.currentTarget.style.borderColor = sv.lineMid)}
+                            />
+                        </div>
 
                         <IdentityFields
                             value={identity}

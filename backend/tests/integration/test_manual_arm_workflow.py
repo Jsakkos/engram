@@ -199,12 +199,35 @@ async def test_disarm_does_not_broadcast_when_nothing_was_armed(client):
     mock_broadcast.assert_not_called()
 
 
-async def test_re_identify_accepted_while_identifying(client):
-    """The always-on card control offers re-identify for the whole scanning
-    window (#520), which maps to the backend's IDENTIFYING state. The 400
-    guard must accept it, not just REVIEW_NEEDED/RIPPING."""
+async def test_re_identify_rejected_while_identifying(client):
+    """IDENTIFYING must be REJECTED (#520). While a job is IDENTIFYING its
+    background identify_disc task is still running; accepting a re-identify then
+    would spawn a second rip against the same drive (lost-update + makemkvcon
+    conflict). Only REVIEW_NEEDED/RIPPING are safe."""
     async with async_session() as session:
         job = DiscJob(drive_id="E:", volume_label="X", state=JobState.IDENTIFYING)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    # re_identify_job is mocked so a hypothetical pass-through can't run — the
+    # point is that the route's state guard rejects before reaching it.
+    with patch.object(job_manager, "re_identify_job", new=AsyncMock()) as mock_reid:
+        resp = await client.post(
+            f"/api/jobs/{job_id}/re-identify",
+            json={"title": "The Office", "content_type": "tv", "season": 2},
+        )
+
+    assert resp.status_code == 400
+    mock_reid.assert_not_awaited()
+
+
+async def test_re_identify_accepted_while_ripping(client):
+    """RIPPING is still accepted — the mid-rip walk-away answer (#520 keeps the
+    two safe states)."""
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", volume_label="X", state=JobState.RIPPING)
         session.add(job)
         await session.commit()
         await session.refresh(job)
@@ -217,6 +240,26 @@ async def test_re_identify_accepted_while_identifying(client):
         )
 
     assert resp.status_code == 200
+
+
+async def test_list_armed_drives_reflects_arm_store(client):
+    """GET /api/manual/armed lets the dashboard reseed ArmedDriveCards on
+    reload / WS reconnect (#520)."""
+    empty = await client.get("/api/manual/armed")
+    assert empty.status_code == 200
+    assert empty.json() == {"armed": {}}
+
+    await client.post(
+        "/api/manual/arm",
+        json={"drive_id": "E:", "title": "Firefly", "content_type": "tv", "season": 1},
+    )
+
+    resp = await client.get("/api/manual/armed")
+    assert resp.status_code == 200
+    armed = resp.json()["armed"]
+    assert set(armed) == {"E:"}
+    assert armed["E:"]["title"] == "Firefly"
+    assert armed["E:"]["content_type"] == "tv"
 
 
 async def test_re_identify_still_rejected_when_completed(client):

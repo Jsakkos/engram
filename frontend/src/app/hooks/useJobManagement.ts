@@ -179,6 +179,18 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }, []);
 
+    // Seed armed-drive cards from REST; live changes ride the `drive_armed`
+    // broadcast (per-drive delta). Without this the ArmedDriveCard vanishes on a
+    // page refresh / socket reconnect even though the backend is still armed.
+    const syncArmedDrives = useCallback(async () => {
+        try {
+            const data = await apiFetch<{ armed: Record<string, ArmedIdentity> }>('/api/manual/armed');
+            setArmedDrives(data.armed ?? {});
+        } catch {
+            // Non-critical — cards just stay as-is until the next sync.
+        }
+    }, []);
+
     // Resync on (re)connect so the UI recovers from any drift while disconnected.
     const handleSocketOpen = useCallback(() => {
         if (initialConnectRef.current) {
@@ -191,8 +203,9 @@ export function useJobManagement(devMode: boolean = false) {
         }
         void syncUpdateStatus();
         void syncParkedDiscs();
+        void syncArmedDrives();
         fetchRef.current?.();
-    }, [syncUpdateStatus, syncParkedDiscs]);
+    }, [syncUpdateStatus, syncParkedDiscs, syncArmedDrives]);
 
     const { isConnected, addMessageListener } = useWebSocket(wsUrl, { onOpen: handleSocketOpen });
 
@@ -209,8 +222,9 @@ export function useJobManagement(devMode: boolean = false) {
             fetchJobsAndTitles();
             void syncUpdateStatus();
             void syncParkedDiscs();
+            void syncArmedDrives();
         }
-    }, [devMode, fetchJobsAndTitles, syncUpdateStatus, syncParkedDiscs]);
+    }, [devMode, fetchJobsAndTitles, syncUpdateStatus, syncParkedDiscs, syncArmedDrives]);
 
     async function cancelJob(jobId: string) {
         try {
