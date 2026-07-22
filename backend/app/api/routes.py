@@ -114,6 +114,40 @@ def require_localhost(request: Request) -> None:
         )
 
 
+async def require_localhost_or_lan(request: Request) -> None:
+    """FastAPI dependency: allow loopback always, LAN peers only when opted in.
+
+    Like `require_localhost`, but a non-loopback (LAN) client is also permitted
+    when the user has explicitly enabled `allow_lan_access`. Used by the manual
+    *import* endpoints so headless/Docker deployments — where the dashboard is
+    reached from another machine — can browse and import, while the more
+    sensitive fingerprint/contribution endpoints stay strictly host-only via
+    `require_localhost`.
+
+    The filesystem-browse surface this exposes is why the gate is the explicit
+    opt-in rather than always-on: enabling `allow_lan_access` is the user's
+    statement that they trust their network.
+    """
+    if _is_loopback(request.client.host if request.client else None):
+        return
+    try:
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        allow_lan = bool(config.allow_lan_access)
+    except Exception:  # noqa: BLE001 — a config read failure must fail closed
+        allow_lan = False
+    if not allow_lan:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This endpoint is only reachable from the host machine. To use it "
+                "from another device (e.g. a Docker deployment), enable LAN access "
+                "in Settings."
+            ),
+        )
+
+
 # Request/Response Models
 class JobResponse(BaseModel):
     """Response model for a disc job."""
@@ -2815,13 +2849,14 @@ class ImportStartRequest(BaseModel):
     destination_mode: str = "library"
 
 
-@router.get("/import/browse", dependencies=[Depends(require_localhost)])
+@router.get("/import/browse", dependencies=[Depends(require_localhost_or_lan)])
 async def import_browse(path: str = "") -> dict:
     """Read-only directory listing for the manual-import picker.
 
-    Host-only: guarded by require_localhost so it stays unreachable from LAN
-    peers even when allow_lan_access opens the bind (CORS does not protect
-    non-browser clients). Returns directory names with a shallow direct-child
+    Guarded by require_localhost_or_lan: reachable from the host machine always,
+    and from LAN peers only when the user has enabled allow_lan_access (so
+    headless/Docker deployments accessed from another device can import). Returns
+    directory names with a shallow direct-child
     MKV count, plus selectable .mkv files. Never returns file contents. Empty
     path returns the drive roots (Windows) or / and home (POSIX).
     """
@@ -2871,7 +2906,7 @@ async def import_browse(path: str = "") -> dict:
     return {"cwd": str(p), "parent": parent, "roots": [], "entries": entries}
 
 
-@router.post("/import/preview", dependencies=[Depends(require_localhost)])
+@router.post("/import/preview", dependencies=[Depends(require_localhost_or_lan)])
 async def import_preview(req: ImportPathRequest) -> dict:
     """Scan a path and return the import units, loose files, and totals.
 
@@ -2906,7 +2941,7 @@ async def import_preview(req: ImportPathRequest) -> dict:
     }
 
 
-@router.post("/import/start", dependencies=[Depends(require_localhost)])
+@router.post("/import/start", dependencies=[Depends(require_localhost_or_lan)])
 async def import_start(req: ImportStartRequest) -> dict:
     """Create one import job per (show, season) unit from a chosen path.
 
