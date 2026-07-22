@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The manual import feature now works in Docker and other remote setups.** Browsing for files and starting an import over the network returned `403 Forbidden` because those endpoints were locked to the host machine. They now honor the **Allow LAN access** setting: when you've enabled it (headless/Docker installs enable it automatically on first run), import is reachable from another device, while the more sensitive fingerprint and contribution endpoints stay host-only. (#524)
+
 ## [0.26.0] - 2026-07-22
 
 _Highlights: enter your own disc details when Engram can't work them out, plus customizable Discord notification messages._
