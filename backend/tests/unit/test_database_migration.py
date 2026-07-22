@@ -290,6 +290,77 @@ class TestSchemaMigration:
         finally:
             db_mod.engine = original_engine
 
+    async def test_add_missing_string_column_backfills_declared_default(
+        self, migration_engine, migration_factory
+    ):
+        """A non-Optional string column added on upgrade must backfill existing
+        rows with the model's declared default (''), never NULL.
+
+        Regression for the 0.26.0 /api/config 500: SQLModel wraps str columns in
+        AutoString (a TypeDecorator, not a String subclass), so the old
+        type-based default logic fell through to no DEFAULT clause and existing
+        app_config rows got NULL for discord_template_completed /
+        discord_template_failed. ConfigResponse requires str, so GET /api/config
+        raised a pydantic ValidationError -> HTTP 500 for every upgrading user.
+        """
+        import app.database as db_mod
+
+        original_engine = db_mod.engine
+        db_mod.engine = migration_engine
+
+        try:
+            # Pre-0.26.0 app_config: a minimal older schema that predates the
+            # Discord template columns (added in #508). disc tables come from the
+            # model so unrelated reconciliation is a no-op.
+            async with migration_engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TABLE app_config (
+                            id INTEGER PRIMARY KEY,
+                            makemkv_key VARCHAR DEFAULT ''
+                        )
+                        """
+                    )
+                )
+                await conn.run_sync(
+                    lambda sync_conn: DiscJob.__table__.create(sync_conn, checkfirst=True)
+                )
+                await conn.run_sync(
+                    lambda sync_conn: DiscTitle.__table__.create(sync_conn, checkfirst=True)
+                )
+
+            # Seed a config row through the older schema
+            async with migration_factory() as session:
+                await session.execute(
+                    text("INSERT INTO app_config (makemkv_key) VALUES ('pre-026-key')")
+                )
+                await session.commit()
+
+            # Sanity: the new columns really are missing beforehand
+            async with migration_engine.connect() as conn:
+                actual = await db_mod._get_actual_columns(conn, "app_config")
+                assert "discord_template_completed" not in actual
+                assert "discord_template_failed" not in actual
+
+            await db_mod._add_missing_columns()
+
+            # Existing row must have '' (the declared default), not NULL
+            async with migration_factory() as session:
+                row = (
+                    await session.execute(
+                        text(
+                            "SELECT discord_template_completed, discord_template_failed "
+                            "FROM app_config LIMIT 1"
+                        )
+                    )
+                ).fetchone()
+                assert row is not None
+                assert row[0] == "", f"expected '' got {row[0]!r}"
+                assert row[1] == "", f"expected '' got {row[1]!r}"
+        finally:
+            db_mod.engine = original_engine
+
     async def test_add_missing_columns_is_idempotent(self, migration_engine):
         """Running _add_missing_columns on a correct schema should be a no-op."""
         import app.database as db_mod
