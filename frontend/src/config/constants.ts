@@ -11,7 +11,7 @@ export const FEATURES = {
   /** TheDiscDB lookups: match-source badges, history metadata, lookup settings toggle. */
   DISCDB_LOOKUP: true,
   /** TheDiscDB contributions: contribute page, nav item, stats badge, submit controls. */
-  DISCDB_CONTRIBUTE: false,
+  DISCDB_CONTRIBUTE: true,
 } as const;
 
 /**

@@ -7,6 +7,9 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **The manual import feature now works in Docker and other remote setups.** Browsing for files and starting an import over the network returned `403 Forbidden` because those endpoints were locked to the host machine. They now honor the **Allow LAN access** setting: when you've enabled it (headless/Docker installs enable it automatically on first run), import is reachable from another device, while the more sensitive fingerprint and contribution endpoints stay host-only. (#524)
+### Added
+
+- **Contribute your disc metadata back to TheDiscDB.** The contribution pipeline is now enabled: a new **Contribute** page lets you export, group multi-disc sets, enhance with UPC/ASIN/cover art, and submit disc fingerprints, scan logs, and cover images to [thediscdb.com](https://thediscdb.com) so others can identify the same discs automatically. Nothing is sent without your explicit opt-in — enable it in Settings → TheDiscDB Contributions and add your API key first. Sharing your rips' disc metadata helps grow the shared identification database everyone benefits from. (#532)
 
 ## [0.26.0] - 2026-07-22
 
