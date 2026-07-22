@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
+- **Enter disc details yourself when Engram can't work them out.** A new **Manual** button lets you name a disc before you insert it: pick the show or film, season, and disc number, and the next disc in that drive adopts exactly what you entered, skipping automatic identification and ripping unattended with no questions asked. It's built for the awkward cases — homemade discs, obscure releases, and labels that are just a catalog number — where the automatic guess would otherwise stop to ask. Every active disc also gains an always-available identity control, so you can correct a title mid-rip instead of waiting for Engram to ask, and a disc you identified yourself is now marked with a **Manual ID** tag so you can tell at a glance which titles were asserted rather than detected. Episode matching still runs automatically on a manually named disc; anything it can't resolve lands in the usual Review Queue. (#520)
 - **Customizable Discord notification messages.** The Discord embed sent when a disc completes or fails now uses a template you control, instead of a fixed message. Set separate messages for the completed and failed cases in Settings → Notifications, using `{{title}}`, `{{drive}}`, `{{duration}}`, `{{error}}`, and other job details as variables. Leave either field blank to keep the previous default message.
 
 ### Fixed
