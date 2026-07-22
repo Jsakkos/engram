@@ -501,8 +501,7 @@ export default function ContributePage() {
               <TooltipContent>Link selected discs as a multi-disc set</TooltipContent>
             </Tooltip>
           )}
-          {config?.discdb_api_key_set &&
-            submittableGroups.map(([groupId, groupJobs]) => (
+          {submittableGroups.map(([groupId, groupJobs]) => (
               <SvActionButton
                 key={groupId}
                 tone="cyan"
@@ -553,15 +552,6 @@ export default function ContributePage() {
             </SvNotice>
           </div>
         )}
-        {config && !config.discdb_api_key_set && (
-          <div style={{ marginBottom: 16 }}>
-            <SvNotice tone="warn">
-              No TheDiscDB API key configured. You can export locally, but submission requires an API
-              key. Click the gear icon in the header, then go to TheDiscDB Contributions.
-            </SvNotice>
-          </div>
-        )}
-
         {/* Job list */}
         {jobs.length === 0 ? (
           <SvPanel pad={48}>
@@ -752,21 +742,19 @@ export default function ContributePage() {
                         )}
                         {job.export_status === "exported" && (
                           <>
-                            {config?.discdb_api_key_set && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <SvActionButton
-                                    tone="cyan"
-                                    size="sm"
-                                    onClick={() => handleSubmit(job.id)}
-                                    disabled={actionInProgress === job.id}
-                                  >
-                                    <Send size={11} /> Submit
-                                  </SvActionButton>
-                                </TooltipTrigger>
-                                <TooltipContent>Send disc metadata to TheDiscDB</TooltipContent>
-                              </Tooltip>
-                            )}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <SvActionButton
+                                  tone="cyan"
+                                  size="sm"
+                                  onClick={() => handleSubmit(job.id)}
+                                  disabled={actionInProgress === job.id}
+                                >
+                                  <Send size={11} /> Submit
+                                </SvActionButton>
+                              </TooltipTrigger>
+                              <TooltipContent>Send disc metadata to TheDiscDB</TooltipContent>
+                            </Tooltip>
                             {renderEnhanceButton(job)}
                           </>
                         )}
