@@ -203,6 +203,41 @@ export async function unskipRipTitle(jobId: number, titleId: number): Promise<vo
 }
 
 // ---------------------------------------------------------------------------
+// Manual disc identity (#520)
+// ---------------------------------------------------------------------------
+
+export interface ArmDrivePayload {
+  drive_id: string;
+  title: string;
+  content_type: 'tv' | 'movie';
+  season: number | null;
+  tmdb_id: number | null;
+  disc_number: number | null;
+}
+
+/**
+ * Arm a drive so the next disc inserted there adopts this identity verbatim.
+ * Throws {@link ApiError} on non-2xx — notably 409 when the drive already has
+ * an active job (the caller surfaces `ApiError.body`'s `detail`).
+ */
+export async function armDrive(payload: ArmDrivePayload): Promise<void> {
+  return apiFetchVoid('/api/manual/arm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Clear a drive's armed identity. Idempotent server-side. */
+export async function disarmDrive(driveId: string): Promise<void> {
+  return apiFetchVoid('/api/manual/disarm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ drive_id: driveId }),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Manual subtitle import
 // ---------------------------------------------------------------------------
 

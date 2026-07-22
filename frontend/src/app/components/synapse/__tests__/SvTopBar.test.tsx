@@ -1,19 +1,28 @@
 import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SvTopBar } from '../SvTopBar';
 import { buildNavItems } from '../../../navigation';
 
-function renderTopBar(navItems = buildNavItems({})) {
+interface RenderTopBarOptions {
+    onSettingsClick?: () => void;
+    onImportClick?: () => void;
+    onManualClick?: () => void;
+}
+
+function renderTopBar(navItems = buildNavItems({}), options: RenderTopBarOptions = {}) {
+    const { onSettingsClick = () => {}, onImportClick = () => {}, onManualClick = () => {} } =
+        options;
     return render(
         <MemoryRouter>
             <SvTopBar
                 isConnected
                 version="0.0.0-test"
                 navItems={navItems}
-                onSettingsClick={() => {}}
-                onImportClick={() => {}}
+                onSettingsClick={onSettingsClick}
+                onImportClick={onImportClick}
+                onManualClick={onManualClick}
             />
         </MemoryRouter>,
     );
@@ -49,5 +58,16 @@ describe('SvTopBar nav', () => {
             'href',
             '/review/6',
         );
+    });
+});
+
+describe('SvTopBar buttons', () => {
+    it('fires onManualClick when the MANUAL button is pressed', () => {
+        const onManualClick = vi.fn();
+        renderTopBar(buildNavItems({}), { onManualClick });
+
+        fireEvent.click(screen.getByRole('button', { name: /manual disc/i }));
+
+        expect(onManualClick).toHaveBeenCalledTimes(1);
     });
 });

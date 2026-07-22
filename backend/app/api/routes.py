@@ -1308,6 +1308,9 @@ async def re_identify_job(
     Accepted while RIPPING too (walk-away B5): a mid-rip answer updates the
     metadata and dispatches parked titles without interrupting the rip.
     """
+    # REVIEW_NEEDED / RIPPING only — NOT IDENTIFYING: re-identifying a job whose
+    # identify_disc task is still in flight races a second rip against the same
+    # drive (see IdentificationCoordinator.re_identify's guard for the full rationale, #520).
     if job.state not in (JobState.REVIEW_NEEDED, JobState.RIPPING):
         raise HTTPException(
             status_code=400,
@@ -1325,6 +1328,109 @@ async def re_identify_job(
         # re-validates on a fresh row and raises if the job moved on.
         raise HTTPException(status_code=409, detail=str(e)) from e
     return {"status": "re-identifying", "job_id": job.id}
+
+
+class ArmManualRequest(BaseModel):
+    """Arm a drive so the next disc adopts this identity verbatim."""
+
+    drive_id: str
+    title: str
+    content_type: Literal["tv", "movie"]
+    season: int | None = None
+    tmdb_id: int | None = None
+    disc_number: int | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("title must not be blank")
+        return v.strip()
+
+
+class DisarmManualRequest(BaseModel):
+    drive_id: str
+
+
+@router.post("/manual/arm")
+async def arm_manual_identity(
+    req: ArmManualRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Arm a drive with a user-asserted identity for the next disc inserted.
+
+    Rejects with 409 when the drive already holds a non-terminal job: that disc
+    is already being worked on, and the caller should edit that job's identity
+    instead of arming for a disc that will not be inserted.
+    """
+    from app.models.disc_job import TERMINAL_JOB_STATES
+    from app.services.manual_identity import ManualIdentity, arm_store
+
+    result = await session.execute(
+        select(DiscJob).where(
+            DiscJob.drive_id == req.drive_id,
+            DiscJob.state.notin_(list(TERMINAL_JOB_STATES)),
+        )
+    )
+    if result.scalars().first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Drive {req.drive_id} already has an active job. "
+                f"Edit that job's identity instead of arming the drive."
+            ),
+        )
+
+    identity = ManualIdentity(
+        title=req.title,
+        content_type=req.content_type,
+        season=req.season,
+        tmdb_id=req.tmdb_id,
+        disc_number=req.disc_number,
+    )
+    arm_store.arm(req.drive_id, identity)
+
+    from app.api.websocket import manager as ws_manager
+
+    await ws_manager.broadcast_drive_armed(req.drive_id, identity.to_dict())
+    logger.info(
+        f"Armed drive {sanitize_log_value(req.drive_id)} with manual identity "
+        f"'{sanitize_log_value(req.title)}' ({sanitize_log_value(req.content_type)})"
+    )
+    return {"status": "armed", "drive_id": req.drive_id}
+
+
+@router.post("/manual/disarm")
+async def disarm_manual_identity(req: DisarmManualRequest) -> dict:
+    """Clear a drive's armed identity. Idempotent."""
+    from app.services.manual_identity import arm_store
+
+    was_armed = arm_store.disarm(req.drive_id)
+    if was_armed:
+        from app.api.websocket import manager as ws_manager
+
+        await ws_manager.broadcast_drive_armed(req.drive_id, None)
+    return {
+        "status": "disarmed" if was_armed else "not_armed",
+        "drive_id": req.drive_id,
+    }
+
+
+@router.get("/manual/armed")
+async def list_armed_drives() -> dict:
+    """Snapshot every currently-armed drive.
+
+    Lets the dashboard restore its ``ArmedDriveCard``s on page load and after a
+    WebSocket reconnect (the ``drive_armed`` push only carries live deltas), the
+    same way ``GET /api/parked-discs`` reseeds parked discs.
+    """
+    from app.services.manual_identity import arm_store
+
+    return {
+        "armed": {
+            drive_id: identity.to_dict() for drive_id, identity in arm_store.all_armed().items()
+        }
+    }
 
 
 @router.get("/tmdb/search")

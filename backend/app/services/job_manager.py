@@ -45,6 +45,7 @@ from app.services.identification_coordinator import (
 )
 from app.services.identity_prompts import BLOCKING_KINDS, ResumeAction
 from app.services.job_state_machine import JobStateMachine
+from app.services.manual_identity import arm_store
 from app.services.matching_coordinator import (
     INCOMPLETE_RIP_MESSAGE,
     RIP_FAILURE_ERROR_CODES,
@@ -672,8 +673,25 @@ class JobManager:
 
                 logger.info(f"Created job {job.id} for disc in {drive_letter}")
 
+                # Walk-away manual path: if this drive was armed, the user's
+                # asserted identity travels with the identify task instead of
+                # being stamped on the row here, so IdentificationCoordinator
+                # stays the single owner of identity fields. One-shot: consumed
+                # even if the scan later fails, since the disc did go in.
+                armed = arm_store.consume(drive_letter)
+                if armed is not None:
+                    logger.info(
+                        f"Job {job.id}: adopting armed manual identity "
+                        f"'{sanitize_log_value(armed.title)}' "
+                        f"({sanitize_log_value(armed.content_type)})"
+                    )
+                    await ws_manager.broadcast_drive_armed(drive_letter, None)
+
                 task = asyncio.create_task(
-                    with_job_log_context(job.id, self._identification.identify_disc(job.id))
+                    with_job_log_context(
+                        job.id,
+                        self._identification.identify_disc(job.id, manual_identity=armed),
+                    )
                 )
                 task.add_done_callback(lambda t, jid=job.id: self._on_task_done(t, jid))
                 self._active_jobs[job.id] = task

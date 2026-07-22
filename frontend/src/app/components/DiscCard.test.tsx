@@ -300,3 +300,30 @@ describe('DiscCard — cancel confirmation', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('DiscCard — manual identity provenance', () => {
+  it('shows the MANUAL ID chip when identity was asserted before ripping', () => {
+    render(<DiscCard disc={makeDisc({ identitySource: 'manual' })} />);
+    expect(screen.getByText(/manual id/i)).toBeInTheDocument();
+  });
+
+  it('shows the chip for a corrected identity too', () => {
+    render(<DiscCard disc={makeDisc({ identitySource: 'manual_correction' })} />);
+    expect(screen.getByText(/manual id/i)).toBeInTheDocument();
+  });
+
+  it('shows no chip for an automatically identified disc', () => {
+    render(<DiscCard disc={makeDisc({ identitySource: 'tmdb' })} />);
+    expect(screen.queryByText(/manual id/i)).not.toBeInTheDocument();
+  });
+
+  it('labels the identity button "Edit ID" on a manual disc', () => {
+    render(<DiscCard disc={makeDisc({ identitySource: 'manual' })} onReIdentify={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /edit id/i })).toBeInTheDocument();
+  });
+
+  it('labels it "Wrong title?" on an auto-identified disc', () => {
+    render(<DiscCard disc={makeDisc({ identitySource: 'tmdb' })} onReIdentify={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /wrong title/i })).toBeInTheDocument();
+  });
+});

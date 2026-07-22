@@ -63,7 +63,7 @@ async def test_identification_task_failure_is_logged(monkeypatch, caplog):
 
     jm = JobManager()
 
-    async def boom(job_id):
+    async def boom(job_id, manual_identity=None):
         raise RuntimeError(f"identify boom for job {job_id}")
 
     monkeypatch.setattr(jm._identification, "identify_disc", boom)

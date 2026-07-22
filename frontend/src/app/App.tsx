@@ -16,6 +16,8 @@ import NamePromptModal from "../components/NamePromptModal";
 import ImportModal from "../components/ImportModal";
 import SeasonPromptModal from "../components/SeasonPromptModal";
 import ReIdentifyModal from "../components/ReIdentifyModal";
+import ArmDiscModal from "../components/ArmDiscModal";
+import ArmedDriveCard from "./components/ArmedDriveCard";
 import BugReportModal from "../components/BugReportModal";
 import UpdateModal from "../components/UpdateModal";
 import { FingerprintDisclosureModal } from "../components/FingerprintDisclosureModal";
@@ -26,7 +28,7 @@ import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
 import { PROMPT_CTA_LABELS, classifyPromptJob, pruneDismissedIds, selectPromptJobs, shouldAutoOpenPrompt } from "./promptSelection";
 import type { Job } from "../types";
-import { skipRipTitle, unskipRipTitle } from "../api/client";
+import { skipRipTitle, unskipRipTitle, disarmDrive as disarmDriveRequest } from "../api/client";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ParkedDiscBanner } from "./components/ParkedDiscBanner";
@@ -160,12 +162,34 @@ function MainDashboard() {
   }, [showImport]);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   useUpdateSuccessToast(updateStatus);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
   const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  // Manual disc identity (#520): arms a drive so the next disc it sees adopts
+  // a user-asserted identity. The modal opens from the top-bar MANUAL button;
+  // armed drives themselves are tracked by useJobManagement (WS-driven).
+  const [showArmModal, setShowArmModal] = useState(false);
+
+  // Best-effort target for the arm modal: prefer a drive that's already
+  // armed (re-opening to edit), else the drive of the first active job, else
+  // fall back to "E:" — the common single-optical-drive case. Multi-drive
+  // setups can retype the drive id in a future iteration; this keeps the
+  // common path working without a drive picker.
+  const defaultDriveId =
+    Object.keys(armedDrives)[0] ?? jobs.find((j) => j.drive_id)?.drive_id ?? "E:";
+
+  const disarmDrive = async (driveId: string) => {
+    try {
+      await disarmDriveRequest(driveId);
+      // The drive_armed(identity: null) broadcast is the source of truth for
+      // clearing the card — no optimistic local mutation needed here.
+    } catch {
+      // Non-critical — worst case the card lingers until the user retries.
+    }
+  };
 
   // Show the full-screen Splash with a "RECONNECTING…" label when the
   // WebSocket has been down for >2.5s. The grace period absorbs momentary
@@ -302,6 +326,7 @@ function MainDashboard() {
         navItems={navItems}
         onSettingsClick={() => openSettings()}
         onImportClick={() => setShowImport(true)}
+        onManualClick={() => setShowArmModal(true)}
       />
 
       {/* Filter + view-mode strip */}
@@ -430,6 +455,23 @@ function MainDashboard() {
           />
         )}
       </AnimatePresence>
+
+      {/* Armed-drive cards — a drive holds a user-asserted identity (manual
+          disc metadata entry, #520) and is waiting for a disc. Not real jobs,
+          so they render outside the job list/filter machinery; disarming
+          removes the card via the drive_armed(identity:null) broadcast. */}
+      {Object.keys(armedDrives).length > 0 && (
+        <div
+          className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 mt-4"
+          style={{ display: "flex", flexDirection: "column", gap: 12 }}
+        >
+          <AnimatePresence>
+            {Object.entries(armedDrives).map(([driveId, identity]) => (
+              <ArmedDriveCard key={driveId} driveId={driveId} identity={identity} onDisarm={disarmDrive} />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Platform guidance banner for Linux/macOS users */}
       <AnimatePresence>
@@ -740,10 +782,21 @@ function MainDashboard() {
                   onUnskipTrack={(titleId) => { void unskipRipTitle(Number(disc.id), titleId); }}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
                   onReview={disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
-                  onReIdentify={disc.needsReview && disc.title ? () => {
-                    const job = jobs.find(j => String(j.id) === disc.id);
-                    if (job) setReIdentifyTarget(job);
-                  } : undefined}
+                  // Always-on identity control (#520): available while ripping or
+                  // parked in review, not only in review. Deliberately EXCLUDES
+                  // 'scanning' (IDENTIFYING) — the identify_disc task is still in
+                  // flight then, and re-identifying would race a second rip against
+                  // the drive (see routes.py re_identify guard). Also excludes
+                  // matching/organizing (work in flight) and completed (History's
+                  // AmendTitleModal owns it).
+                  onReIdentify={
+                    disc.title && ['ripping', 'review_needed'].includes(disc.state)
+                      ? () => {
+                          const job = jobs.find(j => String(j.id) === disc.id);
+                          if (job) setReIdentifyTarget(job);
+                        }
+                      : undefined
+                  }
                   // P13 + walk-away Phase B: jobs needing a name/season/identity —
                   // parked in review OR still ripping — get a card CTA that opens
                   // the prompt on demand (it no longer auto-opens over the dashboard
@@ -852,6 +905,18 @@ function MainDashboard() {
               dismissedPromptIdsRef.current.add(reIdentifyTarget.id);
               setReIdentifyTarget(null);
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Arm Disc Modal — opened from the top-bar MANUAL button; arms a drive
+          with a user-asserted identity ahead of the next disc insert. */}
+      <AnimatePresence>
+        {showArmModal && (
+          <ArmDiscModal
+            driveId={defaultDriveId}
+            onClose={() => setShowArmModal(false)}
+            onArmed={() => setShowArmModal(false)}
           />
         )}
       </AnimatePresence>

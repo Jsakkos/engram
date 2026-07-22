@@ -37,6 +37,7 @@ function mockJobs(jobs: Job[]) {
         isConnected: true,
         updateStatus: null,
         parkedDiscs: [],
+        armedDrives: {},
         cancelJob: vi.fn(),
         advanceJob: vi.fn(),
         clearCompleted: vi.fn(),
