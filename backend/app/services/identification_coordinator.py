@@ -16,7 +16,7 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
-from app.core.extractor import MakeMKVExtractor, ScanTimeoutError
+from app.core.extractor import MakeMKVExtractor, ScanTimeoutError, title_index_from_filename
 from app.core.fingerprint_disc_classifier import (
     identify_disc_via_network,
     network_titles_to_mappings,
@@ -404,6 +404,9 @@ class IdentificationCoordinator:
                     disc_title = DiscTitle(
                         job_id=job_id,
                         title_index=title.index,
+                        output_index=title_index_from_filename(title.disc_title)
+                        if title.disc_title
+                        else None,
                         duration_seconds=title.duration_seconds,
                         file_size_bytes=title.size_bytes,
                         chapter_count=title.chapter_count,

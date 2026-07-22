@@ -11,6 +11,17 @@ from tests.unit.conftest import _unit_session_factory
 
 
 @pytest.mark.unit
+def test_disc_title_output_index_defaults_to_none():
+    """New column: the disc-native _tNN number captured at scan time.
+
+    Must default to None so legacy rows (created before this migration, or by
+    call sites that never populate it) fall back to title_index-based matching.
+    """
+    t = DiscTitle(job_id=1, title_index=0, duration_seconds=100)
+    assert t.output_index is None
+
+
+@pytest.mark.unit
 def test_find_staging_file_prefers_output_filename(tmp_path):
     f = tmp_path / "Show_t07.mkv"
     f.write_bytes(b"x")
@@ -41,6 +52,29 @@ def test_find_staging_file_returns_none_when_nothing_found(tmp_path):
     assert find_staging_file(job, title) is None
 
 
+@pytest.mark.unit
+def test_find_staging_file_glob_prefers_output_index(tmp_path):
+    """Same offset scenario as Task 3, but for the glob-fallback path (used
+    when output_filename is missing/stale, e.g. re-matching after a restart).
+    """
+    f = tmp_path / "C1title_t01.mkv"
+    f.write_bytes(b"x")
+    job = SimpleNamespace(staging_path=str(tmp_path))
+    title = SimpleNamespace(output_filename=None, title_index=0, output_index=1, organized_to=None)
+    assert find_staging_file(job, title) == f
+
+
+@pytest.mark.unit
+def test_find_staging_file_glob_falls_back_to_title_index_when_output_index_unset(tmp_path):
+    f = tmp_path / "Show_t07.mkv"
+    f.write_bytes(b"x")
+    job = SimpleNamespace(staging_path=str(tmp_path))
+    title = SimpleNamespace(
+        output_filename=None, title_index=7, output_index=None, organized_to=None
+    )
+    assert find_staging_file(job, title) == f
+
+
 # --- resolve_title_from_filename ------------------------------------------
 #
 # Regression focus (single-track re-rip): a re-rip passes ONLY the re-ripped
@@ -52,8 +86,17 @@ def test_find_staging_file_returns_none_when_nothing_found(tmp_path):
 # filename and produced a duplicate-episode conflict.
 
 
-async def _seed(indices: list[int]) -> tuple[int, list[DiscTitle]]:
-    """Persist a job with titles at the given title_index values (detached)."""
+async def _seed(
+    indices: list[int], output_indices: list[int | None] | None = None
+) -> tuple[int, list[DiscTitle]]:
+    """Persist a job with titles at the given title_index values (detached).
+
+    ``output_indices``, when given, must be the same length as ``indices`` and
+    sets each title's ``output_index`` (the disc-native "_tNN" number). Defaults
+    to all-None (legacy rows with no recorded native number).
+    """
+    if output_indices is None:
+        output_indices = [None] * len(indices)
     async with _unit_session_factory() as session:
         job = DiscJob(
             drive_id="F:",
@@ -66,10 +109,11 @@ async def _seed(indices: list[int]) -> tuple[int, list[DiscTitle]]:
         await session.commit()
         await session.refresh(job)
         titles = []
-        for idx in indices:
+        for idx, out_idx in zip(indices, output_indices, strict=True):
             t = DiscTitle(
                 job_id=job.id,
                 title_index=idx,
+                output_index=out_idx,
                 duration_seconds=2700,
                 state=TitleState.RIPPING,
             )
@@ -110,3 +154,29 @@ async def test_resolve_unparseable_filename_falls_back_positionally():
         t = await resolve_title_from_filename(Path("weird_name.mkv"), titles, 2, job_id, session)
     assert t is not None
     assert t.title_index == 1
+
+
+@pytest.mark.unit
+async def test_resolve_by_output_index_when_native_numbering_offset():
+    """Issue #517: disc has no "t00" — MakeMKV's native numbering starts at 1.
+
+    Scan-order title_index=0 has output_index=1 (from its suggested filename
+    "..._t01.mkv"). The ripped file for that title is literally named
+    "..._t01.mkv". It must resolve to title_index=0, not to whatever row (if
+    any) happens to have title_index==1.
+    """
+    job_id, titles = await _seed([0, 1], output_indices=[1, 2])
+    async with _unit_session_factory() as session:
+        t = await resolve_title_from_filename(Path("C1title_t01.mkv"), titles, 1, job_id, session)
+    assert t is not None
+    assert t.title_index == 0
+
+
+@pytest.mark.unit
+async def test_resolve_falls_back_to_title_index_when_output_index_unset():
+    """Legacy rows (output_index=None) keep the old title_index-based matching."""
+    job_id, titles = await _seed([0, 1, 2, 3])  # output_index defaults to None
+    async with _unit_session_factory() as session:
+        t = await resolve_title_from_filename(Path("E1_t03.mkv"), titles, 4, job_id, session)
+    assert t is not None
+    assert t.title_index == 3

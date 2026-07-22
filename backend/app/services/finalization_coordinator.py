@@ -1031,6 +1031,7 @@ class FinalizationCoordinator:
                 {
                     "id": t.id,
                     "title_index": t.title_index,
+                    "output_index": t.output_index,
                     "matched_episode": t.matched_episode,
                     "output_filename": t.output_filename,
                     "match_confidence": t.match_confidence,
@@ -1066,12 +1067,15 @@ class FinalizationCoordinator:
                 )
 
         # --- Phase 2: blocking file moves (no DB session held) ---
-        def _resolve_source_file(output_filename: str | None, title_index: int) -> Path | None:
+        def _resolve_source_file(
+            output_filename: str | None, title_index: int, output_index: int | None
+        ) -> Path | None:
             if output_filename:
                 p = Path(output_filename)
                 if p.exists():
                     return p
-            matches = list(Path(_staging_path).glob(f"*_t{title_index:02d}.mkv"))
+            glob_index = output_index if output_index is not None else title_index
+            matches = list(Path(_staging_path).glob(f"*_t{glob_index:02d}.mkv"))
             return matches[0] if matches else None
 
         results: dict[int, dict] = {}
@@ -1082,7 +1086,9 @@ class FinalizationCoordinator:
             matched_episode = cap["matched_episode"]
             is_extra = matched_episode == "extra"
 
-            source_file = _resolve_source_file(cap["output_filename"], cap["title_index"])
+            source_file = _resolve_source_file(
+                cap["output_filename"], cap["title_index"], cap["output_index"]
+            )
             if not source_file:
                 logger.error(f"Could not find source file for title {cap['title_index']}")
                 # Preserve parity with the original: leave is_extra unchanged

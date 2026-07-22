@@ -139,6 +139,53 @@ class TestOnTitleRipped:
         assert t.state == TitleState.RIPPING  # unchanged
 
 
+@pytest.mark.unit
+class TestBackfillUnmatchedTitles:
+    """Issue #517: backfill's own "already assigned?" dedup check must key off
+    the disc-native title number (output_index when set), not the raw
+    scan-order title_index — mirrors the fix already applied to
+    resolve_title_from_filename/find_staging_file. Otherwise, on a disc whose
+    native MakeMKV numbering doesn't start at t00, a title that was already
+    correctly resolved during the normal rip flow gets misidentified as
+    "unmatched" and reprocessed redundantly.
+    """
+
+    async def test_skips_already_assigned_title_on_native_numbering_offset(
+        self, tmp_path, monkeypatch
+    ):
+        """Disc has no "t00" — native numbering starts at 1. Title scan-index 0
+        has output_index=1 and output_filename already set (resolved correctly
+        by resolve_title_from_filename during the normal rip flow). The staging
+        file is literally named "..._t01.mkv". Backfill must recognize this
+        file as already-assigned via the native number, not re-treat it as
+        unmatched and reprocess it.
+        """
+        staging = tmp_path
+        existing_path = staging / "Show_S01E01_t01.mkv"
+        existing_path.write_text("")
+
+        job, title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(staging),
+            title_index=0,
+            output_index=1,
+            output_filename=str(existing_path),
+            state=TitleState.MATCHED,
+        )
+
+        called = []
+        monkeypatch.setattr(
+            job_manager,
+            "_on_title_ripped",
+            AsyncMock(side_effect=lambda *a, **k: called.append(a)),
+        )
+
+        await job_manager._backfill_unmatched_titles(job.id, staging, [title])
+
+        # Must NOT be reprocessed — it's already assigned under its native number.
+        assert called == []
+
+
 _PROMPT = json.dumps({"kind": "name", "reason": "Disc label unreadable"})
 
 
@@ -874,12 +921,31 @@ class TestOnePassRipFallback:
     selected, and re-rip only the still-missing titles individually if it fails."""
 
     def test_has_complete_output_detects_nonempty_title_file(self, tmp_path):
-        assert job_manager._has_complete_output(tmp_path, 0) is False
+        from types import SimpleNamespace
+
+        t0 = SimpleNamespace(title_index=0, output_index=None)
+        t1 = SimpleNamespace(title_index=1, output_index=None)
+        assert job_manager._has_complete_output(tmp_path, t0) is False
         (tmp_path / "Some Show_t00.mkv").write_bytes(b"data")
-        assert job_manager._has_complete_output(tmp_path, 0) is True
+        assert job_manager._has_complete_output(tmp_path, t0) is True
         # An empty file is not "complete".
         (tmp_path / "Some Show_t01.mkv").write_bytes(b"")
-        assert job_manager._has_complete_output(tmp_path, 1) is False
+        assert job_manager._has_complete_output(tmp_path, t1) is False
+
+    def test_has_complete_output_prefers_output_index_when_numbering_offset(self, tmp_path):
+        """Issue #517: disc has no "t00" — MakeMKV's native numbering starts at 1.
+
+        Title scan-index 0 has output_index=1 (its suggested filename was
+        "..._t01.mkv"). The one-pass fallback's "is this title already done?"
+        check must consult output_index, not title_index, or it will treat an
+        already-ripped title as still missing and needlessly re-rip it.
+        """
+        from types import SimpleNamespace
+
+        t0 = SimpleNamespace(title_index=0, output_index=1)
+        assert job_manager._has_complete_output(tmp_path, t0) is False
+        (tmp_path / "Some Show_t01.mkv").write_bytes(b"data")
+        assert job_manager._has_complete_output(tmp_path, t0) is True
 
     async def test_all_selected_rips_in_single_pass(self, rip_env, monkeypatch):
         """When every title is selected, the rip uses one 'all' invocation
@@ -921,6 +987,83 @@ class TestOnePassRipFallback:
         assert rip.await_count == 2
         assert rip.await_args_list[0].kwargs["title_indices"] is None  # one-pass
         assert sorted(rip.await_args_list[1].kwargs["title_indices"]) == [0, 1]  # fallback
+
+    async def test_stalled_pass_with_no_output_skips_fallback(self, rip_env, monkeypatch):
+        """A disc that stalled and wrote nothing is unreadable: re-opening it
+        once per title only burns another stall timeout each (issue #506).
+
+        Also covers the region-mismatch plumbing: the reason carried on
+        RipResult must reach match_details under the existing rip_stalled code
+        (a new error code would be wiped by auto-escalation).
+        """
+        from app.core.extractor import REGION_MISMATCH_FAILURE_REASON
+
+        job = await _seed_two_selected(str(rip_env))
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+        # Keep match-failure handling from spawning a detached task: a leaked
+        # task holds a StaticPool session past teardown and breaks a later test
+        # (see the isolate_database fixture's note in tests/unit/conftest.py).
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+        # The all-pass is a SINGLE MakeMKV command, so a real stalled all-pass
+        # reports at most one command index (stalled_titles=[1]) regardless of
+        # how many titles were selected. Both titles are still "missing" (no
+        # output file), and routing must key off that missing set, not off the
+        # single stalled index — otherwise only the first title reaches REVIEW.
+        rip = AsyncMock(
+            return_value=RipResult(
+                success=True,
+                output_files=[],
+                stalled_titles=[1],
+                failure_reason=REGION_MISMATCH_FAILURE_REASON,
+            )
+        )
+        monkeypatch.setattr(job_manager._extractor, "rip_titles", rip)
+
+        await job_manager._run_ripping(job.id)
+
+        assert rip.await_count == 1
+
+        # Skipping the fallback must not strand the titles: BOTH must reach
+        # REVIEW as re-rippable, or the ones beyond the first are downgraded to
+        # FAILED by reconcile_stuck_titles — losing the region diagnosis and the
+        # manual re-rip path (which requires REVIEW).
+        async with _unit_session_factory() as session:
+            titles = (
+                (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id)))
+                .scalars()
+                .all()
+            )
+            refreshed_job = await session.get(DiscJob, job.id)
+        assert [t.state for t in titles] == [TitleState.REVIEW, TitleState.REVIEW]
+        for t in titles:
+            d = json.loads(t.match_details)
+            assert d["error"] == "rip_stalled"
+            assert d["rerip_eligible"] is True
+            assert d["message"] == REGION_MISMATCH_FAILURE_REASON
+        assert refreshed_job.state == JobState.REVIEW_NEEDED
+
+    async def test_stalled_pass_with_some_output_still_falls_back(self, rip_env, monkeypatch):
+        """A partially readable disc keeps the per-title recovery path: one bad
+        title must not cost the rest of the disc."""
+        job = await _seed_two_selected(str(rip_env))
+        monkeypatch.setattr(job_manager, "_backfill_unmatched_titles", AsyncMock())
+        # Keep match-failure handling from spawning a detached task: a leaked
+        # task holds a StaticPool session past teardown and breaks a later test
+        # (see the isolate_database fixture's note in tests/unit/conftest.py).
+        monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+        produced = rip_env / "Some Show_t00.mkv"
+        produced.write_bytes(b"data")
+
+        rip = AsyncMock(
+            return_value=RipResult(success=True, output_files=[produced], stalled_titles=[2])
+        )
+        monkeypatch.setattr(job_manager._extractor, "rip_titles", rip)
+
+        await job_manager._run_ripping(job.id)
+
+        assert rip.await_count == 2
 
 
 @pytest.mark.unit
