@@ -1677,8 +1677,11 @@ async def get_config() -> ConfigResponse:
         contribution_pseudonym=config.contribution_pseudonym,
         # Notifications
         discord_webhook_url="***" if config.discord_webhook_url else "",
-        discord_template_completed=config.discord_template_completed,
-        discord_template_failed=config.discord_template_failed,
+        # Coalesce None->"" defensively: a DB upgraded by an early 0.26.0 build may
+        # already hold NULL here (see database._add_missing_columns), and
+        # ConfigResponse requires str — a bare None would 500 GET /api/config.
+        discord_template_completed=config.discord_template_completed or "",
+        discord_template_failed=config.discord_template_failed or "",
     )
 
 

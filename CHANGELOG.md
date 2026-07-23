@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **The manual import feature now works in Docker and other remote setups.** Browsing for files and starting an import over the network returned `403 Forbidden` because those endpoints were locked to the host machine. They now honor the **Allow LAN access** setting: when you've enabled it (headless/Docker installs enable it automatically on first run), import is reachable from another device, while the more sensitive fingerprint and contribution endpoints stay host-only. (#524)
+- **Upgrading to 0.26.0 no longer breaks the app with a 500 on every settings load.** On databases created before the customizable Discord messages feature, the new `discord_template_completed` / `discord_template_failed` columns were added without a default, leaving existing rows `NULL`. Because those fields are required text, `GET /api/config` then failed validation and returned HTTP 500 — which broke config loading across the whole dashboard (Settings, Contribute, first-run wizard). The schema reconciler now backfills new non-optional text columns with their declared default, and config responses tolerate legacy `NULL` values.
 
 ## [0.26.0] - 2026-07-22
 

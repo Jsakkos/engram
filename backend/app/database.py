@@ -204,6 +204,32 @@ async def _get_actual_columns(conn, table_name: str) -> set[str]:
     return {row[1] for row in rows}  # column name is at index 1
 
 
+def _model_default_literal(col) -> str | None:
+    """Render a column's declared Python default as a SQL literal, or None.
+
+    Used to backfill existing rows when adding a column on upgrade. Only scalar
+    (non-callable) defaults are rendered — callables like ``datetime.utcnow`` and
+    the sentinel ``None`` fall through to the type-based logic in the caller.
+
+    This is what keeps non-Optional ``str = ""`` columns from landing as NULL:
+    their type is SQLModel's ``AutoString`` (a ``TypeDecorator``), which the
+    caller's ``isinstance(col.type, String)`` check does not match.
+    """
+    default = col.default
+    if default is None or not getattr(default, "is_scalar", False):
+        return None
+
+    value = default.arg
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        escaped = value.replace("'", "''")
+        return f"'{escaped}'"
+    return None
+
+
 async def _add_missing_columns() -> None:
     """Add missing columns to existing tables via ALTER TABLE.
 
@@ -231,9 +257,18 @@ async def _add_missing_columns() -> None:
             for col_name in missing:
                 col = table.c[col_name]
                 col_type = col.type.compile(dialect=engine.dialect)
-                # Build DEFAULT clause from server_default or a safe fallback
+                # Build DEFAULT clause. Prefer an explicit server_default, then the
+                # model's declared Python default (so existing rows backfill with the
+                # value the model would insert), then a type-based fallback.
+                model_default = _model_default_literal(col)
                 if col.server_default is not None:
                     default_clause = f" DEFAULT {col.server_default.arg}"
+                elif model_default is not None:
+                    # Honors non-Optional str = "" columns whose type is SQLModel's
+                    # AutoString (a TypeDecorator, NOT a String subclass) — the
+                    # isinstance checks below miss those and would leave existing
+                    # rows NULL, 500ing GET /api/config for upgrading users.
+                    default_clause = f" DEFAULT {model_default}"
                 elif col.nullable:
                     default_clause = " DEFAULT NULL"
                 elif isinstance(col.type, sqlalchemy.types.String):
