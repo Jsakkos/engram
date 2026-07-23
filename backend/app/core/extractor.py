@@ -245,6 +245,12 @@ class RipResult:
     # None means the generic STALL_FAILURE_REASON applies. Callers routing
     # stalled titles to review read this so the live update and History agree.
     failure_reason: str | None = None
+    # True when a full-disc "all" pass was terminated early because the user
+    # skipped a title mid-rip (a single MakeMKV invocation cannot drop one
+    # title). Not a failure: titles ripped before the abort are kept, and the
+    # caller re-rips the remaining not-skipped titles individually — where the
+    # live skip-set IS honored (issue #538).
+    aborted_for_skip: bool = False
 
 
 class ScanTimeoutError(Exception):
@@ -321,6 +327,38 @@ class TitleCompletionDetector:
     def completed_count(self) -> int:
         """Total number of titles reported complete so far."""
         return len(self._completed)
+
+    def files_incomplete_at_abort(self, sizes: dict[str, int]) -> list[str]:
+        """Files to delete when the rip process was killed mid-pass.
+
+        Used only on an abort (e.g. a skip that terminates the full-disc "all"
+        pass): the ``force`` promotion path is unsafe here because the process
+        did not exit naturally, so the file MakeMKV was actively writing is
+        genuinely truncated. MakeMKV writes titles sequentially, so at a kill at
+        most one file is partial: the one whose size **grew since the last poll**
+        (or a zero-byte stub, or one never polled at all). A title that already
+        finished has a size equal to its last-polled value — even if its
+        "a later title started growing" completion gate never fired because it
+        was the most recent title when the kill landed — and MUST be preserved
+        rather than needlessly re-ripped. ``_completed`` and pre-existing
+        (``_ignored``) files are always preserved.
+
+        Reading ``_active`` instead would be wrong: it is the most-recently-grown
+        file and is never cleared, so between one title finishing and the next
+        starting it points at the already-finished title.
+        """
+        doomed: list[str] = []
+        for fname, size in sizes.items():
+            if fname in self._completed or fname in self._ignored:
+                continue
+            prev = self._known.get(fname)
+            # size<=0: never-valid stub. prev is None: never polled — in a
+            # sequential rip that is the just-opened current title. size>prev:
+            # still growing when killed. Otherwise (size == prev > 0) the title
+            # had stopped writing, i.e. it is finished.
+            if size <= 0 or prev is None or size > prev:
+                doomed.append(fname)
+        return doomed
 
     def poll(self, sizes: dict[str, int], *, force: bool = False) -> list[tuple[str, int]]:
         """Feed the current ``{filename: size}`` snapshot.
@@ -699,6 +737,12 @@ class MakeMKVExtractor:
         # run_rip_with_streaming) because the RipResult returns below also read it.
         region_mismatch = [False]
 
+        # Set by the reader loop when a skip lands during a full-disc "all" pass
+        # (which cannot drop one title from its single MakeMKV invocation). The
+        # RipResult returns below read it, so — like region_mismatch — it lives
+        # out here rather than inside run_rip_with_streaming.
+        aborted_for_skip = [False]
+
         def _stall_reason() -> str:
             """The most specific reason we can give for a stall."""
             return REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else STALL_FAILURE_REASON
@@ -892,6 +936,24 @@ class MakeMKVExtractor:
                             process.terminate()
                             break
 
+                        # All-pass skip (issue #538): a single "mkv … all"
+                        # invocation cannot be told to drop one title, so a skip
+                        # requested mid-pass is honored by aborting here. The
+                        # titles finished before the abort are kept; the caller
+                        # re-rips the remaining not-skipped titles per-title,
+                        # where the live skip-set IS consulted. (Per-title
+                        # commands carry a real title_index and skip themselves
+                        # before starting, so this only fires for the all-pass.)
+                        if title_index is None and self._skipped_indices.get(job_id):
+                            logger.info(
+                                f"Skip requested during full-disc 'all' pass "
+                                f"(job {job_id}); aborting to re-rip the remaining "
+                                f"titles individually"
+                            )
+                            aborted_for_skip[0] = True
+                            process.terminate()
+                            break
+
                         line = line.strip()
                         if not line:
                             continue
@@ -944,6 +1006,33 @@ class MakeMKVExtractor:
                     # Join watchdog thread if it was started
                     if watchdog_thread is not None:
                         watchdog_thread.join(timeout=2.0)
+
+                    if aborted_for_skip[0]:
+                        # The 'all' pass was terminated to honor a mid-rip skip.
+                        # Delete ONLY the title MakeMKV was actively writing when
+                        # killed (identified by growth since the last poll) so it
+                        # is never handed to matching; titles that already finished
+                        # are kept so the caller doesn't needlessly re-rip them.
+                        # The post-process force poll below then finalizes those
+                        # kept titles. Snapshot under _fs_lock to stay consistent
+                        # with the concurrent completion polls.
+                        with _fs_lock:
+                            abort_sizes: dict[str, int] = {}
+                            for mkv in output_dir.glob("*.mkv"):
+                                try:
+                                    abort_sizes[mkv.name] = mkv.stat().st_size
+                                except OSError as e:
+                                    logger.debug(f"Could not stat {mkv.name} on abort: {e}")
+                            doomed = completion.files_incomplete_at_abort(abort_sizes)
+                        for fname in doomed:
+                            try:
+                                (output_dir / fname).unlink()
+                                logger.info(
+                                    f"Deleted partial file from skip-aborted 'all' pass: {fname}"
+                                )
+                            except OSError as e:
+                                logger.warning(f"Failed to delete partial file {fname}: {e}")
+                        break
 
                     if process.returncode != 0:
                         was_stall = current_title_idx in stalled_commands
@@ -1065,6 +1154,22 @@ class MakeMKVExtractor:
                     success=False,
                     output_files=[],
                     error_message="Ripping cancelled by user",
+                )
+
+            if aborted_for_skip[0]:
+                # Not a failure: the titles finished before the abort are kept,
+                # and the caller's one-pass + per-title fallback re-rips the
+                # still-missing (not-skipped) titles individually.
+                if not output_files:
+                    output_files = list(output_dir.glob("*.mkv"))
+                logger.info(
+                    f"'all' pass aborted for a user skip: {len(output_files)} "
+                    f"title(s) already ripped; remaining titles re-ripped per-title"
+                )
+                return RipResult(
+                    success=True,
+                    output_files=output_files,
+                    aborted_for_skip=True,
                 )
 
             # Fallback: parse output_lines if thread didn't track any files
