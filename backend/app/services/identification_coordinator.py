@@ -238,6 +238,7 @@ class IdentificationCoordinator:
         self._start_subtitle_download: callable = None
         self._start_subtitle_download_all_seasons: callable = None
         self._restart_subtitle_download: callable = None
+        self._cancel_subtitle_download: callable = None
         self._match_single_file: callable = None
         self._on_match_task_done: callable = None
         self._check_job_completion: callable = None
@@ -251,6 +252,7 @@ class IdentificationCoordinator:
         set_discdb_mappings,
         start_subtitle_download,
         restart_subtitle_download,
+        cancel_subtitle_download=None,
         start_subtitle_download_all_seasons=None,
         match_single_file,
         on_match_task_done,
@@ -264,6 +266,7 @@ class IdentificationCoordinator:
         self._start_subtitle_download = start_subtitle_download
         self._start_subtitle_download_all_seasons = start_subtitle_download_all_seasons
         self._restart_subtitle_download = restart_subtitle_download
+        self._cancel_subtitle_download = cancel_subtitle_download
         self._match_single_file = match_single_file
         self._on_match_task_done = on_match_task_done
         self._check_job_completion = check_job_completion
@@ -1436,6 +1439,7 @@ class IdentificationCoordinator:
             # in the broadcast below clears it on the frontend merge.
             job.identity_prompt_json = None
             is_tv = job.content_type == ContentType.TV
+            mid_rip_subtitle_refresh = False
 
             if mid_rip:
                 # Mid-rip answer: metadata only — NO state change and NO new
@@ -1457,11 +1461,11 @@ class IdentificationCoordinator:
                     resume_action: ResumeAction = "rematch_ripped"
                 else:
                     resume_action = mid_rip_resume_action(is_tv)
-                # The identify-time prefetch was skipped while the identity
-                # question was open (B2 gates B/C) — kick it now. Known season
+                # Subtitle refresh for the corrected show is deferred to AFTER
+                # the session commit (below): cancel_subtitle_download opens its
+                # own session and would deadlock on this connection. Known season
                 # → that season; unknown → all seasons (cross-season matching).
-                if is_tv and job.detected_title:
-                    await self._start_tv_subtitle_prefetch(job)
+                mid_rip_subtitle_refresh = bool(is_tv and job.detected_title)
             elif has_ripped:
                 if is_tv:
                     # Post-rip: go to MATCHING to re-run episode matching
@@ -1517,10 +1521,17 @@ class IdentificationCoordinator:
                 f"({content_type_str}), resume action: {resume_action}"
             )
 
-        # Restart outside the session block: restart_subtitle_download opens its
-        # own session for cleanup and would deadlock on the same connection.
+        # Restart outside the session block: these open their own sessions for
+        # cleanup and would deadlock on the same connection.
         if restart_args is not None:
             await self._restart_subtitle_download(*restart_args)
+        if mid_rip_subtitle_refresh:
+            # Corrected show mid-rip: cancel the previous show's in-flight
+            # download (and clear its stale subtitle_status) before prefetching
+            # the corrected show — known season → that season, unknown → all.
+            if self._cancel_subtitle_download is not None:
+                await self._cancel_subtitle_download(job_id)
+            await self._start_tv_subtitle_prefetch(job)
 
         return {"job_id": job_id, "has_ripped": has_ripped, "resume_action": resume_action}
 

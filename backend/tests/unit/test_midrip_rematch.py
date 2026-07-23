@@ -331,3 +331,63 @@ async def test_midrip_reidentify_unchanged_show_preserves_matches(monkeypatch, t
 
     assert dispatched == []  # dispatch_matches path — MATCHED title untouched
     assert (await _get_title(t.id)).state == TitleState.MATCHED
+
+
+@pytest.mark.unit
+async def test_cancel_subtitle_download_cancels_and_clears_status(monkeypatch, tmp_path):
+    from sqlalchemy import update as _sqla_update
+
+    mc = job_manager._matching
+
+    async def _never_finish(job_id, show_name, season, tmdb_id=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(mc, "download_subtitles", _never_finish)
+
+    async def _quiet_sub_event(*a, **k):
+        return None
+
+    monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _quiet_sub_event)
+
+    job = await _seed_job()
+    async with _unit_session_factory() as session:
+        await session.execute(
+            _sqla_update(DiscJob).where(DiscJob.id == job.id).values(subtitle_status="failed")
+        )
+        await session.commit()
+
+    mc.start_subtitle_download(job.id, "Show A", 1)
+    old_task = mc._subtitle_tasks[job.id]
+
+    await mc.cancel_subtitle_download(job.id)
+
+    assert old_task.cancelled() or old_task.done()
+    assert (await _get_job(job.id)).subtitle_status is None
+
+
+@pytest.mark.unit
+async def test_midrip_show_change_refreshes_subtitles(monkeypatch, tmp_path):
+    from unittest.mock import AsyncMock
+
+    coord = job_manager._identification
+    cancels: list[int] = []
+
+    async def fake_cancel(job_id):
+        cancels.append(job_id)
+
+    monkeypatch.setattr(coord, "_cancel_subtitle_download", fake_cancel, raising=False)
+    monkeypatch.setattr(coord, "_start_tv_subtitle_prefetch", AsyncMock())
+    monkeypatch.setattr(coord, "_restart_subtitle_download", AsyncMock())
+    monkeypatch.setattr(
+        "app.services.identification_coordinator._resolve_show_year",
+        lambda tmdb_id, signal: None,
+    )
+    monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job(detected_title="Show A", tmdb_id=111)
+
+    await job_manager.re_identify_job(job.id, "Show B", "tv", season=1, tmdb_id=999)
+
+    assert cancels == [job.id]
+    coord._start_tv_subtitle_prefetch.assert_awaited_once()

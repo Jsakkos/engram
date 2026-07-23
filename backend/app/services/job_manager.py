@@ -218,6 +218,7 @@ class JobManager:
             start_subtitle_download=self._matching.start_subtitle_download,
             start_subtitle_download_all_seasons=self._matching.start_subtitle_download_all_seasons,
             restart_subtitle_download=self._matching.restart_subtitle_download,
+            cancel_subtitle_download=self._matching.cancel_subtitle_download,
             match_single_file=self._matching.match_single_file,
             on_match_task_done=self._matching.on_match_task_done,
             check_job_completion=self._finalization.check_job_completion,
