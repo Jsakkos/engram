@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -271,3 +272,62 @@ async def test_rematch_ripped_cancelled_match_not_routed_to_review(monkeypatch, 
     refreshed = await _get_title(t.id)
     assert refreshed.state != TitleState.REVIEW, refreshed.match_details
     assert t.id in dispatched  # was re-dispatched
+
+
+def _stub_reidentify_network(monkeypatch):
+    """Keep re_identify off the network (TMDB re-lookup, subtitle, year)."""
+    coord = job_manager._identification
+    monkeypatch.setattr(coord, "_start_tv_subtitle_prefetch", AsyncMock())
+    monkeypatch.setattr(coord, "_cancel_subtitle_download", AsyncMock(), raising=False)
+    monkeypatch.setattr(coord, "_restart_subtitle_download", AsyncMock())
+    monkeypatch.setattr(
+        "app.services.identification_coordinator._resolve_show_year",
+        lambda tmdb_id, signal: None,
+    )
+
+
+@pytest.mark.unit
+async def test_midrip_reidentify_show_change_rematches_processed_title(monkeypatch, tmp_path):
+    _stub_reidentify_network(monkeypatch)
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job(detected_title="Show A", tmdb_id=111)
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.MATCHED, output=str(f), match_confidence=0.9)
+
+    await job_manager.re_identify_job(job.id, "Show B", "tv", season=1, tmdb_id=999)
+    await asyncio.sleep(0)
+
+    assert t.id in dispatched  # already-matched title re-matched against corrected show
+    assert (await _get_title(t.id)).match_confidence == 0.0
+
+
+@pytest.mark.unit
+async def test_midrip_reidentify_unchanged_show_preserves_matches(monkeypatch, tmp_path):
+    _stub_reidentify_network(monkeypatch)
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job(detected_title="Show A", tmdb_id=111)
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.MATCHED, output=str(f), match_confidence=0.9)
+
+    # Same title + tmdb_id → season-only/no-op change, NOT a show change.
+    await job_manager.re_identify_job(job.id, "Show A", "tv", season=1, tmdb_id=111)
+    await asyncio.sleep(0)
+
+    assert dispatched == []  # dispatch_matches path — MATCHED title untouched
+    assert (await _get_title(t.id)).state == TitleState.MATCHED

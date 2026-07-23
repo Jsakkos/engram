@@ -1347,6 +1347,13 @@ class IdentificationCoordinator:
 
             mid_rip = job.state == JobState.RIPPING
 
+            # Pre-answer identity, to detect a genuine SHOW change (title or
+            # tmdb_id) vs. a season-only refinement — only a show change tears
+            # down and re-matches already-processed titles mid-rip (spec
+            # 2026-07-22).
+            _prev_title = job.detected_title
+            _prev_tmdb_id = job.tmdb_id
+
             # Check if files already exist in staging (post-rip)
             has_ripped = False
             if job.staging_path:
@@ -1432,10 +1439,24 @@ class IdentificationCoordinator:
 
             if mid_rip:
                 # Mid-rip answer: metadata only — NO state change and NO new
-                # tasks; the running rip continues and the rip-end re-read
-                # (B4) picks up the corrected identity.
+                # tasks; the running rip continues and the rip-end re-read (B4)
+                # picks up the corrected identity. A genuine SHOW change (title
+                # or tmdb_id actually flipping to something else) re-matches
+                # titles already processed under the old identity —
+                # dispatch_matches would only release still-parked QUEUED
+                # titles. A previously-unknown identity being established for
+                # the first time (the common walk-away CTA case: nothing was
+                # known yet, so nothing could have been matched wrong) and a
+                # season-only refinement (same title+tmdb) both keep that cheap
+                # release.
                 target_state = JobState.RIPPING
-                resume_action: ResumeAction = mid_rip_resume_action(is_tv)
+                show_changed = (_prev_title is not None and job.detected_title != _prev_title) or (
+                    _prev_tmdb_id is not None and job.tmdb_id != _prev_tmdb_id
+                )
+                if is_tv and show_changed:
+                    resume_action: ResumeAction = "rematch_ripped"
+                else:
+                    resume_action = mid_rip_resume_action(is_tv)
                 # The identify-time prefetch was skipped while the identity
                 # question was open (B2 gates B/C) — kick it now. Known season
                 # → that season; unknown → all seasons (cross-season matching).
