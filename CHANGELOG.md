@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Contribute your disc metadata back to TheDiscDB.** The contribution pipeline is now enabled: a new **Contribute** page lets you export, group multi-disc sets, enhance with UPC/ASIN/cover art, and submit disc fingerprints, scan logs, and cover images to [thediscdb.com](https://thediscdb.com) so others can identify the same discs automatically. No account or API key is required — TheDiscDB accepts contributions openly — and nothing is sent without your explicit opt-in in Settings → TheDiscDB Contributions. Sharing your rips' disc metadata helps grow the shared identification database everyone benefits from. (#532)
+
 ### Fixed
 
 - **Skipping a track during ripping now actually stops it from ripping, instead of ripping it and deleting it afterward.** When every title on a disc was selected (the usual case, and always so for movies), Engram ripped the whole disc in one MakeMKV pass that could not drop an individual title mid-stream — so clicking **Skip** only marked the track for deletion once it had already been fully ripped, wasting the entire rip time. A skip requested during that single pass now aborts it and re-rips just the remaining, un-skipped titles individually, where the skip is honored before ripping starts. Skipping a title before ripping begins already worked and is unchanged. (#538)

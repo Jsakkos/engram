@@ -3755,6 +3755,23 @@ def _require_discdb_contributions() -> None:
         raise HTTPException(status_code=404, detail="TheDiscDB contributions are disabled")
 
 
+def _require_contributions_opt_in(config) -> None:
+    """Reject external submission unless the user has explicitly opted in.
+
+    The master feature flag (`_require_discdb_contributions`) exposes the
+    pipeline; this per-user consent (Settings -> TheDiscDB Contributions,
+    `discdb_contributions_enabled`, default False) is the gate that actually
+    permits sending disc metadata off-machine to thediscdb.com. Enforced at
+    the API layer so a direct localhost request can't bypass the UI's opt-in
+    check — the frontend hiding the Submit button is not a security boundary.
+    """
+    if not config.discdb_contributions_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Enable TheDiscDB contributions in Settings before submitting",
+        )
+
+
 @router.post("/contributions/{job_id}/export", dependencies=[Depends(require_localhost)])
 async def export_contribution(
     job: DiscJob = Depends(get_job_or_404),
@@ -4415,6 +4432,7 @@ async def submit_contribution(
         await session.refresh(job)
 
     config = await get_db_config()
+    _require_contributions_opt_in(config)
 
     titles_result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
     titles = list(titles_result.scalars().all())
@@ -4518,6 +4536,7 @@ async def submit_release_group_endpoint(
         raise HTTPException(status_code=404, detail="Release group not found")
 
     config = await get_db_config()
+    _require_contributions_opt_in(config)
 
     from app import __version__
 

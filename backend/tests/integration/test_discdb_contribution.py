@@ -208,7 +208,10 @@ async def test_enhance_with_upc(client, completed_job, tmp_path):
 @pytest.mark.asyncio
 async def test_submit_without_api_key_attempts_submission(client, completed_job, tmp_path):
     """Submit endpoint should attempt submission even without API key configured."""
-    await client.put("/api/config", json={"discdb_export_path": str(tmp_path)})
+    await client.put(
+        "/api/config",
+        json={"discdb_export_path": str(tmp_path), "discdb_contributions_enabled": True},
+    )
 
     # Export first so there's data to submit
     await client.post(f"/api/contributions/{completed_job.id}/export")
@@ -220,6 +223,41 @@ async def test_submit_without_api_key_attempts_submission(client, completed_job,
     # Will fail because there's no real TheDiscDB server in tests, but it should attempt
     assert "success" in data
     assert "error" in data
+
+
+@pytest.mark.asyncio
+async def test_submit_requires_opt_in(client, completed_job, tmp_path):
+    """Submit endpoint must reject with 403 when the per-user opt-in is off.
+
+    The master feature flag exposes the pipeline, but nothing is sent
+    off-machine unless the user opted in (Settings -> TheDiscDB Contributions).
+    Enforced server-side so a direct localhost POST can't bypass the UI gate.
+    """
+    await client.put(
+        "/api/config",
+        json={"discdb_export_path": str(tmp_path), "discdb_contributions_enabled": False},
+    )
+    await client.post(f"/api/contributions/{completed_job.id}/export")
+
+    response = await client.post(f"/api/contributions/{completed_job.id}/submit")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_batch_submit_requires_opt_in(client, completed_job, second_completed_job, tmp_path):
+    """Batch submit must also reject with 403 when the opt-in is off."""
+    await client.put(
+        "/api/config",
+        json={"discdb_export_path": str(tmp_path), "discdb_contributions_enabled": False},
+    )
+    group_resp = await client.post(
+        "/api/contributions/release-group",
+        json={"job_ids": [completed_job.id, second_completed_job.id]},
+    )
+    group_id = group_resp.json()["release_group_id"]
+
+    response = await client.post(f"/api/contributions/release-group/{group_id}/submit")
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -282,8 +320,11 @@ async def test_ungroup_job(client, completed_job, second_completed_job):
 @pytest.mark.asyncio
 async def test_batch_submit_release_group(client, completed_job, second_completed_job, tmp_path):
     """Batch-submit all jobs in a release group."""
-    # Set export path (needed for submit_job to generate export)
-    await client.put("/api/config", json={"discdb_export_path": str(tmp_path)})
+    # Set export path (needed for submit_job to generate export) + opt in
+    await client.put(
+        "/api/config",
+        json={"discdb_export_path": str(tmp_path), "discdb_contributions_enabled": True},
+    )
 
     # Create a release group
     group_resp = await client.post(
