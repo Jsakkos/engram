@@ -245,6 +245,12 @@ class RipResult:
     # None means the generic STALL_FAILURE_REASON applies. Callers routing
     # stalled titles to review read this so the live update and History agree.
     failure_reason: str | None = None
+    # True when a full-disc "all" pass was terminated early because the user
+    # skipped a title mid-rip (a single MakeMKV invocation cannot drop one
+    # title). Not a failure: titles ripped before the abort are kept, and the
+    # caller re-rips the remaining not-skipped titles individually — where the
+    # live skip-set IS honored (issue #538).
+    aborted_for_skip: bool = False
 
 
 class ScanTimeoutError(Exception):
@@ -699,6 +705,12 @@ class MakeMKVExtractor:
         # run_rip_with_streaming) because the RipResult returns below also read it.
         region_mismatch = [False]
 
+        # Set by the reader loop when a skip lands during a full-disc "all" pass
+        # (which cannot drop one title from its single MakeMKV invocation). The
+        # RipResult returns below read it, so — like region_mismatch — it lives
+        # out here rather than inside run_rip_with_streaming.
+        aborted_for_skip = [False]
+
         def _stall_reason() -> str:
             """The most specific reason we can give for a stall."""
             return REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else STALL_FAILURE_REASON
@@ -892,6 +904,24 @@ class MakeMKVExtractor:
                             process.terminate()
                             break
 
+                        # All-pass skip (issue #538): a single "mkv … all"
+                        # invocation cannot be told to drop one title, so a skip
+                        # requested mid-pass is honored by aborting here. The
+                        # titles finished before the abort are kept; the caller
+                        # re-rips the remaining not-skipped titles per-title,
+                        # where the live skip-set IS consulted. (Per-title
+                        # commands carry a real title_index and skip themselves
+                        # before starting, so this only fires for the all-pass.)
+                        if title_index is None and self._skipped_indices.get(job_id):
+                            logger.info(
+                                f"Skip requested during full-disc 'all' pass "
+                                f"(job {job_id}); aborting to re-rip the remaining "
+                                f"titles individually"
+                            )
+                            aborted_for_skip[0] = True
+                            process.terminate()
+                            break
+
                         line = line.strip()
                         if not line:
                             continue
@@ -944,6 +974,24 @@ class MakeMKVExtractor:
                     # Join watchdog thread if it was started
                     if watchdog_thread is not None:
                         watchdog_thread.join(timeout=2.0)
+
+                    if aborted_for_skip[0]:
+                        # The 'all' pass was terminated to honor a mid-rip skip.
+                        # Delete the partial file of the title MakeMKV was writing
+                        # when killed (completed titles are preserved via
+                        # should_preserve) so it is never handed to matching — the
+                        # caller re-rips the still-missing titles individually.
+                        for mkv in output_dir.glob("*.mkv"):
+                            if not completion.should_preserve(mkv.name):
+                                try:
+                                    mkv.unlink()
+                                    logger.info(
+                                        f"Deleted partial file from skip-aborted "
+                                        f"'all' pass: {mkv.name}"
+                                    )
+                                except OSError as e:
+                                    logger.warning(f"Failed to delete partial file {mkv.name}: {e}")
+                        break
 
                     if process.returncode != 0:
                         was_stall = current_title_idx in stalled_commands
@@ -1065,6 +1113,22 @@ class MakeMKVExtractor:
                     success=False,
                     output_files=[],
                     error_message="Ripping cancelled by user",
+                )
+
+            if aborted_for_skip[0]:
+                # Not a failure: the titles finished before the abort are kept,
+                # and the caller's one-pass + per-title fallback re-rips the
+                # still-missing (not-skipped) titles individually.
+                if not output_files:
+                    output_files = list(output_dir.glob("*.mkv"))
+                logger.info(
+                    f"'all' pass aborted for a user skip: {len(output_files)} "
+                    f"title(s) already ripped; remaining titles re-ripped per-title"
+                )
+                return RipResult(
+                    success=True,
+                    output_files=output_files,
+                    aborted_for_skip=True,
                 )
 
             # Fallback: parse output_lines if thread didn't track any files
