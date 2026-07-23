@@ -92,11 +92,13 @@ show change still triggers via the show change.
 `"rematch_ripped"` is added to the `ResumeAction` `Literal` in
 `app/services/identity_prompts.py`.
 
-Note: `set_name_and_resume` handles the `name`/`season` prompts, whose discs park
-behind a blocking prompt (titles held in `QUEUED`), so its mid-rip titles are
-normally already `QUEUED` and the "changed" branch is usually a no-op there. The
-detection is applied uniformly to both endpoints for robustness; `re_identify` is
-where the change actually bites.
+**Scoped to `re_identify` only.** `set_name_and_resume` handles the `name`/`season`
+prompts and can never change the *show*: a `name` prompt parks titles in `QUEUED`
+(released fine by `dispatch_matches`), and a `season` prompt only sets the season
+(a season-only change, excluded from the trigger by definition). Only `re_identify`
+(the "correct a title mid-rip" path) can swap the show under already-matched
+titles, so the re-match and subtitle-restart changes live there. `set_name_and_resume`
+is unchanged.
 
 ### 2. Re-match executor — `JobManager`
 
@@ -119,12 +121,17 @@ non-TV job so a misrouted caller can't episode-match movie titles.
 
 ### 3. Subtitle restart — `IdentificationCoordinator`
 
-Change the mid-rip branch (in `re_identify`, and `set_name_and_resume` for
-symmetry) so that when the season is known it calls `restart_subtitle_download`
-(cancels the stale task, clears `subtitle_status`, re-emits progress) instead of
-`_start_tv_subtitle_prefetch`. When the season is unknown, cancel the old task
-first, then run the all-seasons prefetch. This runs outside the session block
-(the restart opens its own session), matching the existing post-rip ordering.
+Change the mid-rip branch of `re_identify` so it cancels the stale subtitle
+download before starting the corrected one. Extract the cancel-in-flight logic
+already inside `restart_subtitle_download` into a reusable
+`MatchingCoordinator.cancel_subtitle_download(job_id)` (cancel + await the old
+task, clear `subtitle_status`/`subtitle_error_message`, re-emit a fresh progress
+event), inject it into the coordinator, and refactor `restart_subtitle_download`
+to call it (DRY). In `re_identify`'s mid-rip branch, replace the bare
+`_start_tv_subtitle_prefetch(job)` with `cancel_subtitle_download(job_id)` then
+`_start_tv_subtitle_prefetch(job)` — uniform across known/unknown season. This
+runs outside the session block (cancel opens its own session), matching the
+existing post-rip `restart_args` ordering.
 
 ### 4. In-flight match-task tracking + cancellation — `JobManager` (Option A)
 
@@ -197,9 +204,13 @@ mis-matched title (using the realistic path, not pure simulation, so
 ## Files touched
 
 - `backend/app/services/identity_prompts.py` — add `"rematch_ripped"` to `ResumeAction`.
-- `backend/app/services/identification_coordinator.py` — change detection +
-  subtitle restart in the mid-rip branches of `re_identify` / `set_name_and_resume`.
+- `backend/app/services/identification_coordinator.py` — show-change detection +
+  subtitle cancel/restart in the mid-rip branch of `re_identify`; inject
+  `cancel_subtitle_download`. (`set_name_and_resume` unchanged.)
+- `backend/app/services/matching_coordinator.py` — extract `cancel_subtitle_download`;
+  `restart_subtitle_download` calls it.
 - `backend/app/services/job_manager.py` — `_match_tasks` map, `_dispatch_title_match`
-  recording, `_rematch_ripped_titles`, `_apply_identity_resume_action` wiring.
+  recording, `_rematch_ripped_titles`, `_apply_identity_resume_action` wiring, wire
+  `cancel_subtitle_download` into the coordinator constructor.
 - `backend/tests/unit/…` and `backend/tests/integration/…` — tests above.
 - `CHANGELOG.md` — `[Unreleased] / Fixed` entry.
