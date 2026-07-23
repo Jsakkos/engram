@@ -3,7 +3,12 @@ from unittest.mock import patch
 
 import pytest
 
-from app.core.extractor import MakeMKVExtractor, RipResult, _build_rip_commands
+from app.core.extractor import (
+    MakeMKVExtractor,
+    RipResult,
+    TitleCompletionDetector,
+    _build_rip_commands,
+)
 
 
 def test_skip_set_registration_and_clear():
@@ -72,6 +77,56 @@ class _FakeProc:
 
 def test_ripresult_aborted_for_skip_defaults_false():
     assert RipResult(success=True, output_files=[]).aborted_for_skip is False
+
+
+@pytest.mark.unit
+class TestFilesIncompleteAtAbort:
+    """On a killed 'all' pass, delete only the title being written; keep the
+    ones that already finished — even those whose completion never fired because
+    no successor started growing before the kill (the bystander-title bug)."""
+
+    def test_preserves_finished_title_deletes_the_growing_one(self):
+        det = TitleCompletionDetector()
+        # t00 finished (polled twice at a stable 1000); t01 grew from 500 while
+        # it was the title being written. Neither is promoted to _completed yet
+        # (t00's "successor grew" gate never fired — exactly the abort gap).
+        det.poll({"t00.mkv": 1000})
+        det.poll({"t00.mkv": 1000, "t01.mkv": 500})
+        assert det.is_completed("t00.mkv") is False
+
+        # Abort snapshot: t00 unchanged (finished), t01 grew further (partial).
+        doomed = det.files_incomplete_at_abort({"t00.mkv": 1000, "t01.mkv": 800})
+
+        assert set(doomed) == {"t01.mkv"}
+
+    def test_preserves_stable_last_title_when_nothing_is_growing(self):
+        # The reviewer's gap: t00 finished, its successor never started. Nothing
+        # is being written, so nothing should be deleted.
+        det = TitleCompletionDetector()
+        det.poll({"t00.mkv": 1000})
+        det.poll({"t00.mkv": 1000})
+
+        assert det.files_incomplete_at_abort({"t00.mkv": 1000}) == []
+
+    def test_deletes_zero_byte_and_never_polled_stub(self):
+        det = TitleCompletionDetector()
+        det.poll({"t00.mkv": 1000})
+        # t00 stub truncated to 0 bytes; t09 appeared but was never polled.
+        doomed = det.files_incomplete_at_abort({"t00.mkv": 0, "t09.mkv": 4096})
+        assert set(doomed) == {"t00.mkv", "t09.mkv"}
+
+    def test_completed_and_ignored_files_are_always_preserved(self):
+        det = TitleCompletionDetector(ignore={"pre_existing.mkv"})
+        det.poll({"t00.mkv": 1000})
+        det.poll({"t00.mkv": 1000, "t01.mkv": 500})
+        # force-complete t00 so it is in _completed.
+        det.poll({"t00.mkv": 1000}, force=True)
+        assert det.is_completed("t00.mkv") is True
+
+        doomed = det.files_incomplete_at_abort(
+            {"t00.mkv": 1000, "pre_existing.mkv": 2000, "t01.mkv": 9999}
+        )
+        assert set(doomed) == {"t01.mkv"}  # completed + ignored preserved
 
 
 @pytest.mark.unit

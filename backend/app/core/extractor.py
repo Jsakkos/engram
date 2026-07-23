@@ -328,6 +328,38 @@ class TitleCompletionDetector:
         """Total number of titles reported complete so far."""
         return len(self._completed)
 
+    def files_incomplete_at_abort(self, sizes: dict[str, int]) -> list[str]:
+        """Files to delete when the rip process was killed mid-pass.
+
+        Used only on an abort (e.g. a skip that terminates the full-disc "all"
+        pass): the ``force`` promotion path is unsafe here because the process
+        did not exit naturally, so the file MakeMKV was actively writing is
+        genuinely truncated. MakeMKV writes titles sequentially, so at a kill at
+        most one file is partial: the one whose size **grew since the last poll**
+        (or a zero-byte stub, or one never polled at all). A title that already
+        finished has a size equal to its last-polled value — even if its
+        "a later title started growing" completion gate never fired because it
+        was the most recent title when the kill landed — and MUST be preserved
+        rather than needlessly re-ripped. ``_completed`` and pre-existing
+        (``_ignored``) files are always preserved.
+
+        Reading ``_active`` instead would be wrong: it is the most-recently-grown
+        file and is never cleared, so between one title finishing and the next
+        starting it points at the already-finished title.
+        """
+        doomed: list[str] = []
+        for fname, size in sizes.items():
+            if fname in self._completed or fname in self._ignored:
+                continue
+            prev = self._known.get(fname)
+            # size<=0: never-valid stub. prev is None: never polled — in a
+            # sequential rip that is the just-opened current title. size>prev:
+            # still growing when killed. Otherwise (size == prev > 0) the title
+            # had stopped writing, i.e. it is finished.
+            if size <= 0 or prev is None or size > prev:
+                doomed.append(fname)
+        return doomed
+
     def poll(self, sizes: dict[str, int], *, force: bool = False) -> list[tuple[str, int]]:
         """Feed the current ``{filename: size}`` snapshot.
 
@@ -977,20 +1009,29 @@ class MakeMKVExtractor:
 
                     if aborted_for_skip[0]:
                         # The 'all' pass was terminated to honor a mid-rip skip.
-                        # Delete the partial file of the title MakeMKV was writing
-                        # when killed (completed titles are preserved via
-                        # should_preserve) so it is never handed to matching — the
-                        # caller re-rips the still-missing titles individually.
-                        for mkv in output_dir.glob("*.mkv"):
-                            if not completion.should_preserve(mkv.name):
+                        # Delete ONLY the title MakeMKV was actively writing when
+                        # killed (identified by growth since the last poll) so it
+                        # is never handed to matching; titles that already finished
+                        # are kept so the caller doesn't needlessly re-rip them.
+                        # The post-process force poll below then finalizes those
+                        # kept titles. Snapshot under _fs_lock to stay consistent
+                        # with the concurrent completion polls.
+                        with _fs_lock:
+                            abort_sizes: dict[str, int] = {}
+                            for mkv in output_dir.glob("*.mkv"):
                                 try:
-                                    mkv.unlink()
-                                    logger.info(
-                                        f"Deleted partial file from skip-aborted "
-                                        f"'all' pass: {mkv.name}"
-                                    )
+                                    abort_sizes[mkv.name] = mkv.stat().st_size
                                 except OSError as e:
-                                    logger.warning(f"Failed to delete partial file {mkv.name}: {e}")
+                                    logger.debug(f"Could not stat {mkv.name} on abort: {e}")
+                            doomed = completion.files_incomplete_at_abort(abort_sizes)
+                        for fname in doomed:
+                            try:
+                                (output_dir / fname).unlink()
+                                logger.info(
+                                    f"Deleted partial file from skip-aborted 'all' pass: {fname}"
+                                )
+                            except OSError as e:
+                                logger.warning(f"Failed to delete partial file {fname}: {e}")
                         break
 
                     if process.returncode != 0:
