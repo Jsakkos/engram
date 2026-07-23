@@ -185,6 +185,11 @@ class JobManager:
         # re-dispatching the title against the corrected show. Populated in
         # _dispatch_title_match; removed by the task's done callback.
         self._match_tasks: dict[int, asyncio.Task] = {}
+        # Title ids whose match task _rematch_ripped_titles is cancelling on
+        # purpose — their done-callback must NOT route the cancellation to REVIEW
+        # (that detached _handle_match_failure would clobber the fresh re-dispatch).
+        # Filled + drained around the cancellation gather in _rematch_ripped_titles.
+        self._suppress_match_done: set[int] = set()
 
         # Create coordinators
         self._cleanup = CleanupService()
@@ -3306,6 +3311,10 @@ class JobManager:
         """Release the in-flight dispatch guard, then run the matching done callback."""
         self._inflight_match_dispatch.discard(title_id)
         self._match_tasks.pop(title_id, None)
+        if title_id in self._suppress_match_done:
+            # Intentional cancel by _rematch_ripped_titles — do NOT route the
+            # cancellation to REVIEW; the fresh re-dispatch owns this title.
+            return
         self._matching.on_match_task_done(task, job_id, title_id)
 
     async def dispatch_pending_matches(self, job_id: int) -> int:
@@ -3374,9 +3383,12 @@ class JobManager:
         still ripping (PENDING/RIPPING) are left alone — they dispatch under the
         new identity via ``_on_title_ripped`` once they finish (the prompt is
         already cleared by the answer endpoint). Any in-flight match task for an
-        affected title is cancelled and AWAITED first, so its stale done-callback
-        settles before the fresh re-dispatch (no bookkeeping clobber). Caller
-        contract mirrors ``dispatch_pending_matches``: TV only.
+        affected title is cancelled and AWAITED first; the cancellation is
+        registered in ``_suppress_match_done`` for the duration of that await so
+        the stale done-callback's cancel-fan-out does NOT route the title to
+        REVIEW (that would race the fresh re-dispatch below and can clobber it —
+        see the CRITICAL bug this suppression fixes). Caller contract mirrors
+        ``dispatch_pending_matches``: TV only.
         """
         resettable = (
             TitleState.QUEUED,
@@ -3386,6 +3398,7 @@ class JobManager:
         )
         affected: list[tuple[int, Path]] = []
         cancelled: list[asyncio.Task] = []
+        suppressed: list[int] = []
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if job and job.content_type != ContentType.TV:
@@ -3404,15 +3417,21 @@ class JobManager:
                 affected.append((t.id, file_path))
                 old = self._match_tasks.pop(t.id, None)
                 if old is not None and not old.done():
+                    self._suppress_match_done.add(t.id)
+                    suppressed.append(t.id)
                     old.cancel()
                     cancelled.append(old)
 
         # Await cancellations OUTSIDE the session so each stale done-callback
-        # (_inflight_match_dispatch discard + on_match_task_done) runs before the
-        # fresh dispatch below. Idempotent; return_exceptions swallows the
-        # CancelledError / any late failure.
+        # (_inflight_match_dispatch discard + suppressed on_match_task_done) runs
+        # before the fresh dispatch below. Idempotent; return_exceptions swallows
+        # the CancelledError / any late failure.
         if cancelled:
             await asyncio.gather(*cancelled, return_exceptions=True)
+
+        # Stale done-callbacks have run (suppressed) — stop suppressing so the
+        # fresh re-dispatch's own completion is handled normally.
+        self._suppress_match_done.difference_update(suppressed)
 
         async with async_session() as session:
             for title_id, _ in affected:

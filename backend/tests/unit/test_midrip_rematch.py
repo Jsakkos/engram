@@ -214,3 +214,60 @@ async def test_rematch_ripped_skips_non_tv(monkeypatch, tmp_path):
 
     assert dispatched == []
     assert (await _get_title(t.id)).state == TitleState.MATCHED
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_cancelled_match_not_routed_to_review(monkeypatch, tmp_path):
+    """A cancelled in-flight match must NOT flip the re-dispatched title to REVIEW
+    (the detached _handle_match_failure race)."""
+    released = asyncio.Event()
+    started = asyncio.Event()
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+        if len(dispatched) == 1:
+            started.set()
+            await released.wait()
+
+    async def _flip_to_review(job_id, title_id):
+        # Faithful mirror of MatchingCoordinator._handle_match_failure on cancel.
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title_id)
+            if title and title.state in (
+                TitleState.PENDING,
+                TitleState.RIPPING,
+                TitleState.QUEUED,
+                TitleState.MATCHING,
+            ):
+                title.state = TitleState.REVIEW
+                title.match_details = json.dumps(
+                    {"error": "matching_task_failed", "message": "Task cancelled"}
+                )
+                session.add(title)
+                await session.commit()
+
+    def fake_on_match_task_done(task, job_id, title_id):
+        # Mirror the real cancel fan-out (matching_coordinator.on_match_task_done).
+        if task.cancelled():
+            asyncio.ensure_future(_flip_to_review(job_id, title_id))
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", fake_on_match_task_done)
+
+    job = await _seed_job()
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.QUEUED, output=str(f))
+
+    await job_manager._dispatch_title_match(job.id, t.id, f)
+    await started.wait()
+    old_task = job_manager._match_tasks[t.id]
+    old_task.add_done_callback(lambda _t: released.set())
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await asyncio.sleep(0.05)  # let any detached failure handler run + commit
+
+    refreshed = await _get_title(t.id)
+    assert refreshed.state != TitleState.REVIEW, refreshed.match_details
+    assert t.id in dispatched  # was re-dispatched
