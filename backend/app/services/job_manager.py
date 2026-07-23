@@ -3422,39 +3422,39 @@ class JobManager:
                     old.cancel()
                     cancelled.append(old)
 
-        # Await cancellations OUTSIDE the session so each stale done-callback
-        # (_inflight_match_dispatch discard + suppressed on_match_task_done) runs
-        # before the fresh dispatch below. Idempotent; return_exceptions swallows
-        # the CancelledError / any late failure.
-        if cancelled:
-            await asyncio.gather(*cancelled, return_exceptions=True)
+        try:
+            # Await cancellations OUTSIDE the session so each stale done-callback
+            # runs (suppressed, so the cancellation is NOT routed to REVIEW)
+            # before the fresh re-dispatch below.
+            if cancelled:
+                await asyncio.gather(*cancelled, return_exceptions=True)
 
-        # Stale done-callbacks have run (suppressed) — stop suppressing so the
-        # fresh re-dispatch's own completion is handled normally.
-        self._suppress_match_done.difference_update(suppressed)
+            async with async_session() as session:
+                for title_id, _ in affected:
+                    title = await session.get(DiscTitle, title_id)
+                    if title is None:
+                        continue
+                    title.state = TitleState.QUEUED
+                    title.matched_episode = None
+                    title.match_confidence = 0.0
+                    title.match_details = None
+                    session.add(title)
+                await session.commit()
 
-        async with async_session() as session:
-            for title_id, _ in affected:
-                title = await session.get(DiscTitle, title_id)
-                if title is None:
-                    continue
-                title.state = TitleState.QUEUED
-                title.matched_episode = None
-                title.match_confidence = 0.0
-                title.match_details = None
-                session.add(title)
-            await session.commit()
-
-        dispatched = 0
-        for title_id, file_path in affected:
-            self._inflight_match_dispatch.discard(title_id)
-            await ws_manager.broadcast_title_update(job_id, title_id, TitleState.QUEUED.value)
-            if await self._dispatch_title_match(job_id, title_id, file_path):
-                dispatched += 1
-        logger.info(
-            f"Job {sanitize_log_value(job_id)}: mid-rip identity change → "
-            f"re-matching {dispatched} ripped title(s)"
-        )
+            dispatched = 0
+            for title_id, file_path in affected:
+                self._inflight_match_dispatch.discard(title_id)
+                await ws_manager.broadcast_title_update(job_id, title_id, TitleState.QUEUED.value)
+                if await self._dispatch_title_match(job_id, title_id, file_path):
+                    dispatched += 1
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: mid-rip identity change → "
+                f"re-matching {dispatched} ripped title(s)"
+            )
+        finally:
+            # Always stop suppressing — even if we were cancelled mid-flight —
+            # so a stuck id can't silently swallow a future real match failure.
+            self._suppress_match_done.difference_update(suppressed)
 
     async def _on_title_error(
         self,
