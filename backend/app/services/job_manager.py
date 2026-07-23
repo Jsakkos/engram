@@ -899,6 +899,12 @@ class JobManager:
         if action == "release_movie_titles":
             await self._release_parked_movie_titles(job_id)
             return
+        if action == "rematch_ripped":
+            # Mid-rip identity CHANGE: re-match already-ripped titles inline
+            # (the live rip task stays the registered _active_jobs owner — do
+            # NOT spawn a task here; same double-rip guard as dispatch_matches).
+            await self._rematch_ripped_titles(job_id)
+            return
 
         coro_factory = {
             "start_rip": self._run_ripping,
@@ -3358,6 +3364,78 @@ class JobManager:
                 f"{dispatched} queued title(s)"
             )
         return dispatched
+
+    async def _rematch_ripped_titles(self, job_id: int) -> None:
+        """Re-match already-ripped titles after a mid-rip identity CHANGE.
+
+        Rip-safe analogue of ``_rerun_matching`` for a job still RIPPING: only
+        titles whose rip is done (file present) and that are not yet organized
+        are reset to QUEUED and re-matched against the corrected identity. Titles
+        still ripping (PENDING/RIPPING) are left alone — they dispatch under the
+        new identity via ``_on_title_ripped`` once they finish (the prompt is
+        already cleared by the answer endpoint). Any in-flight match task for an
+        affected title is cancelled and AWAITED first, so its stale done-callback
+        settles before the fresh re-dispatch (no bookkeeping clobber). Caller
+        contract mirrors ``dispatch_pending_matches``: TV only.
+        """
+        resettable = (
+            TitleState.QUEUED,
+            TitleState.MATCHING,
+            TitleState.MATCHED,
+            TitleState.REVIEW,
+        )
+        affected: list[tuple[int, Path]] = []
+        cancelled: list[asyncio.Task] = []
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job and job.content_type != ContentType.TV:
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: _rematch_ripped_titles called on "
+                    f"non-TV job (content_type={job.content_type}) — skipping"
+                )
+                return
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            for t in result.scalars().all():
+                if not t.is_selected or t.state not in resettable or not t.output_filename:
+                    continue
+                file_path = Path(t.output_filename)
+                if not file_path.exists():
+                    continue
+                affected.append((t.id, file_path))
+                old = self._match_tasks.pop(t.id, None)
+                if old is not None and not old.done():
+                    old.cancel()
+                    cancelled.append(old)
+
+        # Await cancellations OUTSIDE the session so each stale done-callback
+        # (_inflight_match_dispatch discard + on_match_task_done) runs before the
+        # fresh dispatch below. Idempotent; return_exceptions swallows the
+        # CancelledError / any late failure.
+        if cancelled:
+            await asyncio.gather(*cancelled, return_exceptions=True)
+
+        async with async_session() as session:
+            for title_id, _ in affected:
+                title = await session.get(DiscTitle, title_id)
+                if title is None:
+                    continue
+                title.state = TitleState.QUEUED
+                title.matched_episode = None
+                title.match_confidence = 0.0
+                title.match_details = None
+                session.add(title)
+            await session.commit()
+
+        dispatched = 0
+        for title_id, file_path in affected:
+            self._inflight_match_dispatch.discard(title_id)
+            await ws_manager.broadcast_title_update(job_id, title_id, TitleState.QUEUED.value)
+            if await self._dispatch_title_match(job_id, title_id, file_path):
+                dispatched += 1
+        logger.info(
+            f"Job {sanitize_log_value(job_id)}: mid-rip identity change → "
+            f"re-matching {dispatched} ripped title(s)"
+        )
 
     async def _on_title_error(
         self,

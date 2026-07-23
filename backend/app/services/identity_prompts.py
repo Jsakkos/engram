@@ -28,6 +28,7 @@ ResumeAction = Literal[
     "release_movie_titles",
     "resolve_movie",
     "rerun_matching",
+    "rematch_ripped",
 ]
 
 
