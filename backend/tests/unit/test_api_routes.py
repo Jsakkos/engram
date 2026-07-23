@@ -314,6 +314,33 @@ class TestConfigEndpoints:
         config = verify.json()
         assert config["discord_template_completed"] == ""
 
+    async def test_get_config_survives_null_discord_templates(self, client):
+        """GET /api/config must return 200 even when the Discord template columns
+        are NULL in the database.
+
+        Regression for the 0.26.0 upgrade 500: an early 0.26.0 build could add
+        discord_template_completed / discord_template_failed as NULL on upgrade,
+        but ConfigResponse types them as required str, so a bare None raised a
+        pydantic ValidationError -> HTTP 500 that broke all config loading.
+        """
+        from sqlalchemy import text as sa_text
+
+        await _seed_config()
+        # Reproduce the real upgraded-DB shape: the buggy ADD COLUMN emitted a
+        # plain nullable VARCHAR (no NOT NULL, no default), so existing rows hold
+        # NULL. Rebuild the two columns as nullable, then NULL them out.
+        async with _unit_session_factory() as session:
+            for col in ("discord_template_completed", "discord_template_failed"):
+                await session.execute(sa_text(f"ALTER TABLE app_config DROP COLUMN {col}"))
+                await session.execute(sa_text(f"ALTER TABLE app_config ADD COLUMN {col} VARCHAR"))
+            await session.commit()
+
+        response = await client.get("/api/config")
+        assert response.status_code == 200
+        config = response.json()
+        assert config["discord_template_completed"] == ""
+        assert config["discord_template_failed"] == ""
+
     async def test_ai_api_key_persists_and_blank_does_not_clobber(self, client):
         """Reproduces the user's report end-to-end through the real routes:
 
