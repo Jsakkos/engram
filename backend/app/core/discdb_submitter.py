@@ -269,6 +269,11 @@ async def submit_job(
     app_version: str = "unknown",
 ) -> SubmissionResult:
     """Orchestrate full submission: disc data + scan log."""
+    # Defense in depth: sending disc metadata off-machine requires explicit
+    # per-user consent. The API routes gate this too, but guarding here means
+    # no caller (present or future) can submit without the opt-in.
+    if not config.discdb_contributions_enabled:
+        return SubmissionResult(error="TheDiscDB contributions are not enabled")
     if not job.content_hash:
         return SubmissionResult(error="No content hash available")
 
