@@ -180,6 +180,11 @@ class JobManager:
         # one whose task is parked waiting for a slot. Entries are removed by
         # the task's done callback (runs on success, failure, and cancel).
         self._inflight_match_dispatch: set[int] = set()
+        # Live match task per title id, so a mid-rip identity correction can
+        # cancel a stale match (running under the OLD identity) before
+        # re-dispatching the title against the corrected show. Populated in
+        # _dispatch_title_match; removed by the task's done callback.
+        self._match_tasks: dict[int, asyncio.Task] = {}
 
         # Create coordinators
         self._cleanup = CleanupService()
@@ -3285,6 +3290,7 @@ class JobManager:
         # fallback inside _match_single_file_inner.
         # match_single_file self-tags the job log context.
         task = asyncio.create_task(self._matching.match_single_file(job_id, title_id, file_path))
+        self._match_tasks[title_id] = task
         task.add_done_callback(
             lambda t, jid=job_id, tid=title_id: self._on_match_dispatch_done(t, jid, tid)
         )
@@ -3293,6 +3299,7 @@ class JobManager:
     def _on_match_dispatch_done(self, task: asyncio.Task, job_id: int, title_id: int) -> None:
         """Release the in-flight dispatch guard, then run the matching done callback."""
         self._inflight_match_dispatch.discard(title_id)
+        self._match_tasks.pop(title_id, None)
         self._matching.on_match_task_done(task, job_id, title_id)
 
     async def dispatch_pending_matches(self, job_id: int) -> int:
