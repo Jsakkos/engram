@@ -84,7 +84,7 @@ async def _drain_rematch(job_id):
     """
     task = job_manager._rematch_tasks.get(job_id)
     if task is not None:
-        await task
+        await asyncio.gather(task)
     await asyncio.sleep(0)
 
 
@@ -111,7 +111,7 @@ async def test_dispatch_title_match_tracks_then_clears_task(monkeypatch, tmp_pat
     assert task is not None  # tracked while running
 
     released.set()
-    await task
+    await asyncio.gather(task)
     await asyncio.sleep(0)  # let the done-callback run
     assert t.id not in job_manager._match_tasks  # cleared on completion
 

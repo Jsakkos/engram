@@ -84,13 +84,13 @@ async def test_midrip_correction_rematches_already_matched_title(monkeypatch, tm
     # has actually happened before we look for the re-dispatched match task.
     rematch_task = job_manager._rematch_tasks.get(job_id)
     if rematch_task is not None:
-        await rematch_task
+        await asyncio.gather(rematch_task)
     # Await the re-dispatched match task directly rather than relying on a bare
     # sleep(0) — deterministic, and letting the done-callback run keeps the
     # JobManager singleton's _match_tasks/_inflight_match_dispatch clean.
     task = job_manager._match_tasks.get(title_id)
     if task is not None:
-        await task
+        await asyncio.gather(task)
     await asyncio.sleep(0)  # let the done-callback settle
 
     assert title_id in dispatched
