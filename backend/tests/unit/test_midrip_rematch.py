@@ -469,3 +469,46 @@ async def test_midrip_show_change_refreshes_subtitles(monkeypatch, tmp_path):
 
     assert cancels == [job.id]
     coord._start_tv_subtitle_prefetch.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_coalesces_concurrent_corrections(monkeypatch):
+    """Two rematch actions for the same job don't run concurrently; the second
+    coalesces into a single rerun after the first finishes (last identity wins)."""
+    gate = asyncio.Event()
+    calls: list[int] = []
+
+    async def fake_rematch(job_id):
+        calls.append(job_id)
+        if len(calls) == 1:
+            await gate.wait()  # first pass parks in flight
+
+    monkeypatch.setattr(job_manager, "_rematch_ripped_titles", fake_rematch)
+
+    # First correction spawns the detached pass, which parks in flight.
+    await job_manager._apply_identity_resume_action(7, "rematch_ripped")
+    await asyncio.sleep(0)
+    assert calls == [7]
+    assert 7 in job_manager._rematch_tasks
+
+    # Second correction while the first is still running: coalesced, not run
+    # concurrently, rerun flagged.
+    await job_manager._apply_identity_resume_action(7, "rematch_ripped")
+    await asyncio.sleep(0)
+    assert calls == [7]
+    assert 7 in job_manager._rematch_rerun
+
+    # Release the first pass; its done-callback fires exactly one rerun.
+    first = job_manager._rematch_tasks[7]
+    gate.set()
+    await asyncio.gather(first)
+    for _ in range(4):
+        await asyncio.sleep(0)  # let the done-callback + rerun spawn/run
+    rerun = job_manager._rematch_tasks.get(7)
+    if rerun is not None:
+        await asyncio.gather(rerun)
+    await asyncio.sleep(0)
+
+    assert calls == [7, 7]  # exactly one rerun, never two concurrent passes
+    assert 7 not in job_manager._rematch_rerun
+    assert 7 not in job_manager._rematch_tasks

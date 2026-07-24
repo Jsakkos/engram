@@ -211,8 +211,13 @@ class JobManager:
         self._suppress_match_done: set[int] = set()
         # Detached mid-rip re-match tasks, keyed by job id. NOT in _active_jobs:
         # the live rip task owns that slot (double-rip guard). Held so the task
-        # isn't garbage-collected mid-flight, and so tests can await it.
+        # isn't garbage-collected mid-flight, and so tests can await it. Only one
+        # runs per job at a time (two would interleave their cancel/reset/dispatch
+        # passes over the same titles); a correction that arrives while one is in
+        # flight sets _rematch_rerun so the in-flight pass runs once more against
+        # the now-latest identity when it finishes (rapid corrections: last wins).
         self._rematch_tasks: dict[int, asyncio.Task] = {}
+        self._rematch_rerun: set[int] = set()
 
         # Create coordinators
         self._cleanup = CleanupService()
@@ -939,11 +944,21 @@ class JobManager:
             # thread returns (minutes) — awaiting inline would hang the answer
             # request. Deliberately NOT registered in _active_jobs: the live rip
             # task owns that slot (the double-rip guard), and this spawns no rip.
-            task = asyncio.create_task(
-                with_job_log_context(job_id, self._rematch_ripped_titles(job_id))
-            )
-            self._rematch_tasks[job_id] = task
-            task.add_done_callback(lambda t, jid=job_id: self._on_rematch_task_done(t, jid))
+            existing = self._rematch_tasks.get(job_id)
+            if existing is not None and not existing.done():
+                # A re-match for this job is already in flight (its ASR-cancel
+                # await can run for a while, e.g. a rapid double-answer). Don't
+                # start a second concurrent pass — the two would interleave their
+                # cancel/reset/dispatch over the same titles. Flag a rerun so the
+                # in-flight pass runs once more against the now-latest committed
+                # identity when it finishes (successive corrections: last wins).
+                self._rematch_rerun.add(job_id)
+                logger.info(
+                    f"Job {sanitize_log_value(job_id)}: re-match already in flight — "
+                    f"coalescing; will re-run once against the latest identity"
+                )
+                return
+            self._spawn_rematch(job_id)
             return
 
         coro_factory = {
@@ -957,8 +972,17 @@ class JobManager:
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
+    def _spawn_rematch(self, job_id: int) -> None:
+        """Spawn the detached mid-rip re-match task and register it for the job."""
+        task = asyncio.create_task(
+            with_job_log_context(job_id, self._rematch_ripped_titles(job_id))
+        )
+        self._rematch_tasks[job_id] = task
+        task.add_done_callback(lambda t, jid=job_id: self._on_rematch_task_done(t, jid))
+
     def _on_rematch_task_done(self, task: asyncio.Task, job_id: int) -> None:
-        """Clear the detached re-match task and surface any failure.
+        """Clear the detached re-match task, surface any failure, and run a
+        coalesced rerun if a correction arrived while this pass was in flight.
 
         Deliberately does NOT reuse _on_task_done: that sweeps _cancel_reasons,
         which belongs to the live rip task, not to this detached helper.
@@ -966,12 +990,19 @@ class JobManager:
         if self._rematch_tasks.get(job_id) is task:
             self._rematch_tasks.pop(job_id, None)
         if task.cancelled():
+            self._rematch_rerun.discard(job_id)
             return
         if exc := task.exception():
             logger.error(
                 f"Job {sanitize_log_value(job_id)}: mid-rip re-match task failed: {exc}",
                 exc_info=(type(exc), exc, exc.__traceback__),
             )
+        # A correction landed while this pass ran (coalesced in
+        # _apply_identity_resume_action) — run once more so every ripped title
+        # reflects the latest committed identity.
+        if job_id in self._rematch_rerun:
+            self._rematch_rerun.discard(job_id)
+            self._spawn_rematch(job_id)
 
     async def _release_parked_movie_titles(self, job_id: int) -> None:
         """Flip identity-parked QUEUED titles to MATCHED after a mid-rip non-TV answer.
@@ -3454,44 +3485,54 @@ class JobManager:
             TitleState.REVIEW,
         )
         affected: list[tuple[int, Path]] = []
-        cancelled: list[asyncio.Task] = []
-        suppressed: list[int] = []
-        try:
-            async with async_session() as session:
-                job = await session.get(DiscJob, job_id)
-                if job and job.content_type != ContentType.TV:
-                    logger.error(
-                        f"Job {sanitize_log_value(job_id)}: _rematch_ripped_titles called on "
-                        f"non-TV job (content_type={job.content_type}) — skipping"
+        to_cancel: list[tuple[int, asyncio.Task]] = []
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job and job.content_type != ContentType.TV:
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: _rematch_ripped_titles called on "
+                    f"non-TV job (content_type={job.content_type}) — skipping"
+                )
+                return
+            result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            for t in result.scalars().all():
+                if not t.is_selected or t.state not in resettable:
+                    continue
+                if t.state == TitleState.REVIEW and _is_rip_failure_review(t):
+                    continue
+                if not t.output_filename:
+                    continue
+                file_path = Path(t.output_filename)
+                if not file_path.exists():
+                    logger.warning(
+                        f"Job {sanitize_log_value(job_id)}: title "
+                        f"{sanitize_log_value(t.id)} skipped — ripped file missing "
+                        f"({sanitize_log_value(file_path.name)})"
                     )
-                    return
-                result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
-                for t in result.scalars().all():
-                    if not t.is_selected or t.state not in resettable:
-                        continue
-                    if t.state == TitleState.REVIEW and _is_rip_failure_review(t):
-                        continue
-                    if not t.output_filename:
-                        continue
-                    file_path = Path(t.output_filename)
-                    if not file_path.exists():
-                        logger.warning(
-                            f"Job {sanitize_log_value(job_id)}: title "
-                            f"{sanitize_log_value(t.id)} skipped — ripped file missing "
-                            f"({sanitize_log_value(file_path.name)})"
-                        )
-                        continue
-                    affected.append((t.id, file_path))
-                    old = self._match_tasks.pop(t.id, None)
-                    if old is not None and not old.done():
-                        self._suppress_match_done.add(t.id)
-                        suppressed.append(t.id)
-                        old.cancel()
-                        cancelled.append(old)
+                    continue
+                affected.append((t.id, file_path))
+                old = self._match_tasks.get(t.id)
+                if old is not None and not old.done():
+                    to_cancel.append((t.id, old))
 
-            # Await cancellations OUTSIDE the session so each stale done-callback
-            # runs (suppressed, so the cancellation is NOT routed to REVIEW)
-            # before the fresh re-dispatch below.
+        # Cancel in-flight matches ONLY after the selection session has closed
+        # cleanly: this way a DB error mid-selection can never leave a title
+        # cancelled-but-not-re-dispatched (its stale callback would then route it
+        # to REVIEW). The cancel+suppress loop has no awaits, so it is atomic on
+        # the event loop; suppression (drained in the finally) is what stops each
+        # cancelled task's done-callback from routing the title to REVIEW and
+        # clobbering the fresh re-dispatch below.
+        suppressed: list[int] = []
+        cancelled: list[asyncio.Task] = []
+        for title_id, old in to_cancel:
+            self._match_tasks.pop(title_id, None)
+            self._suppress_match_done.add(title_id)
+            suppressed.append(title_id)
+            old.cancel()
+            cancelled.append(old)
+        try:
+            # Await cancellations so each stale done-callback runs (suppressed,
+            # so the cancellation is NOT routed to REVIEW) before re-dispatch.
             if cancelled:
                 await asyncio.gather(*cancelled, return_exceptions=True)
         finally:

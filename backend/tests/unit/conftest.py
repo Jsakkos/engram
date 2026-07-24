@@ -197,6 +197,7 @@ async def isolate_database(monkeypatch):
     _jm_inst._match_tasks.clear()
     _jm_inst._suppress_match_done.clear()
     _jm_inst._rematch_tasks.clear()
+    _jm_inst._rematch_rerun.clear()
 
     yield
 
