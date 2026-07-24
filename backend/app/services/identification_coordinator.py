@@ -252,7 +252,7 @@ class IdentificationCoordinator:
         set_discdb_mappings,
         start_subtitle_download,
         restart_subtitle_download,
-        cancel_subtitle_download=None,
+        cancel_subtitle_download,
         start_subtitle_download_all_seasons=None,
         match_single_file,
         on_match_task_done,
@@ -1529,8 +1529,7 @@ class IdentificationCoordinator:
             # Corrected show mid-rip: cancel the previous show's in-flight
             # download (and clear its stale subtitle_status) before prefetching
             # the corrected show — known season → that season, unknown → all.
-            if self._cancel_subtitle_download is not None:
-                await self._cancel_subtitle_download(job_id)
+            await self._cancel_subtitle_download(job_id)
             await self._start_tv_subtitle_prefetch(job)
 
         return {"job_id": job_id, "has_ripped": has_ripped, "resume_action": resume_action}
