@@ -10,5 +10,6 @@ Paired with frontend `src/config/constants.ts` FEATURES.
 DISCDB_LOOKUP_ENABLED = True
 
 # TheDiscDB contributions — local export + submit/upload to thediscdb.com.
-# Keep False until the contribution API contract and UX are validated.
-DISCDB_CONTRIBUTIONS_ENABLED = False
+# Master switch: exposes the per-user opt-in (`discdb_contributions_enabled`,
+# default False); flipping this does not submit anything automatically.
+DISCDB_CONTRIBUTIONS_ENABLED = True
